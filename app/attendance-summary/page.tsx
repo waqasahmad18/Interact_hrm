@@ -5,6 +5,39 @@ import LayoutDashboard from "../layout-dashboard";
 import styles from "../dashboard/nexatech-theme.module.css";
 
 export default function AttendanceSummaryPage() {
+    // Download filtered attendance as CSV
+    function downloadCSV() {
+      const headers = [
+        "EMPLOYEE ID", "", // gap
+        "EMPLOYEE NAME", "", // gap
+        "DATE", "", // gap
+        "CLOCK IN", "", // gap
+        "CLOCK OUT", "", // gap
+        "TOTAL HOURS"
+      ];
+      const rows = filtered.map(a => [
+        a.employee_id, "",
+        a.employee_name, "",
+        a.date ? new Date(a.date).toLocaleString() : "", "",
+        a.clock_in ? new Date(a.clock_in).toLocaleString() : "", "",
+        a.clock_out ? new Date(a.clock_out).toLocaleString() : "", "",
+        formatTotalHours(a.clock_in, a.clock_out)
+      ]);
+      let csv = '';
+      csv += headers.join(',') + '\n';
+      rows.forEach(row => {
+        csv += row.map(val => `"${val}"`).join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'attendance_summary.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }
   const [attendance, setAttendance] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -73,6 +106,23 @@ export default function AttendanceSummaryPage() {
             onChange={e => setSelectedDate(e.target.value)}
             style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0" }}
           />
+          <button
+            onClick={downloadCSV}
+            style={{
+              background: "#3478f6",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 18px",
+              fontSize: "1rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(52,120,246,0.10)",
+              transition: "background 0.2s"
+            }}
+          >
+            Download CSV
+          </button>
         </div>
         <table style={{ width: "100%", marginTop: 8, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
           <thead>
