@@ -1,0 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  --color-bg: #F4F6F8;
+  --color-primary: #1976D2;
+  --color-secondary: #FF9800;
+  --color-success: #4CAF50;
+  --color-error: #F44336;
+  --color-card: #fff;
+  --color-text: #212121;
+  --color-text-secondary: #757575;
+  --radius-card: 12px;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.08);
+  --font-main: 'Inter', sans-serif;
+}
+
+body {
+  font-family: var(--font-main);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 32px;
+}
+
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.card:hover {
+  box-shadow: 0 4px 16px rgba(25, 118, 210, 0.12);
+  transform: scale(1.03);
+}
+
+.cardTitle {
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 1.2rem;
+  margin-bottom: 12px;
+  font-family: var(--font-main);
+}
+
+.metric {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+}
+
+.quickLinks {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quickButton {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-main);
+  transition: background 0.2s;
+}
+.quickButton:hover {
+  background: var(--color-secondary);
+}
+
+.heading {
+  font-size: 2.2rem;
+  color: var(--color-primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: var(--font-main);
+}
