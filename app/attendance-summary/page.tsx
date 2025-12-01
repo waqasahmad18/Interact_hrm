@@ -8,19 +8,19 @@ export default function AttendanceSummaryPage() {
     // Download filtered attendance as CSV
     function downloadCSV() {
       const headers = [
-        "EMPLOYEE ID", "", // gap
-        "EMPLOYEE NAME", "", // gap
-        "DATE", "", // gap
-        "CLOCK IN", "", // gap
-        "CLOCK OUT", "", // gap
+        "EMPLOYEE ID", "",
+        "EMPLOYEE NAME", "",
+        "DATE", "", "",
+        "CLOCK IN", "", "",
+        "CLOCK OUT", "", "",
         "TOTAL HOURS"
       ];
       const rows = filtered.map(a => [
         a.employee_id, "",
         a.employee_name, "",
-        a.date ? new Date(a.date).toLocaleString() : "", "",
-        a.clock_in ? new Date(a.clock_in).toLocaleString() : "", "",
-        a.clock_out ? new Date(a.clock_out).toLocaleString() : "", "",
+        a.date ? new Date(a.date).toLocaleString() : "", "", "",
+        a.clock_in ? new Date(a.clock_in).toLocaleString() : "", "", "",
+        a.clock_out ? new Date(a.clock_out).toLocaleString() : "", "", "",
         formatTotalHours(a.clock_in, a.clock_out)
       ]);
       let csv = '';

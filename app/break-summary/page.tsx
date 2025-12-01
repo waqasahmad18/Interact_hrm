@@ -13,6 +13,55 @@ function formatDuration(seconds: number) {
 }
 
 export default function BreakSummaryPage() {
+    // Download filtered break summary as CSV
+    function downloadCSV() {
+      const headers = [
+        "EMPLOYEE ID", "",
+        "EMPLOYEE NAME", "",
+        "DATE", "", "",
+        "BREAK START", "", "",
+        "BREAK END", "", "",
+        "TOTAL BREAK TIME", "", "",
+        "EXCEED"
+      ];
+      const rows = rowsForCSV();
+      let csv = '';
+      csv += headers.join(',') + '\n';
+      rows.forEach(row => {
+        // Add one empty column after ID and NAME, two after others
+        csv += [
+          row[0], "",
+          row[1], "",
+          row[2], "", "",
+          row[3], "", "",
+          row[4], "", "",
+          row[5], "", "",
+          row[6]
+        ].map(val => `"${val}"`).join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'break_summary.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }
+
+    // Helper to get rows for CSV
+    function rowsForCSV() {
+      return rows.map(b => [
+        b.employee_id,
+        b.employee_name,
+        b.date ? new Date(b.date).toLocaleString() : (b.break_start ? new Date(b.break_start).toLocaleString() : ""),
+        b.break_start ? new Date(b.break_start).toLocaleString() : "",
+        b.break_end ? new Date(b.break_end).toLocaleString() : "",
+        b.total_break_time,
+        b.exceed
+      ]);
+    }
   const [breaks, setBreaks] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -75,6 +124,23 @@ export default function BreakSummaryPage() {
             onChange={e => setSelectedDate(e.target.value)}
             style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0" }}
           />
+          <button
+            onClick={downloadCSV}
+            style={{
+              background: "#e67e22",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 18px",
+              fontSize: "1rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(230,126,34,0.10)",
+              transition: "background 0.2s"
+            }}
+          >
+            Download CSV
+          </button>
         </div>
         <table style={{ width: "100%", marginTop: 8, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
           <thead>
