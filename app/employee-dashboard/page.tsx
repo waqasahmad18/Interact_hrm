@@ -367,6 +367,7 @@ export default function EmployeeDashboardPage() {
             <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
             <button
               onClick={isOnBreak ? handleBreakEnd : handleBreakStart}
+              disabled={isPrayerOn}
               style={{
                 background: isOnBreak ? "#e74c3c" : "#e67e22",
                 color: "#fff",
@@ -375,7 +376,8 @@ export default function EmployeeDashboardPage() {
                 padding: "8px 18px",
                 fontSize: "1rem",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: isPrayerOn ? "not-allowed" : "pointer",
+                opacity: isPrayerOn ? 0.6 : 1,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                 transition: "background 0.2s"
               }}
@@ -401,6 +403,7 @@ export default function EmployeeDashboardPage() {
              setIsPrayerOn={setIsPrayerOn}
              prayerStart={prayerStart}
              setPrayerStart={setPrayerStart}
+             disabled={isOnBreak}
            />
         )}
         {/* Attendance Widget */}
@@ -513,11 +516,6 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
       <div style={{ fontSize: "1rem", fontWeight: 500, color: totalBreakSeconds > 3600 ? "#e74c3c" : "#2d3436" }}>{formatDuration(totalBreakSeconds)}</div>
       {exceedSeconds > 0 && (
         <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e74c3c", marginTop: 6 }}>Exceed: {formatDuration(exceedSeconds)}</div>
-      )}
-      <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#2d3436", marginTop: 12 }}>Today's Prayer Break</div>
-      <div style={{ fontSize: "1rem", fontWeight: 500, color: totalPrayerBreakSeconds > 1800 ? "#e74c3c" : "#2d3436" }}>{formatDuration(totalPrayerBreakSeconds)}</div>
-      {prayerExceedSeconds > 0 && (
-        <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e74c3c", marginTop: 6 }}>Exceed: {formatDuration(prayerExceedSeconds)}</div>
       )}
     </div>
   );
