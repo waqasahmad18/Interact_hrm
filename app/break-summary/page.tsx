@@ -16,27 +16,35 @@ export default function BreakSummaryPage() {
     // Download filtered break summary as CSV
     function downloadCSV() {
       const headers = [
-        "EMPLOYEE ID", "",
-        "EMPLOYEE NAME", "",
-        "DATE", "", "",
-        "BREAK START", "", "",
-        "BREAK END", "", "",
-        "TOTAL BREAK TIME", "", "",
-        "EXCEED"
+        "Employee ID",
+        "Employee Name",
+        "Date",
+        "Break Start",
+        "Break End",
+        "Total Break Time",
+        "Exceed",
+        "Exceed Minutes",
+        "Prayer Break Start",
+        "Prayer Break End",
+        "Prayer Break Duration",
+        "Prayer Break Exceed Minutes"
       ];
-      const rows = rowsForCSV();
       let csv = '';
       csv += headers.join(',') + '\n';
       rows.forEach(row => {
-        // Add one empty column after ID and NAME, two after others
         csv += [
-          row[0], "",
-          row[1], "",
-          row[2], "", "",
-          row[3], "", "",
-          row[4], "", "",
-          row[5], "", "",
-          row[6]
+          row.employee_id,
+          row.employee_name,
+          row.date_display,
+          row.break_start_display,
+          row.break_end_display,
+          row.total_break_time,
+          row.exceed,
+          row.exceed_minutes ?? '',
+          row.prayer_break_start ? new Date(row.prayer_break_start).toLocaleTimeString() : '',
+          row.prayer_break_end ? new Date(row.prayer_break_end).toLocaleTimeString() : '',
+          row.prayer_break_duration ?? '',
+          row.prayer_break_exceed_minutes ?? ''
         ].map(val => `"${val}"`).join(',') + '\n';
       });
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -50,18 +58,7 @@ export default function BreakSummaryPage() {
       window.URL.revokeObjectURL(url);
     }
 
-    // Helper to get rows for CSV
-    function rowsForCSV() {
-      return rows.map(b => [
-        b.employee_id,
-        b.employee_name,
-        b.date ? new Date(b.date).toLocaleString() : (b.break_start ? new Date(b.break_start).toLocaleString() : ""),
-        b.break_start ? new Date(b.break_start).toLocaleString() : "",
-        b.break_end ? new Date(b.break_end).toLocaleString() : "",
-        b.total_break_time,
-        b.exceed
-      ]);
-    }
+    // Remove rowsForCSV, now using rows directly for CSV
   const [breaks, setBreaks] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -142,38 +139,51 @@ export default function BreakSummaryPage() {
             Download CSV
           </button>
         </div>
-        <table style={{ width: "100%", marginTop: 8, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
-          <thead>
-            <tr style={{ background: "#F7FAFC", color: "#0052CC", fontWeight: 600 }}>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee ID</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee Name</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Date</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break Start</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break End</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Total Break Time</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: 18 }}>No records found.</td>
+        {/* Add horizontal scroll for table */}
+        <div style={{ width: "100%", overflowX: "auto", marginTop: 8 }}>
+          <table style={{ minWidth: 1200, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
+            <thead>
+              <tr style={{ background: "#F7FAFC", color: "#0052CC", fontWeight: 600 }}>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee ID</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee Name</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Date</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break Start</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break End</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Total Break Time</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed Minutes</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Start</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break End</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Duration</th>
+                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Exceed Minutes</th>
               </tr>
-            ) : (
-              rows.map((b, idx) => (
-                <tr key={b.id} style={{ background: idx % 2 === 0 ? "#fff" : "#F7FAFC" }}>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_id}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_name}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.date_display}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_start_display}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_end_display}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.total_break_time}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0", color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={12} style={{ textAlign: "center", padding: 18 }}>No records found.</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                rows.map((b, idx) => (
+                  <tr key={b.id || idx} style={{ background: idx % 2 === 0 ? "#fff" : "#F7FAFC" }}>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_id}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_name}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.date_display}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_start_display}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_end_display}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.total_break_time}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0", color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.exceed_minutes ?? ''}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_start ? new Date(b.prayer_break_start).toLocaleTimeString() : ''}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_end ? new Date(b.prayer_break_end).toLocaleTimeString() : ''}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_duration ?? ''}</td>
+                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_exceed_minutes ?? ''}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </LayoutDashboard>
   );
