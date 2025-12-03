@@ -47,6 +47,8 @@ export default function EmployeeDashboardPage() {
   const [employeeName, setEmployeeName] = React.useState("");
   // Add attendanceTimerRef for clock-in timer interval management
   const attendanceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  // Persisted clock-in info
+  const CLOCKIN_KEY = "clockinInfo";
 
   // Effect 1: Run once to get employee info and set employeeId
   React.useEffect(() => {
@@ -72,51 +74,37 @@ export default function EmployeeDashboardPage() {
     if (!employeeId) return;
     const today = new Date().toISOString().slice(0, 10);
     const restore = async () => {
-      // Attendance restore
       setLoadingAttendance(true);
-      const attRes = await fetch(`/api/attendance?employeeId=${employeeId}&date=${today}`);
-      const attData = await attRes.json();
-      if (attData.success && attData.attendance) {
-        const att = attData.attendance;
-        // Normalize clock_out value
-        const clockOutVal = att.clock_out;
-        const isOngoingAttendance = att.clock_in && (
-          !clockOutVal ||
-          clockOutVal === "" ||
-          clockOutVal === null ||
-          clockOutVal === undefined ||
-          clockOutVal === "0000-00-00T00:00:00Z"
-        );
-        setIsClockedIn(isOngoingAttendance);
-        if (isOngoingAttendance) {
-          const clockInTime = new Date(att.clock_in);
-          const now = new Date();
-          const elapsedSeconds = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
-          setTimer(elapsedSeconds);
+      // Restore clock-in from localStorage
+      const clockinInfo = localStorage.getItem(CLOCKIN_KEY);
+      if (clockinInfo) {
+        try {
+          const info = JSON.parse(clockinInfo);
+          if (info.employeeId === employeeId && info.clockInTime && !info.clockOutTime) {
+            setIsClockedIn(true);
+            const clockInTime = new Date(info.clockInTime);
+            const now = new Date();
+            const elapsedSeconds = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
+            setTimer(elapsedSeconds);
+            if (attendanceTimerRef.current) clearInterval(attendanceTimerRef.current);
+            attendanceTimerRef.current = setInterval(() => {
+              setTimer(prev => prev + 1);
+            }, 1000);
+          } else {
+            setIsClockedIn(false);
+            setTimer(0);
+            if (attendanceTimerRef.current) clearInterval(attendanceTimerRef.current);
+          }
+        } catch {
+          setIsClockedIn(false);
+          setTimer(0);
           if (attendanceTimerRef.current) clearInterval(attendanceTimerRef.current);
-          attendanceTimerRef.current = setInterval(() => {
-            setTimer(prev => {
-              const next = prev + 1;
-              if (next >= 9 * 3600) {
-                clearInterval(attendanceTimerRef.current!);
-                setIsClockedIn(false);
-                fetch("/api/attendance", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    employee_id: employeeId,
-                    date: new Date().toISOString().slice(0, 10),
-                    clock_out: new Date().toISOString(),
-                  }),
-                });
-                return 9 * 3600;
-              }
-              return next;
-            });
-          }, 1000);
         }
+      } else {
+        setIsClockedIn(false);
+        setTimer(0);
+        if (attendanceTimerRef.current) clearInterval(attendanceTimerRef.current);
       }
-      setLoadingAttendance(false);
       // Break restore
       const breakRes = await fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`);
       const breakData = await breakRes.json();
@@ -157,6 +145,7 @@ export default function EmployeeDashboardPage() {
         setIsPrayerOn(false);
         setPrayerStart(null);
       }
+      setLoadingAttendance(false);
     };
     restore();
     // Cleanup prayer timer interval if any
@@ -192,26 +181,11 @@ export default function EmployeeDashboardPage() {
         }),
       });
       setIsClockedIn(true);
+      localStorage.setItem(CLOCKIN_KEY, JSON.stringify({ employeeId, clockInTime: clockIn, clockOutTime: null }));
       if (attendanceTimerRef.current) clearInterval(attendanceTimerRef.current);
+      setTimer(0);
       attendanceTimerRef.current = setInterval(() => {
-        setTimer(prev => {
-          const next = prev + 1;
-          if (next >= 9 * 3600) {
-            clearInterval(attendanceTimerRef.current!);
-            setIsClockedIn(false);
-            fetch("/api/attendance", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                employee_id: employeeId,
-                date: new Date().toISOString().slice(0, 10),
-                clock_out: new Date().toISOString(),
-              }),
-            });
-            return 9 * 3600;
-          }
-          return next;
-        });
+        setTimer(prev => prev + 1);
       }, 1000);
     } catch (error) {
       console.error("Error clocking in:", error);
@@ -235,6 +209,16 @@ export default function EmployeeDashboardPage() {
         attendanceTimerRef.current = null;
       }
       setIsClockedIn(false);
+      setTimer(0);
+      // Update localStorage
+      const clockinInfo = localStorage.getItem(CLOCKIN_KEY);
+      if (clockinInfo) {
+        try {
+          const info = JSON.parse(clockinInfo);
+          info.clockOutTime = clockOut;
+          localStorage.setItem(CLOCKIN_KEY, JSON.stringify(info));
+        } catch {}
+      }
     } catch (error) {
       console.error("Error clocking out:", error);
       alert("Failed to clock out. Please try again.");
