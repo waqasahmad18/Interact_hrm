@@ -1,5 +1,6 @@
 
 "use client";
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "../dashboard/nexatech-theme.module.css";
@@ -22,12 +23,7 @@ export default function BreakSummaryPage() {
         "Break Start",
         "Break End",
         "Total Break Time",
-        "Exceed",
-        "Exceed Minutes",
-        "Prayer Break Start",
-        "Prayer Break End",
-        "Prayer Break Duration",
-        "Prayer Break Exceed Minutes"
+        "Exceed"
       ];
       let csv = '';
       csv += headers.join(',') + '\n';
@@ -39,12 +35,7 @@ export default function BreakSummaryPage() {
           row.break_start_display,
           row.break_end_display,
           row.total_break_time,
-          row.exceed,
-          row.exceed_minutes ?? '',
-          row.prayer_break_start ? new Date(row.prayer_break_start).toLocaleTimeString() : '',
-          row.prayer_break_end ? new Date(row.prayer_break_end).toLocaleTimeString() : '',
-          row.prayer_break_duration ?? '',
-          row.prayer_break_exceed_minutes ?? ''
+          row.exceed
         ].map(val => `"${val}"`).join(',') + '\n';
       });
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -151,11 +142,7 @@ export default function BreakSummaryPage() {
                 <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break End</th>
                 <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Total Break Time</th>
                 <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed Minutes</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Start</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break End</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Duration</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Prayer Break Exceed Minutes</th>
+                {/* Removed Exceed Minutes column */}
               </tr>
             </thead>
             <tbody>
@@ -173,11 +160,6 @@ export default function BreakSummaryPage() {
                     <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_end_display}</td>
                     <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.total_break_time}</td>
                     <td style={{ padding: "10px", border: "1px solid #E2E8F0", color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.exceed_minutes ?? ''}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_start ? new Date(b.prayer_break_start).toLocaleTimeString() : ''}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_end ? new Date(b.prayer_break_end).toLocaleTimeString() : ''}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_duration ?? ''}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.prayer_break_exceed_minutes ?? ''}</td>
                   </tr>
                 ))
               )}
@@ -187,4 +169,9 @@ export default function BreakSummaryPage() {
       </div>
     </LayoutDashboard>
   );
+        {/* Sidebar */}
+        <div style={{ width: 220, background: "#f7fafc", borderRight: "1px solid #e2e8f0", padding: "24px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+          <Link href="/break-summary" style={{ padding: "12px 24px", fontWeight: 600, color: "#2d3436", textDecoration: "none", borderRadius: 8, background: "#fff" }}>Break Summary</Link>
+          <Link href="/break-summary/prayer" style={{ padding: "12px 24px", fontWeight: 600, color: "#2d3436", textDecoration: "none", borderRadius: 8, background: "#fff" }}>Prayer Break Summary</Link>
+        </div>
 }

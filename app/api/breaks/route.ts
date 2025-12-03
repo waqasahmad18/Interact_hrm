@@ -37,10 +37,10 @@ export async function GET(req: NextRequest) {
 
     [rows] = await conn.execute(query, params);
 
-    // Ensure employee_name is always present in the returned object
+    // Only lunch break fields
     const formattedBreaks = (rows as any[]).map(row => ({
       ...row,
-      employee_name: row.employee_name || "", // fallback to empty string if missing
+      employee_name: row.employee_name || "",
       break_start: row.break_start ? new Date(row.break_start + 'Z').toISOString() : null,
       break_end: row.break_end ? new Date(row.break_end + 'Z').toISOString() : null,
       break_duration: row.break_duration ? Number(row.break_duration) : null,
@@ -67,40 +67,33 @@ export async function POST(req: NextRequest) {
   try {
     const conn = await mysql.createConnection(dbConfig);
 
+    // Lunch break logic only
     if (break_start) {
-      // Starting a new break
-      // Check for any ongoing breaks for this employee on this date
+      // Starting a new lunch break
       const [ongoingBreaks] = await conn.execute(
         "SELECT id FROM breaks WHERE employee_id = ? AND DATE(break_start) = ? AND break_end IS NULL",
         [employee_id, formattedDate]
       );
-
       if ((ongoingBreaks as any[]).length > 0) {
-        return NextResponse.json({ success: false, error: "An ongoing break already exists for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "An ongoing lunch break already exists for this employee for today." }, { status: 400 });
       }
-
       await conn.execute(
-        "INSERT INTO breaks (employee_id, employee_name, break_start, break_end, break_duration) VALUES (?, ?, ?, NULL, NULL)",
-        [employee_id, employee_name || "", new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        "INSERT INTO breaks (employee_id, employee_name, date, break_start, break_end, break_duration) VALUES (?, ?, ?, ?, NULL, NULL)",
+        [employee_id, employee_name || "", formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (break_end) {
-      // Ending an existing break
-      // Find the latest ongoing break for this employee on this date
+      // Ending an existing lunch break
       const [latestBreakRows] = await conn.execute(
         "SELECT id, break_start FROM breaks WHERE employee_id = ? AND DATE(break_start) = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
         [employee_id, formattedDate]
       );
-
       const latestBreak = (latestBreakRows as any[])[0];
-
       if (!latestBreak) {
-        return NextResponse.json({ success: false, error: "No ongoing break found for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "No ongoing lunch break found for this employee for today." }, { status: 400 });
       }
-
-      const breakStartTime = new Date(latestBreak.break_start + 'Z').getTime(); // Add Z for proper UTC parsing
+      const breakStartTime = new Date(latestBreak.break_start + 'Z').getTime();
       const breakEndTime = new Date(break_end).getTime();
       const breakDurationInSeconds = (breakEndTime - breakStartTime) / 1000;
-
       await conn.execute(
         "UPDATE breaks SET break_end = ?, break_duration = ? WHERE id = ?",
         [new Date(break_end).toISOString().slice(0, 19).replace('T', ' '), breakDurationInSeconds, latestBreak.id]

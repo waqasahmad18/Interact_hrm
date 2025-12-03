@@ -21,6 +21,7 @@ const sidebarLinks = [
 			{ name: "Add Employee", path: "/add-employee" },
 			{ name: "Employee Credentials", path: "/employee-credentials" },
 			{ name: "Break Summary", path: "/break-summary" },
+			{ name: "Prayer Break Summary", path: "/break-summary/prayer" },
 			{ name: "Attendance Summary", path: "/attendance-summary" },
 		],
 	},

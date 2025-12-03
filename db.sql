@@ -1,3 +1,15 @@
+-- Table for employee prayer breaks
+CREATE TABLE prayer_breaks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id VARCHAR(20),
+  employee_name VARCHAR(150),
+  date DATE,
+  prayer_break_start DATETIME,
+  prayer_break_end DATETIME,
+  prayer_break_duration INT DEFAULT 0,
+  exceed_minutes INT DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+);
 CREATE TABLE employees (
   id INT AUTO_INCREMENT PRIMARY KEY,
   first_name VARCHAR(50),
@@ -39,3 +51,9 @@ CREATE TABLE breaks (
   exceed_minutes INT DEFAULT 0,
   FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
 );
+
+-- Add columns for prayer break
+ALTER TABLE breaks
+  ADD COLUMN prayer_break_start DATETIME AFTER break_end,
+  ADD COLUMN prayer_break_end DATETIME AFTER prayer_break_start,
+  ADD COLUMN prayer_break_duration INT DEFAULT 0 AFTER prayer_break_end;

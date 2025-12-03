@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   const data = await req.json();
   const { employee_id, employee_name, date, clock_in, clock_out } = data || {};
   // Ensure date is in YYYY-MM-DD format for database consistency
-  const formattedDate = date ? new Date(date).toISOString().slice(0, 10) : null;
+  const formattedDate = date;
 
   if (!employee_id || !formattedDate) {
     return NextResponse.json({ success: false, error: "Missing required fields: employee_id or date" }, { status: 400 });
