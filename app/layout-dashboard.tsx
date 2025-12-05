@@ -23,6 +23,14 @@ const sidebarLinks = [
 			{ name: "Break Summary", path: "/break-summary" },
 			{ name: "Prayer Break Summary", path: "/break-summary/prayer" },
 			{ name: "Attendance Summary", path: "/attendance-summary" },
+            { name: "Departments", path: "/admin/departments" },
+		],
+	},
+	{
+		group: "Shift Setup",
+		links: [
+			{ name: "Create Shift", path: "/shift-setup/create-shift" },
+			{ name: "Assign Shift Employee", path: "/shift-setup/assign-shift-employee" },
 		],
 	},
 	{
