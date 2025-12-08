@@ -27,3 +27,25 @@ export async function POST(req: NextRequest) {
   await conn.end();
   return NextResponse.json({ success: true });
 }
+
+export async function PUT(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const body = await req.json();
+  const conn = await mysql.createConnection(dbConfig);
+  await conn.execute(
+    `UPDATE shifts SET name = ?, shift_in = ?, shift_out = ? WHERE id = ?`,
+    [body.name, body.shift_in, body.shift_out, id]
+  );
+  await conn.end();
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const conn = await mysql.createConnection(dbConfig);
+  await conn.execute("DELETE FROM shifts WHERE id = ?", [id]);
+  await conn.end();
+  return NextResponse.json({ success: true });
+}

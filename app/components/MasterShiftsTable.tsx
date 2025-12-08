@@ -38,6 +38,7 @@ export default function MasterShiftsTable() {
   const [newShiftId, setNewShiftId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [editModal, setEditModal] = useState<{ open: boolean; shift: MasterShift | null }>({ open: false, shift: null });
 
   useEffect(() => {
     fetch("/api/master-shifts")
@@ -70,6 +71,34 @@ export default function MasterShiftsTable() {
     }
   };
 
+  // Delete shift
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this shift?")) return;
+    await fetch(`/api/shifts?id=${id}`, { method: "DELETE" });
+    setShifts((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  // Edit shift
+  const handleEdit = (shift: MasterShift) => {
+    setEditModal({ open: true, shift });
+  };
+
+  // Update shift
+  const handleUpdateShift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModal.shift) return;
+    await fetch(`/api/shifts?id=${editModal.shift.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editModal.shift)
+    });
+    setEditModal({ open: false, shift: null });
+    // Refresh
+    fetch("/api/master-shifts")
+      .then((res) => res.json())
+      .then((data: MasterShift[]) => setShifts(data));
+  };
+
   return (
     <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, marginTop: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -95,10 +124,10 @@ export default function MasterShiftsTable() {
           {shifts.map((shift) => (
             <tr key={shift.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
               <td style={{ padding: 8 }}>
-                <button style={{ background: "#3182ce", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer" }}>Edit</button>
+                <button style={{ background: "#3182ce", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer" }} onClick={() => handleEdit(shift)}>Edit</button>
               </td>
               <td style={{ padding: 8 }}>
-                <button style={{ background: "#e53e3e", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer" }}>Delete</button>
+                <button style={{ background: "#e53e3e", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer" }} onClick={() => handleDelete(shift.id)}>Delete</button>
               </td>
               <td style={{ padding: 8 }}>{shift.name}</td>
               <td style={{ padding: 8 }}>{shift.shift_in}</td>
@@ -112,6 +141,7 @@ export default function MasterShiftsTable() {
           ))}
         </tbody>
       </table>
+
       {/* Modal for Add New Shift */}
       {showModal && (
         <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
@@ -185,6 +215,33 @@ export default function MasterShiftsTable() {
               </div>
             )}
             {/* Other tabs will be added later */}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editModal.open && editModal.shift && (
+        <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 32, minWidth: 480, boxShadow: "0 2px 12px #e2e8f0", position: "relative" }}>
+            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: 18 }}>Edit Shift</h3>
+            <form onSubmit={handleUpdateShift}>
+              <label style={{ display: "block", marginBottom: 8 }}>Shift Name</label>
+              <input value={editModal.shift.name} onChange={e => setEditModal(m => m && m.shift ? { ...m, shift: { ...m.shift, name: e.target.value } } : m)} style={{ width: "100%", padding: 8, marginBottom: 18, borderRadius: 6, border: "1px solid #e2e8f0" }} />
+              <div style={{ display: "flex", gap: 18, marginBottom: 18 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Shift IN</label>
+                  <input type="time" value={editModal.shift.shift_in} onChange={e => setEditModal(m => m && m.shift ? { ...m, shift: { ...m.shift, shift_in: e.target.value } } : m)} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Shift OUT</label>
+                  <input type="time" value={editModal.shift.shift_out} onChange={e => setEditModal(m => m && m.shift ? { ...m, shift: { ...m.shift, shift_out: e.target.value } } : m)} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                <button type="submit" style={{ background: "#3182ce", color: "#fff", borderRadius: 6, padding: "6px 18px", border: "none", cursor: "pointer" }}>Update</button>
+                <button type="button" style={{ background: "#a0aec0", color: "#fff", borderRadius: 6, padding: "6px 18px", border: "none", cursor: "pointer" }} onClick={() => setEditModal({ open: false, shift: null })}>Close</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
