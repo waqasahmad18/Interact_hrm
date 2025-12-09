@@ -1,131 +1,146 @@
 "use client";
 import React from "react";
-import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar } from "react-icons/fa";
 
 const sidebarLinks = [
 	{
 		group: "Main",
 		links: [
-			{ name: "Dashboard", path: "/dashboard" },
-			{ name: "Admin", path: "/admin" },
+			{ name: "Dashboard", path: "/dashboard", icon: <FaTachometerAlt /> },
+			{ name: "Admin", path: "/admin", icon: <FaUserShield /> },
 		],
 	},
 	{
 		group: "HR",
 		links: [
-			{ name: "Leave", path: "/leave" },
-			{ name: "Time", path: "/time" },
-			{ name: "Recruitment", path: "/recruitment" },
-			{ name: "Add Employee", path: "/add-employee" },
-			{ name: "Employee Credentials", path: "/employee-credentials" },
-			{ name: "Break Summary", path: "/break-summary" },
-			{ name: "Prayer Break Summary", path: "/break-summary/prayer" },
-			{ name: "Attendance Summary", path: "/attendance-summary" },
-            { name: "Departments", path: "/admin/departments" },
+			{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
+			{ name: "Time", path: "/time", icon: <FaClock /> },
+			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
+			{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
+			{ name: "Employee Credentials", path: "/employee-credentials", icon: <FaIdBadge /> },
+			{ name: "Break Summary", path: "/break-summary", icon: <FaListAlt /> },
+			{ name: "Prayer Break Summary", path: "/break-summary/prayer", icon: <FaPray /> },
+			{ name: "Attendance Summary", path: "/attendance-summary", icon: <FaClipboardList /> },
+			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
 		],
 	},
 	{
 		group: "Shift Setup",
 		links: [
-			{ name: "Create Shift", path: "/shift-setup/create-shift" },
-			{ name: "Assign Shift to Employee", path: "/shift-setup/assign-shift-employee" },
+			{ name: "Create Shift", path: "/shift-setup/create-shift", icon: <FaCog /> },
+			{ name: "Assign Shift to Employee", path: "/shift-setup/assign-shift-employee", icon: <FaUser /> },
 		],
 	},
 	{
 		group: "Personal",
 		links: [
-			{ name: "My Info", path: "/my-info" },
-			{ name: "Performance", path: "/performance" },
+			{ name: "My Info", path: "/my-info", icon: <FaUser /> },
+			{ name: "Performance", path: "/performance", icon: <FaChartBar /> },
 		],
 	},
 ];
 
 export default function LayoutDashboard({ children }: { children: React.ReactNode }) {
+	const [menuOpen, setMenuOpen] = React.useState(false);
+	const menuRef = React.useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
+
+	React.useEffect(() => {
+		function handleClickOutside(event: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+				setMenuOpen(false);
+			}
+		}
+		if (menuOpen) {
+			window.addEventListener("mousedown", handleClickOutside);
+			return () => window.removeEventListener("mousedown", handleClickOutside);
+		}
+	}, [menuOpen]);
+
 	return (
-		<div className={styles.layout}>
-			{/* Sidebar */}
-			<aside className={styles.sidebar}>
-				<Image
-					src="/logo.png"
-					alt="Logo"
-					width={60}
-					height={60}
-					className={styles.logo}
-				/>
-				<h2 className={styles.company}>Interact Global</h2>
-				<nav className={styles.nav}>
-					{sidebarLinks.map((group, idx) => (
-						<div key={group.group}>
-							{/* Only show group label if not 'Main' */}
-							{group.group !== "Main" && (
-								<div
-									style={{
-										fontSize: "0.95rem",
-										color: "#757575",
-										fontWeight: 600,
-										margin: "16px 0 8px 32px",
-									}}
-								>
-									{group.group}
+		<>
+			<div className={styles.topBar}>
+				<div className={styles.topBarLeft}>
+					<span className={styles.sidebarTitle}>Interact Global</span>
+					<span className={styles.sidebarMenuIcon}>&#9776;</span>
+				</div>
+				<div className={styles.topBarRight}>
+					<div className={styles.topBarProfile}>
+						{/* If user image exists, show image, else show initials */}
+						{false ? (
+							<span className={styles.topBarProfilePic} style={{backgroundImage: "url('https://ui-avatars.com/api/?name=Admin')"}}></span>
+						) : (
+							<span className={styles.topBarProfileInitials}>A</span>
+						)}
+						<span className={styles.topBarProfileName}>Admin</span>
+						<div className={styles.profileMenuWrapper} ref={menuRef}>
+							<button
+								className={styles.profileMenuButton}
+								onClick={() => setMenuOpen((open) => !open)}
+								aria-label="Open menu"
+							>
+								<span style={{ fontSize: "1.7rem", color: "#fff" }}>⋮</span>
+							</button>
+							{menuOpen && (
+								<div className={styles.profileMenuDropdown}>
+									<button
+										className={styles.logoutButton}
+										onClick={() => {
+											if (typeof window !== "undefined") {
+												localStorage.removeItem("loginId");
+											}
+											router.push("/auth");
+										}}
+									>
+										Logout
+									</button>
 								</div>
 							)}
-							{group.links.map((link) => {
-								const isActive = pathname === link.path;
-								return (
-									<div
-										key={link.name}
-										onClick={() => router.push(link.path)}
-										className={
-											isActive
-												? `${styles.navItem} ${styles.navItemActive}`
-												: styles.navItem
-										}
-									>
-										<span>{link.name}</span>
-									</div>
-								);
-							})}
 						</div>
-					))}
-				</nav>
-				{/* User Profile Section */}
-				<div className={styles.profile}>
-					<Image
-						src="/avatar.svg"
-						alt="Profile"
-						width={48}
-						height={48}
-					/>
-					<div className={styles.profileName}>Admin</div>
+					</div>
 				</div>
-			</aside>
-			{/* Main Content */}
-			<main className={styles.main}>
-				<div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", width: "100%", marginBottom: 18 }}>
-					<button
-						onClick={() => router.push("/auth")}
-						style={{
-							background: "#E53E3E",
-							color: "#fff",
-							border: "none",
-							borderRadius: 8,
-							padding: "8px 22px",
-							fontWeight: 600,
-							fontSize: "1rem",
-							boxShadow: "0 2px 8px rgba(229,62,62,0.10)",
-							cursor: "pointer",
-							transition: "background 0.2s"
-						}}
-					>
-						Logout
-					</button>
+			</div>
+			<div className={styles.layout}>
+				<aside className={styles.sidebar}>
+					<nav className={styles.nav}>
+						{sidebarLinks.map((group, idx) => (
+							<div key={group.group}>
+								{group.group !== "Main" && (
+									<div
+										style={{
+											fontSize: "0.95rem",
+											color: "#bfc8e2",
+											fontWeight: 600,
+											margin: "16px 0 8px 32px",
+										}}
+									>
+										{group.group}
+									</div>
+								)}
+								{group.links.map((link) => {
+									const isActive = pathname === link.path;
+									return (
+										<div
+											key={link.name}
+											onClick={() => router.push(link.path)}
+											className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
+										>
+											<span className={styles.navIcon}>{link.icon}</span>
+											<span>{link.name}</span>
+										</div>
+									);
+								})}
+							</div>
+						))}
+					</nav>
+				</aside>
+				<div className={styles.contentArea}>
+					<main className={styles.main}>{children}</main>
 				</div>
-				{children}
-			</main>
-		</div>
-	);
+			</div>
+		</>
+	 );
 }

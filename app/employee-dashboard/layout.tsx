@@ -41,51 +41,86 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       }
     }
   }, []);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) {
+      window.addEventListener("mousedown", handleClickOutside);
+      return () => window.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [menuOpen]);
+
   return (
-    <div className={styles.layout}>
-      <aside className={styles.sidebar}>
-        <div style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", margin: "18px 0 12px 0" }}>
-          <img src="/logo.png" alt="Logo" width={60} height={60} style={{ borderRadius: 16 }} />
+    <>
+      <div className={styles.topBar}>
+        <div className={styles.topBarLeft}>
+          <span className={styles.sidebarTitle}>Interact Global</span>
+          <span className={styles.sidebarMenuIcon}>&#9776;</span>
         </div>
-        <div style={{ fontSize: "1.15rem", fontWeight: 700, color: "#0052CC", textAlign: "center", marginBottom: 8 }}>{employeeName}</div>
-        <nav className={styles.nav}>
-          {employeeTabs.map((tab, idx) => {
-            const isActive = pathname === tab.path;
-            return (
-              <div
-                key={tab.path || idx}
-                onClick={() => router.push(tab.path)}
-                className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
+        <div className={styles.topBarRight}>
+          <div className={styles.topBarProfile}>
+            {/* If user image exists, show image, else show initials */}
+            {false ? (
+              <span className={styles.topBarProfilePic} style={{backgroundImage: "url('https://ui-avatars.com/api/?name=" + employeeName + "')"}}></span>
+            ) : (
+              <span className={styles.topBarProfileInitials}>{employeeName ? employeeName[0] : "E"}</span>
+            )}
+            <span className={styles.topBarProfileName}>{employeeName || "Employee"}</span>
+            <div className={styles.profileMenuWrapper} ref={menuRef}>
+              <button
+                className={styles.profileMenuButton}
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-label="Open menu"
               >
-                <span>{tab.name}</span>
-              </div>
-            );
-          })}
-        </nav>
-        {/* ...existing code... */}
-      </aside>
-      <main className={styles.main}>
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", width: "100%", marginBottom: 18 }}>
-          <button
-            onClick={() => router.push("/auth")}
-            style={{
-              background: "#E53E3E",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 22px",
-              fontWeight: 600,
-              fontSize: "1rem",
-              boxShadow: "0 2px 8px rgba(229,62,62,0.10)",
-              cursor: "pointer",
-              transition: "background 0.2s"
-            }}
-          >
-            Logout
-          </button>
+                <span style={{ fontSize: "1.7rem", color: "#fff" }}>⋮</span>
+              </button>
+              {menuOpen && (
+                <div className={styles.profileMenuDropdown}>
+                  <button
+                    className={styles.logoutButton}
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        localStorage.removeItem("loginId");
+                      }
+                      router.push("/auth");
+                    }}
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        {children}
-      </main>
-    </div>
+      </div>
+      <div className={styles.layout}>
+        <aside className={styles.sidebar}>
+          <nav className={styles.nav}>
+            {employeeTabs.map((tab, idx) => {
+              const isActive = pathname === tab.path;
+              return (
+                <div
+                  key={tab.path || idx}
+                  onClick={() => router.push(tab.path)}
+                  className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
+                >
+                  <span className={styles.navIcon}>{/* You can add icons here if needed */}</span>
+                  <span>{tab.name}</span>
+                </div>
+              );
+            })}
+          </nav>
+        </aside>
+        <div className={styles.contentArea}>
+          <main className={styles.main}>{children}</main>
+        </div>
+      </div>
+    </>
   );
 }
