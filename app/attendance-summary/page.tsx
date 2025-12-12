@@ -2,7 +2,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
-import styles from "../dashboard/nexatech-theme.module.css";
+import styles from "./attendance-summary.module.css";
+import { FaFileExcel } from "react-icons/fa";
 
 export default function AttendanceSummaryPage() {
     // Download filtered attendance as CSV
@@ -90,70 +91,64 @@ export default function AttendanceSummaryPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.card} style={{ maxWidth: 700, margin: "32px auto" }}>
-        <h2 className={styles.cardTitle} style={{ textAlign: "center" }}>Attendance Summary</h2>
-        <div style={{ display: "flex", gap: 16, marginBottom: 18, justifyContent: "center" }}>
+      <div className={styles.attendanceSummaryContainer}>
+        <div className={styles.attendanceSummaryHeader}>Attendance Summary</div>
+        <div className={styles.attendanceSummaryFilters}>
           <input
             type="text"
             placeholder="Search employee..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", width: 180 }}
+            className={styles.attendanceSummaryInput}
+            style={{ width: 180 }}
           />
           <input
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0" }}
+            className={styles.attendanceSummaryDate}
           />
           <button
             onClick={downloadCSV}
-            style={{
-              background: "#3478f6",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 18px",
-              fontSize: "1rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(52,120,246,0.10)",
-              transition: "background 0.2s"
-            }}
+            className={styles.attendanceSummaryXLSButton}
+            title="Download XLS"
           >
-            Download CSV
+            <FaFileExcel size={20} />
+            <span>Export XLS</span>
           </button>
         </div>
-        <table style={{ width: "100%", marginTop: 8, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
-          <thead>
-            <tr style={{ background: "#F7FAFC", color: "#0052CC", fontWeight: 600 }}>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee ID</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee Name</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Date</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Clock In</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Clock Out</th>
-              <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Total Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        <div className={styles.attendanceSummaryTableWrapper}>
+          <table className={styles.attendanceSummaryTable}>
+            <thead>
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", padding: 18 }}>No records found.</td>
+                <th>Employee ID</th>
+                <th>Employee Name</th>
+                <th>Date</th>
+                <th>Clock In</th>
+                <th>Clock Out</th>
+                <th>Total Hours</th>
               </tr>
-            ) : (
-              filtered.map((a, idx) => (
-                <tr key={a.id} style={{ background: idx % 2 === 0 ? "#fff" : "#F7FAFC" }}>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{a.employee_id}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{a.employee_name}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{formatDate(a.date)}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{formatTime(a.clock_in)}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{formatTime(a.clock_out)}</td>
-                  <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className={styles.attendanceSummaryNoRecords}>No records found.</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filtered.map((a, idx) => (
+                  <tr key={a.id}>
+                    <td>{a.employee_id}</td>
+                    <td>{a.employee_name}</td>
+                    <td>{formatDate(a.date)}</td>
+                    <td>{formatTime(a.clock_in)}</td>
+                    <td>{formatTime(a.clock_out)}</td>
+                    <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </LayoutDashboard>
   );

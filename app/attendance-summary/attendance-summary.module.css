@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+.attendanceSummaryContainer {
+  width: 100vw;
+  max-width: 100vw;
+  margin: 0;
+  background: #fff;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 32px 0 24px 0;
+}
+
+.attendanceSummaryHeader {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.attendanceSummaryFilters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+  align-items: center;
+}
+
+.attendanceSummaryInput, .attendanceSummaryDate {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+  font-size: 1rem;
+}
+
+.attendanceSummaryXLSButton {
+  background: #fff;
+  border: 1px solid #27ae60;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #27ae60;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.attendanceSummaryXLSButton:hover {
+  background: #27ae60;
+  color: #fff;
+}
+
+.attendanceSummaryTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.attendanceSummaryTable {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  background: #fbeaec;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.attendanceSummaryTable th, .attendanceSummaryTable td {
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.attendanceSummaryTable th {
+  background: #e7b6c7;
+  color: #222;
+  font-weight: 700;
+}
+
+.attendanceSummaryTable tr {
+  background: #fbeaec;
+}
+
+.attendanceSummaryTable tr:nth-child(even) {
+  background: #f3d6e0;
+}
+
+.attendanceSummaryNoRecords {
+  text-align: center;
+  padding: 18px;
+  color: #888;
+}
