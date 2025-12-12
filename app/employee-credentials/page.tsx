@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import styles from "../add-employee/add-employee.module.css";
+import styles from "./employee-credentials.module.css";
 import { useRouter } from "next/navigation";
 
 export default function EmployeeCredentialsPage() {
@@ -49,15 +49,15 @@ export default function EmployeeCredentialsPage() {
   const LayoutDashboard = require("../layout-dashboard").default;
   return (
     <LayoutDashboard>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#F7FAFC" }}>
-        <div className={styles.formCard} style={{ maxWidth: 480, margin: "32px auto" }}>
-          <h2 className={styles.heading} style={{ textAlign: "center" }}>Employee Credentials</h2>
-          <div style={{ marginBottom: 18 }}>
-            <label style={{ fontWeight: 600 }}>Select Employee:</label>
+      <div className={styles.employeeCredentialsContainer}>
+        <div className={styles.employeeCredentialsCard}>
+          <div className={styles.employeeCredentialsHeader}>Employee Credentials</div>
+          <div className={styles.employeeCredentialsFilters}>
+            <label className={styles.employeeCredentialsLabel}>Select Employee:</label>
             <select
               value={selectedId}
               onChange={e => setSelectedId(e.target.value)}
-              style={{ width: "100%", padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", marginTop: 8 }}
+              className={styles.employeeCredentialsSelect}
             >
               <option value="">-- Select --</option>
               {employees.map((emp, idx) => (
@@ -70,32 +70,32 @@ export default function EmployeeCredentialsPage() {
           {loading ? (
             <div>Loading credentials...</div>
           ) : credentials ? (
-            <div style={{ marginBottom: 18 }}>
+            <div className={styles.employeeCredentialsInfo}>
               <div style={{ fontWeight: 600, fontSize: "1.1rem" }}>{credentials.first_name} {credentials.last_name}</div>
-              <div style={{ color: "#888", marginBottom: 8 }}>Username: <b>{credentials.username || "-"}</b></div>
-              <div style={{ color: "#888", marginBottom: 8 }}>Email: <b>{credentials.email || "-"}</b></div>
-              <div style={{ color: "#888", marginBottom: 8, display: "flex", alignItems: "center" }}>
+              <div className={styles.employeeCredentialsField}>Username: <b>{credentials.username || "-"}</b></div>
+              <div className={styles.employeeCredentialsField}>Email: <b>{credentials.email || "-"}</b></div>
+              <div className={styles.employeeCredentialsField} style={{ display: "flex", alignItems: "center" }}>
                 Password: <b style={{ marginRight: 12 }}>{showPassword ? credentials.password || "-" : "********"}</b>
                 <button
                   type="button"
-                  style={{ background: "#EDF2F7", color: "#0052CC", border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 600, cursor: "pointer" }}
+                  className={styles.employeeCredentialsShowBtn}
                   onClick={() => setShowPassword(v => !v)}
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
-              <div style={{ marginTop: 18 }}>
-                <h3 style={{ fontSize: "1rem", color: "#0052CC", marginBottom: 8 }}>Update Password</h3>
+              <div className={styles.employeeCredentialsUpdate}>
+                <h3 className={styles.employeeCredentialsUpdateTitle}>Update Password</h3>
                 <input
                   type="text"
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
-                  style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", width: "100%", marginBottom: 8 }}
+                  className={styles.employeeCredentialsInput}
                 />
                 <button
                   onClick={handleUpdatePassword}
-                  style={{ background: "linear-gradient(90deg, #0052CC 0%, #2B6CB0 100%)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 600, fontSize: "1rem", boxShadow: "0 2px 8px rgba(0,82,204,0.10)", cursor: "pointer", transition: "background 0.2s" }}
+                  className={styles.employeeCredentialsButton}
                 >
                   Update Password
                 </button>
