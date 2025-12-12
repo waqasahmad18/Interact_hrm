@@ -87,7 +87,7 @@
   }
 
   .topBar {
-    width: 100%;
+    width: 100vw;
     height: 72px;
     background: #232b3e;
     box-shadow: 0 2px 8px rgba(44,62,80,0.10);
@@ -96,6 +96,10 @@
     justify-content: space-between;
     padding: 0 16px 0 12px;
     border-bottom: 1px solid #20263a;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
   }
 
   .contentArea {
@@ -270,6 +274,7 @@
     background: var(--color-bg);
     font-family: var(--font-main);
     position: relative;
+    padding-top: 72px;
   }
 
   .main {

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
-import styles from "../dashboard/nexatech-theme.module.css";
+import styles from "./break-summary.module.css";
+import { FaFileExcel } from "react-icons/fa";
 
 // Helper to format duration in hh:mm:ss
 function formatDuration(seconds: number) {
@@ -96,70 +97,60 @@ export default function BreakSummaryPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.card} style={{ maxWidth: 700, margin: "32px auto" }}>
-        <h2 className={styles.cardTitle} style={{ textAlign: "center" }}>Break Summary</h2>
-        <div style={{ display: "flex", gap: 16, marginBottom: 18, justifyContent: "center" }}>
+      <div className={styles.breakSummaryContainer}>
+        <div className={styles.breakSummaryHeader}>Break Summary</div>
+        <div className={styles.breakSummaryFilters}>
           <input
             type="text"
             placeholder="Search employee..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", width: 180 }}
+            className={styles.breakSummaryInput}
+            style={{ width: 180 }}
           />
           <input
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0" }}
+            className={styles.breakSummaryDate}
           />
           <button
             onClick={downloadCSV}
-            style={{
-              background: "#e67e22",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 18px",
-              fontSize: "1rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(230,126,34,0.10)",
-              transition: "background 0.2s"
-            }}
+            className={styles.breakSummaryXLSButton}
+            title="Download XLS"
           >
-            Download CSV
+            <FaFileExcel size={20} />
+            <span>Export XLS</span>
           </button>
         </div>
-        {/* Add horizontal scroll for table */}
-        <div style={{ width: "100%", overflowX: "auto", marginTop: 8 }}>
-          <table style={{ minWidth: 1200, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px #e2e8f0", border: "1px solid #E2E8F0" }}>
+        <div className={styles.breakSummaryTableWrapper}>
+          <table className={styles.breakSummaryTable}>
             <thead>
-              <tr style={{ background: "#F7FAFC", color: "#0052CC", fontWeight: 600 }}>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee ID</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Employee Name</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Date</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break Start</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Break End</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Total Break Time</th>
-                <th style={{ padding: "10px", border: "1px solid #E2E8F0" }}>Exceed</th>
-                {/* Removed Exceed Minutes column */}
+              <tr>
+                <th>Employee ID</th>
+                <th>Employee Name</th>
+                <th>Date</th>
+                <th>Break Start</th>
+                <th>Break End</th>
+                <th>Total Break Time</th>
+                <th>Exceed</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: "center", padding: 18 }}>No records found.</td>
+                  <td colSpan={12} className={styles.breakSummaryNoRecords}>No records found.</td>
                 </tr>
               ) : (
                 rows.map((b, idx) => (
-                  <tr key={b.id || idx} style={{ background: idx % 2 === 0 ? "#fff" : "#F7FAFC" }}>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_id}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.employee_name}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.date_display}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_start_display}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.break_end_display}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0" }}>{b.total_break_time}</td>
-                    <td style={{ padding: "10px", border: "1px solid #E2E8F0", color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
+                  <tr key={b.id || idx}>
+                    <td>{b.employee_id}</td>
+                    <td>{b.employee_name}</td>
+                    <td>{b.date_display}</td>
+                    <td>{b.break_start_display}</td>
+                    <td>{b.break_end_display}</td>
+                    <td>{b.total_break_time}</td>
+                    <td style={{ color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
                   </tr>
                 ))
               )}
