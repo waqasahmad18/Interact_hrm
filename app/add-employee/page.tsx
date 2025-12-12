@@ -86,54 +86,11 @@ import { useRouter, usePathname } from "next/navigation";
     }
 
     return (
-      <div style={{ display: "flex", minHeight: "100vh", background: "#F7FAFC" }}>
-        {/* Employee Sidebar */}
-        <aside className={styles.sidebar}>
-          <div style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", margin: "18px 0 12px 0" }}>
-            <button
-              aria-label="Back to Dashboard"
-              onClick={() => router.push("/dashboard")}
-              style={{
-                background: "#fff",
-                border: "none",
-                borderRadius: "50%",
-                boxShadow: "0 2px 8px rgba(0,82,204,0.10)",
-                width: 44,
-                height: 44,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer"
-              }}
-            >
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="14" cy="14" r="14" fill="#0052CC" />
-                <path d="M16.5 9L12.5 14L16.5 19" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          </div>
-          <nav className={styles.nav}>
-            {employeeTabs.map(tab => {
-              const isActive = pathname === tab.path;
-              return (
-                <div
-                  key={tab.name}
-                  onClick={() => router.push(tab.path)}
-                  className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-                >
-                  <span>{tab.name}</span>
-                </div>
-              );
-            })}
-          </nav>
-        </aside>
-        {/* Main Add Employee Form */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <LayoutDashboard>
+        <div style={{ maxWidth: 700, margin: "32px auto", width: "100%" }}>
           <div className={styles.formCard}>
             <h2 className={styles.heading}>Add Employee</h2>
-            {/* ...existing form code... */}
             <form className={styles.form} onSubmit={handleSave}>
-              {/* ...existing form fields... */}
               <div className={styles.row} style={{ justifyContent: "center", alignItems: "center" }}>
                 <div className={styles.profileImg}>
                   <Image src={profileImg || "/avatar.svg"} alt="Profile" width={90} height={90} />
@@ -205,6 +162,6 @@ import { useRouter, usePathname } from "next/navigation";
             <div className={styles.note}>* Required</div>
           </div>
         </div>
-      </div>
+      </LayoutDashboard>
     );
   }
