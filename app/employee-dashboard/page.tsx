@@ -57,16 +57,31 @@ export default function EmployeeDashboardPage() {
     if (!loginId) return;
     let apiUrl = "/api/employee?";
     apiUrl += loginId.includes("@") ? `email=${loginId}` : `username=${loginId}`;
-    fetch(apiUrl)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.employee) {
-          setEmployeeId(data.employee.employee_id);
-          setEmployeeName(
-            `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim()
-          );
-        }
-      });
+    
+    console.log("Dashboard: Fetching from", apiUrl);
+    
+    // Try both endpoints
+    Promise.all([
+      fetch(apiUrl).then(res => res.json()).catch(e => ({ success: false, error: e })),
+      fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(e => ({ success: false, error: e }))
+    ]).then(([data1, data2]) => {
+      console.log("Dashboard: Employee response:", data1);
+      console.log("Dashboard: HRM response:", data2);
+      
+      const data = (data1.success ? data1 : data2);
+      
+      if (data.success && data.employee) {
+        console.log("Dashboard: Got employee:", data.employee);
+        setEmployeeId(data.employee.employee_id || data.employee.id || loginId);
+        setEmployeeName(
+          `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim()
+        );
+        console.log("Dashboard: Set name to:", `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim());
+      } else {
+        console.log("Dashboard: No success response");
+      }
+    })
+    .catch(err => console.error("Dashboard: Fetch error:", err));
   }, []);
 
   // Effect 2: Restore attendance, break, prayer when employeeId is ready

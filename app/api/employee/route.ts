@@ -17,6 +17,7 @@ export async function DELETE(req: NextRequest) {
 }
 import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import bcrypt from "bcryptjs";
 
 const dbConfig = {
   host: "localhost",
@@ -44,9 +45,18 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
       }
     } else if (username) {
-      const [rows] = await conn.execute(
-        'SELECT employee_id, first_name, last_name, username, email, password FROM employees WHERE username = ?', [username]
+      // Try hrm_employees first (new employees)
+      let [rows]: any = await conn.execute(
+        'SELECT id as employee_id, employee_code, first_name, middle_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [username]
       );
+      
+      if (!rows || rows.length === 0) {
+        // Fallback to employees table (old employees)
+        [rows] = await conn.execute(
+          'SELECT employee_id, first_name, last_name, username FROM employees WHERE username = ?', [username]
+        );
+      }
+      
       await conn.end();
       const result = rows as any[];
       if (result && result.length > 0) {
@@ -55,15 +65,30 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
       }
     } else if (email) {
-      const [rows] = await conn.execute(
-        'SELECT employee_id, first_name, last_name, username, email, password FROM employees WHERE email = ?', [email]
-      );
-      await conn.end();
-      const result = rows as any[];
-      if (result && result.length > 0) {
-        return NextResponse.json({ success: true, employee: result[0] });
-      } else {
-        return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
+      try {
+        // Try hrm_employees first - search by username (email used as login)
+        let [rows]: any = await conn.execute(
+          'SELECT id as employee_id, employee_code, first_name, middle_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [email]
+        );
+        
+        if (!rows || rows.length === 0) {
+          // Fallback to employees table
+          [rows] = await conn.execute(
+            'SELECT employee_id, first_name, last_name, email FROM employees WHERE email = ?', [email]
+          );
+        }
+        
+        const result = rows as any[];
+        if (result && result.length > 0) {
+          return NextResponse.json({ success: true, employee: result[0] });
+        } else {
+          return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
+        }
+      } catch (err) {
+        console.error('Email search error:', err);
+        return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+      } finally {
+        await conn.end();
       }
     } else {
       const [rows] = await conn.execute(
@@ -107,9 +132,42 @@ export async function POST(req: NextRequest) {
       await conn.end();
       return NextResponse.json({ success: true });
     }
-    // ...existing code for other updates...
+
+    // Insert new employee
+    // Auto-generate employee_id if not provided (e.g., max+1 or UUID)
+    let newEmployeeId = employeeId;
+    if (!newEmployeeId) {
+      // Generate new employee_id as max(employee_id)+1 (numeric) or use UUID if string
+      const [rows] = await conn.execute('SELECT MAX(CAST(employee_id AS UNSIGNED)) as maxId FROM employees');
+      const maxId = rows && rows[0] && rows[0].maxId ? parseInt(rows[0].maxId) : 0;
+      newEmployeeId = String(maxId + 1).padStart(2, '0');
+    }
+
+    // Convert undefined to null for SQL
+    function toNull(v) { return v === undefined ? null : v; }
+    let hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const [result] = await conn.execute(
+      `INSERT INTO employees (first_name, middle_name, last_name, employee_id, dob, gender, marital_status, nationality, email, status, username, password, password_plain, profile_img)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+      [
+        toNull(firstName),
+        toNull(middleName),
+        toNull(lastName),
+        toNull(newEmployeeId),
+        toNull(dob),
+        toNull(gender),
+        toNull(maritalStatus),
+        toNull(nationality),
+        toNull(email),
+        toNull(status),
+        toNull(username),
+        toNull(hashedPassword),
+        toNull(password),
+        toNull(profileImg)
+      ]
+    );
     await conn.end();
-    return NextResponse.json({ success: false, error: "Invalid request or not implemented." }, { status: 400 });
+    return NextResponse.json({ success: true, employee_id: newEmployeeId });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });

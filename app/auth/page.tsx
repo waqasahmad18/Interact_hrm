@@ -10,29 +10,45 @@ export default function LoginPage() {
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
     const id = loginId.trim().toLowerCase();
-    // Admin login
+    // Admin login (local, not DB)
     const validAdmin =
       ((id === "admin@interact.com" || id === "interactadmin" || id === "admin") && password === "interact123");
-    // Employee login
-    const validEmployee =
-      ((id === "waqas1" || id === "waqas@company.com") && password === "waqas125");
     if (validAdmin) {
       if (typeof window !== "undefined") {
         localStorage.setItem("loginId", loginId);
       }
       router.push("/dashboard");
-    } else if (validEmployee) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("loginId", loginId);
-      }
-      router.push("/employee-dashboard");
-    } else {
-      setError("Invalid credentials. Please try again.");
+      setLoading(false);
+      return;
     }
+    // Employee login via backend
+    try {
+      const res = await fetch("/api/employee-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginId, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (typeof window !== "undefined") {
+          // Store username instead of email for dashboard lookups
+          localStorage.setItem("loginId", data.username || loginId);
+        }
+        router.push("/employee-dashboard");
+      } else {
+        setError(data.error || "Invalid credentials. Please try again.");
+      }
+    } catch (err) {
+      setError("Login failed. Please try again.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -58,8 +74,8 @@ export default function LoginPage() {
             onChange={e => setPassword(e.target.value)}
             required
           />
-          <button type="submit" className={styles.button}>
-            Login
+          <button type="submit" className={styles.button} disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
         {error && <div className={styles.error}>{error}</div>}
