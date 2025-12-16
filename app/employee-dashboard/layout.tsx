@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "../layout-dashboard.module.css";
 
 const employeeTabs = [
-  { name: "Dashboard", path: "/employee-dashboard" },
+  { name: "Officers Dashboard", path: "/employee-dashboard" },
   { name: "My Attendance", path: "/employee-dashboard/my-attendance" },
   { name: "Leave", path: "/employee-dashboard/leave" },
   { name: "Break Summary", path: "/employee-dashboard/break-summary" }

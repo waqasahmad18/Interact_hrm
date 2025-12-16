@@ -22,6 +22,24 @@ export async function GET(req: NextRequest) {
 	}
 }
 
+export async function PUT(req: NextRequest) {
+	try {
+		const body = await req.json();
+		const { employee_id, component, payGrade, payFrequency, currency, amount, comments, directDeposit, accountNumber, accountType, routingNumber, depositAmount } = body;
+		if (!employee_id) {
+			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
+		}
+		await pool.execute(
+			`UPDATE employee_salaries SET component = ?, pay_grade = ?, pay_frequency = ?, currency = ?, amount = ?, comments = ?, direct_deposit = ?, account_number = ?, account_type = ?, routing_number = ?, deposit_amount = ?
+			 WHERE employee_id = ?` ,
+			[component, payGrade, payFrequency, currency, amount, comments, directDeposit ? 1 : 0, accountNumber, accountType, routingNumber, depositAmount, employee_id]
+		);
+		return NextResponse.json({ success: true });
+	} catch (err) {
+		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+	}
+}
+
 export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();

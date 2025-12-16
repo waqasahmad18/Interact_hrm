@@ -186,6 +186,9 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(employeeTabs[0].name);
+  // Role selection for hrm_employees
+  const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
+  const [role, setRole] = useState<string>("Officer");
   // Contact Details form state (moved inside component)
   const [contactAddress, setContactAddress] = useState({ street1: "", street2: "", city: "", state: "", zip: "", country: "" });
   const [contactTelephone, setContactTelephone] = useState({ home: "", mobile: "", work: "" });
@@ -221,14 +224,14 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
     if (isEdit && editEmployeeId) {
       // Fetch all employee details from API (personal, contact, emergency, job, salary)
       // 1. Personal Details
-      fetch(`/api/employee?employeeId=${editEmployeeId}`)
+      fetch(`/api/hrm_employees?employeeId=${editEmployeeId}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.employee) {
             setFirstName(data.employee.first_name || "");
             setMiddleName(data.employee.middle_name || "");
             setLastName(data.employee.last_name || "");
-            setEmployeeId(data.employee.employee_id || "");
+            setEmployeeId(data.employee.employee_code || editEmployeeId || "");
             setDob(data.employee.dob || "");
             setGender(data.employee.gender || "");
             setMaritalStatus(data.employee.marital_status || "");
@@ -236,6 +239,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
             setStatus(data.employee.status || "enabled");
+            setRole(data.employee.role || "Officer");
             setCreateLogin(!!data.employee.username);
           }
         });
@@ -364,7 +368,8 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
         profile_img: profileImg,
         username: createLogin ? username : undefined,
         password: createLogin ? password : undefined,
-        status: createLogin ? status : undefined
+        status: createLogin ? status : undefined,
+        role
       };
       try {
         let hrmRes, hrmData, res, data;
@@ -459,6 +464,14 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
                     </select>
                   </div>
                   <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+                  <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
+                    <option value="">Select Role</option>
+                    <option value="BOD/CEO">BOD/CEO</option>
+                    <option value="HOD">HOD</option>
+                    <option value="Management">Management</option>
+                    <option value="Leader">Leader</option>
+                    <option value="Officer">Officer</option>
+                  </select>
                   <div className={styles.row} style={{ alignItems: "center" }}>
                     <span style={{ color: "#0052CC", fontWeight: "600", fontSize: "0.95rem" }}>Create Login Details</span>
                     <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>

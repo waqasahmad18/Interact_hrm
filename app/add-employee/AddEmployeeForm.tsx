@@ -165,6 +165,9 @@ export default function AddEmployeeForm({
   const [gender, setGender] = useState("");
   const [maritalStatus, setMaritalStatus] = useState("");
   const [nationality, setNationality] = useState("");
+  // Role selection for hrm_employees
+  const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
+  const [role, setRole] = useState<string>("Officer");
   const [createLogin, setCreateLogin] = useState(false);
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -223,6 +226,7 @@ export default function AddEmployeeForm({
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
             setStatus(data.employee.status || "enabled");
+            setRole(data.employee.role || "Officer");
             setCreateLogin(!!data.employee.username);
           }
         })
@@ -368,7 +372,8 @@ export default function AddEmployeeForm({
       profile_img: profileImg,
       username: createLogin ? username : undefined,
       password: createLogin ? password : undefined,
-      status: createLogin ? status : undefined
+      status: createLogin ? status : undefined,
+      role
     };
     
     try {
@@ -461,6 +466,14 @@ export default function AddEmployeeForm({
                 </select>
               </div>
               <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+              <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
+                <option value="">Select Role</option>
+                <option value="BOD/CEO">BOD/CEO</option>
+                <option value="HOD">HOD</option>
+                <option value="Management">Management</option>
+                <option value="Leader">Leader</option>
+                <option value="Officer">Officer</option>
+              </select>
               <div className={styles.row} style={{ alignItems: "center" }}>
                 <span style={{ color: "#0052CC", fontWeight: "600", fontSize: "0.95rem" }}>Create Login Details</span>
                 <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>

@@ -47,17 +47,56 @@ export async function POST(req: NextRequest) {
       profile_img,
       username,
       password,
-      status
+      status,
+      role
     } = data;
     const conn = await mysql.createConnection(dbConfig);
     const [result]: any = await conn.execute(
-      `INSERT INTO hrm_employees (first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status]
+      `INSERT INTO hrm_employees (first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+      [first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role]
     );
     const insertedId = result.insertId;
     await conn.end();
     return NextResponse.json({ success: true, id: insertedId });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const data = await req.json();
+    const {
+      id,
+      first_name,
+      middle_name,
+      last_name,
+      employee_code,
+      dob,
+      gender,
+      marital_status,
+      nationality,
+      profile_img,
+      username,
+      password,
+      status,
+      role
+    } = data;
+    if (!id && !employee_code && !username) {
+      return NextResponse.json({ success: false, error: 'id or employee_code or username is required' }, { status: 400 });
+    }
+    const conn = await mysql.createConnection(dbConfig);
+    // Identify record by id or employee_code or username
+    const whereClause = id ? 'id = ?' : (employee_code ? 'employee_code = ?' : 'username = ?');
+    const whereValue = id ? id : (employee_code ? employee_code : username);
+    await conn.execute(
+      `UPDATE hrm_employees SET first_name = ?, middle_name = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?
+       WHERE ${whereClause}`,
+      [first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role, whereValue]
+    );
+    await conn.end();
+    return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }

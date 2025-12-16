@@ -38,10 +38,16 @@ export default function LoginPage() {
       const data = await res.json();
       if (data.success) {
         if (typeof window !== "undefined") {
-          // Store username instead of email for dashboard lookups
-          localStorage.setItem("loginId", data.username || loginId);
+          localStorage.setItem("loginId", loginId);
+          localStorage.setItem("userRole", data.role || "Officer");
         }
-        router.push("/employee-dashboard");
+        const role = data.role || "Officer";
+        // Route based on role
+        if (role === "BOD/CEO") router.push("/bod-dashboard");
+        else if (role === "HOD") router.push("/hod-dashboard");
+        else if (role === "Management") router.push("/management-dashboard");
+        else if (role === "Leader") router.push("/leader-dashboard");
+        else router.push("/employee-dashboard");
       } else {
         setError(data.error || "Invalid credentials. Please try again.");
       }

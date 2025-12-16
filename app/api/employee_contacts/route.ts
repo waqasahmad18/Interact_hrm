@@ -22,6 +22,24 @@ export async function GET(req: NextRequest) {
 	}
 }
 
+export async function PUT(req: NextRequest) {
+	try {
+		const body = await req.json();
+		const { employee_id, street1, street2, city, state, zip, country, phone_home, phone_mobile, phone_work, email_work, email_other } = body;
+		if (!employee_id) {
+			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
+		}
+		await pool.execute(
+			`UPDATE employee_contacts SET street1 = ?, street2 = ?, city = ?, state = ?, zip = ?, country = ?, phone_home = ?, phone_mobile = ?, phone_work = ?, email_work = ?, email_other = ?
+			 WHERE employee_id = ?` ,
+			[street1, street2, city, state, zip, country, phone_home, phone_mobile, phone_work, email_work, email_other, employee_id]
+		);
+		return NextResponse.json({ success: true });
+	} catch (err) {
+		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+	}
+}
+
 export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();
