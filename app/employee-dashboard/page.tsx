@@ -72,11 +72,16 @@ export default function EmployeeDashboardPage() {
       
       if (data.success && data.employee) {
         console.log("Dashboard: Got employee:", data.employee);
-        setEmployeeId(data.employee.employee_id || data.employee.id || loginId);
-        setEmployeeName(
-          `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim()
-        );
-        console.log("Dashboard: Set name to:", `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim());
+        const empId = data.employee.id || data.employee.employee_id || loginId;
+        setEmployeeId(empId);
+        const empName = `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim();
+        setEmployeeName(empName);
+        // Store in localStorage for leave form
+        if (typeof window !== "undefined") {
+          localStorage.setItem("employeeId", String(empId));
+          localStorage.setItem("employeeName", empName);
+        }
+        console.log("Dashboard: Set name to:", empName);
       } else {
         console.log("Dashboard: No success response");
       }

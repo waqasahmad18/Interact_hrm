@@ -11,4 +11,9 @@ export const pool = mysql.createPool({
 	queueLimit: 0
 });
 
-// Additional code or exports can follow here
+
+// Generic query function
+export async function query(sql: string, params?: any[]) {
+	const [rows] = await pool.query(sql, params);
+	return rows;
+}
