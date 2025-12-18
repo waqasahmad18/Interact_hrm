@@ -6,9 +6,8 @@ import styles from "../layout-dashboard.module.css";
 
 const employeeTabs = [
   { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
-  { name: "My Attendance", path: "/employee-dashboard/my-attendance", icon: <FaClock /> },
-  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> },
-  { name: "Break Summary", path: "/employee-dashboard/break-summary", icon: <FaCoffee /> }
+  { name: "Time", path: "/employee-dashboard/time", icon: <FaClock /> },
+  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> }
 ];
 
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
