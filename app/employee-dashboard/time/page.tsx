@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
+import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
 import { FaFileExcel } from "react-icons/fa";
 
 // Helper to format duration in hh:mm:ss
@@ -205,8 +206,11 @@ export default function EmployeeTimePage() {
 
   return (
     <div style={{ padding: "20px" }}>
-      <h1 style={{ marginBottom: "24px", color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
-      
+      {/* Shared Clock / Break / Prayer controls at the very top */}
+      <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
+
+      <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
+
       <div style={tabStyles}>
         <button style={tabButtonStyles(activeTab === "break")} onClick={() => setActiveTab("break")}>
           Break Summary
