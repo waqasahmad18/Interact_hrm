@@ -174,6 +174,8 @@ export default function EmployeeDashboardPage() {
     };
   }, [employeeId]);
 
+
+
   // Cleanup all intervals on unmount
   React.useEffect(() => {
     return () => {
@@ -282,6 +284,7 @@ export default function EmployeeDashboardPage() {
             setBreakStart(null);
             setCurrentBreakDuration(3600);
             // Update break_end in DB
+            const endIso = new Date().toISOString();
             await fetch("/api/breaks", {
               method: "POST",
               headers: {
@@ -289,8 +292,8 @@ export default function EmployeeDashboardPage() {
               },
               body: JSON.stringify({
                 employee_id: employeeId,
-                date: new Date().toISOString(),
-                break_end: new Date().toISOString(),
+                date: endIso,
+                break_end: endIso,
               }),
             });
             await fetchOngoingBreakStatus();

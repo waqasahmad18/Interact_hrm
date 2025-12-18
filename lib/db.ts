@@ -7,7 +7,7 @@ export const pool = mysql.createPool({
 	password: '', // apna MySQL password
 	database: 'interact_hrm',
 	waitForConnections: true,
-	connectionLimit: 10,
+	connectionLimit: 30,
 	queueLimit: 0
 });
 
