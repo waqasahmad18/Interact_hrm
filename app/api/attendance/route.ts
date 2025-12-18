@@ -110,43 +110,37 @@ export async function POST(req: NextRequest) {
     const conn = await mysql.createConnection(dbConfig);
     await ensureAttendanceTable(conn);
 
-    // Check if a record already exists for this employee & date
-    const [existingRows] = await conn.execute(
-      `SELECT id, clock_in, clock_out FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND date = ?`,
-      [employee_id, formattedDate]
-    );
-    const existing = (existingRows as any[])[0];
-
-    if (existing) {
-      if (clock_out !== undefined && clock_out !== null) {
+    if (clock_in !== undefined && clock_in !== null) {
+      // Clock In: Always INSERT a new row
+      console.log("Inserting new clock-in record:", { employee_id, employee_name, formattedDate, clock_in });
+      await conn.execute(
+        `INSERT INTO ${ATTENDANCE_TABLE} (employee_id, employee_name, date, clock_in, clock_out, total_hours)
+         VALUES (?, ?, ?, ?, NULL, NULL)`,
+        [employee_id, employee_name || '', formattedDate, new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ')]
+      );
+      console.log("Clock-in record inserted successfully");
+    } else if (clock_out !== undefined && clock_out !== null) {
+      // Clock Out: find the most recent row without clock_out for this employee on this date and UPDATE it
+      const [pendingRows] = await conn.execute(
+        `SELECT id FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND DATE(date) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,
+        [employee_id, formattedDate]
+      );
+      
+      const pending = (pendingRows as any[])[0];
+      if (pending) {
         const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
-        // Compute total hours in SQL to avoid timezone/parse issues
         await conn.execute(
           `UPDATE ${ATTENDANCE_TABLE} SET clock_out = ?, total_hours = ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2), employee_name = ? WHERE id = ?`,
-          [formattedClockOut, formattedClockOut, employee_name || null, existing.id]
+          [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
         );
-      } else if (clock_in !== undefined && clock_in !== null) {
-        // Update clock_in, reset clock_out and total_hours
-        await conn.execute(
-          `UPDATE ${ATTENDANCE_TABLE} SET clock_in = ?, clock_out = NULL, total_hours = NULL WHERE id = ?`,
-          [new Date(clock_in).toISOString().slice(0, 19).replace('T', ' '), existing.id]
-        );
-      }
-    } else {
-      // No existing record: insert a new row with clock_in. clock_out and total_hours will be NULL.
-      if (clock_in !== undefined && clock_in !== null) { // Only insert if clock_in is provided for a new record
-        console.log("Inserting new attendance record:", { employee_id, employee_name, formattedDate, clock_in });
-        await conn.execute(
-          `INSERT INTO ${ATTENDANCE_TABLE} (employee_id, employee_name, date, clock_in, clock_out, total_hours)
-           VALUES (?, ?, ?, ?, NULL, NULL)`,
-          [employee_id, employee_name || '', formattedDate, new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ')]
-        );
-        console.log("Attendance record inserted successfully");
+        console.log("Clock-out record updated successfully");
+      } else {
+        console.warn("No pending clock-in found for clock-out");
       }
     }
 
     await conn.end();
-    return NextResponse.json({ success: true, message: existing ? 'updated' : 'inserted' });
+    return NextResponse.json({ success: true, message: clock_in ? 'inserted' : 'updated' });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
