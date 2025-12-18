@@ -1,13 +1,14 @@
 "use client";
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 
 const employeeTabs = [
-  { name: "Officers Dashboard", path: "/employee-dashboard" },
-  { name: "My Attendance", path: "/employee-dashboard/my-attendance" },
-  { name: "Leave", path: "/employee-dashboard/leave" },
-  { name: "Break Summary", path: "/employee-dashboard/break-summary" }
+  { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
+  { name: "My Attendance", path: "/employee-dashboard/my-attendance", icon: <FaClock /> },
+  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> },
+  { name: "Break Summary", path: "/employee-dashboard/break-summary", icon: <FaCoffee /> }
 ];
 
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
@@ -127,7 +128,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                   onClick={() => router.push(tab.path)}
                   className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
                 >
-                  <span className={styles.navIcon}>{/* You can add icons here if needed */}</span>
+                  <span className={styles.navIcon}>{tab.icon}</span>
                   <span>{tab.name}</span>
                 </div>
               );

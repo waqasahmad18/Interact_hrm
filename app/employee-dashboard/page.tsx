@@ -349,9 +349,6 @@ export default function EmployeeDashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minHeight: "80vh", width: "100%", gap: 0 }}>
-      <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: 16 }}>
-        <h1 style={{ fontSize: "1.6rem", fontWeight: 700, color: "#1f2937" }}>Officers Dashboard</h1>
-      </div>
       <div style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginTop: 32 }}>
         {/* Clock In Widget */}
         <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
