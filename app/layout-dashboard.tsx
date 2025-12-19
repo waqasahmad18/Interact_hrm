@@ -20,6 +20,7 @@ const sidebarLinks = [
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
 			{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
 			{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
+			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Employee Credentials", path: "/employee-credentials", icon: <FaIdBadge /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
 		],
