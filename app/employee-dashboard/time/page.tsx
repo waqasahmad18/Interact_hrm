@@ -13,6 +13,14 @@ function formatDuration(seconds: number) {
   return `${h}h ${m}m ${s}s`;
 }
 
+// Helper to get local YYYY-MM-DD for grouping
+function localDateKey(date: Date) {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  const d = date.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 // Helper to format total hours
 function formatTotalHours(clockIn: string, clockOut: string) {
   if (!clockIn || !clockOut) return "00h 00m 00s";
@@ -89,49 +97,90 @@ export default function EmployeeTimePage() {
       });
   }, [employeeId, attDate]);
 
-  // Map breaks data
+  // Aggregate all breaks per day for this employee
+  const dailyBreakTotals = (() => {
+    const map = new Map<string, number>();
+    for (const b of breaks) {
+      if (!b.break_start || !b.break_end) continue;
+      const start = new Date(b.break_start);
+      const end = new Date(b.break_end);
+      const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+      const dateForKey = b.date ? new Date(b.date) : start;
+      const key = localDateKey(dateForKey);
+      map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
+    }
+    return map;
+  })();
+
+  // Map breaks data with both session and daily totals
   const breakRows = breaks.map(b => {
-    let totalBreakSeconds = 0;
+    let sessionSeconds = 0;
     if (b.break_start && b.break_end) {
       const start = new Date(b.break_start).getTime();
       const end = new Date(b.break_end).getTime();
-      totalBreakSeconds = Math.floor((end - start) / 1000);
+      sessionSeconds = Math.floor((end - start) / 1000);
     }
-    const exceed = totalBreakSeconds > 3600 ? totalBreakSeconds - 3600 : 0;
+    const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
+    const start = b.break_start ? new Date(b.break_start) : null;
+    const dateForKey = b.date ? new Date(b.date) : (start as Date | null);
+    const dailySeconds = dateForKey ? (dailyBreakTotals.get(localDateKey(dateForKey)) || 0) : sessionSeconds;
+    const dailyExceed = dailySeconds > 3600 ? dailySeconds - 3600 : 0;
     return {
       ...b,
       break_start_display: b.break_start ? new Date(b.break_start).toLocaleString() : "",
       break_end_display: b.break_end ? new Date(b.break_end).toLocaleString() : "",
-      total_break_time: formatDuration(totalBreakSeconds),
-      exceed: exceed > 0 ? formatDuration(exceed) : "",
+      total_break_time: formatDuration(sessionSeconds),
+      total_break_time_today: formatDuration(dailySeconds),
+      exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
+      exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
       date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : "")
     };
   });
 
-  // Map prayer breaks data
+  const dailyPrayerTotals = (() => {
+    const map = new Map<string, number>();
+    for (const p of prayerBreaks) {
+      if (!p.prayer_break_start || !p.prayer_break_end) continue;
+      const start = new Date(p.prayer_break_start);
+      const end = new Date(p.prayer_break_end);
+      const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+      const dateForKey = p.date ? new Date(p.date) : start;
+      const key = localDateKey(dateForKey);
+      map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
+    }
+    return map;
+  })();
+
+  // Map prayer breaks data with daily totals
   const prayerRows = prayerBreaks.map(p => {
-    let totalSeconds = 0;
+    let sessionSeconds = 0;
     if (p.prayer_break_start && p.prayer_break_end) {
       const start = new Date(p.prayer_break_start).getTime();
       const end = new Date(p.prayer_break_end).getTime();
-      totalSeconds = Math.floor((end - start) / 1000);
+      sessionSeconds = Math.floor((end - start) / 1000);
     }
-    const exceed = totalSeconds > 1800 ? totalSeconds - 1800 : 0;
+    const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
+    const start = p.prayer_break_start ? new Date(p.prayer_break_start) : null;
+    const dateForKey = p.date ? new Date(p.date) : (start as Date | null);
+    const dailySeconds = dateForKey ? (dailyPrayerTotals.get(localDateKey(dateForKey)) || 0) : sessionSeconds;
+    const dailyExceed = dailySeconds > 1800 ? dailySeconds - 1800 : 0;
     return {
       ...p,
       prayer_start_display: p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleString() : "",
       prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleString() : "",
-      total_prayer_time: formatDuration(totalSeconds),
-      exceed: exceed > 0 ? formatDuration(exceed) : "",
+      total_prayer_time: formatDuration(sessionSeconds),
+      total_prayer_time_today: formatDuration(dailySeconds),
+      exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
+      exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
       date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : "")
     };
   });
 
   const downloadBreaksCSV = () => {
-    const headers = ["Date", "Break Start", "Break End", "Total Break Time", "Exceed"];
+    const headers = ["Date", "Break Start", "Break End", "Total Break Time", "Today's Total Break", "Exceed", "Exceed Today"];
     let csv = headers.join(',') + '\n';
     breakRows.forEach(row => {
-      csv += [row.date_display, row.break_start_display, row.break_end_display, row.total_break_time, row.exceed].map(val => `"${val}"`).join(',') + '\n';
+      csv += [row.date_display, row.break_start_display, row.break_end_display, row.total_break_time, row.total_break_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -145,10 +194,10 @@ export default function EmployeeTimePage() {
   };
 
   const downloadPrayerCSV = () => {
-    const headers = ["Date", "Prayer Start", "Prayer End", "Total Prayer Time", "Exceed"];
+    const headers = ["Date", "Prayer Start", "Prayer End", "Total Prayer Time", "Total Prayer", "Exceed", "Exceed Today"];
     let csv = headers.join(',') + '\n';
     prayerRows.forEach(row => {
-      csv += [row.date_display, row.prayer_start_display, row.prayer_end_display, row.total_prayer_time, row.exceed].map(val => `"${val}"`).join(',') + '\n';
+      csv += [row.date_display, row.prayer_start_display, row.prayer_end_display, row.total_prayer_time, row.total_prayer_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -245,14 +294,15 @@ export default function EmployeeTimePage() {
                   <th>Date</th>
                   <th>Break Start</th>
                   <th>Break End</th>
-                  <th>Total Break Time</th>
+                    <th>Total Break Time</th>
+                    <th>Total Break</th>
                   <th>Exceed</th>
                 </tr>
               </thead>
               <tbody>
                 {breakRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className={styles.breakSummaryNoRecords}>No records found.</td>
+                      <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   breakRows.map((b, idx) => (
@@ -262,6 +312,7 @@ export default function EmployeeTimePage() {
                       <td>{b.break_start_display}</td>
                       <td>{b.break_end_display}</td>
                       <td>{b.total_break_time}</td>
+                        <td>{b.total_break_time_today}</td>
                       <td style={{ color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
                     </tr>
                   ))
@@ -295,13 +346,14 @@ export default function EmployeeTimePage() {
                   <th>Prayer Start</th>
                   <th>Prayer End</th>
                   <th>Total Prayer Time</th>
+                  <th>Total Prayer</th>
                   <th>Exceed</th>
                 </tr>
               </thead>
               <tbody>
                 {prayerRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className={styles.breakSummaryNoRecords}>No records found.</td>
+                    <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   prayerRows.map((p, idx) => (
@@ -311,6 +363,7 @@ export default function EmployeeTimePage() {
                       <td>{p.prayer_start_display}</td>
                       <td>{p.prayer_end_display}</td>
                       <td>{p.total_prayer_time}</td>
+                      <td>{p.total_prayer_time_today}</td>
                       <td style={{ color: p.exceed ? "#e74c3c" : undefined }}>{p.exceed}</td>
                     </tr>
                   ))
