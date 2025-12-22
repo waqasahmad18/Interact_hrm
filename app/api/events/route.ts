@@ -9,9 +9,22 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const rows = await query(
-      "SELECT id, title, description, start_at, end_at, is_all_day, location, status, created_at, updated_at FROM upcoming_events WHERE status = 'published' ORDER BY start_at ASC"
+      "SELECT id, title, description, start_at, end_at, is_all_day, location, status, widget_heading, created_at, updated_at FROM upcoming_events WHERE status = 'published' ORDER BY start_at ASC"
     );
-    return NextResponse.json({ success: true, events: rows });
+    // Get the widget heading from first event, or use default
+    let widgetHeading = "Upcoming Events";
+    const rowsArray = rows as any[];
+    if (rowsArray && rowsArray.length > 0 && rowsArray[0]?.widget_heading) {
+      widgetHeading = rowsArray[0].widget_heading;
+    } else {
+      // If no events, get heading from database anyway
+      const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
+      const headingArray = headingResult as any[];
+      if (headingArray && headingArray.length > 0 && headingArray[0]?.widget_heading) {
+        widgetHeading = headingArray[0].widget_heading;
+      }
+    }
+    return NextResponse.json({ success: true, events: rows, widgetHeading });
   } catch (error) {
     console.error("/api/events GET error", error);
     return NextResponse.json({ success: false, error: "Failed to fetch events" }, { status: 500 });
@@ -35,15 +48,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "title and start_at are required" }, { status: 400 });
     }
 
+    // Get current widget heading
+    const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
+    const headingArray = headingResult as any[];
+    const currentHeading = headingArray && headingArray.length > 0 ? headingArray[0].widget_heading : "Upcoming Events";
+
     const result: any = await query(
-      "INSERT INTO upcoming_events (title, description, start_at, end_at, is_all_day, location, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status]
+      "INSERT INTO upcoming_events (title, description, start_at, end_at, is_all_day, location, status, widget_heading) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status, currentHeading]
     );
 
     const inserted = (await query(
-      "SELECT id, title, description, start_at, end_at, is_all_day, location, status, created_at, updated_at FROM upcoming_events WHERE id = ?",
+      "SELECT id, title, description, start_at, end_at, is_all_day, location, status, widget_heading, created_at, updated_at FROM upcoming_events WHERE id = ?",
       [result.insertId]
-    )) as any[]; // mysql2 returns RowDataPacket[] for SELECT queries
+    )) as any[];
 
     return NextResponse.json({ success: true, event: inserted[0] });
   } catch (error) {
@@ -66,5 +84,29 @@ export async function DELETE(req: Request) {
   } catch (error) {
     console.error("/api/events DELETE error", error);
     return NextResponse.json({ success: false, error: "Failed to delete event" }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const { widget_heading } = body;
+
+    if (!widget_heading) {
+      return NextResponse.json({ success: false, error: "widget_heading is required" }, { status: 400 });
+    }
+
+    // Validate heading - only allow specific values
+    const allowedHeadings = ["Upcoming Events", "Announcements"];
+    if (!allowedHeadings.includes(widget_heading)) {
+      return NextResponse.json({ success: false, error: "Invalid heading. Allowed: Upcoming Events, Announcements" }, { status: 400 });
+    }
+
+    // Update heading for all published events
+    await query("UPDATE upcoming_events SET widget_heading = ? WHERE status = 'published'", [widget_heading]);
+    return NextResponse.json({ success: true, widgetHeading: widget_heading });
+  } catch (error) {
+    console.error("/api/events PUT error", error);
+    return NextResponse.json({ success: false, error: "Failed to update widget heading" }, { status: 500 });
   }
 }

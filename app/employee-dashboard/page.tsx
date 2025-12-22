@@ -82,19 +82,35 @@ export default function EmployeeDashboardPage() {
   });
 
   const [events, setEvents] = React.useState<Array<{ id: number; title: string; description?: string; start_at: string; end_at?: string | null; location?: string | null }>>([]);
+  const [widgetHeading, setWidgetHeading] = React.useState("Upcoming Events");
+  const [reminders, setReminders] = React.useState<Array<{ id: number; message: string }>>([]);
 
   const fetchEvents = React.useCallback(async () => {
     try {
       const res = await fetch("/api/events", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setEvents(data.events || []);
+      if (data?.success) {
+        setEvents(data.events || []);
+        if (data.widgetHeading) setWidgetHeading(data.widgetHeading);
+      }
     } catch (err) {
       console.error("events fetch", err);
     }
   }, []);
 
+  const fetchReminders = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/reminders", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) setReminders(data.reminders || []);
+    } catch (err) {
+      console.error("reminders fetch", err);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchEvents();
+    fetchReminders();
     if (typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
@@ -102,12 +118,13 @@ export default function EmployeeDashboardPage() {
       try {
         const msg = JSON.parse(evt.data.toString());
         if (msg?.type === "events_updated") fetchEvents();
+        if (msg?.type === "reminders_updated") fetchReminders();
       } catch (_) {
         // ignore
       }
     };
     return () => ws.close();
-  }, [fetchEvents]);
+  }, [fetchEvents, fetchReminders]);
 
   return (
     <div style={{
@@ -152,9 +169,15 @@ export default function EmployeeDashboardPage() {
 
           <div style={{ background: "linear-gradient(145deg, #fdf2f8, #eef2ff)", borderRadius: 14, padding: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", border: "1px solid #e8e8ff" }}>
             <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#531f7f", marginBottom: 10 }}>Reminders</div>
-            <ul style={{ margin: 0, paddingLeft: 18, color: "#3e2b5c", lineHeight: 1.5 }}>
-              <li>Clock in as per your shift timings — arrive on time.</li>
-            </ul>
+            {reminders.length === 0 ? (
+              <div style={{ margin: 0, paddingLeft: 18, color: "#3e2b5c", lineHeight: 1.5 }}>No reminders at the moment.</div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 18, color: "#3e2b5c", lineHeight: 1.5 }}>
+                {reminders.map(reminder => (
+                  <li key={reminder.id}>{reminder.message}</li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div style={{ background: "linear-gradient(145deg, #e3fff4, #f6fffb)", borderRadius: 14, padding: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", border: "1px solid #dcf5ea" }}>
@@ -201,7 +224,7 @@ export default function EmployeeDashboardPage() {
 
           <div style={{ background: "linear-gradient(145deg, #f6f0ff, #eef7ff)", borderRadius: 14, padding: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", border: "1px solid #e7e7ff" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#3e2b5c" }}>Events</div>
+              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#3e2b5c" }}>{widgetHeading}</div>
               <span style={{ fontSize: "0.9rem", color: "#6b7b9b" }}>Organization</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

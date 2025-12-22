@@ -11,6 +11,16 @@ interface EventItem {
   is_all_day: number | boolean;
   location: string | null;
   status: string;
+  widget_heading?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface ReminderItem {
+  id: number;
+  message: string;
+  is_active: number | boolean;
+  display_order: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -31,6 +41,12 @@ export default function AdminEventsPage() {
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
+  const [headingSaving, setHeadingSaving] = React.useState(false);
+  const [widgetHeading, setWidgetHeading] = React.useState("Upcoming Events");
+  const [reminders, setReminders] = React.useState<ReminderItem[]>([]);
+  const [reminderMessage, setReminderMessage] = React.useState("");
+  const [reminderSaving, setReminderSaving] = React.useState(false);
+  const [deletingReminderId, setDeletingReminderId] = React.useState<number | null>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
 
   const fetchEvents = React.useCallback(async () => {
@@ -38,7 +54,10 @@ export default function AdminEventsPage() {
       setLoading(true);
       const res = await fetch("/api/events", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setEvents(data.events || []);
+      if (data?.success) {
+        setEvents(data.events || []);
+        if (data.widgetHeading) setWidgetHeading(data.widgetHeading);
+      }
     } catch (e) {
       console.error("fetch events", e);
     } finally {
@@ -46,8 +65,19 @@ export default function AdminEventsPage() {
     }
   }, []);
 
+  const fetchReminders = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/reminders", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) setReminders(data.reminders || []);
+    } catch (e) {
+      console.error("fetch reminders", e);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchEvents();
+    fetchReminders();
     if (typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
@@ -58,13 +88,16 @@ export default function AdminEventsPage() {
         if (msg?.type === "events_updated") {
           fetchEvents();
         }
+        if (msg?.type === "reminders_updated") {
+          fetchReminders();
+        }
       } catch (_) {
         // ignore malformed
       }
     };
     ws.onopen = () => ws.send(JSON.stringify({ type: "events_admin_init" }));
     return () => ws.close();
-  }, [fetchEvents]);
+  }, [fetchEvents, fetchReminders]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,6 +124,75 @@ export default function AdminEventsPage() {
     }
   }
 
+  async function handleHeadingChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const newHeading = e.target.value;
+    if (newHeading === widgetHeading) return;
+    try {
+      setHeadingSaving(true);
+      const res = await fetch("/api/events", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widget_heading: newHeading }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setWidgetHeading(newHeading);
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "events_updated" }));
+        }
+      }
+    } catch (err) {
+      console.error("update heading", err);
+    } finally {
+      setHeadingSaving(false);
+    }
+  }
+
+  async function handleAddReminder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reminderMessage.trim()) return;
+    try {
+      setReminderSaving(true);
+      const res = await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: reminderMessage, is_active: 1, display_order: reminders.length + 1 }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setReminderMessage("");
+        fetchReminders();
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "reminders_updated" }));
+        }
+      }
+    } catch (err) {
+      console.error("add reminder", err);
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function handleDeleteReminder(id: number) {
+    const ok = window.confirm("Delete this reminder?");
+    if (!ok) return;
+    try {
+      setDeletingReminderId(id);
+      const res = await fetch(`/api/reminders?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data?.success) {
+        await fetchReminders();
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "reminders_updated" }));
+        }
+      }
+    } catch (err) {
+      console.error("delete reminder", err);
+    } finally {
+      setDeletingReminderId(null);
+    }
+  }
+
   async function handleDelete(id: number) {
     const ok = window.confirm("Delete this event?");
     if (!ok) return;
@@ -113,6 +215,17 @@ export default function AdminEventsPage() {
 
   return (
     <LayoutDashboard>
+      <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", padding: 18, marginBottom: 16 }}>
+        <h2 style={{ margin: "0 0 12px 0", fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>Widget Settings</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <label style={{ fontSize: "0.95rem", fontWeight: 600, color: "#0f1d40", minWidth: "120px" }}>Widget Heading:</label>
+          <select value={widgetHeading} onChange={handleHeadingChange} disabled={headingSaving} style={{ ...inputStyle, flex: 1, maxWidth: "300px", cursor: headingSaving ? "not-allowed" : "pointer" }}>
+            <option value="Upcoming Events">Upcoming Events</option>
+            <option value="Announcements">Announcements</option>
+          </select>
+          {headingSaving && <span style={{ fontSize: "0.9rem", color: "#6b7b9b" }}>Saving...</span>}
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 360px) 1fr", gap: 16, width: "100%" }}>
         <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", padding: 18 }}>
           <h2 style={{ margin: 0, fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>Add Event</h2>
@@ -168,6 +281,48 @@ export default function AdminEventsPage() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16, background: "#fff", borderRadius: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", padding: 18 }}>
+        <h2 style={{ margin: "0 0 12px 0", fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>Reminders</h2>
+        <form onSubmit={handleAddReminder} style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          <input 
+            required 
+            placeholder="Enter reminder message..." 
+            value={reminderMessage} 
+            onChange={e => setReminderMessage(e.target.value)} 
+            style={{ ...inputStyle, flex: 1 }} 
+          />
+          <button type="submit" disabled={reminderSaving} style={{ ...buttonStyle, marginTop: 0, whiteSpace: "nowrap" }}>
+            {reminderSaving ? "Adding..." : "Add Reminder"}
+          </button>
+        </form>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {reminders.length === 0 && <div style={{ color: "#6b7b9b" }}>No reminders yet.</div>}
+          {reminders.map(reminder => (
+            <div key={reminder.id} style={{ border: "1px solid #e6e8f2", borderRadius: 12, padding: 12, background: "#fef9f3", boxShadow: "0 6px 14px rgba(10,31,68,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ color: "#4a5775", fontSize: "0.95rem", lineHeight: 1.5 }}>{reminder.message}</div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteReminder(reminder.id)}
+                  disabled={deletingReminderId === reminder.id}
+                  title="Delete reminder"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#c0392b",
+                    cursor: deletingReminderId === reminder.id ? "not-allowed" : "pointer",
+                    fontSize: "1rem",
+                    padding: 4,
+                  }}
+                >
+                  {deletingReminderId === reminder.id ? "…" : "🗑"}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </LayoutDashboard>
