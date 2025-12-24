@@ -42,7 +42,7 @@ export default function AttachmentsUploader({ employeeId }: { employeeId: string
     setUploading(false);
     if (res.ok) {
       alert('Attachments uploaded successfully!');
-      router.push('/employee-list');
+      router.push('/admin/employee-list');
     } else {
       const data = await res.json();
       alert('Upload failed: ' + (data.error || 'Unknown error'));
