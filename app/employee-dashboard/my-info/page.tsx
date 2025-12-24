@@ -57,6 +57,7 @@ export default function MyInfoPage() {
       </div>
 
       <div className={styles.card}>
+        {/* Shift Timing Section */}
         {/* First Line: Employee ID & Pseudonym */}
         <div className={styles.topRow}>
           <div className={styles.badge}>
@@ -73,23 +74,28 @@ export default function MyInfoPage() {
 
         {/* Personal Information Section */}
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Personal Information</h2>
-          <div className={styles.grid}>
+           <h2 className={styles.sectionTitle}>Personal Information</h2>
+           <div className={styles.grid}>
             <div className={styles.field}>
               <label className={styles.label}>Full Name</label>
               <div className={styles.value}>{`${data?.first_name || ''} ${data?.last_name || ''}`}</div>
             </div>
-            
             <div className={styles.field}>
               <label className={styles.label}>CNIC Number</label>
               <div className={styles.value}>{data?.cnic_number || 'Not Provided'}</div>
             </div>
-
             <div className={styles.field}>
               <label className={styles.label}>CNIC Address</label>
               <div className={styles.value}>{data?.cnic_address || 'Not Provided'}</div>
             </div>
-
+            <div className={styles.field}>
+              <label className={styles.label}>Shift Timing</label>
+              <div className={styles.value}>{data?.shift_timing || 'Not Assigned'}</div>
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label}>Working Days</label>
+              <div className={styles.value}>Monday to Friday</div>
+            </div>
             <div className={styles.field}>
               <label className={styles.label}>Employment Status</label>
               <div className={`${styles.value} ${styles.status}`}>
