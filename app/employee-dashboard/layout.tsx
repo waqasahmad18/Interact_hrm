@@ -1,11 +1,12 @@
 "use client";
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee } from "react-icons/fa";
+import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee, FaUser } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 
 const employeeTabs = [
   { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
+  { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "Time", path: "/employee-dashboard/time", icon: <FaClock /> },
   { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> }
 ];

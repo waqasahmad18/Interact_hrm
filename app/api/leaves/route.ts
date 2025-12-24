@@ -42,11 +42,15 @@ export async function GET() {
 // PATCH: Update leave status (approve/reject)
 export async function PATCH(req: NextRequest) {
   try {
-    const { id, status } = await req.json();
+    const { id, status, admin_remark } = await req.json();
     if (!id || !["approved", "rejected"].includes(status)) {
       return NextResponse.json({ success: false, error: "Invalid data" });
     }
-    await query("UPDATE employee_leaves SET status = ?, updated_at = NOW() WHERE id = ?", [status, id]);
+    if (status === "rejected") {
+      await query("UPDATE employee_leaves SET status = ?, admin_remark = ?, updated_at = NOW() WHERE id = ?", [status, admin_remark || "", id]);
+    } else {
+      await query("UPDATE employee_leaves SET status = ?, updated_at = NOW() WHERE id = ?", [status, id]);
+    }
     // WebSocket broadcast (if available)
     try {
       const wsApi = globalThis as any;

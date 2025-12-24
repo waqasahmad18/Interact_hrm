@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     } else if (username) {
       // Try hrm_employees first (new employees)
       let [rows]: any = await conn.execute(
-        'SELECT id as employee_id, employee_code, first_name, middle_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [username]
+        'SELECT id as employee_id, employee_code, first_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [username]
       );
       
       if (!rows || rows.length === 0) {
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
       try {
         // Try hrm_employees first - search by username (email used as login)
         let [rows]: any = await conn.execute(
-          'SELECT id as employee_id, employee_code, first_name, middle_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [email]
+          'SELECT id as employee_id, employee_code, first_name, last_name, username, gender, nationality, dob, status FROM hrm_employees WHERE username = ?', [email]
         );
         
         if (!rows || rows.length === 0) {

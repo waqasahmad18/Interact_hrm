@@ -33,8 +33,10 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
     editEmployeeId = searchParamsProp.employeeId || null;
   } else {
     const searchParams = useSearchParams();
-    isEdit = searchParams.get("edit") === "1";
-    editEmployeeId = searchParams.get("employeeId") || null;
+    if (searchParams) {
+      isEdit = searchParams.get("edit") === "1";
+      editEmployeeId = searchParams.get("employeeId") || null;
+    }
   }
   // Personal Details form state
     // Emergency Contacts state
@@ -178,6 +180,9 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
   const [gender, setGender] = useState("");
   const [maritalStatus, setMaritalStatus] = useState("");
   const [nationality, setNationality] = useState("");
+  const [cnicNumber, setCnicNumber] = useState("");
+  const [cnicAddress, setCnicAddress] = useState("");
+  const [employmentStatus, setEmploymentStatus] = useState("");
   const [createLogin, setCreateLogin] = useState(false);
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -357,34 +362,36 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
       };
       // Prepare hrm_employees payload
       const hrmPayload: any = {
-        first_name: firstName,
-        middle_name: middleName,
-        last_name: lastName,
-        employee_code: employeeId,
-        dob,
-        gender,
-        marital_status: maritalStatus,
-        nationality,
-        profile_img: profileImg,
-        username: createLogin ? username : undefined,
-        password: createLogin ? password : undefined,
-        status: createLogin ? status : undefined,
-        role
+        first_name: firstName || '',
+        middle_name: middleName || '',
+        last_name: lastName || '',
+        employee_code: employeeId || '',
+        dob: dob || '',
+        gender: gender || '',
+        marital_status: maritalStatus || '',
+        nationality: nationality || '',
+        cnic_number: cnicNumber || '',
+        cnic_address: cnicAddress || '',
+        employment_status: employmentStatus || '',
+        profile_img: profileImg || '',
+        username: createLogin ? username : '',
+        password: createLogin ? password : '',
+        status: createLogin ? status : 'disabled',
+        role: role || 'Officer'
       };
       try {
-        let hrmRes, hrmData, res, data;
+        let hrmRes, hrmData;
         if (isEdit) {
-          // Update mode
-          hrmRes = await fetch('/api/hrm_employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(hrmPayload) });
+          // Update mode - send both id and employee_code
+          const editPayload = { ...hrmPayload, id: employeeId, employee_code: employeeId };
+          hrmRes = await fetch('/api/hrm_employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editPayload) });
           hrmData = await hrmRes.json();
           if (!hrmData.success) {
             alert('Update failed: ' + (hrmData.error || 'Unknown'));
             return;
           }
-          setEmployeeId(editEmployeeId);
-          res = await fetch('/api/employee', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          data = await res.json();
           alert('Employee updated.');
+          if (onSaved) onSaved();
         } else {
           // Create mode
           hrmRes = await fetch('/api/hrm_employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(hrmPayload) });
@@ -393,9 +400,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
             alert('Save failed: ' + (hrmData.error || 'Unknown'));
             return;
           }
-          setEmployeeId(hrmData.id); // Use this id for all related tables
-          res = await fetch('/api/employee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          data = await res.json();
+          setEmployeeId(hrmData.id);
           alert('Employee saved.');
         }
         setActiveTab('Contact Details');
@@ -406,9 +411,9 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
 
     return (
       <LayoutDashboard>
-        <div style={{ display: "flex", minHeight: "100vh", background: "#F7FAFC" }}>
+        <div style={{ display: "flex", minHeight: "100vh", background: "#F7FAFC", gap: "20px", paddingTop: "30px" }}>
           {/* Employee Sidebar */}
-          <aside className={styles.sidebar}>
+          <aside className={styles.sidebar} style={{ marginLeft: "20px", paddingTop: "30px" }}>
             <nav className={styles.nav}>
               {employeeTabs.map(tab => {
                 const isActive = activeTab === tab.name;
@@ -425,7 +430,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
             </nav>
           </aside>
           {/* Main Add Employee Form */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", paddingTop: "30px", paddingRight: "30px" }}>
             <div className={styles.formCard}>
               <h2 className={styles.heading}>Add Employee</h2>
               {activeTab === "Personal Details" && (
@@ -444,8 +449,8 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
                   </div>
                   <div className={styles.row}>
                     <input className={styles.input} type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required />
-                    <input className={styles.input} type="text" placeholder="Middle Name" value={middleName} onChange={e => setMiddleName(e.target.value)} />
                     <input className={styles.input} type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required />
+                    <input className={styles.input} type="text" placeholder="Pseudonym" value={middleName} onChange={e => setMiddleName(e.target.value)} />
                   </div>
                   <input className={styles.input} type="text" placeholder="Employee Id" value={employeeId || ''} readOnly required />
                   <div className={styles.row}>
@@ -463,7 +468,18 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
                       <option value="other">Other</option>
                     </select>
                   </div>
-                  <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+                  <div className={styles.row}>
+                    <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+                  </div>
+                  <div className={styles.row}>
+                    <input className={styles.input} type="text" placeholder="CNIC #" value={cnicNumber} onChange={e => setCnicNumber(e.target.value)} />
+                    <input className={styles.input} type="text" placeholder="CNIC Address" value={cnicAddress} onChange={e => setCnicAddress(e.target.value)} />
+                  </div>
+                  <select className={styles.select} value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} required>
+                    <option value="">Select Employment Status</option>
+                    <option value="Probation">Probation</option>
+                    <option value="Permanent">Permanent</option>
+                  </select>
                   <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
                     <option value="">Select Role</option>
                     <option value="BOD/CEO">BOD/CEO</option>

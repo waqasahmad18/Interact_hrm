@@ -8,6 +8,8 @@ export default function LeavePage() {
   const [error, setError] = useState("");
   const [selectedLeave, setSelectedLeave] = useState<any | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [rejectRemark, setRejectRemark] = useState("");
+  const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
 
   // WebSocket for real-time updates
   useEffect(() => {
@@ -40,13 +42,22 @@ export default function LeavePage() {
     fetchLeaves();
   }, []);
 
+  const handleDocumentDownload = (docPath: string) => {
+    // docPath is like /uploads/uuid.pdf
+    const filename = docPath.split('/').pop() || docPath;
+    const link = document.createElement('a');
+    link.href = `/api/attachments/download?filename=${encodeURIComponent(filename)}`;
+    link.download = filename;
+    link.click();
+  };
+
   // Approve/Reject handlers
   const handleAction = async (id: number, status: "approved" | "rejected") => {
     try {
       await fetch("/api/leaves", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, admin_remark: status === "rejected" ? rejectRemark : undefined }),
       });
       fetchLeaves();
       setModalOpen(false);
@@ -56,13 +67,31 @@ export default function LeavePage() {
   };
 
   // Modal for leave details
-  const openModal = (leave: any) => {
+  const openModal = async (leave: any) => {
     setSelectedLeave(leave);
     setModalOpen(true);
+    setRejectRemark("");
+    try {
+      if (leave?.employee_id) {
+        const res = await fetch(`/api/leave-balance?employee_id=${leave.employee_id}`);
+        const data = await res.json();
+        if (data.success) {
+          setBalanceInfo(data);
+        } else {
+          setBalanceInfo(null);
+        }
+      } else {
+        setBalanceInfo(null);
+      }
+    } catch {
+      setBalanceInfo(null);
+    }
   };
   const closeModal = () => {
     setModalOpen(false);
     setSelectedLeave(null);
+    setRejectRemark("");
+    setBalanceInfo(null);
   };
 
   return (
@@ -126,11 +155,25 @@ export default function LeavePage() {
               <div><b>Category:</b> {selectedLeave.leave_category}</div>
                 <div><b>Dates:</b> {formatDate(selectedLeave.start_date)} - {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)</div>
               <div><b>Status:</b> <span style={{ color: selectedLeave.status === "approved" ? "#27ae60" : selectedLeave.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{selectedLeave.status}</span></div>
-              <div><b>Reason:</b> <span style={{ color: "#333" }}>{selectedLeave.reason}</span></div>
-              <div><b>Documents:</b> {Array.isArray(selectedLeave.document_paths) ? selectedLeave.document_paths.map((d: string) => <span key={d}>{d} </span>) : null}</div>
+              <div><b>Reason (Employee):</b> <span style={{ color: "#333" }}>{selectedLeave.reason}</span></div>
+              {selectedLeave.admin_remark && (
+                <div><b>Admin Remarks:</b> <span style={{ color: "#333" }}>{selectedLeave.admin_remark}</span></div>
+              )}
+              {balanceInfo && (
+                <div style={{ marginTop: 10 }}>
+                  <b>Current Balances:</b>
+                  <div>{(balanceInfo.employment_status === 'Probation' ? 'Leave Balance' : 'Annual Leave Balance')}: {balanceInfo.annualBalance} / {balanceInfo.annualAllowance}</div>
+                  <div>Bereavement Balance: {balanceInfo.bereavementBalance} / 3</div>
+                </div>
+              )}
+              <div><b>Documents:</b> {(() => { const docs = typeof selectedLeave.document_paths === 'string' ? JSON.parse(selectedLeave.document_paths || '[]') : selectedLeave.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{marginRight: 8}}><button style={{background: '#3478f6', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer'}} onClick={() => handleDocumentDownload(d)}>📄 {d}</button></span>) : <span style={{color: '#999'}}>No documents</span>; })()}</div>
               <div><b>Requested At:</b> {selectedLeave.requested_at ? new Date(selectedLeave.requested_at).toLocaleString() : ""}</div>
               {selectedLeave.status === "pending" && (
                 <div style={{ marginTop: 18 }}>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontWeight: 600 }}>Admin Remarks (for rejection)</label>
+                    <textarea value={rejectRemark} onChange={e => setRejectRemark(e.target.value)} rows={2} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }} placeholder="Reason for rejection (optional but recommended)" />
+                  </div>
                   <button onClick={() => handleAction(selectedLeave.id, "approved")} style={btnApprove}>Approve</button>
                   <button onClick={() => handleAction(selectedLeave.id, "rejected")} style={btnReject}>Reject</button>
                 </div>

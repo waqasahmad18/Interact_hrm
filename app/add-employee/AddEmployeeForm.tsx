@@ -165,6 +165,9 @@ export default function AddEmployeeForm({
   const [gender, setGender] = useState("");
   const [maritalStatus, setMaritalStatus] = useState("");
   const [nationality, setNationality] = useState("");
+  const [cnicNumber, setCnicNumber] = useState("");
+  const [cnicAddress, setCnicAddress] = useState("");
+  const [employmentStatus, setEmploymentStatus] = useState("");
   // Role selection for hrm_employees
   const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
   const [role, setRole] = useState<string>("Officer");
@@ -216,13 +219,16 @@ export default function AddEmployeeForm({
           console.log('HRM Employee data:', data);
           if (data.success && data.employee) {
             setFirstName(data.employee.first_name || "");
-            setMiddleName(data.employee.middle_name || "");
+            setMiddleName(data.employee.pseudonym || data.employee.middle_name || "");
             setLastName(data.employee.last_name || "");
             setEmployeeId(data.employee.employee_code || editEmployeeId || "");
             setDob(data.employee.dob || "");
             setGender(data.employee.gender || "");
             setMaritalStatus(data.employee.marital_status || "");
             setNationality(data.employee.nationality || "");
+            setCnicNumber(data.employee.cnic_number || "");
+            setCnicAddress(data.employee.cnic_address || "");
+            setEmploymentStatus(data.employee.employment_status || "");
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
             setStatus(data.employee.status || "enabled");
@@ -324,6 +330,11 @@ export default function AddEmployeeForm({
     }
   }, [isEdit, editEmployeeId]);
 
+  // Keep job details employment status aligned with personal tab selection
+  useEffect(() => {
+    setJobDetails(j => ({ ...j, employmentStatus }));
+  }, [employmentStatus]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -361,34 +372,37 @@ export default function AddEmployeeForm({
     };
     
     const hrmPayload: any = {
-      first_name: firstName,
-      middle_name: middleName,
-      last_name: lastName,
-      employee_code: employeeId,
-      dob,
-      gender,
-      marital_status: maritalStatus,
-      nationality,
-      profile_img: profileImg,
-      username: createLogin ? username : undefined,
-      password: createLogin ? password : undefined,
-      status: createLogin ? status : undefined,
-      role
+      first_name: firstName || '',
+      middle_name: middleName || '',
+      last_name: lastName || '',
+      employee_code: employeeId || '',
+      dob: dob || '',
+      gender: gender || '',
+      marital_status: maritalStatus || '',
+      nationality: nationality || '',
+      cnic_number: cnicNumber || '',
+      cnic_address: cnicAddress || '',
+      employment_status: employmentStatus || '',
+      profile_img: profileImg || '',
+      username: createLogin ? username : '',
+      password: createLogin ? password : '',
+      status: createLogin ? status : 'disabled',
+      role: role || 'Officer'
     };
     
     try {
-      let hrmRes, hrmData, res, data;
+      let hrmRes, hrmData;
       if (isEdit) {
-        hrmRes = await fetch('/api/hrm_employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(hrmPayload) });
+        // For edit mode, send both id and employee_code for proper identification
+        const editPayload = { ...hrmPayload, id: employeeId, employee_code: employeeId };
+        hrmRes = await fetch('/api/hrm_employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editPayload) });
         hrmData = await hrmRes.json();
         if (!hrmData.success) {
           alert('Update failed: ' + (hrmData.error || 'Unknown'));
           return;
         }
-        setEmployeeId(editEmployeeId);
-        res = await fetch('/api/employee', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        data = await res.json();
         alert('Employee updated.');
+        if (onSaved) onSaved();
       } else {
         hrmRes = await fetch('/api/hrm_employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(hrmPayload) });
         hrmData = await hrmRes.json();
@@ -397,8 +411,6 @@ export default function AddEmployeeForm({
           return;
         }
         setEmployeeId(hrmData.id);
-        res = await fetch('/api/employee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        data = await res.json();
         alert('Employee saved.');
       }
       setActiveTab('Contact Details');
@@ -408,9 +420,9 @@ export default function AddEmployeeForm({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "60vh", background: "#F7FAFC" }}>
+    <div style={{ display: "flex", minHeight: "60vh", background: "#F7FAFC", gap: "20px", paddingTop: "30px" }}>
       {/* Employee Sidebar */}
-      <aside className={styles.sidebar}>
+      <aside className={styles.sidebar} style={{ marginLeft: "20px", paddingTop: "30px" }}>
         <nav className={styles.nav}>
           {employeeTabs.map(tab => {
             const isActive = activeTab === tab.name;
@@ -427,7 +439,7 @@ export default function AddEmployeeForm({
         </nav>
       </aside>
       {/* Main Form */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", paddingTop: "30px", paddingRight: "30px" }}>
         <div className={styles.formCard}>
           <h2 className={styles.heading}>{isEdit ? 'Edit Employee' : 'Add Employee'}</h2>
           {activeTab === "Personal Details" && (
@@ -446,8 +458,8 @@ export default function AddEmployeeForm({
               </div>
               <div className={styles.row}>
                 <input className={styles.input} type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required />
-                <input className={styles.input} type="text" placeholder="Middle Name" value={middleName} onChange={e => setMiddleName(e.target.value)} />
                 <input className={styles.input} type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required />
+                <input className={styles.input} type="text" placeholder="Pseudonym" value={middleName} onChange={e => setMiddleName(e.target.value)} />
               </div>
               <input className={styles.input} type="text" placeholder="Employee Id" value={employeeId || ''} readOnly required />
               <div className={styles.row}>
@@ -465,7 +477,18 @@ export default function AddEmployeeForm({
                   <option value="other">Other</option>
                 </select>
               </div>
-              <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+              <div className={styles.row}>
+                <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+              </div>
+              <div className={styles.row}>
+                <input className={styles.input} type="text" placeholder="CNIC #" value={cnicNumber} onChange={e => setCnicNumber(e.target.value)} />
+                <input className={styles.input} type="text" placeholder="CNIC Address" value={cnicAddress} onChange={e => setCnicAddress(e.target.value)} />
+              </div>
+              <select className={styles.select} value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} required>
+                <option value="">Select Employment Status</option>
+                <option value="Probation">Probation</option>
+                <option value="Permanent">Permanent</option>
+              </select>
               <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
                 <option value="">Select Role</option>
                 <option value="BOD/CEO">BOD/CEO</option>

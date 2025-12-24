@@ -19,6 +19,8 @@ export default function LeavePage() {
   // Form state
   const [leaves, setLeaves] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(20);
+  const [annualAllowance, setAnnualAllowance] = useState(20);
+  const [employmentStatus, setEmploymentStatus] = useState<string>("Permanent");
   const [bereavementBalance, setBereavementBalance] = useState(3);
   const [category, setCategory] = useState("annual");
   const [startDate, setStartDate] = useState("");
@@ -28,6 +30,8 @@ export default function LeavePage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<any | null>(null);
+  const [docModalOpen, setDocModalOpen] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -68,6 +72,8 @@ export default function LeavePage() {
   const closeModal = () => {
     setModalOpen(false);
     setSelectedLeave(null);
+    setDocModalOpen(false);
+    setSelectedDoc(null);
   };
 
 
@@ -109,7 +115,9 @@ function formatDate(dateString: string) {
         console.log("Annual Balance:", balanceData.annualBalance);
         console.log("Bereavement Balance:", balanceData.bereavementBalance);
         setLeaveBalance(balanceData.annualBalance || 0);
+        setAnnualAllowance(balanceData.annualAllowance || 20);
         setBereavementBalance(balanceData.bereavementBalance || 0);
+        setEmploymentStatus(balanceData.employment_status || "Permanent");
       } else {
         console.log("Balance API error:", balanceData.error);
       }
@@ -158,7 +166,29 @@ function formatDate(dateString: string) {
     setError("");
     setSuccess("");
     try {
-      // For now, only send file names (no upload logic)
+      // Upload files first if any
+      let uploadedFilePaths: string[] = [];
+      if (documents.length > 0) {
+        const formData = new FormData();
+        formData.append("employee_id", employeeId || "");
+        documents.forEach(file => {
+          formData.append("files", file);
+        });
+
+        const uploadRes = await fetch("/api/attachments", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success) {
+          setError(uploadData.error || "Failed to upload documents");
+          setSubmitting(false);
+          return;
+        }
+        uploadedFilePaths = uploadData.files.map((f: any) => f.url);
+      }
+
+      // Create leave request with uploaded file paths
       const res = await fetch("/api/leaves", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +200,7 @@ function formatDate(dateString: string) {
           end_date: endDate,
           total_days: calcDays(startDate, endDate),
           reason,
-          document_paths: documents.map(f => f.name),
+          document_paths: uploadedFilePaths.length > 0 ? uploadedFilePaths : [],
         }),
       });
       const data = await res.json();
@@ -191,6 +221,15 @@ function formatDate(dateString: string) {
     setSubmitting(false);
   };
 
+  const handleDocumentDownload = (docPath: string) => {
+    // docPath is like /uploads/uuid.pdf
+    const filename = docPath.split('/').pop() || docPath;
+    const link = document.createElement('a');
+    link.href = `/api/attachments/download?filename=${encodeURIComponent(filename)}`;
+    link.download = filename;
+    link.click();
+  };
+
   // Helper to calculate days
   function calcDays(start: string, end: string) {
     if (!start || !end) return 0;
@@ -203,7 +242,7 @@ function formatDate(dateString: string) {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
       <h1 style={{ color: "#3478f6", fontWeight: 700, fontSize: "2rem", marginBottom: 18 }}>Leave Management</h1>
       <div style={{ marginBottom: 24, fontSize: "1.1rem", color: "#2b6cb0", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>Annual Leave Balance: <b>{leaveBalance}</b> / 20</span>
+        <span>{employmentStatus === 'Probation' ? 'Leave Balance' : 'Annual Leave Balance'}: <b>{leaveBalance}</b> / {annualAllowance}</span>
         <span style={{ marginLeft: 'auto' }}>Bereavement Leave Balance: <b>{bereavementBalance}</b> / 3</span>
       </div>
       <form onSubmit={handleSubmit} style={{ background: "#f7fafc", borderRadius: 12, padding: 24, marginBottom: 32, boxShadow: "0 2px 8px #e2e8f0" }}>
@@ -230,10 +269,40 @@ function formatDate(dateString: string) {
           <textarea value={reason} onChange={e => setReason(e.target.value)} required rows={2} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }} />
         </div>
         <div style={{ marginTop: 16 }}>
-          <label>Attach Documents (PDF, max 100MB each, multiple allowed)</label>
-          <input type="file" accept="application/pdf" multiple onChange={handleFileChange} />
-          <div style={{ fontSize: "0.95rem", color: "#888", marginTop: 4 }}>
-            {documents.length > 0 && documents.map(f => <span key={f.name}>{f.name} &nbsp;</span>)}
+          <label>Attach Documents (PDF only)</label>
+          <div style={{ marginTop: 8 }}>
+            <input
+              id="fileInput"
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById('fileInput')?.click()}
+              style={{
+                background: '#2b6cb0',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontSize: '1rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Choose Files
+            </button>
+          </div>
+          <div style={{ fontSize: "0.95rem", color: "#888", marginTop: 8 }}>
+            {documents.length > 0 && (
+              <div>
+                <strong>Selected:</strong>
+                {documents.map(f => <div key={f.name} style={{marginTop: 4}}>📄 {f.name}</div>)}
+              </div>
+            )}
           </div>
         </div>
         <button type="submit" disabled={submitting} style={{ marginTop: 18, background: "#2b6cb0", color: "#fff", border: "none", borderRadius: 8, padding: "10px 28px", fontSize: "1.1rem", fontWeight: 600, cursor: "pointer" }}>
@@ -278,13 +347,16 @@ function formatDate(dateString: string) {
                             <div><b>Dates:</b> {formatDate(selectedLeave.start_date)} - {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)</div>
                             <div><b>Status:</b> <span style={{ color: selectedLeave.status === 'approved' ? '#27ae60' : selectedLeave.status === 'rejected' ? '#e74c3c' : '#e67e22', fontWeight: 600 }}>{selectedLeave.status}</span></div>
                             <div><b>Reason:</b> <span style={{ color: '#333' }}>{selectedLeave.reason}</span></div>
-                            <div><b>Documents:</b> {Array.isArray(selectedLeave.document_paths) ? selectedLeave.document_paths.map((d: string) => <span key={d}>{d} </span>) : null}</div>
+                            {selectedLeave.admin_remark && (
+                              <div><b>Admin Remarks:</b> <span style={{ color: selectedLeave.status === 'rejected' ? '#e74c3c' : '#333' }}>{selectedLeave.admin_remark}</span></div>
+                            )}
+                            <div><b>Documents:</b> {(() => { const docs = typeof selectedLeave.document_paths === 'string' ? JSON.parse(selectedLeave.document_paths || '[]') : selectedLeave.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{marginRight: 8}}><button style={{background: '#3478f6', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.9rem'}} onClick={() => handleDocumentDownload(d)}>📄 {d}</button></span>) : <span style={{color: '#999'}}>No documents</span>; })()}</div>
                             <div><b>Requested At:</b> {selectedLeave.requested_at ? new Date(selectedLeave.requested_at).toLocaleString() : ''}</div>
                             <button onClick={closeModal} style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', marginTop: 18, fontWeight: 600, cursor: 'pointer' }}>Close</button>
                           </div>
                         </div>
                       )}
-                <td style={tdStyle}>{Array.isArray(l.document_paths) ? l.document_paths.map((d: string) => <span key={d}>{d} </span>) : null}</td>
+                <td style={tdStyle}>{(() => { const docs = typeof l.document_paths === 'string' ? JSON.parse(l.document_paths || '[]') : l.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{background: '#E8F4F8', padding: '2px 6px', borderRadius: 4, marginRight: 4, fontSize: '0.9rem'}}>{d}</span>) : <span style={{color: '#999'}}>None</span>; })()}</td>
                 <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status}</td>
                 <td style={tdStyle}>{l.requested_at ? new Date(l.requested_at).toLocaleString() : ""}</td>
 
