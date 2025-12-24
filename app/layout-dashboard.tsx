@@ -2,7 +2,7 @@
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey } from "react-icons/fa";
 
 const sidebarLinks = [
 	{
@@ -20,16 +20,10 @@ const sidebarLinks = [
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
 			{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
 			{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
+			{ name: "Employee Credentials", path: "/admin/employee-credentials", icon: <FaKey /> },
+			{ name: "Shift Management", path: "/admin/shift-management", icon: <FaClock /> },
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
-			{ name: "Employee Credentials", path: "/employee-credentials", icon: <FaIdBadge /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
-		],
-	},
-	{
-		group: "Shift Setup",
-		links: [
-			{ name: "Create Shift", path: "/shift-setup/create-shift", icon: <FaCog /> },
-			{ name: "Assign Shift to Employee", path: "/shift-setup/assign-shift-employee", icon: <FaUser /> },
 		],
 	},
 	{

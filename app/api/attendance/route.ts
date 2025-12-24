@@ -37,34 +37,47 @@ export async function GET(req: NextRequest) {
     const conn = await mysql.createConnection(dbConfig);
     await ensureAttendanceTable(conn);
     let rows;
+    
+    // Join with hrm_employees to always get fresh employee name
+    const baseQuery = `
+      SELECT 
+        ea.*,
+        CONCAT(e.first_name, ' ', e.last_name) as employee_name
+      FROM ${ATTENDANCE_TABLE} ea
+      LEFT JOIN hrm_employees e ON ea.employee_id = e.id
+    `;
+    
     if (employeeId && date) {
       [rows] = await conn.execute(
-        `SELECT * FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND DATE(date) = ? ORDER BY date DESC`,
+        `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) = ? ORDER BY ea.date DESC`,
         [employeeId, date]
       );
     } else if (employeeId) {
       [rows] = await conn.execute(
-        `SELECT * FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? ORDER BY date DESC`,
+        `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
         [employeeId]
       );
     } else if (date) {
       [rows] = await conn.execute(
-        `SELECT * FROM ${ATTENDANCE_TABLE} WHERE DATE(date) = ? ORDER BY date DESC`,
+        `${baseQuery} WHERE DATE(ea.date) = ? ORDER BY ea.date DESC`,
         [date]
       );
     } else {
       [rows] = await conn.execute(
-        `SELECT * FROM ${ATTENDANCE_TABLE} ORDER BY date DESC`
+        `${baseQuery} ORDER BY ea.date DESC`
       );
     }
 
     // Simply return the rows as is; frontend will handle date parsing.
-    await conn.end();
-    const formattedAttendance = (rows as any[]).map(row => {
+    
+    // Now calculate late status based on shift assignments
+    const formattedAttendance = await Promise.all((rows as any[]).map(async (row) => {
       let formattedClockIn = null;
+      let clockInDate: Date | null = null;
+      
       if (row.clock_in) {
         // Add 'Z' to assume UTC and ensure proper parsing by new Date()
-        const clockInDate = new Date(String(row.clock_in) + 'Z');
+        clockInDate = new Date(String(row.clock_in) + 'Z');
         if (!isNaN(clockInDate.getTime())) {
             formattedClockIn = clockInDate.toISOString();
         }
@@ -79,12 +92,57 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Calculate late status based on shift assignment
+      let is_late = false;
+      let late_minutes = 0;
+
+      if (clockInDate && row.employee_id) {
+        try {
+          // Get shift assignment for this employee on this date
+          const [shiftRows] = await conn.execute(
+            `SELECT start_time FROM shift_assignments 
+             WHERE employee_id = ? 
+             AND (assigned_date <= DATE(?) OR assigned_date IS NULL)
+             ORDER BY assigned_date DESC LIMIT 1`,
+            [row.employee_id, row.date]
+          );
+          
+          const shiftAssignment = (shiftRows as any[])[0];
+          
+          if (shiftAssignment && shiftAssignment.start_time) {
+            // Get the shift start time (HH:MM:SS format)
+            const shiftStartTime = shiftAssignment.start_time;
+            
+            // Create a date object for shift start time on the same day as clock_in
+            const attendanceDate = new Date(row.date);
+            const [hours, minutes, seconds] = shiftStartTime.split(':').map(Number);
+            const shiftStartDateTime = new Date(attendanceDate);
+            shiftStartDateTime.setHours(hours, minutes, seconds || 0, 0);
+            
+            // Add 10 minutes grace period
+            const graceTime = new Date(shiftStartDateTime.getTime() + 10 * 60 * 1000);
+            
+            // Calculate how late (in minutes)
+            if (clockInDate > graceTime) {
+              late_minutes = Math.floor((clockInDate.getTime() - graceTime.getTime()) / (60 * 1000));
+              is_late = true;
+            }
+          }
+        } catch (err) {
+          console.error("Error calculating late status:", err);
+        }
+      }
+
       return {
         ...row,
         clock_in: formattedClockIn,
         clock_out: formattedClockOut,
+        is_late,
+        late_minutes,
       };
-    });
+    }));
+    
+    await conn.end();
     return NextResponse.json({ success: true, attendance: formattedAttendance });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);

@@ -35,19 +35,17 @@ export default function PersonalDetailsPage() {
     const params = new URLSearchParams(window.location.search);
     const empId = params.get('employeeId');
     if (empId) {
-      fetch(`/api/employee?employeeId=${empId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.employee) {
-            setDetails(d => ({
-              ...d,
-              fullName1: data.employee.first_name || "",
-              fullName2: data.employee.middle_name || "",
-              fullName3: data.employee.last_name || "",
-              employeeId: data.employee.employee_id || "",
-              dob: data.employee.dob || "",
-              gender: data.employee.gender || "",
-              maritalStatus: data.employee.marital_status || "",
+      // API endpoint removed
+      if (false) {
+        setDetails(d => ({
+          ...d,
+          fullName1: "",
+          fullName2: "",
+          fullName3: "",
+          employeeId: "",
+          dob: "",
+          gender: "",
+          maritalStatus: "",
               nationality: data.employee.nationality || ""
             }));
           }
@@ -70,7 +68,7 @@ export default function PersonalDetailsPage() {
       // other fields can be added as needed
     };
     try {
-      const res = await fetch('/api/employee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      // API endpoint removed
       const data = await res.json();
       if (data.success) alert('Personal details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) {

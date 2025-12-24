@@ -26,7 +26,7 @@ export default function DependentsPage() {
     if (!eid) { alert('Employee ID is required'); return; }
     const payload = { details: { employeeId: eid, dependents } };
     try {
-      const res = await fetch('/api/employee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      // API endpoint removed
       const data = await res.json();
       if (data.success) alert('Dependents saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) { alert('Save failed: ' + String(err)); }

@@ -33,6 +33,13 @@ function formatTotalHours(clockIn: string, clockOut: string) {
   return `${h}h ${m}m ${s}s`;
 }
 
+// Helper to format late minutes
+function formatLateTime(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
 export default function EmployeeTimePage() {
   const [activeTab, setActiveTab] = useState("break");
   const [breaks, setBreaks] = useState<any[]>([]);
@@ -397,12 +404,13 @@ export default function EmployeeTimePage() {
                   <th>Clock In</th>
                   <th>Clock Out</th>
                   <th>Total Hours</th>
+                  <th>Late</th>
                 </tr>
               </thead>
               <tbody>
                 {attendance.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
+                    <td colSpan={6} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   attendance.map((a, idx) => (
@@ -412,6 +420,9 @@ export default function EmployeeTimePage() {
                       <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
                       <td>{a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""}</td>
                       <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+                      <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
+                        {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
+                      </td>
                     </tr>
                   ))
                 )}

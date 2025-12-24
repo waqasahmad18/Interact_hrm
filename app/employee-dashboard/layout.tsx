@@ -22,7 +22,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       const loginId = localStorage.getItem("loginId");
       console.log("LoginId from localStorage:", loginId);
       if (loginId) {
-        let apiUrl = "/api/employee?";
+        let apiUrl = "/api/hrm_employees?";
         if (loginId.includes("@")) {
           apiUrl += `email=${loginId}`;
         } else {

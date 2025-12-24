@@ -16,7 +16,7 @@ const employeeTabs = [
 
 export default function EmployeeCredentialsPage() {
   const searchParams = useSearchParams();
-  const employeeId = searchParams.get("employeeId") || "";
+  const employeeId = searchParams?.get("employeeId") || "";
   const router = useRouter();
   const pathname = usePathname();
   const [credentials, setCredentials] = useState<any>(null);
@@ -28,16 +28,9 @@ export default function EmployeeCredentialsPage() {
   const fetchCredentials = () => {
     if (!employeeId) return;
     setLoading(true);
-    fetch(`/api/employee?employeeId=${employeeId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.employee) {
-          setCredentials(data.employee);
-        } else {
-          setCredentials(null);
-        }
-        setLoading(false);
-      });
+    // API endpoint removed
+    setCredentials(null);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -46,13 +39,8 @@ export default function EmployeeCredentialsPage() {
 
   const handleUpdatePassword = async () => {
     if (!employeeId || !newPassword) return;
-    await fetch("/api/employee", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId, password: newPassword })
-    });
+    // API endpoint removed
     setNewPassword("");
-    fetchCredentials(); // Re-fetch credentials after update
   };
 
   return (
@@ -72,7 +60,7 @@ export default function EmployeeCredentialsPage() {
         </div>
         <nav className={styles.nav}>
           {employeeTabs.map(tab => {
-            const isActive = pathname.startsWith(tab.path);
+            const isActive = pathname?.startsWith(tab.path) ?? false;
             return (
               <div
                 key={tab.name}

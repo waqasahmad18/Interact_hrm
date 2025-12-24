@@ -17,7 +17,7 @@ export default function EmployeeDashboardPage() {
     if (cachedName) setEmployeeName(cachedName);
 
     if (!loginId) return;
-    let apiUrl = "/api/employee?";
+    let apiUrl = "/api/hrm_employees?";
     apiUrl += loginId.includes("@") ? `email=${loginId}` : `username=${loginId}`;
 
     Promise.all([
