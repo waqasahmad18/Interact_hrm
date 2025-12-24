@@ -58,35 +58,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className={styles.bgGradient}>
-      <div className={styles.centerCard}>
-        <Image src="/logo.png" alt="Interact HRM Logo" width={90} height={90} className={styles.logo} />
-        <h1 className={styles.title}>Welcome to Interact HRM</h1>
-        <h2 className={styles.subtitle}>Login to your account</h2>
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <input
-            type="text"
-            placeholder="Email or Username"
-            className={styles.input}
-            value={loginId}
-            onChange={e => setLoginId(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className={styles.input}
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
-          <button type="submit" className={styles.button} disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
-        {error && <div className={styles.error}>{error}</div>}
-        <div className={styles.footer}>Powered by <span style={{ color: "#3478f6", fontWeight: 600 }}>Interact HRM</span></div>
-      </div>
+    <div className={styles.splitWrap}>
+      {/* Left side: animated brand frame */}
+      <section className={styles.leftPanel}>
+        <div className={styles.leftContent}>
+          <div className={styles.brandLockup}>
+            <span className={styles.kicker}>WELCOME TO</span>
+            <h1 className={styles.brandTitle}><span className={styles.shimmer}>INTERACT GLOBAL</span></h1>
+            <h2 className={styles.brandSub}>HRM PLATFORM</h2>
+          </div>
+          <p className={styles.brandText}>Secure, fast and smart employee management.</p>
+        </div>
+        {/* Decorative animations are in CSS via ::before/::after */}
+      </section>
+
+      {/* Right side: logo + login form */}
+      <section className={styles.rightPanel}>
+        <div className={styles.formWrap}>
+          <Image src="/logo1.png" alt="Interact Logo" width={96} height={96} className={styles.logoImage} />
+          <h3 className={styles.formTitle}>Sign in to continue</h3>
+
+          <form className={styles.form} onSubmit={handleSubmit}>
+            <input
+              type="text"
+              placeholder="Email or Username"
+              className={styles.input}
+              value={loginId}
+              onChange={e => setLoginId(e.target.value)}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              className={styles.input}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+            <div className={styles.rowBetween}>
+              <label className={styles.remember}><input type="checkbox" /> Remember me</label>
+              <a className={styles.linkBtn} onClick={() => router.push('/auth/forgot-password')}>Forgot password?</a>
+            </div>
+            <button type="submit" className={styles.button} disabled={loading}>
+              {loading ? "Logging in..." : "Login"}
+            </button>
+          </form>
+
+          {error && <div className={styles.error}>{error}</div>}
+
+          <div className={styles.rightFooter}>Powered by <a href="https://interactglobals.com/" target="_blank" rel="noopener noreferrer">Interact Global</a><em> v1.0</em></div>
+        </div>
+      </section>
     </div>
   );
 }
