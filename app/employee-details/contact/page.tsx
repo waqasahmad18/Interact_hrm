@@ -53,7 +53,12 @@ export default function ContactDetailsPage() {
       }
     };
     try {
-      // API endpoint removed
+      // Example placeholder for saving contact details
+      const res = await fetch('/api/employee_contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await res.json();
       if (data.success) alert('Contact details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) {

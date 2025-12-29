@@ -1,4 +1,18 @@
 "use client";
+
+interface Leave {
+  id: number;
+  leave_category: string;
+  start_date: string;
+  end_date: string;
+  total_days: number;
+  reason: string;
+  documents: string[];
+  status: string;
+  requested_at: string;
+  document_paths?: string | string[];
+  // Add any other fields you use from leave object
+}
 import React, { useState, useEffect, useRef } from "react";
 
 const LEAVE_CATEGORIES = [
@@ -17,7 +31,7 @@ export default function LeavePage() {
   const [employeeName, setEmployeeName] = useState<string>("");
 
   // Form state
-  const [leaves, setLeaves] = useState([]);
+  const [leaves, setLeaves] = useState<Leave[]>([]);
   const [leaveBalance, setLeaveBalance] = useState(20);
   const [annualAllowance, setAnnualAllowance] = useState(20);
   const [employmentStatus, setEmploymentStatus] = useState<string>("Permanent");
@@ -369,5 +383,5 @@ function formatDate(dateString: string) {
   );
 }
 
-const thStyle = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
+const thStyle: React.CSSProperties = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
 const tdStyle = { padding: "8px 8px", borderBottom: "1px solid #f0f0f0" };

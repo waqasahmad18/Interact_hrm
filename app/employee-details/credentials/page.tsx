@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+// ...existing code...
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import styles from "../../add-employee/add-employee.module.css";
 import { useRouter } from "next/navigation";
@@ -14,16 +15,16 @@ const employeeTabs = [
   { name: "Salary", path: "/employee-details/salary" }
 ];
 
-export default function EmployeeCredentialsPage() {
-  const searchParams = useSearchParams();
-  const employeeId = searchParams?.get("employeeId") || "";
+function CredentialsPageInner() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const employeeId = searchParams?.get("employeeId") || "";
   const [credentials, setCredentials] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(true);
-  const [loading, setLoading] = useState(true);
 
   const fetchCredentials = () => {
     if (!employeeId) return;
@@ -79,43 +80,41 @@ export default function EmployeeCredentialsPage() {
           {loading ? (
             <div>Loading credentials...</div>
           ) : credentials ? (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontWeight: 600, fontSize: "1.1rem" }}>{credentials.first_name} {credentials.last_name}</div>
-              <div style={{ color: "#888", marginBottom: 8 }}>Username: <b>{credentials.username || "-"}</b></div>
-              <div style={{ color: "#888", marginBottom: 8 }}>Email: <b>{credentials.email || "-"}</b></div>
-              <div style={{ color: "#888", marginBottom: 8 }}>
-                Password: <b>{showPassword ? credentials.password || "-" : "********"}</b>
+            <div>
+              <div><b>Username:</b> {credentials.username}</div>
+              <div><b>Password:</b> {showPassword ? credentials.password : "********"}</div>
+              <button onClick={() => setShowPassword(v => !v)} style={{ marginTop: 8 }}>{showPassword ? "Hide" : "Show"} Password</button>
+              <div style={{ marginTop: 24 }}>
+                <input
+                  type="text"
+                  placeholder="New Password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", width: "100%", marginBottom: 8 }}
+                />
                 <button
-                  style={{ marginLeft: 12, background: "#EDF2F7", color: "#0052CC", border: "none", borderRadius: 8, padding: "4px 12px", fontWeight: 600, cursor: "pointer" }}
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={handleUpdatePassword}
+                  style={{ background: "linear-gradient(90deg, #0052CC 0%, #2B6CB0 100%)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 600, fontSize: "1rem", boxShadow: "0 2px 8px rgba(0,82,204,0.10)", cursor: "pointer", transition: "background 0.2s" }}
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  Update Password
                 </button>
               </div>
             </div>
           ) : (
             <div>No credentials found.</div>
           )}
-          {isAdmin && credentials && (
-            <div style={{ marginTop: 18 }}>
-              <h3 style={{ fontSize: "1rem", color: "#0052CC", marginBottom: 8 }}>Update Password</h3>
-              <input
-                type="text"
-                placeholder="Enter new password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E2E8F0", width: "100%", marginBottom: 8 }}
-              />
-              <button
-                onClick={handleUpdatePassword}
-                style={{ background: "linear-gradient(90deg, #0052CC 0%, #2B6CB0 100%)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 600, fontSize: "1rem", boxShadow: "0 2px 8px rgba(0,82,204,0.10)", cursor: "pointer", transition: "background 0.2s" }}
-              >
-                Update Password
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
+
+
+
+const CredentialsPage = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <CredentialsPageInner />
+  </Suspense>
+);
+
+export default CredentialsPage;

@@ -1,5 +1,7 @@
 import LayoutDashboard from "../layout-dashboard";
 import Image from "next/image";
+import EmployeeListPage from "./employee-list/page";
+
 export default function AdminPage() {
   return (
     <LayoutDashboard>
@@ -11,8 +13,7 @@ export default function AdminPage() {
           <h3 style={{ color: '#0052CC', fontWeight: '600', fontSize: '1rem', marginBottom: 12 }}>Employee List</h3>
           {/* Reuse EmployeeListPage component for listing */}
           <div style={{ background: '#F7FAFC', borderRadius: 12, padding: 16 }}>
-            {/* @ts-ignore */}
-            {require("../employee-list/page").default()}
+            <EmployeeListPage />
           </div>
         </div>
       </div>

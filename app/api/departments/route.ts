@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
 const dbConfig = {
@@ -15,7 +15,7 @@ export async function GET() {
   return NextResponse.json(rows);
 }
 
-export async function POST(req) {
+export async function POST(req: NextRequest) {
   const { name } = await req.json();
   const conn = await mysql.createConnection(dbConfig);
   await conn.execute("INSERT INTO departments (name) VALUES (?)", [name]);
@@ -23,7 +23,7 @@ export async function POST(req) {
   return NextResponse.json({ success: true });
 }
 
-export async function PUT(req) {
+export async function PUT(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const { name } = await req.json();
@@ -33,7 +33,7 @@ export async function PUT(req) {
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(req) {
+export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const conn = await mysql.createConnection(dbConfig);

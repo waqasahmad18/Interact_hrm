@@ -1,17 +1,17 @@
 // WebSocket server for real-time leave updates
-import { Server } from 'ws';
+import WebSocket from 'ws';
 
-let wss: Server | null = null;
+let wss: any = null;
 
 export default function handler(req: any, res: any) {
   if (!res.socket.server.wss) {
-    wss = new Server({ server: res.socket.server });
+    wss = new WebSocket.Server({ server: res.socket.server });
     res.socket.server.wss = wss;
-    wss.on('connection', (ws) => {
-      ws.on('message', (message) => {
+    wss.on('connection', (ws: any) => {
+      ws.on('message', (message: any) => {
         // Broadcast received message to all clients
-        wss?.clients.forEach((client) => {
-          if (client !== ws && client.readyState === 1) {
+        wss?.clients.forEach((client: any) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
             client.send(message);
           }
         });

@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     // Check employee in hrm_employees
     const [rows] = await pool.query('SELECT * FROM hrm_employees WHERE (username = ? OR employee_code = ?) AND password = ?', [loginId, loginId, password]);
     if (Array.isArray(rows) && rows.length > 0) {
-      const emp = rows[0];
+      const emp = rows[0] as { status?: string; role?: string; id: any; employee_code: any; first_name: string; last_name: string };
       if (emp.status === 'inactive' || emp.status === 'disabled') {
         return NextResponse.json({ success: false, error: 'Your account is inactive. Please contact admin.' }, { status: 403 });
       }

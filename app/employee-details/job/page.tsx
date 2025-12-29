@@ -33,7 +33,12 @@ export default function JobPage() {
 		if (!eid) { alert('Employee ID is required'); return; }
 		const payload = { details: { employeeId: eid, job } };
 		try {
-			// API endpoint removed
+			// Example placeholder for saving job details
+			const res = await fetch('/api/employee_jobs', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
 			const data = await res.json();
 			if (data.success) alert('Job details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
 		} catch (err) { alert('Save failed: ' + String(err)); }

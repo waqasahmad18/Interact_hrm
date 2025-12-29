@@ -27,7 +27,12 @@ export default function EmergencyContactsPage() {
     if (!eid) { alert('Employee ID is required'); return; }
     const payload = { details: { employeeId: eid, emergency: contacts } };
     try {
-      // API endpoint removed
+      // Example placeholder for saving emergency contacts
+      const res = await fetch('/api/employee_emergency_contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await res.json();
       if (data.success) alert('Emergency contacts saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) { alert('Save failed: ' + String(err)); }

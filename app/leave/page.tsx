@@ -194,11 +194,11 @@ function formatDate(dateString: string) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-const thStyle = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
+const thStyle: React.CSSProperties = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
 const tdStyle = { padding: "8px 8px", borderBottom: "1px solid #f0f0f0" };
 const btnApprove = { background: "#27ae60", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };
 const btnReject = { background: "#e74c3c", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer" };
 const btnView = { background: "#3478f6", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };
 const btnClose = { background: "#888", color: "#fff", border: "none", borderRadius: 6, padding: "4px 18px", marginTop: 18, cursor: "pointer" };
-const modalOverlay = { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
+const modalOverlay: React.CSSProperties = { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
 const modalContent = { background: "#fff", borderRadius: 12, padding: 32, minWidth: 350, maxWidth: 500, boxShadow: "0 2px 16px #888" };

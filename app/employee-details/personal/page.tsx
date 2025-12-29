@@ -46,10 +46,9 @@ export default function PersonalDetailsPage() {
           dob: "",
           gender: "",
           maritalStatus: "",
-              nationality: data.employee.nationality || ""
-            }));
-          }
-        });
+          nationality: "" // or data.employee.nationality || "" if data is available
+        }));
+      }
     }
   }, []);
 
@@ -68,7 +67,12 @@ export default function PersonalDetailsPage() {
       // other fields can be added as needed
     };
     try {
-      // API endpoint removed
+      // Example placeholder for saving personal details
+      const res = await fetch('/api/employee_personal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       const data = await res.json();
       if (data.success) alert('Personal details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) {
