@@ -52,7 +52,7 @@ export default function AddEmployeeForm({
       const data = await res.json();
       if (data.success) {
         alert('Emergency contacts saved!');
-        setActiveTab('Job');
+        setActiveTab('Salary');
       } else {
         alert('Save failed: ' + (data.error || 'Unknown'));
       }
@@ -148,10 +148,13 @@ export default function AddEmployeeForm({
   const [createLogin, setCreateLogin] = useState(false);
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [username, setUsername] = useState("");
-  const [status, setStatus] = useState("enabled");
+  const [status, setStatus] = useState("disabled");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [activeTab, setActiveTab] = useState(employeeTabs[0].name);
+  useEffect(() => {
+    setStatus(createLogin ? "active" : "disabled");
+  }, [createLogin]);
   
   const [contactAddress, setContactAddress] = useState({ street1: "", street2: "", city: "", state: "", zip: "", country: "" });
   const [contactTelephone, setContactTelephone] = useState({ home: "", mobile: "", work: "" });
@@ -326,7 +329,7 @@ export default function AddEmployeeForm({
       profile_img: profileImg || '',
       username: createLogin ? username : '',
       password: createLogin ? password : '',
-      status: createLogin ? status : 'disabled',
+      status: createLogin ? 'active' : 'disabled',
       role: role || 'Officer'
     };
     

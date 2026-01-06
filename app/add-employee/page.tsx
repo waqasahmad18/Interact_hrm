@@ -168,14 +168,20 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
   const [createLogin, setCreateLogin] = useState(false);
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [username, setUsername] = useState("");
-  const [status, setStatus] = useState("enabled");
+  const [status, setStatus] = useState("disabled");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(employeeTabs[0].name);
+  // Import Excel state
+  const [importingBusy, setImportingBusy] = useState(false);
+  const [importSummary, setImportSummary] = useState<any|null>(null);
   // Role selection for hrm_employees
   const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
   const [role, setRole] = useState<string>("Officer");
+  useEffect(() => {
+    setStatus(createLogin ? "active" : "disabled");
+  }, [createLogin]);
   // Contact Details form state (moved inside component)
   const [contactAddress, setContactAddress] = useState({ street1: "", street2: "", city: "", state: "", zip: "", country: "" });
   const [contactTelephone, setContactTelephone] = useState({ home: "", mobile: "", work: "" });
@@ -331,7 +337,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
         profile_img: profileImg || '',
         username: createLogin ? username : '',
         password: createLogin ? password : '',
-        status: createLogin ? status : 'disabled',
+        status: createLogin ? 'active' : 'disabled',
         role: role || 'Officer'
       };
       try {
@@ -388,6 +394,60 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", paddingTop: "30px", paddingRight: "30px" }}>
             <div className={styles.formCard}>
               <h2 className={styles.heading}>Add Employee</h2>
+              
+              {/* Prominent Excel Import Section */}
+              <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 12, padding: 20, marginBottom: 24, color: '#fff', boxShadow: '0 4px 12px rgba(102,126,234,0.3)' }}>
+                <h3 style={{ margin: 0, marginBottom: 8, fontSize: '1.2rem', fontWeight: 700 }}>📊 Bulk Import Employees (Excel)</h3>
+                <p style={{ margin: 0, marginBottom: 12, fontSize: '0.95rem', opacity: 0.95 }}>Upload an Excel file to add multiple employees at once. Max file size: 100MB</p>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <a href="/api/employee-import?template=1" style={{ background: '#fff', color: '#667eea', textDecoration: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                    <span>⬇️</span> Download Template
+                  </a>
+                  <label style={{ background: '#48bb78', color: '#fff', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                    <span>⬆️</span> Upload Excel
+                    <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+                      if (f.size > MAX_SIZE) {
+                        alert('File size exceeds 100MB limit. Please choose a smaller file.');
+                        e.target.value = '';
+                        return;
+                      }
+                      setImportingBusy(true);
+                      setImportSummary(null);
+                      const fd = new FormData();
+                      fd.append('file', f);
+                      try {
+                        const res = await fetch('/api/employee-import', { method: 'POST', body: fd });
+                        const data = await res.json();
+                        setImportSummary(data);
+                        if (data.success) {
+                          alert(`Import finished!\\n✅ Inserted: ${data.summary.inserted}\\n⚠️ Skipped: ${data.summary.skipped}\\n❌ Failed: ${data.summary.failed}`);
+                        } else {
+                          alert('Import failed: ' + (data.error || 'Unknown'));
+                        }
+                      } catch (err) {
+                        alert('Upload failed: ' + String(err));
+                      }
+                      setImportingBusy(false);
+                      e.target.value = '';
+                    }} />
+                  </label>
+                  {importingBusy && <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>⏳ Processing...</span>}
+                </div>
+                {importSummary && importSummary.success && (
+                  <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: 12, backdropFilter: 'blur(10px)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Import Summary:</div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: '0.9rem' }}>
+                      <span>✅ Inserted: <strong>{importSummary.summary?.inserted ?? 0}</strong></span>
+                      <span>⚠️ Skipped: <strong>{importSummary.summary?.skipped ?? 0}</strong></span>
+                      <span>❌ Failed: <strong>{importSummary.summary?.failed ?? 0}</strong></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {activeTab === "Personal Details" && (
                 <form className={styles.form} onSubmit={handleSave}>
                   <div className={styles.row} style={{ justifyContent: "center", alignItems: "center" }}>
