@@ -10,7 +10,6 @@ const employeeTabs = [
   { name: "Personal Details" },
   { name: "Contact Details" },
   { name: "Emergency Contacts" },
-  { name: "Job" },
   { name: "Salary" },
   { name: "Attachments" },
 ];
@@ -22,21 +21,30 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
   searchParams?: any,
   onSaved?: () => void
 } = {}) {
+  // Use searchParams hook at the top level
+  const searchParamsFromHook = useSearchParams();
+  
   let isEdit = false;
   let editEmployeeId: string|null = null;
+  
   // Priority: props > searchParams
   if (typeof editProp !== 'undefined' && typeof employeeIdProp !== 'undefined') {
     isEdit = editProp === true || editProp === '1';
     editEmployeeId = employeeIdProp || null;
+  } else if (searchParamsProp && typeof searchParamsProp.then === 'function') {
+    // If searchParamsProp is a Promise, we can't use it synchronously
+    // Fall back to useSearchParams hook
+    if (searchParamsFromHook) {
+      isEdit = searchParamsFromHook.get("edit") === "1";
+      editEmployeeId = searchParamsFromHook.get("employeeId") || null;
+    }
   } else if (searchParamsProp) {
+    // If searchParamsProp is already unwrapped
     isEdit = searchParamsProp.edit === '1' || searchParamsProp.edit === true;
     editEmployeeId = searchParamsProp.employeeId || null;
-  } else {
-    const searchParams = useSearchParams();
-    if (searchParams) {
-      isEdit = searchParams.get("edit") === "1";
-      editEmployeeId = searchParams.get("employeeId") || null;
-    }
+  } else if (searchParamsFromHook) {
+    isEdit = searchParamsFromHook.get("edit") === "1";
+    editEmployeeId = searchParamsFromHook.get("employeeId") || null;
   }
   // Personal Details form state
     // Emergency Contacts state
@@ -69,7 +77,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
         const data = await res.json();
         if (data.success) {
           alert('Emergency contacts saved!');
-          setActiveTab('Job');
+          setActiveTab('Salary');
         } else {
           alert('Save failed: ' + (data.error || 'Unknown'));
         }
@@ -116,33 +124,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
       }
     };
 
-    // Job Details handler
-    const handleJobSave = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!employeeId) {
-        alert('Please save Personal Details first.');
-        return;
-      }
-      try {
-        const res = await fetch('/api/employee_jobs', {
-          method: isEdit ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            employee_id: employeeId,
-            ...jobDetails
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          alert('Job details saved!');
-          setActiveTab('Salary');
-        } else {
-          alert('Save failed: ' + (data.error || 'Unknown'));
-        }
-      } catch (err) {
-        alert('Save failed: ' + String(err));
-      }
-    };
+
 
     // Salary Details handler
     const handleSalarySave = async (e: React.FormEvent) => {
@@ -198,17 +180,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
   const [contactAddress, setContactAddress] = useState({ street1: "", street2: "", city: "", state: "", zip: "", country: "" });
   const [contactTelephone, setContactTelephone] = useState({ home: "", mobile: "", work: "" });
   const [contactEmail, setContactEmail] = useState({ work: "", other: "" });
-  // Job Details form state
-  const [jobDetails, setJobDetails] = useState({
-    joinedDate: "",
-    jobTitle: "",
-    jobSpecification: "Not Defined",
-    jobCategory: "",
-    subUnit: "",
-    location: "",
-    employmentStatus: "",
-    includeContract: false,
-  });
+
   // Salary Details form state
   const [salaryDetails, setSalaryDetails] = useState({
     component: "",
@@ -283,24 +255,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
             ]);
           }
         });
-      // 4. Job Details
-      fetch(`/api/employee_jobs?employeeId=${editEmployeeId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.job) {
-            setJobDetails(j => ({
-              ...j,
-              joinedDate: data.job.joinedDate || "",
-              jobTitle: data.job.jobTitle || "",
-              jobSpecification: data.job.jobSpecification || "Not Defined",
-              jobCategory: data.job.jobCategory || "",
-              subUnit: data.job.subUnit || "",
-              location: data.job.location || "",
-              employmentStatus: data.job.employmentStatus || "",
-              includeContract: !!data.job.includeContract
-            }));
-          }
-        });
+
       // 5. Salary Details
       fetch(`/api/employee_salaries?employeeId=${editEmployeeId}`)
         .then(res => res.json())
@@ -594,97 +549,6 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
                       <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Save</button>
-                    </div>
-                  </form>
-                </div>
-              )}
-              {activeTab === "Job" && (
-                <div>
-                  <h2 className={styles.heading}>Job Details</h2>
-                  {employeeId && (
-                    <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
-                      Employee: {firstName} {lastName} (ID: {employeeId})
-                    </div>
-                  )}
-                  <form className={styles.form} style={{ width: "100%" }} onSubmit={handleJobSave}>
-                    <div className={styles.row}>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        placeholder="Joined Date"
-                        value={jobDetails.joinedDate}
-                        onChange={e => setJobDetails(j => ({ ...j, joinedDate: e.target.value }))}
-                      />
-                      <select
-                        className={styles.select}
-                        value={jobDetails.jobTitle}
-                        onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))}
-                      >
-                        <option value="">-- Select Job Title --</option>
-                        <option value="Software Engineer">Software Engineer</option>
-                        <option value="HR Manager">HR Manager</option>
-                        <option value="Accountant">Accountant</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <input
-                        className={styles.input}
-                        type="text"
-                        placeholder="Job Specification"
-                        value={jobDetails.jobSpecification}
-                        onChange={e => setJobDetails(j => ({ ...j, jobSpecification: e.target.value }))}
-                      />
-                    </div>
-                    <div className={styles.row}>
-                      <select
-                        className={styles.select}
-                        value={jobDetails.jobCategory}
-                        onChange={e => setJobDetails(j => ({ ...j, jobCategory: e.target.value }))}
-                      >
-                        <option value="">-- Select Job Category --</option>
-                        <option value="IT">IT</option>
-                        <option value="HR">HR</option>
-                        <option value="Finance">Finance</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <select
-                        className={styles.select}
-                        value={jobDetails.subUnit}
-                        onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))}
-                      >
-                        <option value="">-- Select Sub Unit --</option>
-                        <option value="Development">Development</option>
-                        <option value="Recruitment">Recruitment</option>
-                        <option value="Accounts">Accounts</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <select
-                        className={styles.select}
-                        value={jobDetails.location}
-                        onChange={e => setJobDetails(j => ({ ...j, location: e.target.value }))}
-                      >
-                        <option value="">-- Select Location --</option>
-                        <option value="Lahore">Lahore</option>
-                        <option value="Karachi">Karachi</option>
-                        <option value="Islamabad">Islamabad</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                    <div className={styles.row}>
-                      <select
-                        className={styles.select}
-                        value={jobDetails.employmentStatus}
-                        onChange={e => setJobDetails(j => ({ ...j, employmentStatus: e.target.value }))}
-                      >
-                        <option value="">-- Select Employment Status --</option>
-                        <option value="Permanent">Permanent</option>
-                        <option value="Contract">Contract</option>
-                        <option value="Intern">Intern</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-                      <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
                     </div>
                   </form>
                 </div>

@@ -24,6 +24,30 @@ export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json();
     if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 });
+    
+    // Delete all related records first (ignore errors if tables don't exist)
+    const tables = [
+      'employee_contacts',
+      'employee_emergency_contacts', 
+      'employee_jobs',
+      'employee_salaries',
+      'employee_attachments',
+      'employee_attendance',
+      'employee_breaks',
+      'employee_leaves',
+      'hrm_shifts_assignments',
+      'prayer_breaks'
+    ];
+    
+    for (const table of tables) {
+      try {
+        await pool.execute(`DELETE FROM ${table} WHERE employee_id = ?`, [id]);
+      } catch (e) {
+        // Ignore if table doesn't exist
+      }
+    }
+    
+    // Finally delete the employee
     await pool.execute('DELETE FROM hrm_employees WHERE id = ?', [id]);
     return NextResponse.json({ success: true });
   } catch (err) {

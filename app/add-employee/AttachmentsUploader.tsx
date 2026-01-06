@@ -27,8 +27,10 @@ export default function AttachmentsUploader({ employeeId }: { employeeId: string
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Allow saving without attachments - skip if no files
     if (fileList.length === 0) {
-      alert('Please add at least one PDF file.');
+      alert('No attachments to upload. Redirecting to employee list.');
+      router.push('/admin/employee-list');
       return;
     }
     setUploading(true);

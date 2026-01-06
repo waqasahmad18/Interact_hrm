@@ -7,7 +7,6 @@ const employeeTabs = [
   { name: "Personal Details" },
   { name: "Contact Details" },
   { name: "Emergency Contacts" },
-  { name: "Job" },
   { name: "Salary" },
   { name: "Attachments" },
 ];
@@ -101,32 +100,7 @@ export default function AddEmployeeForm({
   };
 
   // Job Details handler
-  const handleJobSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!employeeId) {
-      alert('Please save Personal Details first.');
-      return;
-    }
-    try {
-      const res = await fetch('/api/employee_jobs', {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: employeeId,
-          ...jobDetails
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Job details saved!');
-        setActiveTab('Salary');
-      } else {
-        alert('Save failed: ' + (data.error || 'Unknown'));
-      }
-    } catch (err) {
-      alert('Save failed: ' + String(err));
-    }
-  };
+
 
   // Salary Details handler
   const handleSalarySave = async (e: React.FormEvent) => {
@@ -183,16 +157,7 @@ export default function AddEmployeeForm({
   const [contactTelephone, setContactTelephone] = useState({ home: "", mobile: "", work: "" });
   const [contactEmail, setContactEmail] = useState({ work: "", other: "" });
   
-  const [jobDetails, setJobDetails] = useState({
-    joinedDate: "",
-    jobTitle: "",
-    jobSpecification: "Not Defined",
-    jobCategory: "",
-    subUnit: "",
-    location: "",
-    employmentStatus: "",
-    includeContract: false,
-  });
+
   
   const [salaryDetails, setSalaryDetails] = useState({
     component: "",
@@ -280,29 +245,7 @@ export default function AddEmployeeForm({
         }
       })
       .catch(err => console.error('Error fetching emergency contacts:', err));
-      // 4. Job Details
-      Promise.all([
-        fetch(`/api/employee_jobs?employeeId=${editEmployeeId}`).then(r => r.json()),
-        fetch(`/api/employee_jobs?employeeId=${employeeId}`).then(r => r.json())
-      ]).then(([data1, data2]) => {
-        const data = (data1.success ? data1 : data2);
-        console.log('Job data:', data);
-        if (data.success && data.job) {
-          setJobDetails(j => ({
-            ...j,
-            joinedDate: data.job.joined_date || "",
-            jobTitle: data.job.job_title || "",
-            jobSpecification: data.job.job_specification || "Not Defined",
-            jobCategory: data.job.job_category || "",
-            subUnit: data.job.sub_unit || "",
-            location: data.job.location || "",
-            employmentStatus: data.job.employment_status || "",
-            includeContract: !!data.job.include_contract
-          }));
-        }
-      })
-      .catch(err => console.error('Error fetching job details:', err));
-      // 5. Salary Details
+      // 4. Salary Details
       Promise.all([
         fetch(`/api/employee_salaries?employeeId=${editEmployeeId}`).then(r => r.json()),
         fetch(`/api/employee_salaries?employeeId=${employeeId}`).then(r => r.json())
@@ -330,10 +273,7 @@ export default function AddEmployeeForm({
     }
   }, [isEdit, editEmployeeId]);
 
-  // Keep job details employment status aligned with personal tab selection
-  useEffect(() => {
-    setJobDetails(j => ({ ...j, employmentStatus }));
-  }, [employmentStatus]);
+
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -600,64 +540,6 @@ export default function AddEmployeeForm({
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
                   <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Save</button>
-                </div>
-              </form>
-            </div>
-          )}
-          {activeTab === "Job" && (
-            <div>
-              <h2 className={styles.heading}>Job Details</h2>
-              {employeeId && (
-                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
-                  Employee: {firstName} {lastName} (ID: {employeeId})
-                </div>
-              )}
-              <form className={styles.form} style={{ width: "100%" }} onSubmit={handleJobSave}>
-                <div className={styles.row}>
-                  <input className={styles.input} type="date" placeholder="Joined Date" value={jobDetails.joinedDate} onChange={e => setJobDetails(j => ({ ...j, joinedDate: e.target.value }))} />
-                  <select className={styles.select} value={jobDetails.jobTitle} onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))}>
-                    <option value="">-- Select Job Title --</option>
-                    <option value="Software Engineer">Software Engineer</option>
-                    <option value="HR Manager">HR Manager</option>
-                    <option value="Accountant">Accountant</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <input className={styles.input} type="text" placeholder="Job Specification" value={jobDetails.jobSpecification} onChange={e => setJobDetails(j => ({ ...j, jobSpecification: e.target.value }))} />
-                </div>
-                <div className={styles.row}>
-                  <select className={styles.select} value={jobDetails.jobCategory} onChange={e => setJobDetails(j => ({ ...j, jobCategory: e.target.value }))}>
-                    <option value="">-- Select Job Category --</option>
-                    <option value="IT">IT</option>
-                    <option value="HR">HR</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <select className={styles.select} value={jobDetails.subUnit} onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))}>
-                    <option value="">-- Select Sub Unit --</option>
-                    <option value="Development">Development</option>
-                    <option value="Recruitment">Recruitment</option>
-                    <option value="Accounts">Accounts</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <select className={styles.select} value={jobDetails.location} onChange={e => setJobDetails(j => ({ ...j, location: e.target.value }))}>
-                    <option value="">-- Select Location --</option>
-                    <option value="Lahore">Lahore</option>
-                    <option value="Karachi">Karachi</option>
-                    <option value="Islamabad">Islamabad</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className={styles.row}>
-                  <select className={styles.select} value={jobDetails.employmentStatus} onChange={e => setJobDetails(j => ({ ...j, employmentStatus: e.target.value }))}>
-                    <option value="">-- Select Employment Status --</option>
-                    <option value="Permanent">Permanent</option>
-                    <option value="Contract">Contract</option>
-                    <option value="Intern">Intern</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
                 </div>
               </form>
             </div>

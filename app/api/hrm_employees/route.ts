@@ -55,9 +55,11 @@ export async function POST(req: NextRequest) {
       employment_status
     } = data;
     const conn = await mysql.createConnection(dbConfig);
+    // Convert empty employee_code to null to avoid duplicate key constraint
+    const empCode = employee_code && employee_code.trim() !== '' ? employee_code : null;
     const [result]: any = await conn.execute(
       `INSERT INTO hrm_employees (first_name, pseudonym, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [first_name, middle_name, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status]
+      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status]
     );
     const insertedId = result.insertId;
     await conn.end();
@@ -99,12 +101,15 @@ export async function PUT(req: NextRequest) {
     const whereClause = id ? 'id = ?' : (employee_code ? 'employee_code = ?' : 'username = ?');
     const whereValue = id ? id : (employee_code ? employee_code : username);
     
-    console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`);
-    console.log('Parameters:', [first_name, middle_name, last_name, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]);
+    // Convert empty employee_code to null to avoid duplicate key constraint
+    const empCode = employee_code && employee_code.trim() !== '' ? employee_code : null;
+    
+    console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`);
+    console.log('Parameters:', [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]);
     
     const [result]: any = await conn.execute(
-      `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`,
-      [first_name, middle_name, last_name, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]
+      `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`,
+      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]
     );
     
     console.log('Affected rows:', result.affectedRows);
