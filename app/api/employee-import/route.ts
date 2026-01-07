@@ -213,7 +213,9 @@ export async function POST(req: NextRequest) {
 
         // Validate basic
         if (!data.first_name || !data.last_name) {
-          skipped++; results.push({ row: r, status: 'skipped', reason: 'first_name and last_name required' });
+          skipped++;
+          console.warn(`Row ${r} skipped: first_name and last_name required`);
+          results.push({ row: r, status: 'skipped', reason: 'first_name and last_name required' });
           continue;
         }
 
@@ -282,6 +284,7 @@ export async function POST(req: NextRequest) {
           }
 
           await conn.commit();
+          console.log(`Row ${r} inserted successfully (employee_id=${employeeId})`);
           results.push({ row: r, status: 'inserted', employeeId });
           inserted++;
         } catch (rowErr: any) {
