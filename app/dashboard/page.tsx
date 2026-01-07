@@ -227,8 +227,8 @@ export default function DashboardPage() {
             const startDate = l.start_date ? new Date(l.start_date).toISOString().split('T')[0] : "";
             const endDate = l.end_date ? new Date(l.end_date).toISOString().split('T')[0] : "";
             const status = (l.status || "").toLowerCase();
-            // Check if leave is approved/pending and today falls within the date range
-            return (status === "approved" || status === "pending") && 
+            // Check if leave is approved and today falls within the date range
+            return status === "approved" && 
                    startDate <= todayStr && todayStr <= endDate;
           })
           .map((l: any) => l.employee_id)
