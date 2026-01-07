@@ -44,6 +44,13 @@ export default function DashboardPage() {
     { label: "Open Roles", value: "3", badge: "Hiring" },
   ]);
   const [weeklyAttendance, setWeeklyAttendance] = React.useState("0%");
+  const [employeeSnapshot, setEmployeeSnapshot] = React.useState({
+    active: 0,
+    onLeave: 0,
+    probation: 0
+  });
+  const [announcements, setAnnouncements] = React.useState<any[]>([]);
+  const [reminders, setReminders] = React.useState<any[]>([]);
   const leavesRef = React.useRef<Leave[]>([]);
   const timerRef = React.useRef<number | null>(null);
 
@@ -192,16 +199,104 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch employee snapshot (Active, On Leave, Probation)
+  const fetchEmployeeSnapshot = React.useCallback(async () => {
+    try {
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const empData = await empRes.json();
+      
+      if (!empData.success || !empData.employees) {
+        setEmployeeSnapshot({ active: 0, onLeave: 0, probation: 0 });
+        return;
+      }
+
+      const employees = empData.employees;
+      
+      // Get today's date
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      // Fetch leaves for today
+      const leaveRes = await fetch("/api/leaves", { cache: "no-store" });
+      const leaveData = await leaveRes.json();
+      const leaves = leaveData.success && leaveData.leaves ? leaveData.leaves : [];
+      
+      // Find employees on leave today (start_date <= today <= end_date)
+      const employeesOnLeaveToday = new Set(
+        leaves
+          .filter((l: any) => {
+            const startDate = l.start_date ? new Date(l.start_date).toISOString().split('T')[0] : "";
+            const endDate = l.end_date ? new Date(l.end_date).toISOString().split('T')[0] : "";
+            const status = (l.status || "").toLowerCase();
+            // Check if leave is approved/pending and today falls within the date range
+            return (status === "approved" || status === "pending") && 
+                   startDate <= todayStr && todayStr <= endDate;
+          })
+          .map((l: any) => l.employee_id)
+      );
+
+      // Count employees by status
+      let activeCount = 0;
+      let probationCount = 0;
+
+      employees.forEach((emp: any) => {
+        const status = (emp.status || "").toLowerCase();
+        const empStatus = (emp.employment_status || "").toLowerCase();
+        
+        if (empStatus === "probation") {
+          probationCount++;
+        } else if (status === "active" || status === "enabled") {
+          activeCount++;
+        }
+      });
+
+      // Active employees = total active - those on leave today
+      const onLeaveCount = employeesOnLeaveToday.size;
+      const finalActiveCount = Math.max(0, activeCount - onLeaveCount);
+
+      setEmployeeSnapshot({
+        active: finalActiveCount,
+        onLeave: onLeaveCount,
+        probation: probationCount
+      });
+    } catch (err) {
+      console.error("employee snapshot fetch", err);
+    }
+  }, []);
+
+  // Fetch announcements and reminders
+  const fetchAnnouncementsAndReminders = React.useCallback(async () => {
+    try {
+      // Fetch events (announcements)
+      const eventsRes = await fetch("/api/events", { cache: "no-store" });
+      const eventsData = await eventsRes.json();
+      const events = eventsData.success && eventsData.events ? eventsData.events : [];
+      setAnnouncements(events);
+
+      // Fetch reminders
+      const remindersRes = await fetch("/api/reminders", { cache: "no-store" });
+      const remindersData = await remindersRes.json();
+      const remindersArray = remindersData.success && remindersData.reminders ? remindersData.reminders : [];
+      setReminders(remindersArray);
+    } catch (err) {
+      console.error("announcements and reminders fetch", err);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchLeaves();
     fetchEmployeeCount();
     fetchTodayAttendance();
     fetchWeeklyAttendance();
+    fetchEmployeeSnapshot();
+    fetchAnnouncementsAndReminders();
     
-    // Refresh attendance every 30 seconds for real-time updates
-    const attendanceInterval = setInterval(() => {
+    // Refresh data every 30 seconds for real-time updates
+    const dataInterval = setInterval(() => {
       fetchTodayAttendance();
       fetchWeeklyAttendance();
+      fetchEmployeeSnapshot();
+      fetchAnnouncementsAndReminders();
     }, 30000);
     
     if (typeof window === "undefined") return;
@@ -210,17 +305,20 @@ export default function DashboardPage() {
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data.toString());
-        if (msg?.type === "leave_update") fetchLeaves();
+        if (msg?.type === "leave_update") {
+          fetchLeaves();
+          fetchEmployeeSnapshot();
+        }
       } catch (_) {
         // ignore malformed
       }
     };
     return () => {
       ws.close();
-      clearInterval(attendanceInterval);
+      clearInterval(dataInterval);
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance]);
+  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance, fetchEmployeeSnapshot, fetchAnnouncementsAndReminders]);
 
   return (
     <LayoutDashboard>
@@ -269,15 +367,15 @@ export default function DashboardPage() {
             </div>
             <div className={styles.metricsRow}>
               <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>110</div>
+                <div className={styles.metricValue}>{employeeSnapshot.active}</div>
                 <div className={styles.metricLabel}>Active</div>
               </div>
               <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>7</div>
+                <div className={styles.metricValue}>{employeeSnapshot.onLeave}</div>
                 <div className={styles.metricLabel}>On leave</div>
               </div>
               <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>3</div>
+                <div className={styles.metricValue}>{employeeSnapshot.probation}</div>
                 <div className={styles.metricLabel}>Probation</div>
               </div>
             </div>
@@ -362,12 +460,40 @@ export default function DashboardPage() {
 
           <div className={styles.card}>
             <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Announcements</h2>
+              <h2 className={styles.cardTitle}>Announcements & Reminders</h2>
+              <span className={styles.pill}>Live</span>
             </div>
             <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
-              {announcements.map((item) => (
-                <li key={item} className={styles.listItem}>{item}</li>
-              ))}
+              {announcements.length === 0 && reminders.length === 0 && (
+                <li className={styles.listItem}>
+                  <div className={styles.listItemTitle}>No announcements or reminders</div>
+                </li>
+              )}
+              
+              {reminders.length > 0 && (
+                <>
+                  {reminders.map((reminder) => (
+                    <li key={`reminder-${reminder.id}`} className={styles.listItem}>
+                      <div className={styles.listItemTitle} style={{ color: "#e74c3c", fontWeight: "600" }}>
+                        🔔 {reminder.message}
+                      </div>
+                    </li>
+                  ))}
+                </>
+              )}
+              
+              {announcements.length > 0 && (
+                <>
+                  {announcements.map((announcement) => (
+                    <li key={`announcement-${announcement.id}`} className={styles.listItem}>
+                      <div className={styles.listItemTitle}>{announcement.title}</div>
+                      {announcement.description && (
+                        <div className={styles.listItemMeta}>{announcement.description}</div>
+                      )}
+                    </li>
+                  ))}
+                </>
+              )}
             </ul>
           </div>
         </section>
