@@ -286,7 +286,10 @@ export async function POST(req: NextRequest) {
           inserted++;
         } catch (rowErr: any) {
           try { await conn.rollback(); } catch {}
-          failed++; results.push({ row: r, status: 'failed', reason: String(rowErr) });
+          failed++; 
+          console.error(`Row ${r} failed:`, rowErr);
+          const reason = rowErr?.message || String(rowErr);
+          results.push({ row: r, status: 'failed', reason });
         } finally {
           try { conn.release(); } catch {}
         }
