@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date");
+    const fromDate = searchParams.get("fromDate");
+    const toDate = searchParams.get("toDate");
     const conn = await mysql.createConnection(dbConfig);
     await ensureAttendanceTable(conn);
     let rows;
@@ -52,10 +54,20 @@ export async function GET(req: NextRequest) {
         `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) = ? ORDER BY ea.date DESC`,
         [employeeId, date]
       );
+    } else if (employeeId && fromDate && toDate) {
+      [rows] = await conn.execute(
+        `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.date DESC`,
+        [employeeId, fromDate, toDate]
+      );
     } else if (employeeId) {
       [rows] = await conn.execute(
         `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
         [employeeId]
+      );
+    } else if (fromDate && toDate) {
+      [rows] = await conn.execute(
+        `${baseQuery} WHERE DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.date DESC`,
+        [fromDate, toDate]
       );
     } else if (date) {
       [rows] = await conn.execute(
@@ -64,7 +76,7 @@ export async function GET(req: NextRequest) {
       );
     } else {
       [rows] = await conn.execute(
-        `${baseQuery} ORDER BY ea.date DESC`
+        `${baseQuery} ORDER BY ea.date DESC LIMIT 1000`
       );
     }
 
@@ -199,6 +211,67 @@ export async function POST(req: NextRequest) {
 
     await conn.end();
     return NextResponse.json({ success: true, message: clock_in ? 'inserted' : 'updated' });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  }
+}
+
+// PUT: Update existing attendance record (Admin manual edit)
+export async function PUT(req: NextRequest) {
+  const data = await req.json();
+  const { id, employee_id, employee_name, date, clock_in, clock_out } = data || {};
+
+  if (!id || !employee_id || !date) {
+    return NextResponse.json({ success: false, error: "Missing required fields: id, employee_id or date" }, { status: 400 });
+  }
+
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    await ensureAttendanceTable(conn);
+
+    const formattedClockIn = clock_in ? new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ') : null;
+    const formattedClockOut = clock_out ? new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ') : null;
+    const formattedDate = new Date(date).toISOString().slice(0, 10);
+
+    await conn.execute(
+      `UPDATE ${ATTENDANCE_TABLE} 
+       SET employee_name = ?, date = ?, clock_in = ?, clock_out = ?, 
+           total_hours = CASE 
+             WHEN ? IS NOT NULL AND ? IS NOT NULL 
+             THEN ROUND(TIMESTAMPDIFF(MINUTE, ?, ?)/60, 2) 
+             ELSE NULL 
+           END
+       WHERE id = ?`,
+      [employee_name || '', formattedDate, formattedClockIn, formattedClockOut, 
+       formattedClockIn, formattedClockOut, formattedClockIn, formattedClockOut, id]
+    );
+
+    await conn.end();
+    return NextResponse.json({ success: true, message: 'Attendance updated successfully' });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  }
+}
+
+// DELETE: Delete attendance record
+export async function DELETE(req: NextRequest) {
+  const data = await req.json();
+  const { id } = data || {};
+
+  if (!id) {
+    return NextResponse.json({ success: false, error: "Missing required field: id" }, { status: 400 });
+  }
+
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    await ensureAttendanceTable(conn);
+
+    await conn.execute(`DELETE FROM ${ATTENDANCE_TABLE} WHERE id = ?`, [id]);
+
+    await conn.end();
+    return NextResponse.json({ success: true, message: 'Attendance deleted successfully' });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });

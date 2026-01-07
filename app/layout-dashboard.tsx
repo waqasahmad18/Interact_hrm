@@ -17,6 +17,7 @@ const sidebarLinks = [
 		links: [
 			{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
 			{ name: "Time", path: "/time", icon: <FaClock /> },
+			{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
 			{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
 			{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },

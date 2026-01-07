@@ -4,12 +4,6 @@ import { useRouter } from "next/navigation";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "./dashboard.module.css";
 
-const stats = [
-  { label: "Employees", value: "120", badge: "+6 this week" },
-  { label: "Attendance", value: "92%", badge: "Stable" },
-  { label: "Open Roles", value: "3", badge: "Hiring" },
-];
-
 const quickLinks = [
   { label: "Add Employee", action: "/add-employee" },
   { label: "Leave Requests", action: "/leave" },
@@ -44,6 +38,12 @@ export default function DashboardPage() {
   const [leaves, setLeaves] = React.useState<Leave[]>([]);
   const [loadingLeaves, setLoadingLeaves] = React.useState(false);
   const [pulseIds, setPulseIds] = React.useState<number[]>([]);
+  const [stats, setStats] = React.useState([
+    { label: "Employees", value: "0", badge: "+0 this week" },
+    { label: "Attendance", value: "0%", badge: "Today" },
+    { label: "Open Roles", value: "3", badge: "Hiring" },
+  ]);
+  const [weeklyAttendance, setWeeklyAttendance] = React.useState("0%");
   const leavesRef = React.useRef<Leave[]>([]);
   const timerRef = React.useRef<number | null>(null);
 
@@ -79,8 +79,131 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch employee count
+  const fetchEmployeeCount = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/employee-list", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success && data.employees) {
+        const employeeCount = data.employees.length;
+        setStats(prev => [
+          { label: "Employees", value: employeeCount.toString(), badge: "+0 this week" },
+          prev[1],
+          prev[2],
+        ]);
+      }
+    } catch (err) {
+      console.error("employee count fetch", err);
+    }
+  }, []);
+
+  // Calculate today's attendance percentage
+  const fetchTodayAttendance = React.useCallback(async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get total employees
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const empData = await empRes.json();
+      const totalEmployees = empData.success && empData.employees ? empData.employees.length : 0;
+      
+      if (totalEmployees === 0) {
+        setStats(prev => [
+          prev[0],
+          { label: "Attendance", value: "0%", badge: "Today" },
+          prev[2],
+        ]);
+        return;
+      }
+      
+      // Get today's attendance (employees with clock_in today)
+      const attRes = await fetch(`/api/attendance?date=${today}`, { cache: "no-store" });
+      const attData = await attRes.json();
+      const todayClockIns = attData.success && attData.attendance ? 
+        attData.attendance.filter((a: any) => a.clock_in).length : 0;
+      
+      const attendancePercentage = Math.round((todayClockIns / totalEmployees) * 100);
+      
+      setStats(prev => [
+        prev[0],
+        { label: "Attendance", value: `${attendancePercentage}%`, badge: "Today" },
+        prev[2],
+      ]);
+    } catch (err) {
+      console.error("today attendance fetch", err);
+    }
+  }, []);
+
+  // Calculate weekly attendance (Mon-Fri of last week, excluding Sat-Sun)
+  const fetchWeeklyAttendance = React.useCallback(async () => {
+    try {
+      // Get last Monday to Friday (5 working days)
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      
+      // Calculate last Friday
+      let lastFriday = new Date(today);
+      if (dayOfWeek === 0) {
+        // If today is Sunday, go back to Friday (2 days)
+        lastFriday.setDate(today.getDate() - 2);
+      } else if (dayOfWeek === 1) {
+        // If today is Monday, go back to Friday of previous week (3 days)
+        lastFriday.setDate(today.getDate() - 3);
+      } else {
+        // Otherwise, go back to Friday of current week
+        lastFriday.setDate(today.getDate() - (dayOfWeek - 5));
+      }
+      
+      // Calculate last Monday (5 days before Friday)
+      const lastMonday = new Date(lastFriday);
+      lastMonday.setDate(lastFriday.getDate() - 4);
+      
+      const fromDate = lastMonday.toISOString().split('T')[0];
+      const toDate = lastFriday.toISOString().split('T')[0];
+      
+      // Get total employees
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const empData = empRes.json();
+      const totalEmployees = (await empData).success && (await empData).employees ? 
+        (await empData).employees.length : 0;
+      
+      if (totalEmployees === 0) {
+        setWeeklyAttendance("0%");
+        return;
+      }
+      
+      // Get attendance for the week
+      const attRes = await fetch(`/api/attendance?fromDate=${fromDate}&toDate=${toDate}`, { 
+        cache: "no-store" 
+      });
+      const attData = await attRes.json();
+      const weeklyRecords = attData.success && attData.attendance ? attData.attendance : [];
+      
+      // Count unique employees who clocked in during the week
+      const uniqueEmployees = new Set(
+        weeklyRecords.filter((a: any) => a.clock_in).map((a: any) => a.employee_id)
+      ).size;
+      
+      // Calculate 5 working days average
+      const weeklyPercentage = Math.round((uniqueEmployees / totalEmployees) * 100);
+      setWeeklyAttendance(`${weeklyPercentage}%`);
+    } catch (err) {
+      console.error("weekly attendance fetch", err);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchLeaves();
+    fetchEmployeeCount();
+    fetchTodayAttendance();
+    fetchWeeklyAttendance();
+    
+    // Refresh attendance every 30 seconds for real-time updates
+    const attendanceInterval = setInterval(() => {
+      fetchTodayAttendance();
+      fetchWeeklyAttendance();
+    }, 30000);
+    
     if (typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
@@ -94,9 +217,10 @@ export default function DashboardPage() {
     };
     return () => {
       ws.close();
+      clearInterval(attendanceInterval);
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [fetchLeaves]);
+  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance]);
 
   return (
     <LayoutDashboard>
@@ -174,20 +298,20 @@ export default function DashboardPage() {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <h2 className={styles.cardTitle}>Attendance</h2>
-              <span className={styles.pill}>Today</span>
+              <span className={styles.pill}>Live</span>
             </div>
             <div className={styles.metricsRow}>
               <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>92%</div>
-                <div className={styles.metricLabel}>Clocked in</div>
+                <div className={styles.metricValue}>{stats[1].value}</div>
+                <div className={styles.metricLabel}>Today</div>
+              </div>
+              <div className={styles.metricBlock}>
+                <div className={styles.metricValue}>{weeklyAttendance}</div>
+                <div className={styles.metricLabel}>Past Week</div>
               </div>
               <div className={styles.metricBlock}>
                 <div className={styles.metricValue}>09:02</div>
                 <div className={styles.metricLabel}>Avg. check-in</div>
-              </div>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>7h 45m</div>
-                <div className={styles.metricLabel}>Avg. hours</div>
               </div>
             </div>
           </div>
