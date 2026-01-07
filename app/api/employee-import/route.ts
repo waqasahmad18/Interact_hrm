@@ -289,20 +289,31 @@ export async function POST(req: NextRequest) {
           inserted++;
         } catch (rowErr: any) {
           try { await conn.rollback(); } catch {}
-          failed++; 
-          console.error(`Row ${r} failed:`, rowErr);
-          const reason = rowErr?.message || String(rowErr);
+          failed++;
+          const reason = rowErr?.sqlMessage || rowErr?.message || String(rowErr);
+          console.error(`Row ${r} failed:`, {
+            reason,
+            code: rowErr?.code,
+            errno: rowErr?.errno,
+            sqlState: rowErr?.sqlState,
+            sqlMessage: rowErr?.sqlMessage,
+            stack: rowErr?.stack,
+          });
           results.push({ row: r, status: 'failed', reason });
         } finally {
           try { conn.release(); } catch {}
         }
       } catch (err) {
-        failed++; results.push({ row: r, status: 'failed', reason: String(err) });
+        failed++;
+        const reason = (err as any)?.message || String(err);
+        console.error(`Row ${r} failed (outer):`, reason);
+        results.push({ row: r, status: 'failed', reason });
       }
     }
 
     return NextResponse.json({ success: true, summary: { inserted, skipped, failed }, results });
   } catch (err) {
+    console.error('Employee import crashed:', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
