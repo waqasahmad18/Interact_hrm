@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     }
     const arrayBuffer = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(Buffer.from(arrayBuffer));
+    await wb.xlsx.load(new Uint8Array(arrayBuffer));
     const ws = wb.worksheets[0];
     if (!ws) return NextResponse.json({ success: false, error: 'No sheet found' }, { status: 400 });
 

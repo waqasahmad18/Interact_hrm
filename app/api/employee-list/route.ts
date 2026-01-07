@@ -13,7 +13,7 @@ import { pool } from '../../../lib/db';
 
 export async function GET(req: NextRequest) {
   try {
-    const [rows] = await pool.query('SELECT id, first_name, pseudonym, last_name, employee_code, gender, nationality, status FROM hrm_employees ORDER BY id DESC');
+    const [rows] = await pool.query('SELECT id, first_name, pseudonym, last_name, employee_code, dob, gender, nationality, status FROM hrm_employees ORDER BY id DESC');
     return NextResponse.json({ success: true, employees: rows });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

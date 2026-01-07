@@ -21,8 +21,6 @@ const announcements = [
   "Company townhall on Dec 22.",
 ];
 
-const birthdays = ["Sara Khan — Dec 25", "Ibad ur Rahman — Jan 3"];
-
 type Leave = {
   id: number;
   employee_name: string;
@@ -51,6 +49,7 @@ export default function DashboardPage() {
   });
   const [announcements, setAnnouncements] = React.useState<any[]>([]);
   const [reminders, setReminders] = React.useState<any[]>([]);
+  const [birthdays, setBirthdays] = React.useState<string[]>([]);
   const leavesRef = React.useRef<Leave[]>([]);
   const timerRef = React.useRef<number | null>(null);
 
@@ -283,6 +282,70 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch and calculate upcoming birthdays
+  const fetchUpcomingBirthdays = React.useCallback(async () => {
+    try {
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const empData = await empRes.json();
+      
+      if (!empData.success || !empData.employees) {
+        setBirthdays([]);
+        return;
+      }
+
+      const employees = empData.employees;
+      const today = new Date();
+      const todayMonth = today.getMonth();
+      const todayDate = today.getDate();
+      
+      // Calculate birthdays for next 30 days
+      const upcomingBdayList: { name: string; date: Date }[] = [];
+      
+      employees.forEach((emp: any) => {
+        if (!emp.dob) return;
+        
+        const dobDate = new Date(emp.dob);
+        if (isNaN(dobDate.getTime())) return; // Invalid date
+        
+        const bdayMonth = dobDate.getMonth();
+        const bdayDate = dobDate.getDate();
+        
+        // Check if birthday is in next 30 days
+        let daysUntilBirthday = 0;
+        let bdayThisYear = new Date(today.getFullYear(), bdayMonth, bdayDate);
+        
+        if (bdayThisYear < today) {
+          // Birthday already passed this year, check next year
+          bdayThisYear = new Date(today.getFullYear() + 1, bdayMonth, bdayDate);
+        }
+        
+        daysUntilBirthday = Math.ceil((bdayThisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntilBirthday >= 0 && daysUntilBirthday <= 30) {
+          upcomingBdayList.push({
+            name: emp.first_name && emp.last_name ? 
+              `${emp.first_name} ${emp.last_name}` : 
+              (emp.first_name || emp.pseudonym || "Employee"),
+            date: bdayThisYear
+          });
+        }
+      });
+      
+      // Sort by date
+      upcomingBdayList.sort((a, b) => a.date.getTime() - b.date.getTime());
+      
+      // Format for display
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const formattedBirthdays = upcomingBdayList.map(bday => 
+        `${bday.name} — ${monthNames[bday.date.getMonth()]} ${bday.date.getDate()}`
+      );
+      
+      setBirthdays(formattedBirthdays);
+    } catch (err) {
+      console.error("upcoming birthdays fetch", err);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchLeaves();
     fetchEmployeeCount();
@@ -290,6 +353,7 @@ export default function DashboardPage() {
     fetchWeeklyAttendance();
     fetchEmployeeSnapshot();
     fetchAnnouncementsAndReminders();
+    fetchUpcomingBirthdays();
     
     // Refresh data every 30 seconds for real-time updates
     const dataInterval = setInterval(() => {
@@ -297,6 +361,7 @@ export default function DashboardPage() {
       fetchWeeklyAttendance();
       fetchEmployeeSnapshot();
       fetchAnnouncementsAndReminders();
+      fetchUpcomingBirthdays();
     }, 30000);
     
     if (typeof window === "undefined") return;
@@ -318,7 +383,7 @@ export default function DashboardPage() {
       clearInterval(dataInterval);
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance, fetchEmployeeSnapshot, fetchAnnouncementsAndReminders]);
+  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance, fetchEmployeeSnapshot, fetchAnnouncementsAndReminders, fetchUpcomingBirthdays]);
 
   return (
     <LayoutDashboard>
@@ -450,8 +515,14 @@ export default function DashboardPage() {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <h2 className={styles.cardTitle}>Upcoming birthdays</h2>
+              <span className={styles.pill}>Live</span>
             </div>
             <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
+              {birthdays.length === 0 && (
+                <li className={styles.listItem}>
+                  <div className={styles.listItemTitle}>No upcoming birthdays in the next 30 days</div>
+                </li>
+              )}
               {birthdays.map((item) => (
                 <li key={item} className={styles.listItem}>{item}</li>
               ))}
