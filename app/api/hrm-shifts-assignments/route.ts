@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       employee_id,
+      employee_ids,
       shift_name,
       start_time,
       end_time,
@@ -136,6 +137,13 @@ export async function POST(req: NextRequest) {
       await Promise.all(deptEmployees.map((row) => upsertOne(row.employee_id)));
 
       return NextResponse.json({ success: true, message: "Shift assigned to department" });
+    }
+
+    // Multiple specific employees
+    if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
+      await Promise.all(employee_ids.map((empId: number) => upsertOne(empId)));
+
+      return NextResponse.json({ success: true, message: "Shift assigned to selected employees" });
     }
 
     // Single employee assignment

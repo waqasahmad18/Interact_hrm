@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  poweredByHeader: false,
   /* config options here */
 };
 

@@ -3,12 +3,14 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -87,14 +89,24 @@ export default function LoginPage() {
               onChange={e => setLoginId(e.target.value)}
               required
             />
-            <input
-              type="password"
-              placeholder="Password"
-              className={styles.input}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
+            <div className={styles.passwordWrapper}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                className={styles.input}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className={styles.togglePasswordBtn}
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label="Toggle password visibility"
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
             <div className={styles.rowBetween}>
               <label className={styles.remember}><input type="checkbox" /> Remember me</label>
               <a className={styles.linkBtn} onClick={() => router.push('/auth/forgot-password')}>Forgot password?</a>

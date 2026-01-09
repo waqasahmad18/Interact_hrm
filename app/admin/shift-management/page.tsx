@@ -26,6 +26,15 @@ interface Department {
   name: string;
 }
 
+interface MasterShift {
+  id: number;
+  name: string;
+  shift_in: string;
+  shift_out: string;
+  overtime_daily: number;
+  working_days: string;
+}
+
 // Convert 24-hour time to 12-hour format with AM/PM
 const formatTimeTo12Hour = (time: string): string => {
   if (!time) return "";
@@ -39,11 +48,15 @@ const formatTimeTo12Hour = (time: string): string => {
 export default function ShiftManagementPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [masterShifts, setMasterShifts] = useState<MasterShift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [selectedScope, setSelectedScope] = useState<string>(""); // all, dept-<id>, emp-<id>
+  const [selectedAll, setSelectedAll] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
+  const [selectedMasterShift, setSelectedMasterShift] = useState<string>("");
   const [shiftName, setShiftName] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -59,7 +72,15 @@ export default function ShiftManagementPage() {
   useEffect(() => {
     fetchEmployees();
     fetchDepartments();
+    fetchMasterShifts();
   }, []);
+
+  // Keep selections in sync when "all" is toggled or list changes
+  useEffect(() => {
+    if (selectedAll) {
+      setSelectedEmployeeIds(employees.map(e => e.id));
+    }
+  }, [selectedAll, employees]);
 
   const fetchEmployees = async () => {
     try {
@@ -89,10 +110,32 @@ export default function ShiftManagementPage() {
       // ignore
     }
   };
+  const fetchMasterShifts = async () => {
+    try {
+      const res = await fetch("/api/master-shifts");
+      const data = await res.json();
+      if (data.success) {
+        setMasterShifts(data.shifts || []);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
 
+  const handleMasterShiftChange = (shiftId: string) => {
+    setSelectedMasterShift(shiftId);
+    const shift = masterShifts.find(s => s.id === parseInt(shiftId));
+    if (shift) {
+      setShiftName(shift.name);
+      setStartTime(shift.shift_in);
+      setEndTime(shift.shift_out);
+    }
+  };
   const handleAssignShift = async () => {
-    if (!selectedScope) {
-      setError("Please select target (all / department / employee)");
+    const hasManualEmployees = selectedEmployeeIds.length > 0;
+
+    if (!selectedAll && !selectedScope && !hasManualEmployees) {
+      setError("Please select target (all / department / employees)");
       return;
     }
 
@@ -101,9 +144,8 @@ export default function ShiftManagementPage() {
       return;
     }
 
-    const isAll = selectedScope === "all";
+    const isAll = selectedAll || selectedScope === "all";
     const isDept = selectedScope.startsWith("dept-");
-    const isEmp = selectedScope.startsWith("emp-");
 
     const payload: any = {
       shift_name: shiftName,
@@ -111,15 +153,18 @@ export default function ShiftManagementPage() {
       end_time: endTime,
     };
 
-    if (isAll) payload.assign_all = true;
-    else if (isDept) payload.department_id = parseInt(selectedScope.replace("dept-", ""));
-    else if (isEmp) payload.employee_id = parseInt(selectedScope.replace("emp-", ""));
-    else {
+    if (isAll) {
+      payload.assign_all = true;
+    } else if (isDept) {
+      payload.department_id = parseInt(selectedScope.replace("dept-", ""));
+    } else if (hasManualEmployees) {
+      payload.employee_ids = selectedEmployeeIds;
+    } else {
       setError("Invalid selection");
       return;
     }
 
-    setAssigningId(isEmp ? payload.employee_id || null : null);
+    setAssigningId(null);
     setError("");
     setSuccess("");
 
@@ -137,6 +182,8 @@ export default function ShiftManagementPage() {
         setStartTime("");
         setEndTime("");
         setSelectedScope("");
+        setSelectedAll(false);
+        setSelectedEmployeeIds([]);
         fetchEmployees(); // Refresh list
         setTimeout(() => setSuccess(""), 3000);
       } else {
@@ -203,6 +250,44 @@ export default function ShiftManagementPage() {
     setError("");
   };
 
+  const toggleEmployeeSelection = (empId: number) => {
+    setSelectedAll(false);
+    setSelectedScope("");
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  const handleDeleteShift = async (emp: Employee) => {
+    if (!emp.assignment_id) {
+      setError("No shift assignment found");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete shift assignment for ${emp.first_name} ${emp.last_name}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/hrm-shifts-assignments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: emp.assignment_id }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setSuccess("Shift assignment deleted successfully!");
+        fetchEmployees();
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError(data.error || "Failed to delete shift");
+      }
+    } catch (err) {
+      setError("Failed to delete shift");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     return status === "enabled" || status === "active"
       ? styles.statusActive
@@ -259,10 +344,17 @@ export default function ShiftManagementPage() {
                 className={styles.dropdownToggle}
                 onClick={() => setDropdownOpen(!dropdownOpen)}
               >
-                {selectedScope === "" && "-- Choose Target --"}
-                {selectedScope === "all" && "Assign to all employees"}
-                {selectedScope.startsWith("dept-") && `Department: ${departments.find(d => d.id === parseInt(selectedScope.replace("dept-", "")))?.name}`}
-                {selectedScope.startsWith("emp-") && `${employees.find(e => e.id === parseInt(selectedScope.replace("emp-", "")))?.id} - ${employees.find(e => e.id === parseInt(selectedScope.replace("emp-", "")))?.first_name} ${employees.find(e => e.id === parseInt(selectedScope.replace("emp-", "")))?.last_name}`}
+                {selectedAll ? (
+                  <span className={styles.selectedBadge}>✓ All employees selected</span>
+                ) : selectedScope.startsWith("dept-") ? (
+                  `Department: ${departments.find(d => d.id === parseInt(selectedScope.replace("dept-", "")))?.name}`
+                ) : selectedEmployeeIds.length > 0 ? (
+                  `${selectedEmployeeIds.length} employee${selectedEmployeeIds.length > 1 ? "s" : ""} selected`
+                ) : selectedScope === "" ? (
+                  "-- Choose Target --"
+                ) : (
+                  "-- Choose Target --"
+                )}
               </div>
               {dropdownOpen && (
                 <div className={styles.dropdownMenu}>
@@ -276,14 +368,23 @@ export default function ShiftManagementPage() {
                   />
                   <div className={styles.dropdownContent}>
                     <div
-                      className={styles.dropdownOption}
+                      className={`${styles.dropdownOption} ${selectedAll ? styles.dropdownOptionSelected : ""}`}
                       onClick={() => {
+                        setSelectedAll(true);
                         setSelectedScope("all");
+                        setSelectedEmployeeIds(employees.map(e => e.id));
                         setDropdownOpen(false);
                         setTargetSearch("");
                       }}
                     >
-                      ✓ Assign to all employees
+                      <div className={styles.optionRow}>
+                        <span
+                          className={`${styles.optionCheckbox} ${selectedAll ? styles.optionCheckboxChecked : ""}`}
+                        >
+                          {selectedAll ? "✓" : ""}
+                        </span>
+                        <span>Assign to all employees</span>
+                      </div>
                     </div>
                     
                     {departments.length > 0 && (
@@ -292,14 +393,23 @@ export default function ShiftManagementPage() {
                         {departments.map((d) => (
                           <div
                             key={d.id}
-                            className={styles.dropdownOption}
+                            className={`${styles.dropdownOption} ${selectedScope === `dept-${d.id}` ? styles.dropdownOptionSelected : ""}`}
                             onClick={() => {
                               setSelectedScope(`dept-${d.id}`);
+                              setSelectedAll(false);
+                              setSelectedEmployeeIds([]);
                               setDropdownOpen(false);
                               setTargetSearch("");
                             }}
                           >
-                            📁 {d.name}
+                            <div className={styles.optionRow}>
+                              <span
+                                className={`${styles.optionCheckbox} ${selectedScope === `dept-${d.id}` ? styles.optionCheckboxChecked : ""}`}
+                              >
+                                {selectedScope === `dept-${d.id}` ? "✓" : ""}
+                              </span>
+                              <span>📁 {d.name}</span>
+                            </div>
                           </div>
                         ))}
                       </>
@@ -315,19 +425,24 @@ export default function ShiftManagementPage() {
                       .map((emp) => (
                         <div
                           key={emp.id}
-                          className={styles.dropdownOption}
+                          className={`${styles.dropdownOption} ${selectedAll || selectedEmployeeIds.includes(emp.id) ? styles.dropdownOptionSelected : ""}`}
                           onClick={() => {
-                            setSelectedScope(`emp-${emp.id}`);
+                            toggleEmployeeSelection(emp.id);
                             if (emp?.shift_name) {
                               setShiftName(emp.shift_name);
                               setStartTime(emp.start_time || "");
                               setEndTime(emp.end_time || "");
                             }
-                            setDropdownOpen(false);
-                            setTargetSearch("");
                           }}
                         >
-                          👤 {emp.id} - {emp.first_name} {emp.last_name}
+                          <div className={styles.optionRow}>
+                            <span
+                              className={`${styles.optionCheckbox} ${selectedAll || selectedEmployeeIds.includes(emp.id) ? styles.optionCheckboxChecked : ""}`}
+                            >
+                              {selectedAll || selectedEmployeeIds.includes(emp.id) ? "✓" : ""}
+                            </span>
+                            <span>{emp.id} - {emp.first_name} {emp.last_name}</span>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -335,6 +450,24 @@ export default function ShiftManagementPage() {
               )}
             </div>
           </div>
+
+          <div className={styles.controlGroup}>
+            <label className={styles.controlLabel}>Select Predefined Shift (Optional)</label>
+            <select
+              value={selectedMasterShift}
+              onChange={(e) => handleMasterShiftChange(e.target.value)}
+              className={styles.controlInput}
+            >
+              <option value="">-- Select from Shift Scheduler --</option>
+              {masterShifts.map((shift) => (
+                <option key={shift.id} value={shift.id}>
+                  {shift.name} ({shift.shift_in} - {shift.shift_out})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.divider}>OR Enter Manually</div>
 
           <div className={styles.controlGroup}>
             <label className={styles.controlLabel}>Shift Name</label>
@@ -479,13 +612,22 @@ export default function ShiftManagementPage() {
                             </button>
                           </div>
                         ) : emp.start_time && emp.end_time ? (
-                          <button
-                            onClick={() => handleEditShift(emp)}
-                            className={styles.editButton}
-                            title="Edit timing"
-                          >
-                            ✎
-                          </button>
+                          <div className={styles.actionButtons}>
+                            <button
+                              onClick={() => handleEditShift(emp)}
+                              className={styles.editButton}
+                              title="Edit timing"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => handleDeleteShift(emp)}
+                              className={styles.deleteButton}
+                              title="Delete shift"
+                            >
+                              🗑
+                            </button>
+                          </div>
                         ) : null}
                       </td>
                     </tr>

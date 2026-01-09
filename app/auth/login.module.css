@@ -83,19 +83,59 @@
   gap: 14px;
 }
 
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordWrapper .input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.togglePasswordBtn {
+  position: absolute;
+  right: 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #718096;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  transition: color 0.2s;
+}
+
+.togglePasswordBtn:hover {
+  color: #0052CC;
+}
+
+.togglePasswordBtn:active {
+  color: #00B8A9;
+}
+
 .input {
   padding: 13px 16px;
   border-radius: 999px;
-  border: 1px solid #E2E8F0;
+  border: 2px solid #B0BEC5;
   font-size: 1rem;
-  background: #F7FAFC;
+  background: #FFFFFF;
+  color: #000000;
+  font-weight: 600;
   transition: border 0.2s, box-shadow 0.2s, transform 0.1s;
 }
 .input:focus {
-  border: 1.5px solid #0052CC;
+  border: 2px solid #0052CC;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0,82,204,0.12);
+  box-shadow: 0 0 0 3px rgba(0,82,204,0.15);
   transform: translateY(-1px);
+}
+.input::placeholder {
+  color: #263238;
+  font-weight: 600;
 }
 
 .rowBetween { display: flex; justify-content: space-between; align-items: center; font-size: 0.92rem; }

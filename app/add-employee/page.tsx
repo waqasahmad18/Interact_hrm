@@ -10,6 +10,7 @@ const employeeTabs = [
   { name: "Personal Details" },
   { name: "Contact Details" },
   { name: "Emergency Contacts" },
+  { name: "Job Details" },
   { name: "Salary" },
   { name: "Attachments" },
 ];
@@ -77,7 +78,7 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
         const data = await res.json();
         if (data.success) {
           alert('Emergency contacts saved!');
-          setActiveTab('Salary');
+          setActiveTab('Job Details');
         } else {
           alert('Save failed: ' + (data.error || 'Unknown'));
         }
@@ -124,7 +125,52 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
       }
     };
 
+  // Job Details state
+  const [jobDetails, setJobDetails] = useState({
+    joinedDate: "",
+    jobTitle: "",
+    jobSpecification: "",
+    jobCategory: "",
+    subUnit: "",
+    location: "",
+    employmentStatus: "",
+    includeContract: false
+  });
 
+  // Job Details handler
+  const handleJobDetailsSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!employeeId) {
+      alert('Please save Personal Details first.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/employee_jobs', {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: employeeId,
+          joinedDate: jobDetails.joinedDate,
+          jobTitle: jobDetails.jobTitle,
+          jobSpecification: jobDetails.jobSpecification,
+          jobCategory: jobDetails.jobCategory,
+          subUnit: jobDetails.subUnit,
+          location: jobDetails.location,
+          employmentStatus: jobDetails.employmentStatus,
+          includeContract: jobDetails.includeContract
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Job details saved!');
+        setActiveTab('Salary');
+      } else {
+        alert('Save failed: ' + (data.error || 'Unknown'));
+      }
+    } catch (err) {
+      alert('Save failed: ' + String(err));
+    }
+  };
 
     // Salary Details handler
     const handleSalarySave = async (e: React.FormEvent) => {
@@ -259,6 +305,24 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
               data.contacts[0] || { contact_name: '', relationship: '', phone: '' },
               data.contacts[1] || { contact_name: '', relationship: '', phone: '' }
             ]);
+          }
+        });
+
+      // 4. Job Details
+      fetch(`/api/employee_jobs?employeeId=${editEmployeeId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.job) {
+            setJobDetails({
+              joinedDate: data.job.joined_date || "",
+              jobTitle: data.job.job_title || "",
+              jobSpecification: data.job.job_specification || "",
+              jobCategory: data.job.job_category || "",
+              subUnit: data.job.sub_unit || "",
+              location: data.job.location || "",
+              employmentStatus: data.job.employment_status || "",
+              includeContract: !!data.job.include_contract
+            });
           }
         });
 
@@ -609,6 +673,82 @@ export default function AddEmployeePage({ edit: editProp, employeeId: employeeId
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
                       <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Save</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {activeTab === "Job Details" && (
+                <div>
+                  <h2 className={styles.heading}>Job Details</h2>
+                  {employeeId && (
+                    <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                      Employee: {firstName} {lastName} (ID: {employeeId})
+                    </div>
+                  )}
+                  <form className={styles.form} style={{ width: "100%" }} onSubmit={handleJobDetailsSave}>
+                    <div className={styles.row}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Date of Joining</label>
+                        <input className={styles.input} type="date" placeholder="Date of Joining" value={jobDetails.joinedDate} onChange={e => setJobDetails(j => ({ ...j, joinedDate: e.target.value }))} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Title</label>
+                        <input className={styles.input} type="text" placeholder="Job Title" value={jobDetails.jobTitle} onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className={styles.row}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Specification</label>
+                        <input className={styles.input} type="text" placeholder="Job Specification" value={jobDetails.jobSpecification} onChange={e => setJobDetails(j => ({ ...j, jobSpecification: e.target.value }))} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Category</label>
+                        <select className={styles.select} value={jobDetails.jobCategory} onChange={e => setJobDetails(j => ({ ...j, jobCategory: e.target.value }))}>
+                          <option value="">-- Select --</option>
+                          <option value="IT">IT</option>
+                          <option value="HR">HR</option>
+                          <option value="Finance">Finance</option>
+                          <option value="Operations">Operations</option>
+                          <option value="Sales">Sales</option>
+                          <option value="Marketing">Marketing</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className={styles.row}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Sub Unit</label>
+                        <input className={styles.input} type="text" placeholder="Sub Unit" value={jobDetails.subUnit} onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Location</label>
+                        <input className={styles.input} type="text" placeholder="Location" value={jobDetails.location} onChange={e => setJobDetails(j => ({ ...j, location: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className={styles.row}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employment Status</label>
+                        <select className={styles.select} value={jobDetails.employmentStatus} onChange={e => setJobDetails(j => ({ ...j, employmentStatus: e.target.value }))}>
+                          <option value="">-- Select --</option>
+                          <option value="Permanent">Permanent</option>
+                          <option value="Contract">Contract</option>
+                          <option value="Probation">Probation</option>
+                          <option value="Temporary">Temporary</option>
+                          <option value="Intern">Intern</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ margin: "18px 0 10px 0", display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ fontWeight: 600 }}>Include Employment Contract Details</span>
+                      <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>
+                        <input type="checkbox" checked={jobDetails.includeContract} onChange={e => setJobDetails(j => ({ ...j, includeContract: e.target.checked }))} style={{ opacity: 0, width: 0, height: 0 }} />
+                        <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: jobDetails.includeContract ? "#FFA726" : "#E2E8F0", borderRadius: 22, transition: "background 0.2s" }}></span>
+                        <span style={{ position: "absolute", left: jobDetails.includeContract ? 20 : 2, top: 2, width: 18, height: 18, background: "#fff", borderRadius: "50%", boxShadow: "0 1px 4px rgba(0,82,204,0.12)", transition: "left 0.2s" }}></span>
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+                      <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
                     </div>
                   </form>
                 </div>

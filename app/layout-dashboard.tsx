@@ -2,7 +2,7 @@
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck } from "react-icons/fa";
 
 const sidebarLinks = [
 	{
@@ -22,6 +22,7 @@ const sidebarLinks = [
 			{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
 			{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
 			{ name: "Employee Credentials", path: "/admin/employee-credentials", icon: <FaKey /> },
+			{ name: "Shift Scheduler", path: "/admin/shift-scheduler", icon: <FaCalendarCheck /> },
 			{ name: "Shift Management", path: "/admin/shift-management", icon: <FaClock /> },
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },

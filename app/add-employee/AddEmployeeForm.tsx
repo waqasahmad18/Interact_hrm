@@ -7,6 +7,7 @@ const employeeTabs = [
   { name: "Personal Details" },
   { name: "Contact Details" },
   { name: "Emergency Contacts" },
+  { name: "Job Details" },
   { name: "Salary" },
   { name: "Attachments" },
 ];
@@ -52,7 +53,7 @@ export default function AddEmployeeForm({
       const data = await res.json();
       if (data.success) {
         alert('Emergency contacts saved!');
-        setActiveTab('Salary');
+        setActiveTab('Job Details');
       } else {
         alert('Save failed: ' + (data.error || 'Unknown'));
       }
@@ -99,8 +100,52 @@ export default function AddEmployeeForm({
     }
   };
 
-  // Job Details handler
+  // Job Details state
+  const [jobDetails, setJobDetails] = useState({
+    joinedDate: "",
+    jobTitle: "",
+    jobSpecification: "",
+    jobCategory: "",
+    subUnit: "",
+    location: "",
+    employmentStatus: "",
+    includeContract: false
+  });
 
+  // Job Details handler
+  const handleJobDetailsSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!employeeId) {
+      alert('Please save Personal Details first.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/employee_jobs', {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: employeeId,
+          joinedDate: jobDetails.joinedDate,
+          jobTitle: jobDetails.jobTitle,
+          jobSpecification: jobDetails.jobSpecification,
+          jobCategory: jobDetails.jobCategory,
+          subUnit: jobDetails.subUnit,
+          location: jobDetails.location,
+          employmentStatus: jobDetails.employmentStatus,
+          includeContract: jobDetails.includeContract
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Job details saved!');
+        setActiveTab('Salary');
+      } else {
+        alert('Save failed: ' + (data.error || 'Unknown'));
+      }
+    } catch (err) {
+      alert('Save failed: ' + String(err));
+    }
+  };
 
   // Salary Details handler
   const handleSalarySave = async (e: React.FormEvent) => {
@@ -176,6 +221,36 @@ export default function AddEmployeeForm({
     depositAmount: ""
   });
 
+  // Helper function to format date to YYYY-MM-DD for date input
+  function formatDateForInput(dateString: string | null | undefined): string {
+    if (!dateString) return "";
+    try {
+      // Handle various date formats
+      let date: Date;
+      
+      // If already in YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return dateString;
+      }
+      
+      // Try parsing as ISO string or standard date
+      date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "";
+      }
+      
+      // Format as YYYY-MM-DD
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (e) {
+      return "";
+    }
+  }
+
   // Prefill all form states in edit mode
   useEffect(() => {
     if (isEdit && editEmployeeId) {
@@ -190,7 +265,7 @@ export default function AddEmployeeForm({
             setMiddleName(data.employee.pseudonym || data.employee.middle_name || "");
             setLastName(data.employee.last_name || "");
             setEmployeeId(data.employee.employee_code || editEmployeeId || "");
-            setDob(data.employee.dob || "");
+            setDob(formatDateForInput(data.employee.dob));
             setGender(data.employee.gender || "");
             setMaritalStatus(data.employee.marital_status || "");
             setNationality(data.employee.nationality || "");
@@ -199,9 +274,15 @@ export default function AddEmployeeForm({
             setEmploymentStatus(data.employee.employment_status || "");
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
-            setStatus(data.employee.status || "enabled");
+              // Set status to "enabled" - default for login details
+              setStatus("enabled");
             setRole(data.employee.role || "Officer");
             setCreateLogin(!!data.employee.username);
+              // Pre-fill password fields in edit mode with existing password
+              if (data.employee.password) {
+                setPassword(data.employee.password);
+                setConfirmPassword(data.employee.password);
+              }
           }
         })
         .catch(err => console.error('Error fetching personal details:', err));
@@ -248,7 +329,28 @@ export default function AddEmployeeForm({
         }
       })
       .catch(err => console.error('Error fetching emergency contacts:', err));
-      // 4. Salary Details
+      // 4. Job Details
+      Promise.all([
+        fetch(`/api/employee_jobs?employeeId=${editEmployeeId}`).then(r => r.json()),
+        fetch(`/api/employee_jobs?employeeId=${employeeId}`).then(r => r.json())
+      ]).then(([data1, data2]) => {
+        const data = (data1.success ? data1 : data2);
+        console.log('Job details data:', data);
+        if (data.success && data.job) {
+          setJobDetails({
+            joinedDate: formatDateForInput(data.job.joined_date),
+            jobTitle: data.job.job_title || "",
+            jobSpecification: data.job.job_specification || "",
+            jobCategory: data.job.job_category || "",
+            subUnit: data.job.sub_unit || "",
+            location: data.job.location || "",
+            employmentStatus: data.job.employment_status || "",
+            includeContract: !!data.job.include_contract
+          });
+        }
+      })
+      .catch(err => console.error('Error fetching job details:', err));
+      // 5. Salary Details
       Promise.all([
         fetch(`/api/employee_salaries?employeeId=${editEmployeeId}`).then(r => r.json()),
         fetch(`/api/employee_salaries?employeeId=${employeeId}`).then(r => r.json())
@@ -400,46 +502,82 @@ export default function AddEmployeeForm({
                 </div>
               </div>
               <div className={styles.row}>
-                <input className={styles.input} type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required />
-                <input className={styles.input} type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required />
-                <input className={styles.input} type="text" placeholder="Pseudonym" value={middleName} onChange={e => setMiddleName(e.target.value)} />
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>First Name</label>
+                  <input className={styles.input} type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Last Name</label>
+                  <input className={styles.input} type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pseudo Name</label>
+                  <input className={styles.input} type="text" placeholder="Pseudonym" value={middleName} onChange={e => setMiddleName(e.target.value)} />
+                </div>
               </div>
-              <input className={styles.input} type="text" placeholder="Employee Id" value={employeeId || ''} readOnly required />
+              <div>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employee Id</label>
+                <input className={styles.input} type="text" placeholder="Employee Id" value={employeeId || ''} readOnly required />
+              </div>
               <div className={styles.row}>
-                <input className={styles.input} type="date" placeholder="Date of Birth" value={dob} onChange={e => setDob(e.target.value)} />
-                <select className={styles.select} value={gender} onChange={e => setGender(e.target.value)}>
-                  <option value="">Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Date of Birth</label>
+                  <input className={styles.input} type="date" placeholder="Date of Birth" value={dob} onChange={e => setDob(e.target.value)} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Gender</label>
+                  <select className={styles.select} value={gender} onChange={e => setGender(e.target.value)}>
+                    <option value="">Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Marital Status</label>
+                  <select className={styles.select} value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)}>
+                    <option value="">Marital Status</option>
+                    <option value="single">Single</option>
+                    <option value="married">Married</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Nationality</label>
+                <div className={styles.row}>
+                  <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
+                </div>
+              </div>
+              <div className={styles.row}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>CNIC #</label>
+                  <input className={styles.input} type="text" placeholder="CNIC #" value={cnicNumber} onChange={e => setCnicNumber(e.target.value)} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>CNIC Address</label>
+                  <input className={styles.input} type="text" placeholder="CNIC Address" value={cnicAddress} onChange={e => setCnicAddress(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employment Status</label>
+                <select className={styles.select} value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} required>
+                  <option value="">Select Employment Status</option>
+                  <option value="Probation">Probation</option>
+                  <option value="Permanent">Permanent</option>
                 </select>
-                <select className={styles.select} value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)}>
-                  <option value="">Marital Status</option>
-                  <option value="single">Single</option>
-                  <option value="married">Married</option>
-                  <option value="other">Other</option>
+              </div>
+              <div>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Role</label>
+                <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
+                  <option value="">Select Role</option>
+                  <option value="BOD/CEO">BOD/CEO</option>
+                  <option value="HOD">HOD</option>
+                  <option value="Management">Management</option>
+                  <option value="Leader">Leader</option>
+                  <option value="Officer">Officer</option>
                 </select>
               </div>
-              <div className={styles.row}>
-                <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
-              </div>
-              <div className={styles.row}>
-                <input className={styles.input} type="text" placeholder="CNIC #" value={cnicNumber} onChange={e => setCnicNumber(e.target.value)} />
-                <input className={styles.input} type="text" placeholder="CNIC Address" value={cnicAddress} onChange={e => setCnicAddress(e.target.value)} />
-              </div>
-              <select className={styles.select} value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} required>
-                <option value="">Select Employment Status</option>
-                <option value="Probation">Probation</option>
-                <option value="Permanent">Permanent</option>
-              </select>
-              <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
-                <option value="">Select Role</option>
-                <option value="BOD/CEO">BOD/CEO</option>
-                <option value="HOD">HOD</option>
-                <option value="Management">Management</option>
-                <option value="Leader">Leader</option>
-                <option value="Officer">Officer</option>
-              </select>
               <div className={styles.row} style={{ alignItems: "center" }}>
                 <span style={{ color: "#0052CC", fontWeight: "600", fontSize: "0.95rem" }}>Create Login Details</span>
                 <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>
@@ -451,21 +589,39 @@ export default function AddEmployeeForm({
               {createLogin && (
                 <div style={{ background: "#F7FAFC", borderRadius: 12, padding: 14, marginBottom: 8 }}>
                   <div className={styles.row}>
-                    <input className={styles.input} type="text" placeholder="Username*" value={username} onChange={e => setUsername(e.target.value)} required />
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <label style={{ color: "#0052CC", fontWeight: "bold", marginRight: 6 }}>Status</label>
-                      <input type="radio" id="enabled" name="status" value="enabled" checked={status === "enabled"} onChange={() => setStatus("enabled")}/>
-                      <label htmlFor="enabled" style={{ marginRight: 8, color: status === "enabled" ? "#0052CC" : "#888" }}>Enabled</label>
-                      <input type="radio" id="disabled" name="status" value="disabled" checked={status === "disabled"} onChange={() => setStatus("disabled")}/>
-                      <label htmlFor="disabled" style={{ color: status === "disabled" ? "#0052CC" : "#888" }}>Disabled</label>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Username*</label>
+                      <input className={styles.input} type="text" placeholder="Username*" value={username} onChange={e => setUsername(e.target.value)} required />
+                    </div>
+                    <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Status</label>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                            <input type="radio" name="status" value="enabled" checked={status === "enabled"} onChange={() => setStatus("enabled")}/>
+                            <span style={{ color: status === "enabled" ? "#0052CC" : "#888", fontWeight: 500 }}>Enabled</span>
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                            <input type="radio" name="status" value="disabled" checked={status === "disabled"} onChange={() => setStatus("disabled")}/>
+                            <span style={{ color: status === "disabled" ? "#0052CC" : "#888", fontWeight: 500 }}>Disabled</span>
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className={styles.row}>
-                    <input className={styles.input} type="password" placeholder="Password*" value={password} onChange={e => setPassword(e.target.value)} required />
-                    <input className={styles.input} type="password" placeholder="Confirm Password*" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Password*</label>
+                      <input className={styles.input} type="password" placeholder="Password*" value={password} onChange={e => setPassword(e.target.value)} required={!isEdit} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Confirm Password*</label>
+                      <input className={styles.input} type="password" placeholder="Confirm Password*" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required={!isEdit} />
+                    </div>
                   </div>
                   <div className={styles.note}>
                     For a strong password, please use a hard to guess combination of text with upper and lower case characters, symbols and numbers
+                    {isEdit && " (Leave empty to keep current password)"}
                   </div>
                 </div>
               )}
@@ -486,33 +642,66 @@ export default function AddEmployeeForm({
               <form className={styles.form} style={{ width: "100%" }} onSubmit={handleContactSave}>
                 <div style={{ fontWeight: 600, fontSize: "1.1rem", marginBottom: 10 }}>Address</div>
                 <div className={styles.row}>
-                  <input className={styles.input} type="text" placeholder="Street 1" value={contactAddress.street1} onChange={e => setContactAddress(a => ({ ...a, street1: e.target.value }))} required />
-                  <input className={styles.input} type="text" placeholder="Street 2" value={contactAddress.street2} onChange={e => setContactAddress(a => ({ ...a, street2: e.target.value }))} />
-                  <input className={styles.input} type="text" placeholder="City" value={contactAddress.city} onChange={e => setContactAddress(a => ({ ...a, city: e.target.value }))} required />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Street 1</label>
+                    <input className={styles.input} type="text" placeholder="Street 1" value={contactAddress.street1} onChange={e => setContactAddress(a => ({ ...a, street1: e.target.value }))} required />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Street 2</label>
+                    <input className={styles.input} type="text" placeholder="Street 2" value={contactAddress.street2} onChange={e => setContactAddress(a => ({ ...a, street2: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>City</label>
+                    <input className={styles.input} type="text" placeholder="City" value={contactAddress.city} onChange={e => setContactAddress(a => ({ ...a, city: e.target.value }))} required />
+                  </div>
                 </div>
                 <div className={styles.row}>
-                  <input className={styles.input} type="text" placeholder="State/Province" value={contactAddress.state} onChange={e => setContactAddress(a => ({ ...a, state: e.target.value }))} required />
-                  <input className={styles.input} type="text" placeholder="Zip/Postal Code" value={contactAddress.zip} onChange={e => setContactAddress(a => ({ ...a, zip: e.target.value }))} />
-                  <select className={styles.select} value={contactAddress.country} onChange={e => setContactAddress(a => ({ ...a, country: e.target.value }))} required>
-                    <option value="">-- Select --</option>
-                    <option value="Pakistan">Pakistan</option>
-                    <option value="India">India</option>
-                    <option value="UAE">UAE</option>
-                    <option value="USA">USA</option>
-                    <option value="UK">UK</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>State/Province</label>
+                    <input className={styles.input} type="text" placeholder="State/Province" value={contactAddress.state} onChange={e => setContactAddress(a => ({ ...a, state: e.target.value }))} required />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Zip/Postal Code</label>
+                    <input className={styles.input} type="text" placeholder="Zip/Postal Code" value={contactAddress.zip} onChange={e => setContactAddress(a => ({ ...a, zip: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Country</label>
+                    <select className={styles.select} value={contactAddress.country} onChange={e => setContactAddress(a => ({ ...a, country: e.target.value }))} required>
+                      <option value="">-- Select --</option>
+                      <option value="Pakistan">Pakistan</option>
+                      <option value="India">India</option>
+                      <option value="UAE">UAE</option>
+                      <option value="USA">USA</option>
+                      <option value="UK">UK</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
                 </div>
                 <div style={{ fontWeight: 600, fontSize: "1.1rem", margin: "18px 0 10px 0" }}>Telephone</div>
                 <div className={styles.row}>
-                  <input className={styles.input} type="text" placeholder="Home" value={contactTelephone.home} onChange={e => setContactTelephone(t => ({ ...t, home: e.target.value }))} />
-                  <input className={styles.input} type="text" placeholder="Mobile" value={contactTelephone.mobile} onChange={e => setContactTelephone(t => ({ ...t, mobile: e.target.value }))} required />
-                  <input className={styles.input} type="text" placeholder="Work" value={contactTelephone.work} onChange={e => setContactTelephone(t => ({ ...t, work: e.target.value }))} />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Home</label>
+                    <input className={styles.input} type="text" placeholder="Home" value={contactTelephone.home} onChange={e => setContactTelephone(t => ({ ...t, home: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Mobile</label>
+                    <input className={styles.input} type="text" placeholder="Mobile" value={contactTelephone.mobile} onChange={e => setContactTelephone(t => ({ ...t, mobile: e.target.value }))} required />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Work</label>
+                    <input className={styles.input} type="text" placeholder="Work" value={contactTelephone.work} onChange={e => setContactTelephone(t => ({ ...t, work: e.target.value }))} />
+                  </div>
                 </div>
                 <div style={{ fontWeight: 600, fontSize: "1.1rem", margin: "18px 0 10px 0" }}>Email</div>
                 <div className={styles.row}>
-                  <input className={styles.input} type="email" placeholder="Work Email" value={contactEmail.work} onChange={e => setContactEmail(em => ({ ...em, work: e.target.value }))} required />
-                  <input className={styles.input} type="email" placeholder="Other Email" value={contactEmail.other} onChange={e => setContactEmail(em => ({ ...em, other: e.target.value }))} />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Work Email</label>
+                    <input className={styles.input} type="email" placeholder="Work Email" value={contactEmail.work} onChange={e => setContactEmail(em => ({ ...em, work: e.target.value }))} required />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Other Email</label>
+                    <input className={styles.input} type="email" placeholder="Other Email" value={contactEmail.other} onChange={e => setContactEmail(em => ({ ...em, other: e.target.value }))} />
+                  </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
                   <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
@@ -531,18 +720,90 @@ export default function AddEmployeeForm({
               <form className={styles.form} style={{ width: '100%' }} onSubmit={handleEmergencyContactsSave}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>Emergency Contact 1</div>
                 <div className={styles.row}>
-                  <input className={styles.input} placeholder="Name" value={emergencyContacts[0].contact_name} onChange={e => handleEmergencyContactsChange(0, 'contact_name', e.target.value)} />
-                  <input className={styles.input} placeholder="Relationship" value={emergencyContacts[0].relationship} onChange={e => handleEmergencyContactsChange(0, 'relationship', e.target.value)} />
-                  <input className={styles.input} placeholder="Phone" value={emergencyContacts[0].phone} onChange={e => handleEmergencyContactsChange(0, 'phone', e.target.value)} />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Name</label>
+                    <input className={styles.input} placeholder="Name" value={emergencyContacts[0].contact_name} onChange={e => handleEmergencyContactsChange(0, 'contact_name', e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Relationship</label>
+                    <input className={styles.input} placeholder="Relationship" value={emergencyContacts[0].relationship} onChange={e => handleEmergencyContactsChange(0, 'relationship', e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Phone</label>
+                    <input className={styles.input} placeholder="Phone" value={emergencyContacts[0].phone} onChange={e => handleEmergencyContactsChange(0, 'phone', e.target.value)} />
+                  </div>
                 </div>
                 <div style={{ fontWeight: 600, marginBottom: 8, marginTop: 12 }}>Emergency Contact 2</div>
                 <div className={styles.row}>
-                  <input className={styles.input} placeholder="Name" value={emergencyContacts[1].contact_name} onChange={e => handleEmergencyContactsChange(1, 'contact_name', e.target.value)} />
-                  <input className={styles.input} placeholder="Relationship" value={emergencyContacts[1].relationship} onChange={e => handleEmergencyContactsChange(1, 'relationship', e.target.value)} />
-                  <input className={styles.input} placeholder="Phone" value={emergencyContacts[1].phone} onChange={e => handleEmergencyContactsChange(1, 'phone', e.target.value)} />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Name</label>
+                    <input className={styles.input} placeholder="Name" value={emergencyContacts[1].contact_name} onChange={e => handleEmergencyContactsChange(1, 'contact_name', e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Relationship</label>
+                    <input className={styles.input} placeholder="Relationship" value={emergencyContacts[1].relationship} onChange={e => handleEmergencyContactsChange(1, 'relationship', e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Phone</label>
+                    <input className={styles.input} placeholder="Phone" value={emergencyContacts[1].phone} onChange={e => handleEmergencyContactsChange(1, 'phone', e.target.value)} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
                   <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Save</button>
+                </div>
+              </form>
+            </div>
+          )}
+          {activeTab === "Job Details" && (
+            <div>
+              <h2 className={styles.heading}>Job Details</h2>
+              {employeeId && (
+                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                  Employee: {firstName} {lastName} (ID: {employeeId})
+                </div>
+              )}
+              <form className={styles.form} style={{ width: "100%" }} onSubmit={handleJobDetailsSave}>
+                <div className={styles.row}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Date of Joining</label>
+                    <input className={styles.input} type="date" placeholder="Date of Joining" value={jobDetails.joinedDate} onChange={e => setJobDetails(j => ({ ...j, joinedDate: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Title</label>
+                    <input className={styles.input} type="text" placeholder="Job Title" value={jobDetails.jobTitle} onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))} />
+                  </div>
+                </div>
+                <div className={styles.row}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Specification</label>
+                    <input className={styles.input} type="text" placeholder="Job Specification" value={jobDetails.jobSpecification} onChange={e => setJobDetails(j => ({ ...j, jobSpecification: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Category</label>
+                    <select className={styles.select} value={jobDetails.jobCategory} onChange={e => setJobDetails(j => ({ ...j, jobCategory: e.target.value }))}>
+                      <option value="">-- Select --</option>
+                      <option value="IT">IT</option>
+                      <option value="HR">HR</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Operations">Operations</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div className={styles.row}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Sub Unit</label>
+                    <input className={styles.input} type="text" placeholder="Sub Unit" value={jobDetails.subUnit} onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Location</label>
+                    <input className={styles.input} type="text" placeholder="Location" value={jobDetails.location} onChange={e => setJobDetails(j => ({ ...j, location: e.target.value }))} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
                 </div>
               </form>
             </div>
@@ -557,29 +818,44 @@ export default function AddEmployeeForm({
               )}
               <form className={styles.form} style={{ width: "100%" }} onSubmit={handleSalarySave}>
                 <div className={styles.row}>
-                  <input className={styles.input} type="text" placeholder="Salary Component*" value={salaryDetails.component} onChange={e => setSalaryDetails(s => ({ ...s, component: e.target.value }))} />
-                  <select className={styles.select} value={salaryDetails.payGrade} onChange={e => setSalaryDetails(s => ({ ...s, payGrade: e.target.value }))}>
-                    <option value="">-- Select --</option>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                  </select>
-                  <select className={styles.select} value={salaryDetails.payFrequency} onChange={e => setSalaryDetails(s => ({ ...s, payFrequency: e.target.value }))}>
-                    <option value="">-- Select --</option>
-                    <option value="Monthly">Monthly</option>
-                    <option value="Weekly">Weekly</option>
-                    <option value="Yearly">Yearly</option>
-                  </select>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Salary Component*</label>
+                    <input className={styles.input} type="text" placeholder="Salary Component*" value={salaryDetails.component} onChange={e => setSalaryDetails(s => ({ ...s, component: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pay Grade</label>
+                    <select className={styles.select} value={salaryDetails.payGrade} onChange={e => setSalaryDetails(s => ({ ...s, payGrade: e.target.value }))}>
+                      <option value="">-- Select --</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pay Frequency</label>
+                    <select className={styles.select} value={salaryDetails.payFrequency} onChange={e => setSalaryDetails(s => ({ ...s, payFrequency: e.target.value }))}>
+                      <option value="">-- Select --</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Yearly">Yearly</option>
+                    </select>
+                  </div>
                 </div>
                 <div className={styles.row}>
-                  <select className={styles.select} value={salaryDetails.currency} onChange={e => setSalaryDetails(s => ({ ...s, currency: e.target.value }))}>
-                    <option value="">-- Select --</option>
-                    <option value="PKR">PKR</option>
-                    <option value="USD">USD</option>
-                    <option value="INR">INR</option>
-                    <option value="AED">AED</option>
-                  </select>
-                  <input className={styles.input} type="number" placeholder="Amount*" value={salaryDetails.amount} onChange={e => setSalaryDetails(s => ({ ...s, amount: e.target.value }))} />
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Currency</label>
+                    <select className={styles.select} value={salaryDetails.currency} onChange={e => setSalaryDetails(s => ({ ...s, currency: e.target.value }))}>
+                      <option value="">-- Select --</option>
+                      <option value="PKR">PKR</option>
+                      <option value="USD">USD</option>
+                      <option value="INR">INR</option>
+                      <option value="AED">AED</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Amount*</label>
+                    <input className={styles.input} type="number" placeholder="Amount*" value={salaryDetails.amount} onChange={e => setSalaryDetails(s => ({ ...s, amount: e.target.value }))} />
+                  </div>
                 </div>
                 <div className={styles.row}>
                   <textarea className={styles.input} placeholder="Comments" value={salaryDetails.comments} onChange={e => setSalaryDetails(s => ({ ...s, comments: e.target.value }))} style={{ minHeight: 60, resize: "vertical" }} />

@@ -263,7 +263,7 @@ function formatDate(dateString: string) {
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 180 }}>
             <label>Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }}>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }}>
               {LEAVE_CATEGORIES.map(cat => (
                 <option key={cat.value} value={cat.value}>{cat.label}</option>
               ))}
@@ -271,16 +271,16 @@ function formatDate(dateString: string) {
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <label>Start Date</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }} />
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <label>End Date</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }} />
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
           <label>Reason</label>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} required rows={2} style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc" }} />
+          <textarea value={reason} onChange={e => setReason(e.target.value)} required rows={2} style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
         </div>
         <div style={{ marginTop: 16 }}>
           <label>Attach Documents (PDF only)</label>
