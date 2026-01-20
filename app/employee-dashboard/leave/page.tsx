@@ -143,6 +143,13 @@ function formatDate(dateString: string) {
   useEffect(() => {
     if (employeeId) {
       fetchLeaves();
+      
+      // Refresh balance every 30 seconds to catch admin updates
+      const intervalId = setInterval(() => {
+        fetchLeaves();
+      }, 30000); // 30 seconds
+      
+      return () => clearInterval(intervalId);
     }
   }, [employeeId]);
 

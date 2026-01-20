@@ -2,7 +2,7 @@
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit } from "react-icons/fa";
 
 const sidebarLinks = [
 	{
@@ -16,6 +16,7 @@ const sidebarLinks = [
 		group: "HR",
 		links: [
 			{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
+			{ name: "Manage Leaves", path: "/admin/manage-leaves", icon: <FaEdit /> },
 			{ name: "Time", path: "/time", icon: <FaClock /> },
 			{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },

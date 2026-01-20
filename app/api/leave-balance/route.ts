@@ -39,9 +39,25 @@ export async function GET(req: NextRequest) {
 
     const empStatusRaw: string = emp?.employment_status || job?.employment_status || "";
 
-    // Determine effective status + allowance (manual status only)
+    // Determine effective status
     let effectiveStatus: "Probation" | "Permanent" = empStatusRaw === "Probation" ? "Probation" : "Permanent";
+    
+    // Fetch custom leave allowance and adjustments from database using correct employee_id
+    const [allowanceResult]: any = await conn.execute(
+      "SELECT * FROM employee_leave_allowances WHERE employee_id = ?",
+      [emp?.id]
+    );
+    
+    const allowanceRows = (allowanceResult && allowanceResult.length > 0) ? allowanceResult : [];
+    const customAllowance = allowanceRows.length > 0 ? allowanceRows[0] : null;
+    
+    // Use fixed allowance based on employment status
     let annualAllowance = effectiveStatus === "Probation" ? 3 : 20;
+    let bereavementAllowance = 3;
+    
+    // Get balance adjustments (manual overrides by admin)
+    const annualBalanceAdjustment = customAllowance?.annual_balance_adjustment ?? 0;
+    const bereavementBalanceAdjustment = customAllowance?.bereavement_balance_adjustment ?? 0;
 
     // Fetch all approved leaves for this employee (handle both numeric and string IDs)
     const [leaves]: any = await conn.execute(
@@ -56,7 +72,7 @@ export async function GET(req: NextRequest) {
       annual: annualAllowance,
       casual: 10,
       sick: 15,
-      bereavement: 3,
+      bereavement: bereavementAllowance,
       other: 5
     };
 
@@ -77,12 +93,12 @@ export async function GET(req: NextRequest) {
       balance[category] = categoryAllowances[category] - (usedLeave[category] || 0);
     });
 
-    // Annual balance = total 20 days - all approved leaves used (except bereavement which is separate)
+    // Annual balance = total allowance - all approved leaves used (except bereavement) + adjustment
     const bereavementUsedDays = usedLeave.bereavement || 0;
     const totalAnnualAllowance = annualAllowance;
     const totalApprovedDaysUsed = totalUsedDays - bereavementUsedDays;
-    const annualBalance = totalAnnualAllowance - totalApprovedDaysUsed;
-    const bereavementBalance = categoryAllowances.bereavement - bereavementUsedDays;
+    const annualBalance = totalAnnualAllowance - totalApprovedDaysUsed + annualBalanceAdjustment;
+    const bereavementBalance = bereavementAllowance - bereavementUsedDays + bereavementBalanceAdjustment;
 
     return NextResponse.json({
       success: true,
@@ -97,7 +113,9 @@ export async function GET(req: NextRequest) {
       bereavementUsedDays,
       annualBalance: Math.max(0, annualBalance),
       annualAllowance: totalAnnualAllowance,
-      bereavementBalance: Math.max(0, bereavementBalance)
+      bereavementBalance: Math.max(0, bereavementBalance),
+      annualBalanceAdjustment,
+      bereavementBalanceAdjustment
     });
   } catch (error) {
     return NextResponse.json({
