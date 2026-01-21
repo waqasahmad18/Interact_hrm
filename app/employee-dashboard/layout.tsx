@@ -20,43 +20,33 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const loginId = localStorage.getItem("loginId");
-      console.log("LoginId from localStorage:", loginId);
-      if (loginId) {
-        let apiUrl = "/api/hrm_employees?";
-        if (loginId.includes("@")) {
-          apiUrl += `email=${loginId}`;
-        } else {
-          apiUrl += `username=${loginId}`;
-        }
-        console.log("Fetching from:", apiUrl);
-        
-        // Try both endpoints
-        Promise.all([
-          fetch(apiUrl).then(res => res.json()).catch(e => ({ success: false, error: e })),
-          fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(e => ({ success: false, error: e }))
-        ]).then(([data1, data2]) => {
-          console.log("Employee response:", data1);
-          console.log("HRM Employee response:", data2);
-          
-          const data = (data1.success ? data1 : data2);
-          
-          if (data.success && data.employee) {
-            const name = (data.employee.first_name || "") + (data.employee.last_name ? " " + data.employee.last_name : "");
-            console.log("Setting employee name:", name);
-            setEmployeeName(name.trim());
-          } else {
-            console.log("No employee data found in either endpoint");
-            setEmployeeName("Employee");
-          }
-        })
-        .catch(err => {
-          console.error("Fetch error:", err);
-          setEmployeeName("Employee");
-        });
-      } else {
-        console.log("No loginId in localStorage");
-        setEmployeeName("Employee");
+      if (!loginId) {
+        // Auto-logout: redirect to login if loginId missing (e.g., after cache clear)
+        window.location.href = "/auth";
+        return;
       }
+      // ...existing code for fetching employee name...
+      let apiUrl = "/api/hrm_employees?";
+      if (loginId.includes("@")) {
+        apiUrl += `email=${loginId}`;
+      } else {
+        apiUrl += `username=${loginId}`;
+      }
+      Promise.all([
+        fetch(apiUrl).then(res => res.json()).catch(e => ({ success: false, error: e })),
+        fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(e => ({ success: false, error: e }))
+      ]).then(([data1, data2]) => {
+        const data = (data1.success ? data1 : data2);
+        if (data.success && data.employee) {
+          const name = (data.employee.first_name || "") + (data.employee.last_name ? " " + data.employee.last_name : "");
+          setEmployeeName(name.trim());
+        } else {
+          setEmployeeName("Employee");
+        }
+      })
+      .catch(err => {
+        setEmployeeName("Employee");
+      });
     }
   }, []);
   const [menuOpen, setMenuOpen] = React.useState(false);

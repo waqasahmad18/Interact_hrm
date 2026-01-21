@@ -312,17 +312,31 @@ export default function EmployeeTimePage() {
                       <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
-                  breakRows.map((b, idx) => (
-                    <tr key={b.id || idx}>
-                      <td>{employeeName}</td>
-                      <td>{b.date_display}</td>
-                      <td>{b.break_start_display}</td>
-                      <td>{b.break_end_display}</td>
-                      <td>{b.total_break_time}</td>
-                        <td>{b.total_break_time_today}</td>
-                      <td style={{ color: b.exceed ? "#e74c3c" : undefined }}>{b.exceed}</td>
-                    </tr>
-                  ))
+                  (() => {
+                    // Find last break index for each day
+                    const lastIndexMap = new Map();
+                    breakRows.forEach((row, idx) => {
+                      const key = row.date_display;
+                      lastIndexMap.set(key, idx);
+                    });
+                    return breakRows.map((b, idx) => {
+                      const key = b.date_display;
+                      const isLast = lastIndexMap.get(key) === idx;
+                      return (
+                        <tr key={b.id || idx}>
+                          <td>{employeeName}</td>
+                          <td>{b.date_display}</td>
+                          <td>{b.break_start_display}</td>
+                          <td>{b.break_end_display}</td>
+                          <td>{b.total_break_time}</td>
+                          <td>{b.total_break_time_today}</td>
+                          <td style={{ color: isLast && b.exceed_today ? "#e74c3c" : undefined }}>
+                            {isLast ? b.exceed_today : ""}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()
                 )}
               </tbody>
             </table>
@@ -363,17 +377,31 @@ export default function EmployeeTimePage() {
                     <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
-                  prayerRows.map((p, idx) => (
-                    <tr key={p.id || idx}>
-                      <td>{employeeName}</td>
-                      <td>{p.date_display}</td>
-                      <td>{p.prayer_start_display}</td>
-                      <td>{p.prayer_end_display}</td>
-                      <td>{p.total_prayer_time}</td>
-                      <td>{p.total_prayer_time_today}</td>
-                      <td style={{ color: p.exceed ? "#e74c3c" : undefined }}>{p.exceed}</td>
-                    </tr>
-                  ))
+                  (() => {
+                    // Find last prayer break index for each day
+                    const lastIndexMap = new Map();
+                    prayerRows.forEach((row, idx) => {
+                      const key = row.date_display;
+                      lastIndexMap.set(key, idx);
+                    });
+                    return prayerRows.map((p, idx) => {
+                      const key = p.date_display;
+                      const isLast = lastIndexMap.get(key) === idx;
+                      return (
+                        <tr key={p.id || idx}>
+                          <td>{employeeName}</td>
+                          <td>{p.date_display}</td>
+                          <td>{p.prayer_start_display}</td>
+                          <td>{p.prayer_end_display}</td>
+                          <td>{p.total_prayer_time}</td>
+                          <td>{p.total_prayer_time_today}</td>
+                          <td style={{ color: isLast && p.exceed_today ? "#e74c3c" : undefined }}>
+                            {isLast ? p.exceed_today : ""}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()
                 )}
               </tbody>
             </table>

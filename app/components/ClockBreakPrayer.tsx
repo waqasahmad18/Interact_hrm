@@ -24,26 +24,46 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [loadingAttendance, setLoadingAttendance] = React.useState(true);
   const [intervalId, setIntervalId] = React.useState<NodeJS.Timeout | null>(null);
 
-  // Restore clock-in state from localStorage
+  // Restore clock-in state from backend (persistent)
   React.useEffect(() => {
     if (!employeeId) return;
-    const clockinInfo = localStorage.getItem(CLOCKIN_KEY);
-    if (clockinInfo) {
-      const parsed = JSON.parse(clockinInfo);
-      if (parsed?.employeeId === employeeId && parsed?.clockInTime) {
-        const clockInTime = new Date(parsed.clockInTime);
-        setIsClockedIn(true);
-        const now = new Date();
-        const elapsedSeconds = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
-        setTimer(elapsedSeconds);
-        const id = setInterval(() => {
-          const newElapsed = Math.floor((Date.now() - clockInTime.getTime()) / 1000);
-          setTimer(newElapsed);
-        }, 1000);
-        setIntervalId(id as NodeJS.Timeout);
+    const fetchClockInStatus = async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const res = await fetch(`/api/attendance?employeeId=${employeeId}&date=${today}`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.attendance) && data.attendance.length > 0) {
+          // Find today's attendance with clock_in and no clock_out
+          const todayAttendance = data.attendance.find((a: any) => a.clock_in && !a.clock_out);
+          if (todayAttendance && todayAttendance.clock_in) {
+            setIsClockedIn(true);
+            const clockInTime = new Date(todayAttendance.clock_in);
+            const now = new Date();
+            const elapsedSeconds = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
+            setTimer(elapsedSeconds);
+            const id = setInterval(() => {
+              const newElapsed = Math.floor((Date.now() - clockInTime.getTime()) / 1000);
+              setTimer(newElapsed);
+            }, 1000);
+            setIntervalId(id as NodeJS.Timeout);
+            // Optionally update localStorage for UI speedup
+            localStorage.setItem(CLOCKIN_KEY, JSON.stringify({ employeeId, clockInTime: clockInTime.toISOString() }));
+            setLoadingAttendance(false);
+            return;
+          }
+        }
+        // Not clocked in
+        setIsClockedIn(false);
+        setTimer(0);
+        localStorage.removeItem(CLOCKIN_KEY);
+      } catch (err) {
+        setIsClockedIn(false);
+        setTimer(0);
+        localStorage.removeItem(CLOCKIN_KEY);
       }
-    }
-    setLoadingAttendance(false);
+      setLoadingAttendance(false);
+    };
+    fetchClockInStatus();
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
