@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import './ClockBreakPrayerFade.css';
 import { PrayerButton } from "./PrayerButton";
 
 const CLOCKIN_KEY = "clockinInfo";
@@ -23,9 +24,32 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [timer, setTimer] = React.useState(0);
   const [loadingAttendance, setLoadingAttendance] = React.useState(true);
   const [intervalId, setIntervalId] = React.useState<NodeJS.Timeout | null>(null);
+  // Fade-in animation state
+  const [fadeIn, setFadeIn] = React.useState(false);
 
-  // Restore clock-in state from backend (persistent)
+  // Fade-in on mount
   React.useEffect(() => {
+    setFadeIn(true);
+    // Try to restore from localStorage instantly for fast UI
+    const cached = localStorage.getItem(CLOCKIN_KEY);
+    if (cached) {
+      try {
+        const { employeeId: cachedId, clockInTime } = JSON.parse(cached);
+        if (cachedId === employeeId && clockInTime) {
+          setIsClockedIn(true);
+          const clockInDate = new Date(clockInTime);
+          const now = new Date();
+          const elapsedSeconds = Math.floor((now.getTime() - clockInDate.getTime()) / 1000);
+          setTimer(elapsedSeconds);
+          const id = setInterval(() => {
+            const newElapsed = Math.floor((Date.now() - clockInDate.getTime()) / 1000);
+            setTimer(newElapsed);
+          }, 1000);
+          setIntervalId(id as NodeJS.Timeout);
+        }
+      } catch {}
+    }
+    // Always fetch fresh from backend in background
     if (!employeeId) return;
     const fetchClockInStatus = async () => {
       try {
@@ -240,7 +264,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
+    <div className={`cbp-fade-in${fadeIn ? ' cbp-fade-in-active' : ''}`} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
       {/* Clock In Widget */}
       <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#27ae60", marginBottom: 10 }}>Clock In</div>

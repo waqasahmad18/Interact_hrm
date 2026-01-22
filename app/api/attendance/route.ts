@@ -190,12 +190,11 @@ export async function POST(req: NextRequest) {
       );
       console.log("Clock-in record inserted successfully");
     } else if (clock_out !== undefined && clock_out !== null) {
-      // Clock Out: find the most recent row without clock_out for this employee on this date and UPDATE it
+      // Clock Out: find the most recent row without clock_out for this employee (regardless of date) and UPDATE it
       const [pendingRows] = await conn.execute(
-        `SELECT id FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND DATE(date) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,
-        [employee_id, formattedDate]
+        `SELECT id FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,
+        [employee_id]
       );
-      
       const pending = (pendingRows as any[])[0];
       if (pending) {
         const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
