@@ -441,18 +441,33 @@ export default function EmployeeTimePage() {
                     <td colSpan={6} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
-                  attendance.map((a, idx) => (
-                    <tr key={a.id || idx}>
-                      <td>{employeeName}</td>
-                      <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
-                      <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
-                      <td>{a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""}</td>
-                      <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
-                      <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
-                        {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
-                      </td>
-                    </tr>
-                  ))
+                  attendance
+                    .filter(a => {
+                      // Remove records with date 1/27/2026
+                      if (!a.date) return true;
+                      const d = new Date(a.date);
+                      // Month is 0-based, so 0=Jan, 1=Feb, ...
+                      return !(d.getFullYear() === 2026 && d.getMonth() === 0 && d.getDate() === 27);
+                    })
+                    .sort((a, b) => {
+                      // Sort by clock_in descending (latest first)
+                      if (!a.clock_in && !b.clock_in) return 0;
+                      if (!a.clock_in) return 1;
+                      if (!b.clock_in) return -1;
+                      return new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime();
+                    })
+                    .map((a, idx) => (
+                      <tr key={a.id || idx}>
+                        <td>{employeeName}</td>
+                        <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
+                        <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
+                        <td>{a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""}</td>
+                        <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+                        <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
+                          {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
