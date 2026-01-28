@@ -1,9 +1,12 @@
 "use client";
+
 import React, { useEffect, useState } from "react";
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
 import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
 import { FaFileExcel } from "react-icons/fa";
+import * as XLSX from 'xlsx';
+
 
 // Helper to format duration in hh:mm:ss
 function formatDuration(seconds: number) {
@@ -218,24 +221,31 @@ export default function EmployeeTimePage() {
   };
 
   const downloadAttendanceCSV = () => {
-    const headers = ["Date", "Clock In", "Clock Out", "Total Hours"];
-    let csv = headers.join(',') + '\n';
-    attendance.forEach(row => {
+    const data = attendance.map(row => {
       const date = row.date ? new Date(row.date).toLocaleString() : "";
       const clockIn = row.clock_in ? new Date(row.clock_in).toLocaleString() : "";
       const clockOut = row.clock_out ? new Date(row.clock_out).toLocaleString() : "";
       const totalHours = formatTotalHours(row.clock_in, row.clock_out);
-      csv += [date, clockIn, clockOut, totalHours].map(val => `"${val}"`).join(',') + '\n';
+      const late = row.is_late ? `Late ${formatLateTime(row.late_minutes || 0)}` : "On Time";
+      return {
+        "Date": date,
+        "Clock In": clockIn,
+        "Clock Out": clockOut,
+        "Total Hours": totalHours,
+        "Late": late
+      };
     });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'my_attendance_summary.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 22 }, // Date
+      { wch: 18 }, // Clock In
+      { wch: 18 }, // Clock Out
+      { wch: 16 }, // Total Hours
+      { wch: 14 }  // Late
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Attendance");
+    XLSX.writeFile(wb, `my_attendance_summary_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const tabStyles: React.CSSProperties = {
@@ -261,41 +271,44 @@ export default function EmployeeTimePage() {
   });
 
   return (
-    <div style={{ padding: "20px" }}>
-      {/* Shared Clock / Break / Prayer controls at the very top */}
-      <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
+    <div style={{ width: '100vw', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px' }}>
+        {/* Shared Clock / Break / Prayer controls at the very top */}
+        <div style={{ marginTop: '40px' }}>
+          <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
+        </div>
 
-      <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
+        <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
 
-      <div style={tabStyles}>
-        <button style={tabButtonStyles(activeTab === "break")} onClick={() => setActiveTab("break")}>
-          Break Summary
-        </button>
-        <button style={tabButtonStyles(activeTab === "prayer")} onClick={() => setActiveTab("prayer")}>
-          Prayer Break Summary
-        </button>
-        <button style={tabButtonStyles(activeTab === "attendance")} onClick={() => setActiveTab("attendance")}>
-          Attendance Summary
-        </button>
-      </div>
+        <div style={{ ...tabStyles, borderBottom: 'none' }}>
+          <button style={{ ...tabButtonStyles(activeTab === "break"), color: '#fff' }} onClick={() => setActiveTab("break")}> 
+            Break Summary
+          </button>
+          <button style={{ ...tabButtonStyles(activeTab === "prayer"), color: '#fff' }} onClick={() => setActiveTab("prayer")}> 
+            Prayer Break Summary
+          </button>
+          <button style={{ ...tabButtonStyles(activeTab === "attendance"), color: '#fff' }} onClick={() => setActiveTab("attendance")}> 
+            Attendance Summary
+          </button>
+        </div>
 
-      {activeTab === "break" && (
-        <div className={styles.breakSummaryContainer}>
-          <div className={styles.breakSummaryFilters}>
-            <input
-              type="date"
-              value={breakDate}
-              onChange={e => setBreakDate(e.target.value)}
-              className={styles.breakSummaryDate}
-            />
-            <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-              <FaFileExcel size={20} />
-              <span>Export XLS</span>
-            </button>
-          </div>
-          <div className={styles.breakSummaryTableWrapper}>
-            <table className={styles.breakSummaryTable}>
-              <thead>
+        {activeTab === "break" && (
+          <div className={styles.breakSummaryContainer} style={{ width: '100%' }}>
+            <div className={styles.breakSummaryFilters}>
+              <input
+                type="date"
+                value={breakDate}
+                onChange={e => setBreakDate(e.target.value)}
+                className={styles.breakSummaryDate}
+              />
+              <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
+                <FaFileExcel size={20} />
+                <span>Export XLS</span>
+              </button>
+            </div>
+            <div className={styles.breakSummaryTableWrapper}>
+              <table className={styles.breakSummaryTable}>
+                <thead>
                 <tr>
                   <th>Name</th>
                   <th>Date</th>
@@ -342,25 +355,25 @@ export default function EmployeeTimePage() {
             </table>
           </div>
         </div>
-      )}
+        )}
 
-      {activeTab === "prayer" && (
-        <div className={styles.breakSummaryContainer}>
-          <div className={styles.breakSummaryFilters}>
-            <input
-              type="date"
-              value={prayerDate}
-              onChange={e => setPrayerDate(e.target.value)}
-              className={styles.breakSummaryDate}
-            />
-            <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-              <FaFileExcel size={20} />
-              <span>Export XLS</span>
-            </button>
-          </div>
-          <div className={styles.breakSummaryTableWrapper}>
-            <table className={styles.breakSummaryTable}>
-              <thead>
+        {activeTab === "prayer" && (
+          <div className={styles.breakSummaryContainer} style={{ width: '100%' }}>
+            <div className={styles.breakSummaryFilters}>
+              <input
+                type="date"
+                value={prayerDate}
+                onChange={e => setPrayerDate(e.target.value)}
+                className={styles.breakSummaryDate}
+              />
+              <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
+                <FaFileExcel size={20} />
+                <span>Export XLS</span>
+              </button>
+            </div>
+            <div className={styles.breakSummaryTableWrapper}>
+              <table className={styles.breakSummaryTable}>
+                <thead>
                 <tr>
                   <th>Name</th>
                   <th>Date</th>
@@ -407,25 +420,25 @@ export default function EmployeeTimePage() {
             </table>
           </div>
         </div>
-      )}
+        )}
 
-      {activeTab === "attendance" && (
-        <div className={attStyles.attendanceSummaryContainer}>
-          <div className={attStyles.attendanceSummaryFilters}>
-            <input
-              type="date"
-              value={attDate}
-              onChange={e => setAttDate(e.target.value)}
-              className={attStyles.attendanceSummaryDate}
-            />
-            <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
-              <FaFileExcel size={20} />
-              <span>Export XLS</span>
-            </button>
-          </div>
-          <div className={attStyles.attendanceSummaryTableWrapper}>
-            <table className={attStyles.attendanceSummaryTable}>
-              <thead>
+        {activeTab === "attendance" && (
+          <div className={attStyles.attendanceSummaryContainer} style={{ width: '100%' }}>
+            <div className={attStyles.attendanceSummaryFilters}>
+              <input
+                type="date"
+                value={attDate}
+                onChange={e => setAttDate(e.target.value)}
+                className={attStyles.attendanceSummaryDate}
+              />
+              <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
+                <FaFileExcel size={20} />
+                <span>Export XLS</span>
+              </button>
+            </div>
+            <div className={attStyles.attendanceSummaryTableWrapper}>
+              <table className={attStyles.attendanceSummaryTable}>
+                <thead>
                 <tr>
                   <th>Name</th>
                   <th>Date</th>
@@ -442,13 +455,6 @@ export default function EmployeeTimePage() {
                   </tr>
                 ) : (
                   attendance
-                    .filter(a => {
-                      // Remove records with date 1/27/2026
-                      if (!a.date) return true;
-                      const d = new Date(a.date);
-                      // Month is 0-based, so 0=Jan, 1=Feb, ...
-                      return !(d.getFullYear() === 2026 && d.getMonth() === 0 && d.getDate() === 27);
-                    })
                     .sort((a, b) => {
                       // Sort by clock_in descending (latest first)
                       if (!a.clock_in && !b.clock_in) return 0;
@@ -473,7 +479,8 @@ export default function EmployeeTimePage() {
             </table>
           </div>
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -100,11 +100,18 @@ export default function TimePage() {
     return (p.employee_name || "").toLowerCase().includes(prayerSearch.toLowerCase());
   });
 
-  // Filter attendance
-  const filteredAttendance = attendance.filter(a => {
-    if (!attSearch) return true;
-    return (a.employee_name || "").toLowerCase().includes(attSearch.toLowerCase());
-  });
+  // Filter and sort attendance (latest clock-in/out at top)
+  const filteredAttendance = attendance
+    .filter(a => {
+      if (!attSearch) return true;
+      return (a.employee_name || "").toLowerCase().includes(attSearch.toLowerCase());
+    })
+    .sort((a, b) => {
+      // Use clock_out if available, otherwise clock_in
+      const aTime = new Date(a.clock_out || a.clock_in || 0).getTime();
+      const bTime = new Date(b.clock_out || b.clock_in || 0).getTime();
+      return bTime - aTime; // Descending order (latest first)
+    });
 
   // Aggregate all breaks per employee per day (matches widget logic)
   const dailyBreakTotals = (() => {

@@ -161,7 +161,10 @@ export async function POST(req: NextRequest) {
     }
     const arrayBuffer = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(new Uint8Array(arrayBuffer));
+    // Convert arrayBuffer to Uint8Array, then to Buffer for Node.js compatibility
+    const uint8 = new Uint8Array(arrayBuffer);
+    // @ts-ignore: ExcelJS supports Uint8Array at runtime, but types expect Buffer
+    await wb.xlsx.load(uint8);
     const ws = wb.worksheets[0];
     if (!ws) return NextResponse.json({ success: false, error: 'No sheet found' }, { status: 400 });
 

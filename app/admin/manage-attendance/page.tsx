@@ -115,11 +115,26 @@ export default function ManageAttendancePage() {
     fetchAttendance();
   }, [fromDate, toDate]);
 
-  // Filter by search name
-  const filteredAttendance = attendance.filter(a => {
-    if (!searchName) return true;
-    return a.employee_name?.toLowerCase().includes(searchName.toLowerCase());
+  // Sort all records by latest clock_in/clock_out/date descending first
+  const sortedAttendance = [...attendance].sort((a, b) => {
+    const aTime = new Date(a.clock_out || a.clock_in || a.date).getTime();
+    const bTime = new Date(b.clock_out || b.clock_in || b.date).getTime();
+    return bTime - aTime;
   });
+  // Then pick only the latest record per employee
+  const latestAttendanceMap = new Map();
+  for (const a of sortedAttendance) {
+    const key = a.employee_id;
+    if (!latestAttendanceMap.has(key)) {
+      latestAttendanceMap.set(key, a);
+    }
+  }
+  let filteredAttendance = Array.from(latestAttendanceMap.values());
+  // Filter by search name
+  if (searchName) {
+    filteredAttendance = filteredAttendance.filter(a => a.employee_name?.toLowerCase().includes(searchName.toLowerCase()));
+  }
+  // Already sorted by latest time
 
   // Toggle edit mode
   const toggleEdit = (id: number) => {
@@ -247,7 +262,10 @@ export default function ManageAttendancePage() {
         const totalSeconds = Math.floor((end - start) / 1000);
         totalHours = formatDuration(totalSeconds);
       }
-      
+      let lateText = "On Time";
+      if (a.is_late) {
+        lateText = `Late ${formatLateTime(a.late_minutes || 0)}`;
+      }
       return {
         "Employee ID": a.employee_id,
         "Employee Name": a.employee_name,
@@ -255,11 +273,19 @@ export default function ManageAttendancePage() {
         "Clock In": a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : "",
         "Clock Out": a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : "",
         "Total Hours": totalHours,
-        "Status": a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"
+        "Late": lateText
       };
     });
-
     const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 14 }, // Employee ID
+      { wch: 22 }, // Name
+      { wch: 14 }, // Date
+      { wch: 14 }, // Clock In
+      { wch: 14 }, // Clock Out
+      { wch: 16 }, // Total Hours
+      { wch: 18 }  // Late
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Attendance");
     XLSX.writeFile(wb, `Attendance_${new Date().toISOString().split('T')[0]}.xlsx`);
