@@ -1,7 +1,10 @@
+
 "use client";
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
+import "./globals.css";
+import "./dashboard/nexatech-theme.module.css";
 import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit } from "react-icons/fa";
 
 const sidebarLinks = [

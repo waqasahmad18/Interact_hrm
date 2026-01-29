@@ -1,4 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+/* Responsive table wrapper and table width */
+.attendanceSummaryTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+.attendanceSummaryTable {
+  min-width: 0;
+  width: 100%;
+  table-layout: auto;
+}
 
 :root {
   --color-bg: #F7FAFC;

@@ -26,9 +26,14 @@ function localDateKey(date: Date) {
 
 // Helper to format total hours
 function formatTotalHours(clockIn: string, clockOut: string) {
-  if (!clockIn || !clockOut) return "00h 00m 00s";
+  if (!clockIn) return "00h 00m 00s";
   const start = new Date(clockIn).getTime();
-  const end = new Date(clockOut).getTime();
+  let end: number;
+  if (clockOut) {
+    end = new Date(clockOut).getTime();
+  } else {
+    end = Date.now();
+  }
   const totalSeconds = Math.floor((end - start) / 1000);
   const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
   const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
@@ -53,6 +58,16 @@ export default function EmployeeTimePage() {
   const [attDate, setAttDate] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
+  // For live timer
+  const [now, setNow] = useState(Date.now());
+
+  // Update timer every second if any open attendance exists
+  useEffect(() => {
+    const hasOpen = attendance.some(a => a.clock_in && !a.clock_out);
+    if (!hasOpen) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [attendance]);
 
   // Get employeeId and employeeName from localStorage
   useEffect(() => {
@@ -271,8 +286,8 @@ export default function EmployeeTimePage() {
   });
 
   return (
-    <div style={{ width: '100vw', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px' }}>
+    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
+      <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 16px' }}>
         {/* Shared Clock / Break / Prayer controls at the very top */}
         <div style={{ marginTop: '40px' }}>
           <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
@@ -467,8 +482,16 @@ export default function EmployeeTimePage() {
                         <td>{employeeName}</td>
                         <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
                         <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
-                        <td>{a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""}</td>
-                        <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+                        <td>
+                          {a.clock_out
+                            ? new Date(a.clock_out).toLocaleTimeString()
+                            : <span style={{color: '#e67e22', fontWeight: 600}}>Running...</span>}
+                        </td>
+                        <td>
+                          {a.clock_in && !a.clock_out
+                            ? formatTotalHours(a.clock_in, "") // will use Date.now()
+                            : formatTotalHours(a.clock_in, a.clock_out)}
+                        </td>
                         <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
                           {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
                         </td>

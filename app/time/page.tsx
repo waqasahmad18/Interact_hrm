@@ -259,9 +259,9 @@ export default function TimePage() {
   const tabStyles: React.CSSProperties = {
     display: "flex",
     gap: "12px",
-    borderBottom: "2px solid #E2E8F0",
     marginBottom: "28px",
-    paddingBottom: "0"
+    paddingBottom: "0",
+    borderBottom: 'none',
   };
 
   const tabButtonStyles = (isActive: boolean): React.CSSProperties => ({
@@ -271,49 +271,30 @@ export default function TimePage() {
     cursor: "pointer",
     fontSize: "14px",
     fontWeight: isActive ? "600" : "500",
-    color: isActive ? "#fff" : "#4A5568",
+    color: "#fff",
     borderRadius: isActive ? "8px 8px 0 0" : "0",
     marginBottom: "-2px",
     transition: "all 0.3s",
-    boxShadow: isActive ? "0 -2px 8px rgba(0,82,204,0.15)" : "none"
+    boxShadow: isActive ? "0 -2px 8px rgba(0,82,204,0.15)" : "none",
   });
 
   return (
     <LayoutDashboard>
-      <div style={{ padding: "20px" }}>
-        <h1 style={{ marginBottom: "24px", color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>Time & Attendance</h1>
-        
-        {/* Sub-Tabs */}
-        <div style={tabStyles}>
-          <button style={tabButtonStyles(activeTab === "break")} onClick={() => setActiveTab("break")}>
-            Break Summary
-          </button>
-          <button style={tabButtonStyles(activeTab === "prayer")} onClick={() => setActiveTab("prayer")}>
-            Prayer Break Summary
-          </button>
-          <button style={tabButtonStyles(activeTab === "attendance")} onClick={() => setActiveTab("attendance")}>
-            Attendance Summary
-          </button>
+      <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+          <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
+          <div style={{ ...tabStyles, borderBottom: 'none', color: '#fff' }}>
+            <button style={{ ...tabButtonStyles(activeTab === "break"), color: '#fff' }} onClick={() => setActiveTab("break")}>Break Summary</button>
+            <button style={{ ...tabButtonStyles(activeTab === "prayer"), color: '#fff' }} onClick={() => setActiveTab("prayer")}>Prayer Break Summary</button>
+            <button style={{ ...tabButtonStyles(activeTab === "attendance"), color: '#fff' }} onClick={() => setActiveTab("attendance")}>Attendance Summary</button>
+          </div>
         </div>
-
         {/* Break Summary Tab */}
         {activeTab === "break" && (
           <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={breakSearch}
-                onChange={e => setBreakSearch(e.target.value)}
-                className={styles.breakSummaryInput}
-                style={{ width: 180 }}
-              />
-              <input
-                type="date"
-                value={breakDate}
-                onChange={e => setBreakDate(e.target.value)}
-                className={styles.breakSummaryDate}
-              />
+              <input type="text" placeholder="Search employee..." value={breakSearch} onChange={e => setBreakSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 180 }} />
+              <input type="date" value={breakDate} onChange={e => setBreakDate(e.target.value)} className={styles.breakSummaryDate} />
               <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
                 <span>Export XLS</span>
@@ -371,25 +352,12 @@ export default function TimePage() {
             </div>
           </div>
         )}
-
         {/* Prayer Break Summary Tab */}
         {activeTab === "prayer" && (
           <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={prayerSearch}
-                onChange={e => setPrayerSearch(e.target.value)}
-                className={styles.breakSummaryInput}
-                style={{ width: 180 }}
-              />
-              <input
-                type="date"
-                value={prayerDate}
-                onChange={e => setPrayerDate(e.target.value)}
-                className={styles.breakSummaryDate}
-              />
+              <input type="text" placeholder="Search employee..." value={prayerSearch} onChange={e => setPrayerSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 180 }} />
+              <input type="date" value={prayerDate} onChange={e => setPrayerDate(e.target.value)} className={styles.breakSummaryDate} />
               <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
                 <span>Export XLS</span>
@@ -447,25 +415,12 @@ export default function TimePage() {
             </div>
           </div>
         )}
-
         {/* Attendance Summary Tab */}
         {activeTab === "attendance" && (
           <div className={attStyles.attendanceSummaryContainer}>
             <div className={attStyles.attendanceSummaryFilters}>
-              <input
-                type="text"
-                placeholder="Search employee..."
-                value={attSearch}
-                onChange={e => setAttSearch(e.target.value)}
-                className={attStyles.attendanceSummaryInput}
-                style={{ width: 180 }}
-              />
-              <input
-                type="date"
-                value={attDate}
-                onChange={e => setAttDate(e.target.value)}
-                className={attStyles.attendanceSummaryDate}
-              />
+              <input type="text" placeholder="Search employee..." value={attSearch} onChange={e => setAttSearch(e.target.value)} className={attStyles.attendanceSummaryInput} style={{ width: 180 }} />
+              <input type="date" value={attDate} onChange={e => setAttDate(e.target.value)} className={attStyles.attendanceSummaryDate} />
               <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
                 <span>Export XLS</span>

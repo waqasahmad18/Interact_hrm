@@ -60,6 +60,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           // Find today's attendance with clock_in and no clock_out
           const todayAttendance = data.attendance.find((a: any) => a.clock_in && !a.clock_out);
           if (todayAttendance && todayAttendance.clock_in) {
+            // DB says running, always set as clocked in
             setIsClockedIn(true);
             const clockInTime = new Date(todayAttendance.clock_in);
             const now = new Date();
@@ -74,12 +75,20 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
             localStorage.setItem(CLOCKIN_KEY, JSON.stringify({ employeeId, clockInTime: clockInTime.toISOString() }));
             setLoadingAttendance(false);
             return;
+          } else {
+            // Only set as clocked out if all DB records have clock_out
+            setIsClockedIn(false);
+            setTimer(0);
+            localStorage.removeItem(CLOCKIN_KEY);
+            setLoadingAttendance(false);
+            return;
           }
         }
-        // Not clocked in
+        // No attendance records, treat as not clocked in
         setIsClockedIn(false);
         setTimer(0);
         localStorage.removeItem(CLOCKIN_KEY);
+        setLoadingAttendance(false);
       } catch (err) {
         setIsClockedIn(false);
         setTimer(0);

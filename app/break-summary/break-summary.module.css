@@ -1,4 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+/* Responsive table wrapper and table width */
+.breakSummaryTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+.breakSummaryTable {
+  min-width: 900px;
+  width: 100%;
+}
 
 :root {
   --color-bg: #F7FAFC;
