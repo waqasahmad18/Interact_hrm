@@ -97,7 +97,9 @@ export default function LeavePage() {
   return (
     <LayoutDashboard>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-        <h1 style={{ color: "#2b6cb0", fontWeight: 700, fontSize: "1.5rem", marginBottom: 18 }}>Leave Requests</h1>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
+          <h1 style={{ color: "#2b6cb0", fontWeight: 700, fontSize: "1.5rem", margin: 0 }}>Leave Requests</h1>
+        </div>
         {loading ? (
           <div>Loading...</div>
         ) : error ? (

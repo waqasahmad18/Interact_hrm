@@ -180,13 +180,13 @@ export default function ShiftSchedulerPage() {
   return (
     <LayoutDashboard>
       <div className={styles.page}>
-        <div className={styles.header}>
+        <div className={styles.header} style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
           <div>
-            <h1 className={styles.title}>
+            <h1 className={styles.title} style={{ margin: 0, marginBottom: 6 }}>
               <FaClock className={styles.titleIcon} />
               Shift Scheduler
             </h1>
-            <p className={styles.subtitle}>Create and manage predefined shift schedules</p>
+            <p className={styles.subtitle} style={{ margin: 0 }}>Create and manage predefined shift schedules</p>
           </div>
         </div>
 

@@ -110,10 +110,12 @@ export default function ManageLeavesPage() {
   return (
     <LayoutDashboard>
       <div className={styles.container}>
-        <h1 className={styles.title}>Manage Leaves</h1>
-        <p className={styles.subtitle}>
-          Update leave balances for Employees.
-        </p>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
+          <h1 className={styles.title} style={{ margin: 0, marginBottom: 6 }}>Manage Leaves</h1>
+          <p className={styles.subtitle} style={{ margin: 0 }}>
+            Update leave balances for Employees.
+          </p>
+        </div>
 
         <div className={styles.tableContainer}>
           <table className={styles.table}>

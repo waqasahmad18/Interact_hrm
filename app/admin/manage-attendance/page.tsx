@@ -294,7 +294,7 @@ export default function ManageAttendancePage() {
   return (
     <LayoutDashboard>
       <div style={{ padding: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h1 style={{ color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px", margin: 0 }}>
             Manage Attendance
           </h1>
