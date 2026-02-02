@@ -98,6 +98,7 @@ export default function EmployeeListStyledPage() {
                 <th>#</th>
                 <th>Name</th>
                 <th>Employee ID</th>
+                <th>Department</th>
                 <th>Gender</th>
                 <th>Nationality</th>
                 <th>Status</th>
@@ -106,17 +107,18 @@ export default function EmployeeListStyledPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7}>Loading...</td></tr>
+                <tr><td colSpan={8}>Loading...</td></tr>
               ) : error ? (
-                <tr><td colSpan={7} style={{ color: 'red' }}>{error}</td></tr>
+                <tr><td colSpan={8} style={{ color: 'red' }}>{error}</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7}>No records found.</td></tr>
+                <tr><td colSpan={8}>No records found.</td></tr>
               ) : (
                 filtered.map((e, idx) => (
                   <tr key={e.id}>
                     <td>{idx + 1}</td>
                     <td>{[e.first_name, e.middle_name, e.last_name].filter(Boolean).join(" ")}</td>
                     <td>{e.employee_code || e.id || '-'}</td>
+                    <td>{e.department_name || '-'}</td>
                     <td>{e.gender || '-'}</td>
                     <td>{e.nationality || '-'}</td>
                     <td style={{fontWeight:600, color:e.status==='active'||e.status==='enabled'?'#38A169':'#E53E3E'}}>

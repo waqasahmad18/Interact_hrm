@@ -21,11 +21,17 @@ function localDateKey(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
-// Helper to format total hours
-function formatTotalHours(clockIn: string, clockOut: string) {
-  if (!clockIn || !clockOut) return "00h 00m 00s";
+// Helper to format total hours (with dynamic timer support)
+function formatTotalHours(clockIn: string, clockOut: string, currentTime?: number) {
+  if (!clockIn) return "00h 00m 00s";
   const start = new Date(clockIn).getTime();
-  const end = new Date(clockOut).getTime();
+  let end: number;
+  if (clockOut) {
+    end = new Date(clockOut).getTime();
+  } else {
+    // Use current time for running attendance
+    end = currentTime || Date.now();
+  }
   const totalSeconds = Math.floor((end - start) / 1000);
   const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
   const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
@@ -51,6 +57,18 @@ export default function TimePage() {
   const [prayerDate, setPrayerDate] = useState("");
   const [attSearch, setAttSearch] = useState("");
   const [attDate, setAttDate] = useState("");
+  // For live timer
+  const [now, setNow] = useState(Date.now());
+
+  // Update timer every second if any running breaks exist
+  useEffect(() => {
+    const hasRunningBreak = breaks.some(b => b.break_start && !b.break_end);
+    const hasRunningPrayer = prayerBreaks.some(p => p.prayer_break_start && !p.prayer_break_end);
+    const hasRunningAttendance = attendance.some(a => a.clock_in && !a.clock_out);
+    if (!hasRunningBreak && !hasRunningPrayer && !hasRunningAttendance) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [breaks, prayerBreaks, attendance]);
 
   // Fetch breaks
   useEffect(() => {
@@ -113,13 +131,13 @@ export default function TimePage() {
       return bTime - aTime; // Descending order (latest first)
     });
 
-  // Aggregate all breaks per employee per day (matches widget logic)
+  // Aggregate all breaks per employee per day (matches widget logic - including running breaks)
   const dailyBreakTotals = (() => {
     const map = new Map<string, number>();
     for (const b of filteredBreaks) {
-      if (!b.break_start || !b.break_end) continue;
+      if (!b.break_start) continue;
       const start = new Date(b.break_start);
-      const end = new Date(b.break_end);
+      const end = b.break_end ? new Date(b.break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
       const dateForKey = b.date ? new Date(b.date) : start;
       const empKey = (b.employee_id ?? b.employeeId ?? "").toString() || (b.employee_name || b.name || b.username || "");
@@ -129,12 +147,13 @@ export default function TimePage() {
     return map;
   })();
 
-  // Map breaks data with both per-session and daily totals
+  // Map breaks data with both per-session and daily totals (including running breaks)
   const breakRows = filteredBreaks.map(b => {
     let sessionSeconds = 0;
-    if (b.break_start && b.break_end) {
+    const isRunning = b.break_start && !b.break_end;
+    if (b.break_start) {
       const start = new Date(b.break_start).getTime();
-      const end = new Date(b.break_end).getTime();
+      const end = b.break_end ? new Date(b.break_end).getTime() : now;
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
@@ -148,22 +167,23 @@ export default function TimePage() {
       ...b,
       employee_name: b.employee_name || b.name || b.username || "",
       break_start_display: b.break_start ? new Date(b.break_start).toLocaleTimeString() : "",
-      break_end_display: b.break_end ? new Date(b.break_end).toLocaleTimeString() : "",
+      break_end_display: b.break_end ? new Date(b.break_end).toLocaleTimeString() : (isRunning ? "🔴 Running" : ""),
       total_break_time: formatDuration(sessionSeconds),
       total_break_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : "")
+      date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : ""),
+      isRunning: isRunning
     };
   });
 
-  // Map prayer breaks data
+  // Map prayer breaks data (including running prayer breaks)
   const dailyPrayerTotals = (() => {
     const map = new Map<string, number>();
     for (const p of filteredPrayerBreaks) {
-      if (!p.prayer_break_start || !p.prayer_break_end) continue;
+      if (!p.prayer_break_start) continue;
       const start = new Date(p.prayer_break_start);
-      const end = new Date(p.prayer_break_end);
+      const end = p.prayer_break_end ? new Date(p.prayer_break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
       const dateForKey = p.date ? new Date(p.date) : start;
       const empKey = (p.employee_id ?? p.employeeId ?? "").toString() || (p.employee_name || p.name || p.username || "");
@@ -173,12 +193,13 @@ export default function TimePage() {
     return map;
   })();
 
-  // Map prayer breaks data with daily totals
+  // Map prayer breaks data with daily totals (including running prayer breaks)
   const prayerRows = filteredPrayerBreaks.map(p => {
     let sessionSeconds = 0;
-    if (p.prayer_break_start && p.prayer_break_end) {
+    const isRunning = p.prayer_break_start && !p.prayer_break_end;
+    if (p.prayer_break_start) {
       const start = new Date(p.prayer_break_start).getTime();
-      const end = new Date(p.prayer_break_end).getTime();
+      const end = p.prayer_break_end ? new Date(p.prayer_break_end).getTime() : now;
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
@@ -192,20 +213,41 @@ export default function TimePage() {
       ...p,
       employee_name: p.employee_name || p.name || p.username || "",
       prayer_start_display: p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleTimeString() : "",
-      prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleTimeString() : "",
+      prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleTimeString() : (isRunning ? "🔴 Running" : ""),
       total_prayer_time: formatDuration(sessionSeconds),
       total_prayer_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : "")
+      date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : ""),
+      isRunning: isRunning
     };
   });
 
   const downloadBreaksCSV = () => {
-    const headers = ["Employee ID", "Employee Name", "Date", "Break Start", "Break End", "Total Break Time", "Today's Total Break", "Exceed", "Exceed Today"];
-    let csv = headers.join(',') + '\n';
+    const headers = [
+      "Employee ID",
+      "Employee Name",
+      "Department",
+      "Date",
+      "Break Start",
+      "Break End",
+      "Total Break Time",
+      "Total Break",
+      "Exceed"
+    ];
+    let csv = headers.join(',    ') + '\n';
     breakRows.forEach(row => {
-      csv += [row.employee_id, row.employee_name, row.date_display, row.break_start_display, row.break_end_display, row.total_break_time, row.total_break_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
+      csv += [
+        row.employee_id,
+        row.employee_name,
+        row.department_name || '-',
+        row.date_display,
+        row.break_start_display,
+        row.break_end_display,
+        row.total_break_time,
+        row.total_break_time_today,
+        row.exceed_today
+      ].join(',    ') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -219,10 +261,30 @@ export default function TimePage() {
   };
 
   const downloadPrayerCSV = () => {
-    const headers = ["Employee ID", "Employee Name", "Date", "Prayer Start", "Prayer End", "Total Prayer Time", "Total Prayer", "Exceed", "Exceed Today"];
-    let csv = headers.join(',') + '\n';
+    const headers = [
+      "Employee ID",
+      "Employee Name",
+      "Department",
+      "Date",
+      "Prayer Start",
+      "Prayer End",
+      "Total Prayer Time",
+      "Total Prayer",
+      "Exceed"
+    ];
+    let csv = headers.join(',    ') + '\n';
     prayerRows.forEach(row => {
-      csv += [row.employee_id, row.employee_name, row.date_display, row.prayer_start_display, row.prayer_end_display, row.total_prayer_time, row.total_prayer_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
+      csv += [
+        row.employee_id,
+        row.employee_name,
+        row.department_name || '-',
+        row.date_display,
+        row.prayer_start_display,
+        row.prayer_end_display,
+        row.total_prayer_time,
+        row.total_prayer_time_today,
+        row.exceed_today
+      ].join(',    ') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -236,14 +298,32 @@ export default function TimePage() {
   };
 
   const downloadAttendanceCSV = () => {
-    const headers = ["Employee ID", "Employee Name", "Date", "Clock In", "Clock Out", "Total Hours"];
-    let csv = headers.join(',') + '\n';
+    const headers = [
+      "Employee ID",
+      "Employee Name",
+      "Department",
+      "Date",
+      "Clock In",
+      "Clock Out",
+      "Total Hours",
+      "Late"
+    ];
+    let csv = headers.join(',    ') + '\n';
     filteredAttendance.forEach(row => {
       const date = row.date ? new Date(row.date).toLocaleString() : "";
       const clockIn = row.clock_in ? new Date(row.clock_in).toLocaleString() : "";
       const clockOut = row.clock_out ? new Date(row.clock_out).toLocaleString() : "";
-      const totalHours = formatTotalHours(row.clock_in, row.clock_out);
-      csv += [row.employee_id, row.employee_name || "", date, clockIn, clockOut, totalHours].map(val => `"${val}"`).join(',') + '\n';
+      const totalHours = formatTotalHours(row.clock_in, row.clock_out, now);
+      csv += [
+        row.employee_id,
+        row.employee_name || "",
+        row.department_name || '-',
+        date,
+        clockIn,
+        clockOut,
+        totalHours,
+        row.late || ''
+      ].join(',    ') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -306,6 +386,8 @@ export default function TimePage() {
                   <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
+                    <th>Pseudo Name</th>
+                    <th>Department</th>
                     <th>Date</th>
                     <th>Break Start</th>
                     <th>Break End</th>
@@ -317,7 +399,7 @@ export default function TimePage() {
                 <tbody>
                   {breakRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className={styles.breakSummaryNoRecords}>No records found.</td>
+                      <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                     </tr>
                   ) : (
                     (() => {
@@ -334,6 +416,8 @@ export default function TimePage() {
                           <tr key={b.id || idx}>
                             <td>{b.employee_id}</td>
                             <td>{b.employee_name}</td>
+                            <td>{b.pseudonym || '-'}</td>
+                            <td>{b.department_name || '-'}</td>
                             <td>{b.date_display}</td>
                             <td>{b.break_start_display}</td>
                             <td>{b.break_end_display}</td>
@@ -369,6 +453,8 @@ export default function TimePage() {
                   <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
+                    <th>Pseudo Name</th>
+                    <th>Department</th>
                     <th>Date</th>
                     <th>Prayer Start</th>
                     <th>Prayer End</th>
@@ -380,7 +466,7 @@ export default function TimePage() {
                 <tbody>
                   {prayerRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className={styles.breakSummaryNoRecords}>No records found.</td>
+                      <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                     </tr>
                   ) : (
                     (() => {
@@ -397,6 +483,8 @@ export default function TimePage() {
                           <tr key={p.id || idx}>
                             <td>{p.employee_id}</td>
                             <td>{p.employee_name}</td>
+                            <td>{p.pseudonym || '-'}</td>
+                            <td>{p.department_name || '-'}</td>
                             <td>{p.date_display}</td>
                             <td>{p.prayer_start_display}</td>
                             <td>{p.prayer_end_display}</td>
@@ -429,9 +517,11 @@ export default function TimePage() {
             <div className={attStyles.attendanceSummaryTableWrapper}>
               <table className={attStyles.attendanceSummaryTable}>
                 <thead>
-                  <tr>
+                    <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
+                    <th>Pseudo Name</th>
+                    <th>Department</th>
                     <th>Date</th>
                     <th>Clock In</th>
                     <th>Clock Out</th>
@@ -442,17 +532,27 @@ export default function TimePage() {
                 <tbody>
                   {filteredAttendance.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
+                      <td colSpan={8} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
                     </tr>
                   ) : (
                     filteredAttendance.map((a, idx) => (
                       <tr key={a.id || idx}>
                         <td>{a.employee_id}</td>
                         <td>{a.employee_name || ""}</td>
+                        <td>{a.pseudonym || '-'}</td>
+                        <td>{a.department_name || '-'}</td>
                         <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
                         <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
-                        <td>{a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""}</td>
-                        <td>{formatTotalHours(a.clock_in, a.clock_out)}</td>
+                        <td>
+                          {a.clock_out
+                            ? new Date(a.clock_out).toLocaleTimeString()
+                            : <span style={{color: '#e67e22', fontWeight: 600}}>Running...</span>}
+                        </td>
+                        <td>
+                          {a.clock_in && !a.clock_out
+                            ? formatTotalHours(a.clock_in, "", now)
+                            : formatTotalHours(a.clock_in, a.clock_out, now)}
+                        </td>
                         <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
                           {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
                         </td>

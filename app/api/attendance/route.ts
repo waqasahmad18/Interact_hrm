@@ -28,7 +28,7 @@ async function ensureAttendanceTable(conn: mysql.Connection) {
   await conn.execute(createSql);
 }
 
-// GET: Fetch all attendance records or by employeeId
+// GET: Fetch all attendance records or by employeeId, now with department name
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -39,27 +39,20 @@ export async function GET(req: NextRequest) {
     const conn = await mysql.createConnection(dbConfig);
     await ensureAttendanceTable(conn);
     let rows;
-    
-    // Join with hrm_employees to always get fresh employee name
+    // Join with hrm_employees, employee_jobs, and departments to get department name
     const baseQuery = `
       SELECT 
         ea.*,
-        CONCAT(e.first_name, ' ', e.last_name) as employee_name
+        CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+        e.pseudonym AS pseudonym,
+        d.name AS department_name
       FROM ${ATTENDANCE_TABLE} ea
       LEFT JOIN hrm_employees e ON ea.employee_id = e.id
+      LEFT JOIN employee_jobs j ON e.id = j.employee_id
+      LEFT JOIN departments d ON j.department_id = d.id
     `;
-    
-    if (employeeId && date) {
-      [rows] = await conn.execute(
-        `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) = ? ORDER BY ea.date DESC`,
-        [employeeId, date]
-      );
-    } else if (employeeId && fromDate && toDate) {
-      [rows] = await conn.execute(
-        `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.date DESC`,
-        [employeeId, fromDate, toDate]
-      );
-    } else if (employeeId) {
+    if (employeeId) {
+      // Always return all records for this employee, regardless of date, so UI can check for any open record
       [rows] = await conn.execute(
         `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
         [employeeId]
@@ -151,6 +144,7 @@ export async function GET(req: NextRequest) {
         clock_out: formattedClockOut,
         is_late,
         late_minutes,
+        pseudonym: row.pseudonym || null,
       };
     }));
     

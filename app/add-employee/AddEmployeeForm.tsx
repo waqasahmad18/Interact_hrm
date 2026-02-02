@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+// ...existing code...
 import Image from "next/image";
 import styles from "./add-employee.module.css";
 import AttachmentsUploader from "./AttachmentsUploader";
@@ -22,6 +23,22 @@ export default function AddEmployeeForm({
   employeeId?: string | null;
   onSaved?: () => void;
 }) {
+  // Departments state for dropdown
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+
+  // Fetch departments on mount
+  useEffect(() => {
+    fetch('/api/departments')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setDepartments(data);
+        } else if (data.departments) {
+          setDepartments(data.departments);
+        }
+      })
+      .catch(() => setDepartments([]));
+  }, []);
   const isEdit = edit;
   
   // Emergency Contacts state
@@ -110,7 +127,8 @@ export default function AddEmployeeForm({
     subUnit: "",
     location: "",
     employmentStatus: "",
-    includeContract: false
+    includeContract: false,
+    departmentId: ""
   });
 
   // Job Details handler
@@ -133,7 +151,8 @@ export default function AddEmployeeForm({
           subUnit: jobDetails.subUnit,
           location: jobDetails.location,
           employmentStatus: jobDetails.employmentStatus,
-          includeContract: jobDetails.includeContract
+          includeContract: jobDetails.includeContract,
+          departmentId: jobDetails.departmentId ? parseInt(jobDetails.departmentId) : null
         })
       });
       const data = await res.json();
@@ -346,7 +365,8 @@ export default function AddEmployeeForm({
             subUnit: data.job.sub_unit || "",
             location: data.job.location || "",
             employmentStatus: data.job.employment_status || "",
-            includeContract: !!data.job.include_contract
+            includeContract: !!data.job.include_contract,
+            departmentId: data.job.department_id ? String(data.job.department_id) : ""
           });
         }
       })
@@ -402,26 +422,12 @@ export default function AddEmployeeForm({
       alert('Password and Confirm Password do not match');
       return;
     }
-    const payload: any = {
-      firstName,
-      middleName,
-      lastName,
-      employeeId,
-      dob,
-      gender,
-      maritalStatus,
-      nationality,
-      username: createLogin ? username : undefined,
-      status: createLogin ? status : undefined,
-      password: createLogin ? password : undefined,
-      profileImg
-    };
-    
+    // Do not require employeeId before save; it will be set after backend returns it
     const hrmPayload: any = {
       first_name: firstName || '',
       middle_name: middleName || '',
       last_name: lastName || '',
-      employee_code: employeeId || '',
+      employee_code: '', // optional, not used for assignment
       dob: dob || '',
       gender: gender || '',
       marital_status: maritalStatus || '',
@@ -435,34 +441,22 @@ export default function AddEmployeeForm({
       status: createLogin ? 'active' : 'disabled',
       role: role || 'Officer'
     };
-    
-    try {
-      let hrmRes, hrmData;
-      if (isEdit) {
-        // For edit mode, send both id and employee_code for proper identification
-        const editPayload = { ...hrmPayload, id: employeeId, employee_code: employeeId };
-        hrmRes = await fetch('/api/hrm_employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editPayload) });
-        hrmData = await hrmRes.json();
-        if (!hrmData.success) {
-          alert('Update failed: ' + (hrmData.error || 'Unknown'));
-          return;
-        }
-        alert('Employee updated.');
-        if (onSaved) onSaved();
+    // Removed unused payload and reference to finalEmployeeId
+    let hrmRes = await fetch('/api/hrm_employees', { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(isEdit ? { ...hrmPayload, id: employeeId } : hrmPayload) });
+    let hrmData = await hrmRes.json();
+    if (!hrmData.success) {
+      if (hrmData.error) {
+        alert('Save failed: ' + hrmData.error);
       } else {
-        hrmRes = await fetch('/api/hrm_employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(hrmPayload) });
-        hrmData = await hrmRes.json();
-        if (!hrmData.success || !hrmData.id) {
-          alert('Save failed: ' + (hrmData.error || 'Unknown'));
-          return;
-        }
-        setEmployeeId(hrmData.id);
-        alert('Employee saved.');
+        alert('Save failed: Unknown');
       }
-      setActiveTab('Contact Details');
-    } catch (err) {
-      alert('Save failed: ' + String(err));
+      return;
     }
+    if (!isEdit && hrmData.id) {
+      setEmployeeId(hrmData.id.toString());
+    }
+    alert(isEdit ? 'Employee updated.' : 'Employee saved.');
+    setActiveTab('Contact Details');
   }
 
   return (
@@ -518,7 +512,7 @@ export default function AddEmployeeForm({
               </div>
               <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employee Id</label>
-                <input className={styles.input} type="text" placeholder="Employee Id" value={employeeId || ''} readOnly required />
+                <input className={styles.input} type="text" placeholder="Employee Id (auto)" value={employeeId || ''} readOnly />
               </div>
               <div className={styles.row}>
                 <div style={{ flex: 1 }}>
@@ -794,6 +788,15 @@ export default function AddEmployeeForm({
                   </div>
                 </div>
                 <div className={styles.row}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Department</label>
+                    <select className={styles.select} value={jobDetails.departmentId || ""} onChange={e => setJobDetails(j => ({ ...j, departmentId: e.target.value }))} required>
+                      <option value="">-- Select Department --</option>
+                      {departments.map(dep => (
+                        <option key={dep.id} value={dep.id}>{dep.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div style={{ flex: 1 }}>
                     <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Sub Unit</label>
                     <input className={styles.input} type="text" placeholder="Sub Unit" value={jobDetails.subUnit} onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))} />

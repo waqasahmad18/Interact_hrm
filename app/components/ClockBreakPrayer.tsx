@@ -1,9 +1,11 @@
 "use client";
+
 import React from "react";
 import './ClockBreakPrayerFade.css';
 import { PrayerButton } from "./PrayerButton";
-
-const CLOCKIN_KEY = "clockinInfo";
+import { forceSyncClockState } from "../../lib/ui-sync/forceSyncClockState";
+import { forceSyncBreakState } from "../../lib/ui-sync/forceSyncBreakState";
+import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBreakState";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -24,121 +26,60 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [timer, setTimer] = React.useState(0);
   const [loadingAttendance, setLoadingAttendance] = React.useState(true);
   const [intervalId, setIntervalId] = React.useState<NodeJS.Timeout | null>(null);
+  
+  // Break sync states
+  const [breakIntervalId, setBreakIntervalId] = React.useState<NodeJS.Timeout | null>(null);
+  const [breakTimer, setBreakTimer] = React.useState(0);
+  const [loadingBreak, setLoadingBreak] = React.useState(true);
+  
+  // Prayer break sync states
+  const [prayerBreakIntervalId, setPrayerBreakIntervalId] = React.useState<NodeJS.Timeout | null>(null);
+  const [prayerBreakTimer, setPrayerBreakTimer] = React.useState(0);
+  const [loadingPrayerBreak, setLoadingPrayerBreak] = React.useState(true);
+  
   // Fade-in animation state
   const [fadeIn, setFadeIn] = React.useState(false);
 
-  // Fade-in on mount
+  // Fade-in on mount and force backend-only sync for clock state
   React.useEffect(() => {
     setFadeIn(true);
-    // Try to restore from localStorage instantly for fast UI
-    const cached = localStorage.getItem(CLOCKIN_KEY);
-    if (cached) {
-      try {
-        const { employeeId: cachedId, clockInTime } = JSON.parse(cached);
-        if (cachedId === employeeId && clockInTime) {
-          setIsClockedIn(true);
-          const clockInDate = new Date(clockInTime);
-          const now = new Date();
-          const elapsedSeconds = Math.floor((now.getTime() - clockInDate.getTime()) / 1000);
-          setTimer(elapsedSeconds);
-          const id = setInterval(() => {
-            const newElapsed = Math.floor((Date.now() - clockInDate.getTime()) / 1000);
-            setTimer(newElapsed);
-          }, 1000);
-          setIntervalId(id as NodeJS.Timeout);
-        }
-      } catch {}
-    }
-    // Always fetch fresh from backend in background
     if (!employeeId) return;
-    const fetchClockInStatus = async () => {
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const res = await fetch(`/api/attendance?employeeId=${employeeId}&date=${today}`);
-        const data = await res.json();
-        if (data.success && Array.isArray(data.attendance) && data.attendance.length > 0) {
-          // Find today's attendance with clock_in and no clock_out
-          const todayAttendance = data.attendance.find((a: any) => a.clock_in && !a.clock_out);
-          if (todayAttendance && todayAttendance.clock_in) {
-            // DB says running, always set as clocked in
-            setIsClockedIn(true);
-            const clockInTime = new Date(todayAttendance.clock_in);
-            const now = new Date();
-            const elapsedSeconds = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
-            setTimer(elapsedSeconds);
-            const id = setInterval(() => {
-              const newElapsed = Math.floor((Date.now() - clockInTime.getTime()) / 1000);
-              setTimer(newElapsed);
-            }, 1000);
-            setIntervalId(id as NodeJS.Timeout);
-            // Optionally update localStorage for UI speedup
-            localStorage.setItem(CLOCKIN_KEY, JSON.stringify({ employeeId, clockInTime: clockInTime.toISOString() }));
-            setLoadingAttendance(false);
-            return;
-          } else {
-            // Only set as clocked out if all DB records have clock_out
-            setIsClockedIn(false);
-            setTimer(0);
-            localStorage.removeItem(CLOCKIN_KEY);
-            setLoadingAttendance(false);
-            return;
-          }
-        }
-        // No attendance records, treat as not clocked in
-        setIsClockedIn(false);
-        setTimer(0);
-        localStorage.removeItem(CLOCKIN_KEY);
-        setLoadingAttendance(false);
-      } catch (err) {
-        setIsClockedIn(false);
-        setTimer(0);
-        localStorage.removeItem(CLOCKIN_KEY);
+    
+    // Sync clock state from backend
+    forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+    
+    // Sync break state from backend
+    forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+    
+    // Sync prayer break state from backend
+    forceSyncPrayerBreakState(employeeId, setIsPrayerOn, setPrayerBreakTimer, setLoadingPrayerBreak, setPrayerBreakIntervalId);
+    
+    // Re-sync when tab is visible
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        forceSyncPrayerBreakState(employeeId, setIsPrayerOn, setPrayerBreakTimer, setLoadingPrayerBreak, setPrayerBreakIntervalId);
       }
-      setLoadingAttendance(false);
     };
-    fetchClockInStatus();
+    document.addEventListener('visibilitychange', handleVisibility);
+    
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (intervalId) clearInterval(intervalId);
+      if (breakIntervalId) clearInterval(breakIntervalId);
+      if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
     };
   }, [employeeId]);
 
   // Restore ongoing break status
   React.useEffect(() => {
-    const fetchOngoingBreakStatus = async () => {
-      if (!employeeId) return;
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const response = await fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`);
-        const data = await response.json();
-        if (data.success && Array.isArray(data.breaks)) {
-          const ongoingBreak = data.breaks.find((b: any) => !b.break_end);
-          if (ongoingBreak && ongoingBreak.break_start) {
-            setIsOnBreak(true);
-            const start = new Date(ongoingBreak.break_start);
-            setBreakStart(start);
-            const startTimer = () => {
-              const elapsed = Math.floor((Date.now() - start.getTime()) / 1000);
-              setCurrentBreakDuration(elapsed);
-            };
-            startTimer();
-            if (breakTimerRef.current) clearInterval(breakTimerRef.current);
-            breakTimerRef.current = setInterval(startTimer, 1000);
-          } else {
-            setIsOnBreak(false);
-            setBreakStart(null);
-            setCurrentBreakDuration(0);
-            if (breakTimerRef.current) clearInterval(breakTimerRef.current);
-          }
-        }
-      } catch (error) {
-        setIsOnBreak(false);
-        setBreakStart(null);
-        setCurrentBreakDuration(0);
-        if (breakTimerRef.current) clearInterval(breakTimerRef.current);
-      }
-    };
-    fetchOngoingBreakStatus();
-  }, [employeeId]);
+    if (!employeeId) return;
+    // Use forceSyncBreakState to sync break from backend
+    forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+    // Update current break duration based on break timer (which is synced with DB)
+    setCurrentBreakDuration(breakTimer);
+  }, [employeeId, breakTimer]);
 
   const handleClockIn = async () => {
     if (!employeeId || !employeeName) {
@@ -164,7 +105,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         if (intervalId) clearInterval(intervalId);
         const id = setInterval(() => setTimer((prev) => prev + 1), 1000);
         setIntervalId(id as NodeJS.Timeout);
-        localStorage.setItem(CLOCKIN_KEY, JSON.stringify({ employeeId, clockInTime: now.toISOString() }));
+            // localStorage.setItem removed: state is now backend-driven
       } else {
         alert(data.error || "Failed to clock in. Please try again.");
       }
@@ -173,8 +114,16 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     }
   };
 
+  const [showClockOutConfirm, setShowClockOutConfirm] = React.useState(false);
+
   const handleClockOut = async () => {
     if (!employeeId) return;
+    setShowClockOutConfirm(true);
+  };
+
+  const confirmClockOut = async (confirmed: boolean) => {
+    setShowClockOutConfirm(false);
+    if (!confirmed) return;
     const now = new Date();
     try {
       const res = await fetch("/api/attendance", {
@@ -191,7 +140,6 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         setIsClockedIn(false);
         setTimer(0);
         if (intervalId) clearInterval(intervalId);
-        localStorage.removeItem(CLOCKIN_KEY);
       } else {
         alert(data.error || "Failed to clock out. Please try again.");
       }
@@ -219,14 +167,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        setIsOnBreak(true);
-        setBreakStart(startTime);
-        setCurrentBreakDuration(0);
-        if (breakTimerRef.current) clearInterval(breakTimerRef.current);
-        breakTimerRef.current = setInterval(() => {
-          const now = new Date();
-          setCurrentBreakDuration(Math.floor((now.getTime() - startTime.getTime()) / 1000));
-        }, 1000);
+        // Force sync with backend instead of local state
+        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
       } else {
         alert(data.error || "Failed to start break.");
       }
@@ -236,7 +178,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   };
 
   const handleBreakEnd = async () => {
-    if (!employeeId || !breakStart) {
+    if (!employeeId || !isOnBreak) {
       alert("No ongoing break found.");
       return;
     }
@@ -253,10 +195,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        setIsOnBreak(false);
-        setBreakStart(null);
-        setCurrentBreakDuration(0);
-        if (breakTimerRef.current) clearInterval(breakTimerRef.current);
+        // Force sync with backend instead of local state
+        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
       } else {
         alert(data.error || "Failed to end break.");
       }
@@ -296,6 +236,75 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
             >
               {isClockedIn ? "Clock Out" : "Clock In"}
             </button>
+            {showClockOutConfirm && (
+              <>
+                <style>{`
+                  .cbp-modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: rgba(0,0,0,0.35);
+                    display: flex; align-items: center; justify-content: center;
+                    z-index: 9999;
+                    animation: cbp-fade-in 0.3s;
+                  }
+                  @keyframes cbp-fade-in {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                  }
+                  .cbp-modal-box {
+                    background: #fff;
+                    border-radius: 18px;
+                    padding: 38px 32px 32px 32px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+                    min-width: 340px;
+                    text-align: center;
+                    animation: cbp-modal-pop 0.35s cubic-bezier(.22,1,.36,1);
+                  }
+                  @keyframes cbp-modal-pop {
+                    0% { transform: scale(0.85); opacity: 0; }
+                    100% { transform: scale(1); opacity: 1; }
+                  }
+                  .cbp-modal-title {
+                    font-weight: 700;
+                    font-size: 1.25rem;
+                    margin-bottom: 22px;
+                    color: #e67e22;
+                  }
+                  .cbp-modal-btn {
+                    border: none;
+                    border-radius: 8px;
+                    padding: 10px 28px;
+                    font-weight: 600;
+                    font-size: 1.08rem;
+                    margin: 0 10px;
+                    cursor: pointer;
+                    transition: background 0.18s, box-shadow 0.18s;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                  }
+                  .cbp-modal-btn-yes {
+                    background: linear-gradient(90deg,#e74c3c 60%,#e67e22 100%);
+                    color: #fff;
+                  }
+                  .cbp-modal-btn-yes:hover {
+                    background: linear-gradient(90deg,#e67e22 0%,#e74c3c 100%);
+                  }
+                  .cbp-modal-btn-no {
+                    background: linear-gradient(90deg,#27ae60 60%,#00b894 100%);
+                    color: #fff;
+                  }
+                  .cbp-modal-btn-no:hover {
+                    background: linear-gradient(90deg,#00b894 0%,#27ae60 100%);
+                  }
+                `}</style>
+                <div className="cbp-modal-overlay">
+                  <div className="cbp-modal-box">
+                    <div className="cbp-modal-title">Are you sure you want to clock out?</div>
+                    <button className="cbp-modal-btn cbp-modal-btn-yes" onClick={() => confirmClockOut(true)}>Yes</button>
+                    <button className="cbp-modal-btn cbp-modal-btn-no" onClick={() => confirmClockOut(false)}>No</button>
+                  </div>
+                </div>
+              </>
+            )}
             {isClockedIn && (
               <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(52,120,246,0.10)", padding: "8px 12px", minWidth: 120 }}>
                 <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#3478f6", marginBottom: 6 }}>Working</div>
@@ -331,8 +340,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           </button>
           {isOnBreak && (
             <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
-              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>Break Time</div>
-              <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(currentBreakDuration)}</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>🔴 Break Running</div>
+              <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
             </div>
           )}
           <BreakSummary employeeId={employeeId} />

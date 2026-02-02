@@ -122,13 +122,13 @@ export default function EmployeeTimePage() {
       });
   }, [employeeId, attDate]);
 
-  // Aggregate all breaks per day for this employee
+  // Aggregate all breaks per day for this employee (including running breaks)
   const dailyBreakTotals = (() => {
     const map = new Map<string, number>();
     for (const b of breaks) {
-      if (!b.break_start || !b.break_end) continue;
+      if (!b.break_start) continue;
       const start = new Date(b.break_start);
-      const end = new Date(b.break_end);
+      const end = b.break_end ? new Date(b.break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
       const dateForKey = b.date ? new Date(b.date) : start;
       const key = localDateKey(dateForKey);
@@ -137,12 +137,13 @@ export default function EmployeeTimePage() {
     return map;
   })();
 
-  // Map breaks data with both session and daily totals
+  // Map breaks data with both session and daily totals (including running breaks)
   const breakRows = breaks.map(b => {
     let sessionSeconds = 0;
-    if (b.break_start && b.break_end) {
+    const isRunning = b.break_start && !b.break_end;
+    if (b.break_start) {
       const start = new Date(b.break_start).getTime();
-      const end = new Date(b.break_end).getTime();
+      const end = b.break_end ? new Date(b.break_end).getTime() : now;
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
@@ -153,21 +154,22 @@ export default function EmployeeTimePage() {
     return {
       ...b,
       break_start_display: b.break_start ? new Date(b.break_start).toLocaleString() : "",
-      break_end_display: b.break_end ? new Date(b.break_end).toLocaleString() : "",
+      break_end_display: b.break_end ? new Date(b.break_end).toLocaleString() : (isRunning ? "🔴 Running" : ""),
       total_break_time: formatDuration(sessionSeconds),
       total_break_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : "")
+      date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : ""),
+      isRunning: isRunning
     };
   });
 
   const dailyPrayerTotals = (() => {
     const map = new Map<string, number>();
     for (const p of prayerBreaks) {
-      if (!p.prayer_break_start || !p.prayer_break_end) continue;
+      if (!p.prayer_break_start) continue;
       const start = new Date(p.prayer_break_start);
-      const end = new Date(p.prayer_break_end);
+      const end = p.prayer_break_end ? new Date(p.prayer_break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
       const dateForKey = p.date ? new Date(p.date) : start;
       const key = localDateKey(dateForKey);
@@ -176,12 +178,13 @@ export default function EmployeeTimePage() {
     return map;
   })();
 
-  // Map prayer breaks data with daily totals
+  // Map prayer breaks data with daily totals (including running prayer breaks)
   const prayerRows = prayerBreaks.map(p => {
     let sessionSeconds = 0;
-    if (p.prayer_break_start && p.prayer_break_end) {
+    const isRunning = p.prayer_break_start && !p.prayer_break_end;
+    if (p.prayer_break_start) {
       const start = new Date(p.prayer_break_start).getTime();
-      const end = new Date(p.prayer_break_end).getTime();
+      const end = p.prayer_break_end ? new Date(p.prayer_break_end).getTime() : now;
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
@@ -192,20 +195,24 @@ export default function EmployeeTimePage() {
     return {
       ...p,
       prayer_start_display: p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleString() : "",
-      prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleString() : "",
+      prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleString() : (isRunning ? "🔴 Running" : ""),
       total_prayer_time: formatDuration(sessionSeconds),
       total_prayer_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : "")
+      date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : ""),
+      isRunning: isRunning
     };
   });
 
   const downloadBreaksCSV = () => {
-    const headers = ["Date", "Break Start", "Break End", "Total Break Time", "Today's Total Break", "Exceed", "Exceed Today"];
+    const headers = ["Employee ID", "Name", "Pseudo Name", "Department", "Date", "Break Start", "Break End", "Total Break Time", "Total Break", "Exceed", "Exceed Today"];
     let csv = headers.join(',') + '\n';
     breakRows.forEach(row => {
-      csv += [row.date_display, row.break_start_display, row.break_end_display, row.total_break_time, row.total_break_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
+      const pseudo = row.pseudonym !== undefined ? row.pseudonym : (attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : '');
+      // Format date as yyyy-mm-dd for Excel compatibility
+      const excelDate = row.date_display ? new Date(row.date_display).toISOString().replace('T', ' ').substring(0, 19) : '';
+      csv += [row.employee_id, row.employee_name || row.name, pseudo, row.department_name, excelDate, row.break_start_display, row.break_end_display, row.total_break_time, row.total_break_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -219,10 +226,11 @@ export default function EmployeeTimePage() {
   };
 
   const downloadPrayerCSV = () => {
-    const headers = ["Date", "Prayer Start", "Prayer End", "Total Prayer Time", "Total Prayer", "Exceed", "Exceed Today"];
+    const headers = ["Employee ID", "Name", "Pseudo Name", "Department", "Date", "Prayer Start", "Prayer End", "Total Prayer Time", "Total Prayer", "Exceed", "Exceed Today"];
     let csv = headers.join(',') + '\n';
     prayerRows.forEach(row => {
-      csv += [row.date_display, row.prayer_start_display, row.prayer_end_display, row.total_prayer_time, row.total_prayer_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
+      const pseudo = row.pseudonym !== undefined ? row.pseudonym : (attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : '');
+      csv += [row.employee_id, row.employee_name || row.name, pseudo, row.department_name, row.date_display, row.prayer_start_display, row.prayer_end_display, row.total_prayer_time, row.total_prayer_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -243,6 +251,10 @@ export default function EmployeeTimePage() {
       const totalHours = formatTotalHours(row.clock_in, row.clock_out);
       const late = row.is_late ? `Late ${formatLateTime(row.late_minutes || 0)}` : "On Time";
       return {
+        "Employee ID": row.employee_id,
+        "Name": row.employee_name || row.name,
+        "Pseudo Name": row.pseudonym,
+        "Department": row.department_name,
         "Date": date,
         "Clock In": clockIn,
         "Clock Out": clockOut,
@@ -252,6 +264,10 @@ export default function EmployeeTimePage() {
     });
     const ws = XLSX.utils.json_to_sheet(data);
     ws['!cols'] = [
+      { wch: 10 }, // Employee ID
+      { wch: 22 }, // Name
+      { wch: 18 }, // Pseudo Name
+      { wch: 18 }, // Department
       { wch: 22 }, // Date
       { wch: 18 }, // Clock In
       { wch: 18 }, // Clock Out
@@ -325,12 +341,15 @@ export default function EmployeeTimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
+                  <th>Employee ID</th>
                   <th>Name</th>
+                  <th>Pseudo Name</th>
+                  <th>Department</th>
                   <th>Date</th>
                   <th>Break Start</th>
                   <th>Break End</th>
-                    <th>Total Break Time</th>
-                    <th>Total Break</th>
+                  <th>Total Break Time</th>
+                  <th>Total Break</th>
                   <th>Exceed</th>
                 </tr>
               </thead>
@@ -352,7 +371,10 @@ export default function EmployeeTimePage() {
                       const isLast = lastIndexMap.get(key) === idx;
                       return (
                         <tr key={b.id || idx}>
+                          <td>{employeeId}</td>
                           <td>{employeeName}</td>
+                          <td>{attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : 'undefined'}</td>
+                          <td>{attendance && attendance[0]?.department_name ? attendance[0].department_name : '-'}</td>
                           <td>{b.date_display}</td>
                           <td>{b.break_start_display}</td>
                           <td>{b.break_end_display}</td>
@@ -390,7 +412,10 @@ export default function EmployeeTimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
+                  <th>Employee ID</th>
                   <th>Name</th>
+                  <th>Pseudo Name</th>
+                  <th>Department</th>
                   <th>Date</th>
                   <th>Prayer Start</th>
                   <th>Prayer End</th>
@@ -417,7 +442,10 @@ export default function EmployeeTimePage() {
                       const isLast = lastIndexMap.get(key) === idx;
                       return (
                         <tr key={p.id || idx}>
+                          <td>{employeeId}</td>
                           <td>{employeeName}</td>
+                          <td>{attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : 'undefined'}</td>
+                          <td>{attendance && attendance[0]?.department_name ? attendance[0].department_name : '-'}</td>
                           <td>{p.date_display}</td>
                           <td>{p.prayer_start_display}</td>
                           <td>{p.prayer_end_display}</td>
@@ -455,7 +483,10 @@ export default function EmployeeTimePage() {
               <table className={attStyles.attendanceSummaryTable}>
                 <thead>
                 <tr>
+                  <th>Employee ID</th>
                   <th>Name</th>
+                  <th>Pseudo Name</th>
+                  <th>Department</th>
                   <th>Date</th>
                   <th>Clock In</th>
                   <th>Clock Out</th>
@@ -479,7 +510,10 @@ export default function EmployeeTimePage() {
                     })
                     .map((a, idx) => (
                       <tr key={a.id || idx}>
+                        <td>{a.employee_id || employeeId}</td>
                         <td>{employeeName}</td>
+                        <td>{a.pseudonym || 'undefined'}</td>
+                        <td>{a.department_name || '-'}</td>
                         <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
                         <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
                         <td>

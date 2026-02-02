@@ -15,21 +15,27 @@ export async function GET(req: NextRequest) {
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
     const conn = await mysql.createConnection(dbConfig);
-    let query = "SELECT * FROM prayer_breaks WHERE 1=1";
-    const params: string[] = [];
+    let query = `SELECT pb.*, e.pseudonym, d.name AS department_name
+      FROM prayer_breaks pb
+      LEFT JOIN hrm_employees e ON pb.employee_id = e.id
+      LEFT JOIN employee_jobs j ON pb.employee_id = j.employee_id
+      LEFT JOIN departments d ON j.department_id = d.id
+      WHERE 1=1`;
+    const params: (string|number)[] = [];
     if (employeeId) {
-      query += " AND employee_id = ?";
-      params.push(employeeId);
+      query += " AND pb.employee_id = ?";
+      params.push(Number(employeeId));
     }
     if (date) {
-      query += " AND DATE(prayer_break_start) = ?";
+      query += " AND DATE(pb.prayer_break_start) = ?";
       params.push(date);
     }
-    query += " ORDER BY prayer_break_start DESC, prayer_break_start ASC";
+    query += " ORDER BY pb.prayer_break_start DESC, pb.prayer_break_start ASC";
     const [rows] = await conn.execute(query, params);
     const formattedPrayerBreaks = (rows as any[]).map(row => ({
       ...row,
       employee_name: row.employee_name || "",
+      pseudonym: row.pseudonym || "",
       prayer_break_start: row.prayer_break_start ? new Date(row.prayer_break_start + 'Z').toISOString() : null,
       prayer_break_end: row.prayer_break_end ? new Date(row.prayer_break_end + 'Z').toISOString() : null,
       prayer_break_duration: row.prayer_break_duration ? Number(row.prayer_break_duration) : null,
@@ -56,20 +62,20 @@ export async function POST(req: NextRequest) {
       // Starting a new prayer break
       const [ongoingPrayerBreaks] = await conn.execute(
         "SELECT id FROM prayer_breaks WHERE employee_id = ? AND DATE(prayer_break_start) = ? AND prayer_break_end IS NULL",
-        [employee_id, formattedDate]
+        [Number(employee_id), formattedDate]
       );
       if ((ongoingPrayerBreaks as any[]).length > 0) {
         return NextResponse.json({ success: false, error: "An ongoing prayer break already exists for this employee for today." }, { status: 400 });
       }
       await conn.execute(
         "INSERT INTO prayer_breaks (employee_id, employee_name, date, prayer_break_start, prayer_break_end, prayer_break_duration) VALUES (?, ?, ?, ?, NULL, NULL)",
-        [employee_id, employee_name || "", formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        [Number(employee_id), employee_name || "", formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (prayer_break_end) {
       // Ending an existing prayer break
       const [latestPrayerBreakRows] = await conn.execute(
         "SELECT id, prayer_break_start FROM prayer_breaks WHERE employee_id = ? AND DATE(prayer_break_start) = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
-        [employee_id, formattedDate]
+        [Number(employee_id), formattedDate]
       );
       const latestPrayerBreak = (latestPrayerBreakRows as any[])[0];
       if (!latestPrayerBreak) {

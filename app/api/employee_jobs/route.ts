@@ -25,14 +25,14 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
 	try {
 		const body = await req.json();
-		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract } = body;
+		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
 		await pool.execute(
-			`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?
+			`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
 			 WHERE employee_id = ?` ,
-			[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, employee_id]
+			[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
 		);
 		return NextResponse.json({ success: true });
 	} catch (err) {
@@ -43,14 +43,14 @@ export async function PUT(req: NextRequest) {
 export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();
-		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract } = body;
+		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
 		await pool.execute(
-			`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-			[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0]
+			`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+			[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 		);
 		return NextResponse.json({ success: true });
 	} catch (err) {

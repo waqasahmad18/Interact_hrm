@@ -7,8 +7,17 @@ interface Department {
   name: string;
 }
 
+interface Employee {
+  id: number;
+  first_name: string;
+  last_name: string;
+  employee_id: string;
+}
+
 export default function DepartmentsTable() {
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [employeesByDept, setEmployeesByDept] = useState<Record<number, Employee[]>>({});
+  const [showEmp, setShowEmp] = useState<Record<number, boolean>>({});
   const [newDept, setNewDept] = useState<string>("");
   const [editId, setEditId] = useState<number | null>(null);
   const [editName, setEditName] = useState<string>("");
@@ -20,6 +29,20 @@ export default function DepartmentsTable() {
       .then((res) => res.json())
       .then((data: Department[]) => setDepartments(data));
   }, []);
+
+  // Fetch employees for all departments
+  useEffect(() => {
+    if (departments.length === 0) return;
+    departments.forEach(dep => {
+      fetch(`/api/employee-list?department_id=${dep.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.employees)) {
+            setEmployeesByDept(prev => ({ ...prev, [dep.id]: data.employees }));
+          }
+        });
+    });
+  }, [departments]);
 
   // Add department
   const handleAdd = async () => {
@@ -71,6 +94,7 @@ export default function DepartmentsTable() {
         <thead>
           <tr style={{ background: "#e2e8f0" }}>
             <th style={{ padding: 8, textAlign: "left" }}>Name</th>
+            <th style={{ padding: 8, textAlign: "center" }}>Employees</th>
             <th style={{ padding: 8, textAlign: "center" }}>Edit</th>
             <th style={{ padding: 8, textAlign: "center" }}>Delete</th>
           </tr>
@@ -83,6 +107,26 @@ export default function DepartmentsTable() {
                   <input value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: 4, display: "block", marginBottom: 8 }} />
                 ) : (
                   <span style={{ display: "block", marginBottom: 8 }}>{dept.name}</span>
+                )}
+              </td>
+              <td style={{ padding: 8, verticalAlign: "top", textAlign: "center" }}>
+                <button style={{ background: "#38b2ac", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer", marginBottom: 4 }} onClick={() => setShowEmp(prev => ({ ...prev, [dept.id]: !prev[dept.id] }))}>
+                  {showEmp[dept.id] ? "Hide" : "Show"} Employees
+                </button>
+                {showEmp[dept.id] && employeesByDept[dept.id] && (
+                  <div style={{ marginTop: 8, background: "#f1f5f9", borderRadius: 8, padding: 8, maxHeight: 180, overflowY: "auto", minWidth: 180 }}>
+                    {employeesByDept[dept.id].length === 0 ? (
+                      <div style={{ color: '#888' }}>No employees</div>
+                    ) : (
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                        {employeesByDept[dept.id].map(emp => (
+                          <li key={emp.id} style={{ padding: '4px 0', borderBottom: '1px solid #e2e8f0' }}>
+                            {emp.first_name} {emp.last_name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </td>
               <td style={{ padding: 8, verticalAlign: "top", textAlign: "center" }}>

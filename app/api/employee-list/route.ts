@@ -13,7 +13,30 @@ import { pool } from '../../../lib/db';
 
 export async function GET(req: NextRequest) {
   try {
-    const [rows] = await pool.query('SELECT id, first_name, pseudonym, last_name, employee_code, dob, gender, nationality, status, employment_status FROM hrm_employees ORDER BY id DESC');
+    const { searchParams } = new URL(req.url);
+    const departmentId = searchParams.get('department_id');
+
+    let query = '';
+    let params: any[] = [];
+    if (departmentId) {
+      query = `
+        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, d.name AS department_name
+        FROM hrm_employees e
+        LEFT JOIN employee_jobs j ON e.id = j.employee_id
+        LEFT JOIN departments d ON j.department_id = d.id
+        WHERE j.department_id = ?
+      `;
+      params.push(departmentId);
+    } else {
+      query = `
+        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, d.name AS department_name
+        FROM hrm_employees e
+        LEFT JOIN employee_jobs j ON e.id = j.employee_id
+        LEFT JOIN departments d ON j.department_id = d.id
+        ORDER BY e.id DESC
+      `;
+    }
+    const [rows] = await pool.query(query, params);
     return NextResponse.json({ success: true, employees: rows });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
