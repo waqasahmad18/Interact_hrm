@@ -40,9 +40,30 @@ export default function EmployeeListStyledPage() {
   useEffect(() => {
     fetch("/api/employee-list")
       .then(res => res.json())
-      .then(data => {
-        if (data.success) setEmployees(data.employees);
-        else setError(data.error || "Failed to fetch employees");
+      .then(async data => {
+        if (data.success) {
+          // Fetch attendance data to get pseudonym
+          const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
+          const attendanceData = await attendanceRes.json();
+          const pseudonymMap = new Map();
+          if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
+            attendanceData.attendance.forEach((att: any) => {
+              const empId = parseInt(att.employee_id);
+              if (!pseudonymMap.has(empId)) {
+                pseudonymMap.set(empId, att.pseudonym || '-');
+              }
+            });
+          }
+          
+          // Merge pseudonym into employees
+          const enrichedEmployees = data.employees.map((emp: any) => ({
+            ...emp,
+            pseudonym: pseudonymMap.get(emp.id) || '-'
+          }));
+          setEmployees(enrichedEmployees);
+        } else {
+          setError(data.error || "Failed to fetch employees");
+        }
         setLoading(false);
       })
       .catch(() => {
@@ -95,9 +116,9 @@ export default function EmployeeListStyledPage() {
           <table className={styles.breakSummaryTable}>
             <thead>
               <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Employee ID</th>
+                <th>Id</th>
+                <th>Full Name</th>
+                <th>P.Name</th>
                 <th>Department</th>
                 <th>Gender</th>
                 <th>Nationality</th>
@@ -115,11 +136,11 @@ export default function EmployeeListStyledPage() {
               ) : (
                 filtered.map((e, idx) => (
                   <tr key={e.id}>
-                    <td>{idx + 1}</td>
+                    <td>{e.id}</td>
                     <td>{[e.first_name, e.middle_name, e.last_name].filter(Boolean).join(" ")}</td>
-                    <td>{e.employee_code || e.id || '-'}</td>
+                    <td>{e.pseudonym || '-'}</td>
                     <td>{e.department_name || '-'}</td>
-                    <td>{e.gender || '-'}</td>
+                    <td>{e.gender ? e.gender.charAt(0).toUpperCase() + e.gender.slice(1).toLowerCase() : '-'}</td>
                     <td>{e.nationality || '-'}</td>
                     <td style={{fontWeight:600, color:e.status==='active'||e.status==='enabled'?'#38A169':'#E53E3E'}}>
                       {e.status === 'active' || e.status === 'enabled' ? 'Active' : 'Inactive'}

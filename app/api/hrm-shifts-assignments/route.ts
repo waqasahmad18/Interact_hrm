@@ -121,11 +121,19 @@ export async function POST(req: NextRequest) {
 
     // Assign to a department
     if (department_id) {
-      // Try to fetch employees from employee_jobs table
-      const deptEmployees = (await query(
-        `SELECT employee_id FROM employee_jobs WHERE department_id = ?`,
+      // First try employee_jobs table
+      let deptEmployees = (await query(
+        `SELECT DISTINCT employee_id FROM employee_jobs WHERE department_id = ?`,
         [department_id]
       )) as any[];
+
+      // If no employees found, try hrm_employees table directly
+      if (deptEmployees.length === 0) {
+        deptEmployees = (await query(
+          `SELECT id as employee_id FROM hrm_employees WHERE department_id = ? AND status IN ('enabled', 'active')`,
+          [department_id]
+        )) as any[];
+      }
 
       if (deptEmployees.length === 0) {
         return NextResponse.json(
@@ -136,7 +144,10 @@ export async function POST(req: NextRequest) {
 
       await Promise.all(deptEmployees.map((row) => upsertOne(row.employee_id)));
 
-      return NextResponse.json({ success: true, message: "Shift assigned to department" });
+      return NextResponse.json({ 
+        success: true, 
+        message: `Shift assigned to ${deptEmployees.length} employee(s) in department` 
+      });
     }
 
     // Multiple specific employees

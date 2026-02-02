@@ -10,9 +10,9 @@ const dbConfig = {
 
 export async function GET() {
   const conn = await mysql.createConnection(dbConfig);
-  const [rows] = await conn.execute("SELECT * FROM departments");
+  const [rows] = await conn.execute("SELECT * FROM departments ORDER BY name");
   await conn.end();
-  return NextResponse.json(rows);
+  return NextResponse.json({ success: true, departments: rows });
 }
 
 export async function POST(req: NextRequest) {

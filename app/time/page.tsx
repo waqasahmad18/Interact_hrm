@@ -225,8 +225,9 @@ export default function TimePage() {
 
   const downloadBreaksCSV = () => {
     const headers = [
-      "Employee ID",
-      "Employee Name",
+      "Id",
+      "Full Name",
+      "P.Name",
       "Department",
       "Date",
       "Break Start",
@@ -240,6 +241,7 @@ export default function TimePage() {
       csv += [
         row.employee_id,
         row.employee_name,
+        row.pseudonym || '-',
         row.department_name || '-',
         row.date_display,
         row.break_start_display,
@@ -262,8 +264,9 @@ export default function TimePage() {
 
   const downloadPrayerCSV = () => {
     const headers = [
-      "Employee ID",
-      "Employee Name",
+      "Id",
+      "Full Name",
+      "P.Name",
       "Department",
       "Date",
       "Prayer Start",
@@ -277,6 +280,7 @@ export default function TimePage() {
       csv += [
         row.employee_id,
         row.employee_name,
+        row.pseudonym || '-',
         row.department_name || '-',
         row.date_display,
         row.prayer_start_display,
@@ -299,8 +303,9 @@ export default function TimePage() {
 
   const downloadAttendanceCSV = () => {
     const headers = [
-      "Employee ID",
-      "Employee Name",
+      "Id",
+      "Full Name",
+      "P.Name",
       "Department",
       "Date",
       "Clock In",
@@ -317,6 +322,7 @@ export default function TimePage() {
       csv += [
         row.employee_id,
         row.employee_name || "",
+        row.pseudonym || '-',
         row.department_name || '-',
         date,
         clockIn,
@@ -384,9 +390,9 @@ export default function TimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                   <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Pseudo Name</th>
+                    <th>Id</th>
+                    <th>Full Name</th>
+                    <th>P.Name</th>
                     <th>Department</th>
                     <th>Date</th>
                     <th>Break Start</th>
@@ -451,9 +457,9 @@ export default function TimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                   <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Pseudo Name</th>
+                    <th>Id</th>
+                    <th>Full Name</th>
+                    <th>P.Name</th>
                     <th>Department</th>
                     <th>Date</th>
                     <th>Prayer Start</th>
@@ -518,9 +524,9 @@ export default function TimePage() {
               <table className={attStyles.attendanceSummaryTable}>
                 <thead>
                     <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Pseudo Name</th>
+                    <th>Id</th>
+                    <th>Full Name</th>
+                    <th>P.Name</th>
                     <th>Department</th>
                     <th>Date</th>
                     <th>Clock In</th>

@@ -120,14 +120,15 @@
 }
 
 .breakSummaryTable th {
-  padding: 16px !important;
+  padding: 10px 6px !important;
   text-align: left;
   font-weight: 600 !important;
   color: #fff !important;
   border: none !important;
-  font-size: 14px !important;
+  font-size: 12px !important;
   letter-spacing: 0.3px;
   background: transparent !important;
+  white-space: nowrap;
 }
 
 .breakSummaryTable th:first-child {
@@ -139,11 +140,12 @@
 }
 
 .breakSummaryTable td {
-  padding: 14px 16px !important;
+  padding: 8px 6px !important;
   border-bottom: 1px solid var(--color-border) !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   color: var(--color-text) !important;
   background: #fff;
+  white-space: nowrap;
 }
 
 .breakSummaryTable tbody tr {

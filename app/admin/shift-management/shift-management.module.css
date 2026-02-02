@@ -288,12 +288,13 @@
 }
 
 .employeeTable thead th {
-  padding: 16px 15px;
+  padding: 10px 6px;
   text-align: left;
   font-weight: 600;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .employeeTable thead th:first-child {
@@ -320,8 +321,10 @@
 }
 
 .employeeTable tbody td {
-  padding: 16px 15px;
+  padding: 8px 6px;
   vertical-align: middle;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .employeeCode {

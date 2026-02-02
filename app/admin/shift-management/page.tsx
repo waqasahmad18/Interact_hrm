@@ -19,6 +19,8 @@ interface Employee {
   end_time?: string;
   assigned_date?: string;
   assignment_id?: number;
+  department_name?: string;
+  pseudonym?: string;
 }
 
 interface Department {
@@ -88,7 +90,36 @@ export default function ShiftManagementPage() {
       const res = await fetch("/api/hrm-shifts-assignments");
       const data = await res.json();
       if (data.success) {
-        setEmployees(data.employees);
+        // Fetch employee list for department
+        const empListRes = await fetch("/api/employee-list");
+        const empListData = await empListRes.json();
+        const deptMap = new Map();
+        if (empListData.success) {
+          empListData.employees.forEach((emp: any) => {
+            deptMap.set(emp.id, emp.department_name || '-');
+          });
+        }
+        
+        // Fetch attendance data to get pseudonym
+        const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
+        const attendanceData = await attendanceRes.json();
+        const pseudonymMap = new Map();
+        if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
+          attendanceData.attendance.forEach((att: any) => {
+            const empId = parseInt(att.employee_id);
+            if (!pseudonymMap.has(empId)) {
+              pseudonymMap.set(empId, att.pseudonym || '-');
+            }
+          });
+        }
+        
+        // Merge data into employees
+        const enrichedEmployees = data.employees.map((emp: Employee) => ({
+          ...emp,
+          department_name: deptMap.get(emp.id) || '-',
+          pseudonym: pseudonymMap.get(emp.id) || '-'
+        }));
+        setEmployees(enrichedEmployees);
       } else {
         setError(data.error || "Failed to fetch employees");
       }
@@ -103,11 +134,14 @@ export default function ShiftManagementPage() {
     try {
       const res = await fetch("/api/departments");
       const data = await res.json();
-      if (data?.departments) {
+      if (data.success && Array.isArray(data.departments)) {
         setDepartments(data.departments);
+      } else if (Array.isArray(data)) {
+        // Fallback for old API format
+        setDepartments(data);
       }
     } catch (err) {
-      // ignore
+      console.error("Failed to fetch departments:", err);
     }
   };
   const fetchMasterShifts = async () => {
@@ -294,14 +328,27 @@ export default function ShiftManagementPage() {
       : styles.statusInactive;
   };
 
-  const filteredEmployees = employees.filter((emp) =>
-    emp.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-    emp.last_name?.toLowerCase().includes(search.toLowerCase()) ||
-    emp.id?.toString().includes(search) ||
-    `${emp.first_name} ${emp.last_name}`
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const filteredEmployees = employees.filter((emp) => {
+    // Filter by search text
+    const matchesSearch = 
+      emp.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.id?.toString().includes(search) ||
+      `${emp.first_name} ${emp.last_name}`
+        .toLowerCase()
+        .includes(search.toLowerCase());
+    
+    // Filter by selected department if a department is selected
+    if (selectedScope.startsWith("dept-")) {
+      const selectedDeptId = parseInt(selectedScope.replace("dept-", ""));
+      const selectedDept = departments.find(d => d.id === selectedDeptId);
+      const matchesDepartment = emp.department_name === selectedDept?.name;
+      return matchesSearch && matchesDepartment;
+    }
+    
+    // If no department selected or "all" selected, just use search filter
+    return matchesSearch;
+  });
 
   return (
     <LayoutDashboard>
@@ -516,8 +563,10 @@ export default function ShiftManagementPage() {
             <table className={styles.employeeTable}>
               <thead>
                 <tr>
-                  <th>Employee ID</th>
-                  <th>Employee Name</th>
+                  <th>Id</th>
+                  <th>Full Name</th>
+                  <th>P.Name</th>
+                  <th>Department</th>
                   <th>Status</th>
                   <th>Assigned Shift</th>
                   <th>Shift Timing</th>
@@ -527,7 +576,7 @@ export default function ShiftManagementPage() {
               <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "20px" }}>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "20px" }}>
                       No employees found
                     </td>
                   </tr>
@@ -540,6 +589,8 @@ export default function ShiftManagementPage() {
                       <td className={styles.employeeName}>
                         {emp.first_name} {emp.last_name}
                       </td>
+                      <td>{emp.pseudonym || '-'}</td>
+                      <td>{emp.department_name || '-'}</td>
                       <td>
                         <span className={getStatusColor(emp.status)}>
                           {emp.status === "enabled" || emp.status === "active"

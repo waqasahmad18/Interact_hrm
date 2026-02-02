@@ -18,6 +18,8 @@ interface Employee {
   bereavement_current_balance: number;
   annual_balance_adjustment: number;
   bereavement_balance_adjustment: number;
+  department_name?: string;
+  pseudonym?: string;
 }
 
 export default function ManageLeavesPage() {
@@ -41,7 +43,35 @@ export default function ManageLeavesPage() {
       const res = await fetch("/api/employee-leave-allowances");
       const data = await res.json();
       if (data.success) {
-        setEmployees(data.employees);
+        // Create a map to hold pseudonym and department for each employee
+        const empDetailsMap = new Map();
+        
+        // Fetch all attendance records to get pseudonym and department
+        try {
+          const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
+          const attendanceData = await attendanceRes.json();
+          if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
+            attendanceData.attendance.forEach((att: any) => {
+              const empId = parseInt(att.employee_id);
+              if (!empDetailsMap.has(empId)) {
+                empDetailsMap.set(empId, {
+                  pseudonym: att.pseudonym || '-',
+                  department_name: att.department_name || '-'
+                });
+              }
+            });
+          }
+        } catch (err) {
+          console.error("Error fetching attendance:", err);
+        }
+        
+        // Merge data into employees
+        const enrichedEmployees = data.employees.map((emp: Employee) => ({
+          ...emp,
+          department_name: empDetailsMap.get(emp.id)?.department_name || '-',
+          pseudonym: empDetailsMap.get(emp.id)?.pseudonym || '-'
+        }));
+        setEmployees(enrichedEmployees);
       } else {
         alert("Failed to fetch employees: " + data.error);
       }
@@ -120,19 +150,21 @@ export default function ManageLeavesPage() {
         <div className={styles.tableContainer}>
           <table className={styles.table}>
             <thead>
-              <tr>
-                <th>Employee Code</th>
-                <th>Employee Name</th>
-                <th>Employment Status</th>
-                <th>Annual Leave Balance</th>
-                <th>Bereavement Leave Balance</th>
-                <th>Actions</th>
+              <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Id</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Full Name</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>P.Name</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Department</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Employment Status</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Annual Leave Balance</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Bereavement Leave Balance</th>
+                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center" }}>
+                  <td colSpan={8} style={{ textAlign: "center" }}>
                     No employees found
                   </td>
                 </tr>
@@ -140,24 +172,26 @@ export default function ManageLeavesPage() {
                 employees.map((emp) => {
                   return (
                     <tr key={emp.id}>
-                      <td>{emp.employee_code || emp.id}</td>
-                      <td>{emp.first_name} {emp.last_name}</td>
-                      <td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.id}</td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.first_name} {emp.last_name}</td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.pseudonym || '-'}</td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.department_name || '-'}</td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
                         <span className={emp.employment_status === "Permanent" ? styles.statusPermanent : styles.statusProbation}>
                           {emp.employment_status || "Permanent"}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
                         <span style={{ fontWeight: 600, color: '#2563eb' }}>
                           {emp.annual_current_balance} / {emp.annual_allowance}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
                         <span style={{ fontWeight: 600, color: '#2563eb' }}>
                           {emp.bereavement_current_balance} / {emp.bereavement_allowance}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
                         <button
                           className={styles.editBtn}
                           onClick={() => handleEdit(emp)}

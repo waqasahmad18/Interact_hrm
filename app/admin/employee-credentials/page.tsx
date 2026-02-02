@@ -13,6 +13,8 @@ interface Employee {
   email_other: string;
   phone_mobile: string;
   password?: string;
+  department_name?: string;
+  pseudonym?: string;
 }
 
 export default function EmployeeCredentialsPage() {
@@ -37,7 +39,36 @@ export default function EmployeeCredentialsPage() {
       const res = await fetch("/api/employee-credentials");
       const data = await res.json();
       if (data.success) {
-        setEmployees(data.employees);
+        // Fetch employee list for department
+        const empListRes = await fetch("/api/employee-list");
+        const empListData = await empListRes.json();
+        const deptMap = new Map();
+        if (empListData.success) {
+          empListData.employees.forEach((emp: any) => {
+            deptMap.set(emp.id, emp.department_name || '-');
+          });
+        }
+        
+        // Fetch attendance data to get pseudonym
+        const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
+        const attendanceData = await attendanceRes.json();
+        const pseudonymMap = new Map();
+        if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
+          attendanceData.attendance.forEach((att: any) => {
+            const empId = parseInt(att.employee_id);
+            if (!pseudonymMap.has(empId)) {
+              pseudonymMap.set(empId, att.pseudonym || '-');
+            }
+          });
+        }
+        
+        // Merge data into employees
+        const enrichedEmployees = data.employees.map((emp: Employee) => ({
+          ...emp,
+          department_name: deptMap.get(emp.id) || '-',
+          pseudonym: pseudonymMap.get(emp.id) || '-'
+        }));
+        setEmployees(enrichedEmployees);
       } else {
         setError(data.error || "Failed to fetch employees");
       }
@@ -143,8 +174,10 @@ export default function EmployeeCredentialsPage() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Employee ID</th>
+                  <th>Id</th>
                   <th>Full Name</th>
+                  <th>P.Name</th>
+                  <th>Department</th>
                   <th>
                     <FaUser /> Username
                   </th>
@@ -160,7 +193,7 @@ export default function EmployeeCredentialsPage() {
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "20px" }}>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "20px" }}>
                       No employees found
                     </td>
                   </tr>
@@ -177,6 +210,8 @@ export default function EmployeeCredentialsPage() {
                         <td>
                           <strong>{fullName || "N/A"}</strong>
                         </td>
+                        <td>{emp.pseudonym || '-'}</td>
+                        <td>{emp.department_name || '-'}</td>
                         <td>
                           {isEditing ? (
                             <input
