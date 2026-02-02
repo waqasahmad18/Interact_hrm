@@ -40,6 +40,8 @@ interface AttendanceRecord {
   id?: number;
   employee_id: string;
   employee_name: string;
+  pseudonym?: string;
+  department_name?: string;
   date: string;
   clock_in: string | null;
   clock_out: string | null;
@@ -53,7 +55,7 @@ export default function ManageAttendancePage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRecord, setNewRecord] = useState<Partial<AttendanceRecord>>({
@@ -88,7 +90,7 @@ export default function ManageAttendancePage() {
     
     fetch(url)
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
         if (data.success) {
           let records = data.attendance || [];
           
@@ -99,7 +101,31 @@ export default function ManageAttendancePage() {
             );
           }
           
-          setAttendance(records.map((r: AttendanceRecord) => ({ ...r, isEditing: false })));
+          // Fetch employee list to enrich with pseudonym and department
+          const empListRes = await fetch("/api/employee-list");
+          const empListData = await empListRes.json();
+          const empMap = new Map();
+          if (empListData.success) {
+            empListData.employees.forEach((emp: any) => {
+              empMap.set(emp.id.toString(), {
+                pseudonym: emp.pseudonym || '-',
+                department_name: emp.department_name || '-'
+              });
+            });
+          }
+          
+          // Enrich records with pseudonym and department
+          const enrichedRecords = records.map((r: AttendanceRecord) => {
+            const empData = empMap.get(r.employee_id);
+            return {
+              ...r,
+              pseudonym: empData?.pseudonym || '-',
+              department_name: empData?.department_name || '-',
+              isEditing: false
+            };
+          });
+          
+          setAttendance(enrichedRecords);
         } else {
           setAttendance([]);
         }
@@ -115,26 +141,19 @@ export default function ManageAttendancePage() {
     fetchAttendance();
   }, [fromDate, toDate]);
 
-  // Sort all records by latest clock_in/clock_out/date descending first
+  // Sort all records by latest clock_in/clock_out/date descending
   const sortedAttendance = [...attendance].sort((a, b) => {
     const aTime = new Date(a.clock_out || a.clock_in || a.date).getTime();
     const bTime = new Date(b.clock_out || b.clock_in || b.date).getTime();
     return bTime - aTime;
   });
-  // Then pick only the latest record per employee
-  const latestAttendanceMap = new Map();
-  for (const a of sortedAttendance) {
-    const key = a.employee_id;
-    if (!latestAttendanceMap.has(key)) {
-      latestAttendanceMap.set(key, a);
-    }
-  }
-  let filteredAttendance = Array.from(latestAttendanceMap.values());
-  // Filter by search name
+  
+  let filteredAttendance = sortedAttendance;
+  
+  // Filter by search name only if actively searching
   if (searchName) {
     filteredAttendance = filteredAttendance.filter(a => a.employee_name?.toLowerCase().includes(searchName.toLowerCase()));
   }
-  // Already sorted by latest time
 
   // Toggle edit mode
   const toggleEdit = (id: number) => {
@@ -267,8 +286,10 @@ export default function ManageAttendancePage() {
         lateText = `Late ${formatLateTime(a.late_minutes || 0)}`;
       }
       return {
-        "Employee ID": a.employee_id,
-        "Employee Name": a.employee_name,
+        "Id": a.employee_id,
+        "Full Name": a.employee_name,
+        "P.Name": a.pseudonym || '-',
+        "Department": a.department_name || '-',
         "Date": a.date ? new Date(a.date).toLocaleDateString() : "",
         "Clock In": a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : "",
         "Clock Out": a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : "",
@@ -469,8 +490,10 @@ export default function ManageAttendancePage() {
             <table className={styles.attendanceSummaryTable}>
               <thead>
                 <tr>
-                  <th>Employee ID</th>
-                  <th>Employee Name</th>
+                  <th>Id</th>
+                  <th>Full Name</th>
+                  <th>P.Name</th>
+                  <th>Department</th>
                   <th>Date</th>
                   <th>Clock In</th>
                   <th>Clock Out</th>
@@ -482,7 +505,7 @@ export default function ManageAttendancePage() {
               <tbody>
                 {filteredAttendance.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className={styles.attendanceSummaryNoRecords}>
+                    <td colSpan={10} className={styles.attendanceSummaryNoRecords}>
                       No records found.
                     </td>
                   </tr>
@@ -502,6 +525,8 @@ export default function ManageAttendancePage() {
                           a.employee_name
                         )}
                       </td>
+                      <td>{a.pseudonym || '-'}</td>
+                      <td>{a.department_name || '-'}</td>
                       <td>
                         {a.isEditing ? (
                           <input

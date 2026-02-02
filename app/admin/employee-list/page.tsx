@@ -40,27 +40,9 @@ export default function EmployeeListStyledPage() {
   useEffect(() => {
     fetch("/api/employee-list")
       .then(res => res.json())
-      .then(async data => {
+      .then(data => {
         if (data.success) {
-          // Fetch attendance data to get pseudonym
-          const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
-          const attendanceData = await attendanceRes.json();
-          const pseudonymMap = new Map();
-          if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
-            attendanceData.attendance.forEach((att: any) => {
-              const empId = parseInt(att.employee_id);
-              if (!pseudonymMap.has(empId)) {
-                pseudonymMap.set(empId, att.pseudonym || '-');
-              }
-            });
-          }
-          
-          // Merge pseudonym into employees
-          const enrichedEmployees = data.employees.map((emp: any) => ({
-            ...emp,
-            pseudonym: pseudonymMap.get(emp.id) || '-'
-          }));
-          setEmployees(enrichedEmployees);
+          setEmployees(data.employees);
         } else {
           setError(data.error || "Failed to fetch employees");
         }

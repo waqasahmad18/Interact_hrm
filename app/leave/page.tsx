@@ -28,7 +28,26 @@ export default function LeavePage() {
       const res = await fetch("/api/leaves");
       const data = await res.json();
       if (data.success) {
-        setLeaves(data.leaves);
+        const empRes = await fetch("/api/employee-list");
+        const empData = await empRes.json();
+        const empMap = new Map<number, { pseudonym: string; department_name: string }>();
+        if (empData.success && Array.isArray(empData.employees)) {
+          empData.employees.forEach((emp: any) => {
+            empMap.set(emp.id, {
+              pseudonym: emp.pseudonym || "-",
+              department_name: emp.department_name || "-",
+            });
+          });
+        }
+        const enrichedLeaves = (data.leaves || []).map((l: any) => {
+          const emp = empMap.get(Number(l.employee_id));
+          return {
+            ...l,
+            pseudonym: emp?.pseudonym || "-",
+            department_name: emp?.department_name || "-",
+          };
+        });
+        setLeaves(enrichedLeaves);
       } else {
         setError(data.error || "Failed to fetch leaves");
       }
@@ -107,9 +126,11 @@ export default function LeavePage() {
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px #e2e8f0" }}>
             <thead>
-              <tr style={{ background: "#f7fafc" }}>
-                <th style={thStyle}>Employee ID</th>
-                <th style={thStyle}>Employee Name</th>
+              <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
+                <th style={thStyle}>Id</th>
+                <th style={thStyle}>Full Name</th>
+                <th style={thStyle}>P.Name</th>
+                <th style={thStyle}>Department</th>
                 <th style={thStyle}>Category</th>
                 <th style={thStyle}>Dates</th>
                 <th style={thStyle}>Days</th>
@@ -120,12 +141,14 @@ export default function LeavePage() {
             </thead>
             <tbody>
               {leaves.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: "center", color: "#888", padding: 16 }}>No leave requests yet.</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: "center", color: "#888", padding: 16 }}>No leave requests yet.</td></tr>
               )}
               {leaves.map(l => (
                 <tr key={l.id}>
                   <td style={tdStyle}>{l.employee_id}</td>
                   <td style={tdStyle}>{l.employee_name || ""}</td>
+                  <td style={tdStyle}>{l.pseudonym || "-"}</td>
+                  <td style={tdStyle}>{l.department_name || "-"}</td>
                   <td style={tdStyle}>{l.leave_category}</td>
                     <td style={tdStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
                   <td style={tdStyle}>{l.total_days}</td>
@@ -196,8 +219,8 @@ function formatDate(dateString: string) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-const thStyle: React.CSSProperties = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
-const tdStyle = { padding: "8px 8px", borderBottom: "1px solid #f0f0f0" };
+const thStyle: React.CSSProperties = { padding: "10px 6px", fontWeight: 700, color: "#fff", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: "12px", whiteSpace: "nowrap" };
+const tdStyle = { padding: "8px 6px", borderBottom: "1px solid #f0f0f0", fontSize: "13px", whiteSpace: "nowrap" };
 const btnApprove = { background: "#27ae60", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };
 const btnReject = { background: "#e74c3c", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer" };
 const btnView = { background: "#3478f6", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };

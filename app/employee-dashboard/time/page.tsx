@@ -53,13 +53,29 @@ export default function EmployeeTimePage() {
   const [breaks, setBreaks] = useState<any[]>([]);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
-  const [breakDate, setBreakDate] = useState("");
-  const [prayerDate, setPrayerDate] = useState("");
-  const [attDate, setAttDate] = useState("");
+  const [breakFromDate, setBreakFromDate] = useState("");
+  const [breakToDate, setBreakToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [prayerFromDate, setPrayerFromDate] = useState("");
+  const [prayerToDate, setPrayerToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attFromDate, setAttFromDate] = useState("");
+  const [attToDate, setAttToDate] = useState(new Date().toISOString().split('T')[0]);
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
   // For live timer
   const [now, setNow] = useState(Date.now());
+
+  const isInRange = (dateStr: string | null | undefined, fromDate?: string, toDate?: string) => {
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const from = fromDate ? new Date(fromDate) : null;
+    const to = toDate ? new Date(toDate) : null;
+    const fromOnly = from ? new Date(from.getFullYear(), from.getMonth(), from.getDate()) : null;
+    const toOnly = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate()) : null;
+    if (fromOnly && dateOnly < fromOnly) return false;
+    if (toOnly && dateOnly > toOnly) return false;
+    return true;
+  };
 
   // Update timer every second if any open attendance exists
   useEffect(() => {
@@ -87,40 +103,64 @@ export default function EmployeeTimePage() {
   useEffect(() => {
     if (!employeeId) return;
     let url = `/api/breaks?employeeId=${employeeId}`;
-    if (breakDate) url += `&date=${breakDate}`;
+    const params = new URLSearchParams();
+    if (breakFromDate) params.append("fromDate", breakFromDate);
+    if (breakToDate) params.append("toDate", breakToDate);
+    if (params.toString()) url += `&${params.toString()}`;
     fetch(url)
       .then(res => res.json())
       .then(data => {
-        if (data.success) setBreaks(data.breaks);
+        if (data.success) {
+          const filtered = (data.breaks || []).filter((b: any) =>
+            isInRange(b.date || b.break_start, breakFromDate, breakToDate)
+          );
+          setBreaks(filtered);
+        }
         else setBreaks([]);
       });
-  }, [employeeId, breakDate]);
+  }, [employeeId, breakFromDate, breakToDate]);
 
   // Fetch prayer breaks for current employee
   useEffect(() => {
     if (!employeeId) return;
     let url = `/api/prayer_breaks?employeeId=${employeeId}`;
-    if (prayerDate) url += `&date=${prayerDate}`;
+    const params = new URLSearchParams();
+    if (prayerFromDate) params.append("fromDate", prayerFromDate);
+    if (prayerToDate) params.append("toDate", prayerToDate);
+    if (params.toString()) url += `&${params.toString()}`;
     fetch(url)
       .then(res => res.json())
       .then(data => {
-        if (data.success) setPrayerBreaks(data.prayer_breaks);
+        if (data.success) {
+          const filtered = (data.prayer_breaks || []).filter((p: any) =>
+            isInRange(p.date || p.prayer_break_start, prayerFromDate, prayerToDate)
+          );
+          setPrayerBreaks(filtered);
+        }
         else setPrayerBreaks([]);
       });
-  }, [employeeId, prayerDate]);
+  }, [employeeId, prayerFromDate, prayerToDate]);
 
   // Fetch attendance for current employee
   useEffect(() => {
     if (!employeeId) return;
     let url = `/api/attendance?employeeId=${employeeId}`;
-    if (attDate) url += `&date=${attDate}`;
+    const params = new URLSearchParams();
+    if (attFromDate) params.append("fromDate", attFromDate);
+    if (attToDate) params.append("toDate", attToDate);
+    if (params.toString()) url += `&${params.toString()}`;
     fetch(url)
       .then(res => res.json())
       .then(data => {
-        if (data.success) setAttendance(data.attendance);
+        if (data.success) {
+          const filtered = (data.attendance || []).filter((a: any) =>
+            isInRange(a.date || a.clock_in, attFromDate, attToDate)
+          );
+          setAttendance(filtered);
+        }
         else setAttendance([]);
       });
-  }, [employeeId, attDate]);
+  }, [employeeId, attFromDate, attToDate]);
 
   // Aggregate all breaks per day for this employee (including running breaks)
   const dailyBreakTotals = (() => {
@@ -251,7 +291,7 @@ export default function EmployeeTimePage() {
       const totalHours = formatTotalHours(row.clock_in, row.clock_out);
       const late = row.is_late ? `Late ${formatLateTime(row.late_minutes || 0)}` : "On Time";
       return {
-        "Employee ID": row.employee_id,
+        "Id": row.employee_id,
         "Name": row.employee_name || row.name,
         "Pseudo Name": row.pseudonym,
         "Department": row.department_name,
@@ -328,9 +368,17 @@ export default function EmployeeTimePage() {
             <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
-                value={breakDate}
-                onChange={e => setBreakDate(e.target.value)}
+                value={breakFromDate}
+                onChange={e => setBreakFromDate(e.target.value)}
                 className={styles.breakSummaryDate}
+                placeholder="From Date"
+              />
+              <input
+                type="date"
+                value={breakToDate}
+                onChange={e => setBreakToDate(e.target.value)}
+                className={styles.breakSummaryDate}
+                placeholder="To Date"
               />
               <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
@@ -341,9 +389,9 @@ export default function EmployeeTimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
-                  <th>Employee ID</th>
-                  <th>Name</th>
-                  <th>Pseudo Name</th>
+                  <th>Id</th>
+                  <th>Full Name</th>
+                  <th>P.Name</th>
                   <th>Department</th>
                   <th>Date</th>
                   <th>Break Start</th>
@@ -399,9 +447,17 @@ export default function EmployeeTimePage() {
             <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
-                value={prayerDate}
-                onChange={e => setPrayerDate(e.target.value)}
+                value={prayerFromDate}
+                onChange={e => setPrayerFromDate(e.target.value)}
                 className={styles.breakSummaryDate}
+                placeholder="From Date"
+              />
+              <input
+                type="date"
+                value={prayerToDate}
+                onChange={e => setPrayerToDate(e.target.value)}
+                className={styles.breakSummaryDate}
+                placeholder="To Date"
               />
               <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
@@ -412,9 +468,9 @@ export default function EmployeeTimePage() {
               <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
-                  <th>Employee ID</th>
-                  <th>Name</th>
-                  <th>Pseudo Name</th>
+                  <th>Id</th>
+                  <th>Full Name</th>
+                  <th>P.Name</th>
                   <th>Department</th>
                   <th>Date</th>
                   <th>Prayer Start</th>
@@ -470,9 +526,17 @@ export default function EmployeeTimePage() {
             <div className={attStyles.attendanceSummaryFilters}>
               <input
                 type="date"
-                value={attDate}
-                onChange={e => setAttDate(e.target.value)}
+                value={attFromDate}
+                onChange={e => setAttFromDate(e.target.value)}
                 className={attStyles.attendanceSummaryDate}
+                placeholder="From Date"
+              />
+              <input
+                type="date"
+                value={attToDate}
+                onChange={e => setAttToDate(e.target.value)}
+                className={attStyles.attendanceSummaryDate}
+                placeholder="To Date"
               />
               <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
@@ -483,7 +547,7 @@ export default function EmployeeTimePage() {
               <table className={attStyles.attendanceSummaryTable}>
                 <thead>
                 <tr>
-                  <th>Employee ID</th>
+                  <th>Id</th>
                   <th>Name</th>
                   <th>Pseudo Name</th>
                   <th>Department</th>
