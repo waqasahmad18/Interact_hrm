@@ -9,9 +9,9 @@ async function closeOpenAttendance() {
       database: 'interact_hrm'
     });
 
-    // Find all open attendance records (clock_in exists but clock_out is NULL)
+    // Find all open attendance records that are older than today (clock_in exists but clock_out is NULL)
     const [openRecords] = await conn.execute(
-      "SELECT id, employee_id, employee_name, date, clock_in FROM employee_attendance WHERE clock_out IS NULL ORDER BY clock_in DESC"
+      "SELECT id, employee_id, employee_name, date, clock_in FROM employee_attendance WHERE clock_out IS NULL AND DATE(date) < CURDATE() ORDER BY clock_in DESC"
     );
 
     console.log(`Found ${openRecords.length} open attendance records:\n`);
@@ -27,7 +27,7 @@ async function closeOpenAttendance() {
       console.log(`${index + 1}. ID: ${record.id}, Employee: ${record.employee_name} (${record.employee_id}), Date: ${record.date}, Clock In: ${record.clock_in}`);
     });
 
-    console.log('\n⚠️  Closing all open records by setting clock_out = clock_in + 8 hours...\n');
+    console.log('\n⚠️  Closing all OLD open records (before today) by setting clock_out = clock_in + 8 hours...\n');
 
     // Close each open record by setting clock_out to clock_in + 8 hours
     let closed = 0;
