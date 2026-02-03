@@ -27,7 +27,13 @@ export default function DepartmentsTable() {
   useEffect(() => {
     fetch("/api/departments")
       .then((res) => res.json())
-      .then((data: Department[]) => setDepartments(data));
+      .then((data) => {
+        if (data?.success && Array.isArray(data.departments)) {
+          setDepartments(data.departments);
+        } else {
+          setDepartments([]);
+        }
+      });
   }, []);
 
   // Fetch employees for all departments
@@ -57,7 +63,11 @@ export default function DepartmentsTable() {
     // Refresh
     fetch("/api/departments")
       .then((res) => res.json())
-      .then((data: Department[]) => setDepartments(data));
+      .then((data) => {
+        if (data?.success && Array.isArray(data.departments)) {
+          setDepartments(data.departments);
+        }
+      });
   };
 
   // Edit department
@@ -72,7 +82,11 @@ export default function DepartmentsTable() {
     // Refresh
     fetch("/api/departments")
       .then((res) => res.json())
-      .then((data: Department[]) => setDepartments(data));
+      .then((data) => {
+        if (data?.success && Array.isArray(data.departments)) {
+          setDepartments(data.departments);
+        }
+      });
   };
 
   // Delete department
@@ -81,7 +95,11 @@ export default function DepartmentsTable() {
     // Refresh
     fetch("/api/departments")
       .then((res) => res.json())
-      .then((data: Department[]) => setDepartments(data));
+      .then((data) => {
+        if (data?.success && Array.isArray(data.departments)) {
+          setDepartments(data.departments);
+        }
+      });
   };
 
   return (

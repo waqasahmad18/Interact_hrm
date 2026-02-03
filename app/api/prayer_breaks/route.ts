@@ -1,24 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
-
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
+import { pool } from "../../../lib/db";
 
 // GET: Fetch all prayer breaks or by employeeId/date
 export async function GET(req: NextRequest) {
+  let conn;
   try {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
     let query = `SELECT pb.*, e.pseudonym, d.name AS department_name
       FROM prayer_breaks pb
       LEFT JOIN hrm_employees e ON pb.employee_id = e.id
-      LEFT JOIN employee_jobs j ON pb.employee_id = j.employee_id
+      LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
       WHERE 1=1`;
     const params: (string|number)[] = [];
@@ -40,24 +37,27 @@ export async function GET(req: NextRequest) {
       prayer_break_end: row.prayer_break_end ? new Date(row.prayer_break_end + 'Z').toISOString() : null,
       prayer_break_duration: row.prayer_break_duration ? Number(row.prayer_break_duration) : null,
     }));
-    await conn.end();
     return NextResponse.json({ success: true, prayer_breaks: formattedPrayerBreaks });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('GET prayer_breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // POST: Add or update prayer break record
 export async function POST(req: NextRequest) {
-  const data = await req.json();
-  const { employee_id, employee_name, date, prayer_break_start, prayer_break_end } = data || {};
-  if (!employee_id || !date) {
-    return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
-  }
-  const formattedDate = new Date(date).toISOString().slice(0, 10); // YYYY-MM-DD
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    const data = await req.json();
+    const { employee_id, employee_name, date, prayer_break_start, prayer_break_end } = data || {};
+    if (!employee_id || !date) {
+      return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
+    }
+    const formattedDate = new Date(date).toISOString().slice(0, 10); // YYYY-MM-DD
+    conn = await pool.getConnection();
     if (prayer_break_start) {
       // Starting a new prayer break
       const [ongoingPrayerBreaks] = await conn.execute(
@@ -91,10 +91,12 @@ export async function POST(req: NextRequest) {
     } else {
       return NextResponse.json({ success: false, error: "Invalid prayer break action." }, { status: 400 });
     }
-    await conn.end();
     return NextResponse.json({ success: true });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('POST prayer_breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }

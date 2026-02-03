@@ -7,8 +7,12 @@ export const pool = mysql.createPool({
 	password: '', // apna MySQL password
 	database: 'interact_hrm',
 	waitForConnections: true,
-	connectionLimit: 30,
-	queueLimit: 0
+	connectionLimit: 10,  // Reduced from 30 to prevent overwhelming MySQL
+	queueLimit: 0,
+	maxIdle: 10, // Maximum idle connections
+	idleTimeout: 60000, // Close idle connections after 60 seconds
+	enableKeepAlive: true,
+	keepAliveInitialDelay: 0
 });
 
 

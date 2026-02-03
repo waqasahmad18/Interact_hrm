@@ -1,38 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-
-const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'interact_hrm',
-};
+import { pool } from '../../../lib/db';
 
 export async function GET(req: NextRequest) {
+  let conn;
   try {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
-    if (!employeeId) {
-      return NextResponse.json({ success: false, error: 'employeeId is required' }, { status: 400 });
+    const username = searchParams.get('username');
+    const email = searchParams.get('email');
+    
+    // At least one parameter is required
+    if (!employeeId && !username && !email) {
+      return NextResponse.json({ success: false, error: 'employeeId, username, or email is required' }, { status: 400 });
     }
-    const conn = await mysql.createConnection(dbConfig);
-    // Search by employee_code, id, or username
-    const [rows]: any = await conn.execute(
-      'SELECT * FROM hrm_employees WHERE employee_code = ? OR CAST(id AS CHAR) = ? OR username = ?',
-      [employeeId, employeeId, employeeId]
-    );
-    await conn.end();
+    
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
+    
+      let query = `SELECT e.*, d.name AS department_name 
+        FROM hrm_employees e
+        LEFT JOIN employee_jobs j ON e.id = j.employee_id
+        LEFT JOIN departments d ON j.department_id = d.id
+        WHERE `;
+    let params: string[] = [];
+    
+    if (employeeId) {
+      // Search by employee_code, id, or username
+        query += '(e.employee_code = ? OR CAST(e.id AS CHAR) = ? OR e.username = ?)';
+      params = [employeeId, employeeId, employeeId];
+    } else if (username) {
+        query += 'e.username = ?';
+      params = [username];
+    } else if (email) {
+        query += 'e.email = ?';
+      params = [email];
+    }
+    
+    const [rows]: any = await conn.execute(query, params);
     if (rows && rows.length > 0) {
       return NextResponse.json({ success: true, employee: rows[0] });
     } else {
       return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
     }
   } catch (err) {
+    console.error('GET hrm_employees error:', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 export async function POST(req: NextRequest) {
+  let conn;
   try {
     const data = await req.json();
     console.log('Received data:', data);
@@ -54,7 +75,10 @@ export async function POST(req: NextRequest) {
       cnic_address,
       employment_status
     } = data;
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
     // Convert empty employee_code to null to avoid duplicate key constraint
     const empCode = employee_code && employee_code.trim() !== '' ? employee_code : null;
     const [result]: any = await conn.execute(
@@ -62,16 +86,18 @@ export async function POST(req: NextRequest) {
       [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status]
     );
     const insertedId = result.insertId;
-    await conn.end();
     console.log('Insert successful, ID:', insertedId);
     return NextResponse.json({ success: true, id: insertedId });
   } catch (err) {
     console.error('POST Error:', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 export async function PUT(req: NextRequest) {
+  let conn;
   try {
     const data = await req.json();
     console.log('PUT Received data:', data);
@@ -97,7 +123,10 @@ export async function PUT(req: NextRequest) {
     if (!id && !employee_code && !username) {
       return NextResponse.json({ success: false, error: 'id or employee_code or username is required' }, { status: 400 });
     }
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
     const whereClause = id ? 'id = ?' : (employee_code ? 'employee_code = ?' : 'username = ?');
     const whereValue = id ? id : (employee_code ? employee_code : username);
     
@@ -113,11 +142,12 @@ export async function PUT(req: NextRequest) {
     );
     
     console.log('Affected rows:', result.affectedRows);
-    await conn.end();
     console.log('Update successful');
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('PUT Error:', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }

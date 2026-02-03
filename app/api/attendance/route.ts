@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
-
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
+import { pool } from "../../../lib/db";
 
 // Use a dedicated table for attendance to avoid legacy conflicts
 const ATTENDANCE_TABLE = "employee_attendance";
 
-async function ensureAttendanceTable(conn: mysql.Connection) {
+async function ensureAttendanceTable(conn: any) {
   const createSql = `
     CREATE TABLE IF NOT EXISTS ${ATTENDANCE_TABLE} (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -30,16 +23,21 @@ async function ensureAttendanceTable(conn: mysql.Connection) {
 
 // GET: Fetch all attendance records or by employeeId, now with department name
 export async function GET(req: NextRequest) {
+  let conn;
   try {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date");
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
-    const conn = await mysql.createConnection(dbConfig);
+    
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
     await ensureAttendanceTable(conn);
     let rows;
-    // Join with hrm_employees, employee_jobs, and departments to get department name
+    // Join with hrm_employees for employee name and pseudonym, and departments for department name
     const baseQuery = `
       SELECT 
         ea.*,
@@ -52,11 +50,19 @@ export async function GET(req: NextRequest) {
       LEFT JOIN departments d ON j.department_id = d.id
     `;
     if (employeeId) {
-      // Always return all records for this employee, regardless of date, so UI can check for any open record
-      [rows] = await conn.execute(
-        `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
-        [employeeId]
-      );
+      // If date is provided, filter by that specific date; otherwise return all records
+      if (date) {
+        [rows] = await conn.execute(
+          `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) = ? ORDER BY ea.clock_in DESC`,
+          [employeeId, date]
+        );
+      } else {
+        // Return all records for this employee, regardless of date, so UI can check for any open record
+        [rows] = await conn.execute(
+          `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
+          [employeeId]
+        );
+      }
     } else if (fromDate && toDate) {
       [rows] = await conn.execute(
         `${baseQuery} WHERE DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.date DESC`,
@@ -76,7 +82,7 @@ export async function GET(req: NextRequest) {
     // Simply return the rows as is; frontend will handle date parsing.
     
     // Now calculate late status based on shift assignments
-    const formattedAttendance = await Promise.all((rows as any[]).map(async (row) => {
+    const formattedAttendance = (rows as any[]).map((row) => {
       let formattedClockIn = null;
       let clockInDate: Date | null = null;
       
@@ -97,46 +103,9 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Calculate late status based on shift assignment
+      // Calculate late status will be handled separately with fresh connection if needed
       let is_late = false;
       let late_minutes = 0;
-
-      if (clockInDate && row.employee_id) {
-        try {
-          // Get shift assignment for this employee on this date
-          const [shiftRows] = await conn.execute(
-            `SELECT start_time FROM shift_assignments 
-             WHERE employee_id = ? 
-             AND (assigned_date <= DATE(?) OR assigned_date IS NULL)
-             ORDER BY assigned_date DESC LIMIT 1`,
-            [row.employee_id, row.date]
-          );
-          
-          const shiftAssignment = (shiftRows as any[])[0];
-          
-          if (shiftAssignment && shiftAssignment.start_time) {
-            // Get the shift start time (HH:MM:SS format)
-            const shiftStartTime = shiftAssignment.start_time;
-            
-            // Create a date object for shift start time on the same day as clock_in
-            const attendanceDate = new Date(row.date);
-            const [hours, minutes, seconds] = shiftStartTime.split(':').map(Number);
-            const shiftStartDateTime = new Date(attendanceDate);
-            shiftStartDateTime.setHours(hours, minutes, seconds || 0, 0);
-            
-            // Add 10 minutes grace period
-            const graceTime = new Date(shiftStartDateTime.getTime() + 10 * 60 * 1000);
-            
-            // Calculate how late (in minutes)
-            if (clockInDate > graceTime) {
-              late_minutes = Math.floor((clockInDate.getTime() - graceTime.getTime()) / (60 * 1000));
-              is_late = true;
-            }
-          }
-        } catch (err) {
-          console.error("Error calculating late status:", err);
-        }
-      }
 
       return {
         ...row,
@@ -146,32 +115,35 @@ export async function GET(req: NextRequest) {
         late_minutes,
         pseudonym: row.pseudonym || null,
       };
-    }));
+    });
     
-    await conn.end();
     return NextResponse.json({ success: true, attendance: formattedAttendance });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('GET attendance error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // POST: Add or update attendance record
 export async function POST(req: NextRequest) {
-  const data = await req.json();
-  const { employee_id, employee_name, date, clock_in, clock_out } = data || {};
-  
-  console.log("Attendance API POST Data:", { employee_id, employee_name, date, clock_in, clock_out });
-  
-  // Ensure date is in YYYY-MM-DD format for database consistency
-  const formattedDate = date;
-
-  if (!employee_id || !formattedDate) {
-    return NextResponse.json({ success: false, error: "Missing required fields: employee_id or date" }, { status: 400 });
-  }
-
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    const data = await req.json();
+    const { employee_id, employee_name, date, clock_in, clock_out } = data || {};
+    
+    console.log("Attendance API POST Data:", { employee_id, employee_name, date, clock_in, clock_out });
+    
+    // Ensure date is in YYYY-MM-DD format for database consistency
+    const formattedDate = date;
+
+    if (!employee_id || !formattedDate) {
+      return NextResponse.json({ success: false, error: "Missing required fields: employee_id or date" }, { status: 400 });
+    }
+
+    conn = await pool.getConnection();
     await ensureAttendanceTable(conn);
 
     if (clock_in !== undefined && clock_in !== null) {
@@ -202,25 +174,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await conn.end();
     return NextResponse.json({ success: true, message: clock_in ? 'inserted' : 'updated' });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('POST attendance error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // PUT: Update existing attendance record (Admin manual edit)
 export async function PUT(req: NextRequest) {
-  const data = await req.json();
-  const { id, employee_id, employee_name, date, clock_in, clock_out } = data || {};
-
-  if (!id || !employee_id || !date) {
-    return NextResponse.json({ success: false, error: "Missing required fields: id, employee_id or date" }, { status: 400 });
-  }
-
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    const data = await req.json();
+    const { id, employee_id, employee_name, date, clock_in, clock_out } = data || {};
+
+    if (!id || !employee_id || !date) {
+      return NextResponse.json({ success: false, error: "Missing required fields: id, employee_id or date" }, { status: 400 });
+    }
+
+    conn = await pool.getConnection();
     await ensureAttendanceTable(conn);
 
     const formattedClockIn = clock_in ? new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ') : null;
@@ -240,33 +215,38 @@ export async function PUT(req: NextRequest) {
        formattedClockIn, formattedClockOut, formattedClockIn, formattedClockOut, id]
     );
 
-    await conn.end();
     return NextResponse.json({ success: true, message: 'Attendance updated successfully' });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('PUT attendance error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // DELETE: Delete attendance record
 export async function DELETE(req: NextRequest) {
-  const data = await req.json();
-  const { id } = data || {};
-
-  if (!id) {
-    return NextResponse.json({ success: false, error: "Missing required field: id" }, { status: 400 });
-  }
-
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    const data = await req.json();
+    const { id } = data || {};
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Missing required field: id" }, { status: 400 });
+    }
+
+    conn = await pool.getConnection();
     await ensureAttendanceTable(conn);
 
     await conn.execute(`DELETE FROM ${ATTENDANCE_TABLE} WHERE id = ?`, [id]);
 
-    await conn.end();
     return NextResponse.json({ success: true, message: 'Attendance deleted successfully' });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('DELETE attendance error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }

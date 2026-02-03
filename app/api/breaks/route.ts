@@ -1,26 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
-
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
+import { pool } from "../../../lib/db";
 
 // GET: Fetch all breaks or by employeeId/date
 export async function GET(req: NextRequest) {
+  let conn;
   try {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
+    if (!conn) {
+      throw new Error("Failed to get database connection from pool");
+    }
     let rows;
-    // Join with hrm_employees for pseudonym, employee_jobs and departments for department name
+    // Join with hrm_employees for pseudonym and departments for department name
     let query = `SELECT b.*, e.pseudonym, d.name AS department_name
       FROM breaks b
       LEFT JOIN hrm_employees e ON b.employee_id = e.id
-      LEFT JOIN employee_jobs j ON b.employee_id = j.employee_id
+      LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
       WHERE 1=1`;
     const params: (string|number)[] = [];
@@ -42,26 +39,29 @@ export async function GET(req: NextRequest) {
       break_end: row.break_end ? new Date(row.break_end + 'Z').toISOString() : null,
       break_duration: row.break_duration ? Number(row.break_duration) : null,
     }));
-    await conn.end();
     return NextResponse.json({ success: true, breaks: formattedBreaks });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('GET breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // POST: Add or update break record
 export async function POST(req: NextRequest) {
-  const data = await req.json();
-  const { employee_id, employee_name, date, break_start, break_end } = data || {};
-  if (!employee_id || !date) {
-    return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
-  }
-
-  const formattedDate = new Date(date).toISOString().slice(0, 10); // YYYY-MM-DD
-
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    const data = await req.json();
+    const { employee_id, employee_name, date, break_start, break_end } = data || {};
+    if (!employee_id || !date) {
+      return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
+    }
+
+    const formattedDate = new Date(date).toISOString().slice(0, 10); // YYYY-MM-DD
+
+    conn = await pool.getConnection();
 
     // Lunch break logic only
     if (break_start) {
@@ -98,10 +98,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid break action." }, { status: 400 });
     }
 
-    await conn.end();
     return NextResponse.json({ success: true });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('POST breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
