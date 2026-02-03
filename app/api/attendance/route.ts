@@ -184,19 +184,31 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT: Update existing attendance record (Admin manual edit)
+// PUT: Update existing attendance record (Admin manual edit) or auto-close old open records
 export async function PUT(req: NextRequest) {
   let conn;
   try {
     const data = await req.json();
-    const { id, employee_id, employee_name, date, clock_in, clock_out } = data || {};
+    const { id, employee_id, employee_name, date, clock_in, clock_out, autoCloseOldRecords } = data || {};
+
+    conn = await pool.getConnection();
+    await ensureAttendanceTable(conn);
+
+    // If autoCloseOldRecords flag is set, close any old open records for this employee
+    if (autoCloseOldRecords && employee_id) {
+      await conn.execute(
+        `UPDATE ${ATTENDANCE_TABLE}
+         SET clock_out = DATE_ADD(clock_in, INTERVAL 8 HOUR),
+             total_hours = 8.00
+         WHERE employee_id = ? AND clock_out IS NULL AND DATE(date) < CURDATE()`,
+        [employee_id]
+      );
+      return NextResponse.json({ success: true, message: 'Old open records closed' });
+    }
 
     if (!id || !employee_id || !date) {
       return NextResponse.json({ success: false, error: "Missing required fields: id, employee_id or date" }, { status: 400 });
     }
-
-    conn = await pool.getConnection();
-    await ensureAttendanceTable(conn);
 
     const formattedClockIn = clock_in ? new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ') : null;
     const formattedClockOut = clock_out ? new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ') : null;
