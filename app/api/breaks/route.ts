@@ -78,14 +78,14 @@ export async function POST(req: NextRequest) {
         [Number(employee_id), employee_name || "", formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (break_end) {
-      // Ending an existing lunch break
+      // Ending an existing lunch break - find ANY open break (not just today)
       const [latestBreakRows] = await conn.execute(
-        "SELECT id, break_start FROM breaks WHERE employee_id = ? AND DATE(break_start) = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
-        [Number(employee_id), formattedDate]
+        "SELECT id, break_start FROM breaks WHERE employee_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
+        [Number(employee_id)]
       );
       const latestBreak = (latestBreakRows as any[])[0];
       if (!latestBreak) {
-        return NextResponse.json({ success: false, error: "No ongoing lunch break found for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "No ongoing lunch break found for this employee." }, { status: 400 });
       }
       const breakStartTime = new Date(latestBreak.break_start + 'Z').getTime();
       const breakEndTime = new Date(break_end).getTime();

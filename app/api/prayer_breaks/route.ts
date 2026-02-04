@@ -72,14 +72,14 @@ export async function POST(req: NextRequest) {
         [Number(employee_id), employee_name || "", formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (prayer_break_end) {
-      // Ending an existing prayer break
+      // Ending an existing prayer break - find ANY open prayer break (not just today)
       const [latestPrayerBreakRows] = await conn.execute(
-        "SELECT id, prayer_break_start FROM prayer_breaks WHERE employee_id = ? AND DATE(prayer_break_start) = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
-        [Number(employee_id), formattedDate]
+        "SELECT id, prayer_break_start FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
+        [Number(employee_id)]
       );
       const latestPrayerBreak = (latestPrayerBreakRows as any[])[0];
       if (!latestPrayerBreak) {
-        return NextResponse.json({ success: false, error: "No ongoing prayer break found for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "No ongoing prayer break found for this employee." }, { status: 400 });
       }
       const prayerBreakStartTime = new Date(latestPrayerBreak.prayer_break_start + 'Z').getTime();
       const prayerBreakEndTime = new Date(prayer_break_end).getTime();
