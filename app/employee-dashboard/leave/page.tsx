@@ -261,8 +261,8 @@ function formatDate(dateString: string) {
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ color: "#3478f6", fontWeight: 700, fontSize: "2rem", marginBottom: 18 }}>Leave Management</h1>
-      <div style={{ marginBottom: 24, fontSize: "1.1rem", color: "#2b6cb0", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <h1 style={{ color: "#3478f6", fontWeight: 700, fontSize: "2rem", marginBottom: 18, background: "white", padding: "16px 24px", borderRadius: 8 }}>Leave Management</h1>
+      <div style={{ marginBottom: 24, fontSize: "1.1rem", color: "#2b6cb0", display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: "white", padding: "16px 24px", borderRadius: 8 }}>
         <span>{employmentStatus === 'Probation' ? 'Leave Balance' : 'Annual Leave Balance'}: <b>{leaveBalance}</b> / {annualAllowance}</span>
         <span style={{ marginLeft: 'auto' }}>Bereavement Leave Balance: <b>{bereavementBalance}</b> / 3</span>
       </div>
