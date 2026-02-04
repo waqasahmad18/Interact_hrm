@@ -12,8 +12,10 @@ export async function GET(req: NextRequest) {
 			'SELECT * FROM employee_jobs WHERE employee_id = ?',
 			[employeeId]
 		);
-		console.log('GET employee_jobs for employeeId:', employeeId, 'Result:', rows);
+		console.log('GET employee_jobs - Employee ID:', employeeId);
+		console.log('GET employee_jobs - DB Result:', rows[0]);
 		if (rows && rows.length > 0) {
+			console.log('GET employee_jobs - Returning department_id:', rows[0]?.department_id);
 			return NextResponse.json({ success: true, job: rows[0] });
 		} else {
 			return NextResponse.json({ success: false, error: 'Job not found' });
@@ -27,7 +29,9 @@ export async function PUT(req: NextRequest) {
 	try {
 		const body = await req.json();
 		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
-		console.log('PUT employee_jobs received:', { employee_id, departmentId, body });
+		console.log('PUT employee_jobs - Received body:', body);
+		console.log('PUT employee_jobs - Department ID received:', departmentId);
+		console.log('PUT employee_jobs - Department ID type:', typeof departmentId);
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
@@ -36,10 +40,10 @@ export async function PUT(req: NextRequest) {
 			 WHERE employee_id = ?` ,
 			[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
 		);
-		console.log('PUT employee_jobs successful for employee_id:', employee_id);
+		console.log('PUT employee_jobs - Successfully updated employee_id:', employee_id, 'with department_id:', departmentId || null);
 		return NextResponse.json({ success: true });
 	} catch (err) {
-		console.error('PUT employee_jobs error:', err);
+		console.error('PUT employee_jobs - Error:', err);
 		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
 	}
 }
@@ -48,7 +52,9 @@ export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();
 		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
-		console.log('POST employee_jobs received:', { employee_id, departmentId, body });
+		console.log('POST employee_jobs - Received body:', body);
+		console.log('POST employee_jobs - Department ID received:', departmentId);
+		console.log('POST employee_jobs - Department ID after null check:', departmentId || null);
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
@@ -57,10 +63,9 @@ export async function POST(req: NextRequest) {
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
 			[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 		);
-		console.log('POST employee_jobs successful for employee_id:', employee_id);
+		console.log('POST employee_jobs - Successfully inserted employee_id:', employee_id, 'with department_id:', departmentId || null);
 		return NextResponse.json({ success: true });
 	} catch (err) {
-		console.error('POST employee_jobs error:', err);
 		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
 	}
 }
