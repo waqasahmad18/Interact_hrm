@@ -61,3 +61,6 @@ export async function POST(req: NextRequest) {
 		return NextResponse.json({ success: true });
 	} catch (err) {
 		console.error('POST employee_jobs error:', err);
+		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+	}
+}
