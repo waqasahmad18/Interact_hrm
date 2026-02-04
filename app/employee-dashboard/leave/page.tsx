@@ -334,7 +334,7 @@ function formatDate(dateString: string) {
       </form>
 
       {/* Leave Requests Table */}
-      <h2 style={{ color: "#2b6cb0", fontWeight: 600, fontSize: "1.3rem", marginBottom: 10 }}>Your Leave Requests</h2>
+      <h2 style={{ color: "#2b6cb0", fontWeight: 600, fontSize: "1.3rem", marginBottom: 10, background: "white", padding: "16px 24px", borderRadius: 8 }}>Your Leave Requests</h2>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px #e2e8f0" }}>
           <thead>
