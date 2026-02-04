@@ -47,7 +47,7 @@ export async function PUT(req: NextRequest) {
 			await pool.execute(
 				`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
 				 WHERE employee_id = ?` ,
-				[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
+				[joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
 			);
 			console.log('PUT employee_jobs - Successfully UPDATED employee_id:', employee_id, 'with department_id:', departmentId || null);
 		} else {
@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest) {
 			await pool.execute(
 				`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-				[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
+				[employee_id, joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 			);
 			console.log('PUT employee_jobs - Successfully INSERTED employee_id:', employee_id, 'with department_id:', departmentId || null);
 		}
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 		await pool.execute(
 			`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-			[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
+			[employee_id, joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 		);
 		console.log('POST employee_jobs - Successfully inserted employee_id:', employee_id, 'with department_id:', departmentId || null);
 		return NextResponse.json({ success: true });
