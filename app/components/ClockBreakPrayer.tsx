@@ -100,12 +100,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        setIsClockedIn(true);
-        setTimer(0);
-        if (intervalId) clearInterval(intervalId);
-        const id = setInterval(() => setTimer((prev) => prev + 1), 1000);
-        setIntervalId(id as NodeJS.Timeout);
-            // localStorage.setItem removed: state is now backend-driven
+        // Force sync from backend instead of manual state management
+        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
       } else {
         alert(data.error || "Failed to clock in. Please try again.");
       }
@@ -137,9 +133,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        setIsClockedIn(false);
-        setTimer(0);
-        if (intervalId) clearInterval(intervalId);
+        // Force sync from backend instead of manual state management
+        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
       } else {
         alert(data.error || "Failed to clock out. Please try again.");
       }
