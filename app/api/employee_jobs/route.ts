@@ -35,12 +35,31 @@ export async function PUT(req: NextRequest) {
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
-		await pool.execute(
-			`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
-			 WHERE employee_id = ?` ,
-			[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
+		
+		// Check if record exists
+		const [existing]: any = await pool.execute(
+			'SELECT * FROM employee_jobs WHERE employee_id = ?',
+			[employee_id]
 		);
-		console.log('PUT employee_jobs - Successfully updated employee_id:', employee_id, 'with department_id:', departmentId || null);
+		
+		if (existing && existing.length > 0) {
+			// Record exists, UPDATE
+			await pool.execute(
+				`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
+				 WHERE employee_id = ?` ,
+				[joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
+			);
+			console.log('PUT employee_jobs - Successfully UPDATED employee_id:', employee_id, 'with department_id:', departmentId || null);
+		} else {
+			// Record doesn't exist, INSERT
+			await pool.execute(
+				`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+				[employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
+			);
+			console.log('PUT employee_jobs - Successfully INSERTED employee_id:', employee_id, 'with department_id:', departmentId || null);
+		}
+		
 		return NextResponse.json({ success: true });
 	} catch (err) {
 		console.error('PUT employee_jobs - Error:', err);
