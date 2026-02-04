@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       if (pending) {
         const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
         await conn.execute(
-          `UPDATE ${ATTENDANCE_TABLE} SET clock_out = ?, total_hours = ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2), employee_name = ? WHERE id = ?`,
+          `UPDATE ${ATTENDANCE_TABLE} SET clock_out = ?, total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)), employee_name = ? WHERE id = ?`,
           [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
         );
         console.log("Clock-out record updated successfully");
