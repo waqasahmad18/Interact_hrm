@@ -7,11 +7,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
     const username = searchParams.get('username');
-    const email = searchParams.get('email');
     
     // At least one parameter is required
-    if (!employeeId && !username && !email) {
-      return NextResponse.json({ success: false, error: 'employeeId, username, or email is required' }, { status: 400 });
+    if (!employeeId && !username) {
+      return NextResponse.json({ success: false, error: 'employeeId or username is required' }, { status: 400 });
     }
     
     conn = await pool.getConnection();
@@ -33,9 +32,6 @@ export async function GET(req: NextRequest) {
     } else if (username) {
         query += 'e.username = ?';
       params = [username];
-    } else if (email) {
-        query += 'e.email = ?';
-      params = [email];
     }
     
     const [rows]: any = await conn.execute(query, params);
