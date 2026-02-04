@@ -2,7 +2,7 @@ import mysql from 'mysql2/promise';
 
 // Update these values as per your local setup if needed
 export const pool = mysql.createPool({
-	host: 'localhost',
+	socketPath: '/var/run/mysqld/mysqld.sock', // Unix socket for Ubuntu
 	user: 'root', // apna MySQL user
 	password: '', // apna MySQL password
 	database: 'interact_hrm',
