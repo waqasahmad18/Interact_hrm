@@ -1,43 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { pool } from "../../../lib/db";
 
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
-
+// GET: Fetch all departments
 export async function GET() {
-  const conn = await mysql.createConnection(dbConfig);
-  const [rows] = await conn.execute("SELECT * FROM departments ORDER BY name");
-  await conn.end();
-  return NextResponse.json({ success: true, departments: rows });
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const [rows] = await conn.execute("SELECT * FROM departments ORDER BY name");
+    return NextResponse.json({ success: true, departments: rows });
+  } catch (error) {
+    console.error("Error fetching departments:", error);
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
 }
 
+// POST: Add new department
 export async function POST(req: NextRequest) {
-  const { name } = await req.json();
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("INSERT INTO departments (name) VALUES (?)", [name]);
-  await conn.end();
-  return NextResponse.json({ success: true });
+  let conn;
+  try {
+    const { name } = await req.json();
+    conn = await pool.getConnection();
+    await conn.execute("INSERT INTO departments (name) VALUES (?)", [name]);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error adding department:", error);
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
 }
 
+// PUT: Update department
 export async function PUT(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  const { name } = await req.json();
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("UPDATE departments SET name = ? WHERE id = ?", [name, id]);
-  await conn.end();
-  return NextResponse.json({ success: true });
+  let conn;
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const { name } = await req.json();
+    conn = await pool.getConnection();
+    await conn.execute("UPDATE departments SET name = ? WHERE id = ?", [name, id]);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error updating department:", error);
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
 }
 
+// DELETE: Remove department
 export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("DELETE FROM departments WHERE id = ?", [id]);
-  await conn.end();
-  return NextResponse.json({ success: true });
+  let conn;
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    conn = await pool.getConnection();
+    await conn.execute("DELETE FROM departments WHERE id = ?", [id]);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting department:", error);
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
 }
