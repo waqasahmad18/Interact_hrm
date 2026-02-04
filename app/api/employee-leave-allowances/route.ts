@@ -46,8 +46,6 @@ export async function GET(req: NextRequest) {
       bereavement_current_balance: emp.bereavement_allowance - emp.bereavement_used + emp.bereavement_balance_adjustment
     }));
 
-    await conn.end();
-
     return NextResponse.json({
       success: true,
       employees: employeesWithBalance
@@ -104,7 +102,6 @@ export async function POST(req: NextRequest) {
     `, [employee_id]);
 
     if (empRows.length === 0) {
-      await conn.end();
       return NextResponse.json({
         success: false,
         error: "Employee not found"
