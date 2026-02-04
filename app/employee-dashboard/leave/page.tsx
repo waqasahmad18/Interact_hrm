@@ -269,7 +269,7 @@ function formatDate(dateString: string) {
       <form onSubmit={handleSubmit} style={{ background: "#f7fafc", borderRadius: 12, padding: 24, marginBottom: 32, boxShadow: "0 2px 8px #e2e8f0" }}>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label>Category</label>
+            <label style={{ fontWeight: 700, color: "#000000" }}>Category</label>
             <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }}>
               {LEAVE_CATEGORIES.map(cat => (
                 <option key={cat.value} value={cat.value}>{cat.label}</option>
@@ -277,20 +277,20 @@ function formatDate(dateString: string) {
             </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label>Start Date</label>
+            <label style={{ fontWeight: 700, color: "#000000" }}>Start Date</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label>End Date</label>
+            <label style={{ fontWeight: 700, color: "#000000" }}>End Date</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
-          <label>Reason</label>
+          <label style={{ fontWeight: 700, color: "#000000" }}>Reason</label>
           <textarea value={reason} onChange={e => setReason(e.target.value)} required rows={2} style={{ width: "100%", padding: 8, borderRadius: 6, border: "2px solid #90A4AE", color: "#000000", fontWeight: 600 }} />
         </div>
         <div style={{ marginTop: 16 }}>
-          <label>Attach Documents (PDF only)</label>
+          <label style={{ fontWeight: 700, color: "#000000" }}>Attach Documents (PDF only)</label>
           <div style={{ marginTop: 8 }}>
             <input
               id="fileInput"
@@ -355,7 +355,7 @@ function formatDate(dateString: string) {
             )}
             {leaves.map(l => (
               <tr key={l.id}>
-                <td style={tdStyle}>{l.leave_category}</td>
+                <td style={{...tdStyle, fontWeight: 700, color: "#000000"}}>{l.leave_category.charAt(0).toUpperCase() + l.leave_category.slice(1)}</td>
                 <td style={tdStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
                 <td style={tdStyle}>{l.total_days}</td>
                 <td style={tdStyle}><button style={{ background: '#3478f6', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer' }} onClick={() => { setSelectedLeave(l); setModalOpen(true); }}>View</button></td>
@@ -378,7 +378,7 @@ function formatDate(dateString: string) {
                         </div>
                       )}
                 <td style={tdStyle}>{(() => { const docs = typeof l.document_paths === 'string' ? JSON.parse(l.document_paths || '[]') : l.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{background: '#E8F4F8', padding: '2px 6px', borderRadius: 4, marginRight: 4, fontSize: '0.9rem'}}>{d}</span>) : <span style={{color: '#999'}}>None</span>; })()}</td>
-                <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status}</td>
+                <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 700 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
                 <td style={tdStyle}>{l.requested_at ? new Date(l.requested_at).toLocaleString() : ""}</td>
 
               </tr>
@@ -390,5 +390,5 @@ function formatDate(dateString: string) {
   );
 }
 
-const thStyle: React.CSSProperties = { padding: "10px 8px", fontWeight: 700, color: "#2b6cb0", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
+const thStyle: React.CSSProperties = { padding: "10px 8px", fontWeight: 700, color: "#000000", borderBottom: "1px solid #e2e8f0", textAlign: "left" };
 const tdStyle = { padding: "8px 8px", borderBottom: "1px solid #f0f0f0" };
