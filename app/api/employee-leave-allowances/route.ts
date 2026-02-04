@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
-
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
+import { pool } from "../../../lib/db";
 
 // GET: Fetch all employees with their leave allowances
 export async function GET(req: NextRequest) {
+  let conn;
   try {
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
 
     // Fetch all employees with fixed allowances, used leaves, and adjustments
     const [rows]: any = await conn.execute(`
@@ -64,11 +58,14 @@ export async function GET(req: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
 // POST: Update current balance for an employee
 export async function POST(req: NextRequest) {
+  let conn;
   try {
     const { employee_id, annual_current_balance, bereavement_current_balance } = await req.json();
 
@@ -79,7 +76,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
 
     // Get employee info and calculate adjustments needed
     const [empRows]: any = await conn.execute(`
@@ -133,8 +130,6 @@ export async function POST(req: NextRequest) {
         updated_at = CURRENT_TIMESTAMP
     `, [employee_id, annualAdjustment, bereavementAdjustment, emp.annual_allowance, emp.bereavement_allowance]);
 
-    await conn.end();
-
     return NextResponse.json({
       success: true,
       message: "Leave balance updated successfully"
@@ -145,5 +140,7 @@ export async function POST(req: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
