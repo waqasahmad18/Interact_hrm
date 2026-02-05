@@ -127,23 +127,32 @@ export async function GET(req: NextRequest) {
       }
 
       // Calculate late status based on shift start time and grace minutes
-      // Convert clock_in to Pakistan time (UTC+5) for comparison
+      // MySQL stores local server time (EST), treat as Pakistan time directly
       let is_late = false;
       let late_minutes = 0;
       const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
-      if (clockInDate && shiftStartMinutes !== null) {
-        // Convert UTC time to Pakistan time (add 5 hours = 300 minutes = 18000000 ms)
-        const pakistanTime = new Date(clockInDate.getTime() + (5 * 60 * 60 * 1000));
+      
+      if (row.clock_in && shiftStartMinutes !== null) {
+        // Parse clock_in as Pakistan local time (don't append Z)
+        const clockInStr = String(row.clock_in).replace('Z', '');
+        const localClockIn = new Date(clockInStr);
         
-        // Get the time-of-day in minutes for comparison
-        const clockInMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
-        
-        // Calculate difference
-        const diffMinutes = clockInMinutes - shiftStartMinutes;
-        
-        if (diffMinutes > GRACE_MINUTES) {
-          late_minutes = diffMinutes - GRACE_MINUTES;
-          is_late = late_minutes > 0;
+        if (!isNaN(localClockIn.getTime())) {
+          // Get time-of-day in minutes
+          const clockInMinutes = localClockIn.getHours() * 60 + localClockIn.getMinutes();
+          
+          // Calculate difference
+          let diffMinutes = clockInMinutes - shiftStartMinutes;
+          
+          // Handle overnight shifts (if clock-in time is less than shift start, add 24 hours)
+          if (diffMinutes < -360) { // if more than 6 hours before shift, assume next day
+            diffMinutes += 1440; // add 24 hours in minutes
+          }
+          
+          if (diffMinutes > GRACE_MINUTES) {
+            late_minutes = diffMinutes - GRACE_MINUTES;
+            is_late = late_minutes > 0;
+          }
         }
       }
 
