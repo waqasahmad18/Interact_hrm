@@ -51,15 +51,19 @@ export default function TimePage() {
   const [breaks, setBreaks] = useState<any[]>([]);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [breakSearch, setBreakSearch] = useState("");
   const [breakFromDate, setBreakFromDate] = useState("");
   const [breakToDate, setBreakToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [breakDepartment, setBreakDepartment] = useState("");
   const [prayerSearch, setPrayerSearch] = useState("");
   const [prayerFromDate, setPrayerFromDate] = useState("");
   const [prayerToDate, setPrayerToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [prayerDepartment, setPrayerDepartment] = useState("");
   const [attSearch, setAttSearch] = useState("");
   const [attFromDate, setAttFromDate] = useState("");
   const [attToDate, setAttToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attDepartment, setAttDepartment] = useState("");
   // For live timer
   const [now, setNow] = useState(Date.now());
 
@@ -85,6 +89,18 @@ export default function TimePage() {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [breaks, prayerBreaks, attendance]);
+
+  // Fetch departments
+  useEffect(() => {
+    fetch('/api/departments')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.departments) {
+          setDepartments(data.departments);
+        }
+      })
+      .catch(err => console.error('Error fetching departments:', err));
+  }, []);
 
   // Fetch breaks
   useEffect(() => {
@@ -148,21 +164,24 @@ export default function TimePage() {
 
   // Filter breaks
   const filteredBreaks = breaks.filter(b => {
-    if (!breakSearch) return true;
-    return (b.employee_name || "").toLowerCase().includes(breakSearch.toLowerCase());
+    if (breakSearch && !(b.employee_name || "").toLowerCase().includes(breakSearch.toLowerCase())) return false;
+    if (breakDepartment && b.department_name !== breakDepartment) return false;
+    return true;
   });
 
   // Filter prayer breaks
   const filteredPrayerBreaks = prayerBreaks.filter(p => {
-    if (!prayerSearch) return true;
-    return (p.employee_name || "").toLowerCase().includes(prayerSearch.toLowerCase());
+    if (prayerSearch && !(p.employee_name || "").toLowerCase().includes(prayerSearch.toLowerCase())) return false;
+    if (prayerDepartment && p.department_name !== prayerDepartment) return false;
+    return true;
   });
 
   // Filter and sort attendance (latest clock-in/out at top)
   const filteredAttendance = attendance
     .filter(a => {
-      if (!attSearch) return true;
-      return (a.employee_name || "").toLowerCase().includes(attSearch.toLowerCase());
+      if (attSearch && !(a.employee_name || "").toLowerCase().includes(attSearch.toLowerCase())) return false;
+      if (attDepartment && a.department_name !== attDepartment) return false;
+      return true;
     })
     .sort((a, b) => {
       // Use clock_out if available, otherwise clock_in
@@ -420,6 +439,12 @@ export default function TimePage() {
           <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
               <input type="text" placeholder="Search employee..." value={breakSearch} onChange={e => setBreakSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 180 }} />
+              <select value={breakDepartment} onChange={e => setBreakDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 180 }}>
+                <option value="">All Departments</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
+                ))}
+              </select>
               <input type="date" value={breakFromDate} onChange={e => setBreakFromDate(e.target.value)} className={styles.breakSummaryDate} placeholder="From Date" />
               <input type="date" value={breakToDate} onChange={e => setBreakToDate(e.target.value)} className={styles.breakSummaryDate} placeholder="To Date" />
               <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
@@ -488,6 +513,12 @@ export default function TimePage() {
           <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
               <input type="text" placeholder="Search employee..." value={prayerSearch} onChange={e => setPrayerSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 180 }} />
+              <select value={prayerDepartment} onChange={e => setPrayerDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 180 }}>
+                <option value="">All Departments</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
+                ))}
+              </select>
               <input type="date" value={prayerFromDate} onChange={e => setPrayerFromDate(e.target.value)} className={styles.breakSummaryDate} placeholder="From Date" />
               <input type="date" value={prayerToDate} onChange={e => setPrayerToDate(e.target.value)} className={styles.breakSummaryDate} placeholder="To Date" />
               <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
@@ -556,6 +587,12 @@ export default function TimePage() {
           <div className={attStyles.attendanceSummaryContainer}>
             <div className={attStyles.attendanceSummaryFilters}>
               <input type="text" placeholder="Search employee..." value={attSearch} onChange={e => setAttSearch(e.target.value)} className={attStyles.attendanceSummaryInput} style={{ width: 180 }} />
+              <select value={attDepartment} onChange={e => setAttDepartment(e.target.value)} className={attStyles.attendanceSummaryDate} style={{ width: 180 }}>
+                <option value="">All Departments</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
+                ))}
+              </select>
               <input type="date" value={attFromDate} onChange={e => setAttFromDate(e.target.value)} className={attStyles.attendanceSummaryDate} placeholder="From Date" />
               <input type="date" value={attToDate} onChange={e => setAttToDate(e.target.value)} className={attStyles.attendanceSummaryDate} placeholder="To Date" />
               <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
