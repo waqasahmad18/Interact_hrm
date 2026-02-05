@@ -43,11 +43,23 @@ export async function GET(req: NextRequest) {
         ea.*,
         CONCAT(e.first_name, ' ', e.last_name) as employee_name,
         e.pseudonym AS pseudonym,
-        d.name AS department_name
+        d.name AS department_name,
+        sa.shift_name AS shift_name,
+        sa.start_time AS shift_start_time,
+        sa.end_time AS shift_end_time,
+        sa.assigned_date AS shift_assigned_date
       FROM ${ATTENDANCE_TABLE} ea
       LEFT JOIN hrm_employees e ON ea.employee_id = e.id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
+      LEFT JOIN shift_assignments sa
+        ON sa.employee_id = ea.employee_id
+       AND sa.assigned_date = (
+         SELECT MAX(sa2.assigned_date)
+         FROM shift_assignments sa2
+         WHERE sa2.employee_id = ea.employee_id
+           AND sa2.assigned_date <= ea.date
+       )
     `;
     if (employeeId) {
       // If date is provided, filter by that specific date; otherwise return all records
@@ -82,6 +94,17 @@ export async function GET(req: NextRequest) {
     // Simply return the rows as is; frontend will handle date parsing.
     
     // Now calculate late status based on shift assignments
+    const GRACE_MINUTES = 10;
+    const parseTimeToMinutes = (timeStr: string | null | undefined) => {
+      if (!timeStr) return null;
+      const parts = String(timeStr).split(":");
+      if (parts.length < 2) return null;
+      const hours = Number(parts[0]);
+      const minutes = Number(parts[1]);
+      if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+      return hours * 60 + minutes;
+    };
+
     const formattedAttendance = (rows as any[]).map((row) => {
       let formattedClockIn = null;
       let clockInDate: Date | null = null;
@@ -103,9 +126,21 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Calculate late status will be handled separately with fresh connection if needed
+      // Calculate late status based on shift start time and grace minutes
       let is_late = false;
       let late_minutes = 0;
+      const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
+      if (clockInDate && shiftStartMinutes !== null) {
+        const shiftStart = new Date(clockInDate);
+        const shiftHours = Math.floor(shiftStartMinutes / 60);
+        const shiftMins = shiftStartMinutes % 60;
+        shiftStart.setHours(shiftHours, shiftMins, 0, 0);
+        const diffMinutes = Math.floor((clockInDate.getTime() - shiftStart.getTime()) / 60000);
+        if (diffMinutes > GRACE_MINUTES) {
+          late_minutes = diffMinutes - GRACE_MINUTES;
+          is_late = late_minutes > 0;
+        }
+      }
 
       return {
         ...row,

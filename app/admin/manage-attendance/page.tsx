@@ -53,7 +53,9 @@ interface AttendanceRecord {
 export default function ManageAttendancePage() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
   const [loading, setLoading] = useState(false);
@@ -77,6 +79,18 @@ export default function ManageAttendancePage() {
       .catch(err => console.error("Error fetching employees:", err));
   }, []);
 
+  // Fetch departments
+  useEffect(() => {
+    fetch('/api/departments')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.departments) {
+          setDepartments(data.departments);
+        }
+      })
+      .catch(err => console.error('Error fetching departments:', err));
+  }, []);
+
   // Fetch attendance records
   const fetchAttendance = () => {
     setLoading(true);
@@ -98,6 +112,13 @@ export default function ManageAttendancePage() {
           if (searchName) {
             records = records.filter((r: AttendanceRecord) =>
               r.employee_name?.toLowerCase().includes(searchName.toLowerCase())
+            );
+          }
+          
+          // Filter by department if selected
+          if (selectedDepartment) {
+            records = records.filter((r: AttendanceRecord) =>
+              r.department_name === selectedDepartment
             );
           }
           
@@ -139,7 +160,7 @@ export default function ManageAttendancePage() {
 
   useEffect(() => {
     fetchAttendance();
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, searchName, selectedDepartment]);
 
   // Sort all records by latest clock_in/clock_out/date descending
   const sortedAttendance = [...attendance].sort((a, b) => {
@@ -460,6 +481,17 @@ export default function ManageAttendancePage() {
             className={styles.attendanceSummaryInput}
             style={{ width: 220 }}
           />
+          <select
+            value={selectedDepartment}
+            onChange={e => setSelectedDepartment(e.target.value)}
+            className={styles.attendanceSummaryDate}
+            style={{ width: 180 }}
+          >
+            <option value="">All Departments</option>
+            {departments.map(dept => (
+              <option key={dept.id} value={dept.name}>{dept.name}</option>
+            ))}
+          </select>
           <input
             type="date"
             value={fromDate}
