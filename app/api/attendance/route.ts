@@ -127,15 +127,20 @@ export async function GET(req: NextRequest) {
       }
 
       // Calculate late status based on shift start time and grace minutes
+      // Convert clock_in to Pakistan time (UTC+5) for comparison
       let is_late = false;
       let late_minutes = 0;
       const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
       if (clockInDate && shiftStartMinutes !== null) {
-        const shiftStart = new Date(clockInDate);
-        const shiftHours = Math.floor(shiftStartMinutes / 60);
-        const shiftMins = shiftStartMinutes % 60;
-        shiftStart.setHours(shiftHours, shiftMins, 0, 0);
-        const diffMinutes = Math.floor((clockInDate.getTime() - shiftStart.getTime()) / 60000);
+        // Convert UTC time to Pakistan time (add 5 hours = 300 minutes = 18000000 ms)
+        const pakistanTime = new Date(clockInDate.getTime() + (5 * 60 * 60 * 1000));
+        
+        // Get the time-of-day in minutes for comparison
+        const clockInMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+        
+        // Calculate difference
+        const diffMinutes = clockInMinutes - shiftStartMinutes;
+        
         if (diffMinutes > GRACE_MINUTES) {
           late_minutes = diffMinutes - GRACE_MINUTES;
           is_late = late_minutes > 0;
