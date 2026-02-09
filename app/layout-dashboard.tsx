@@ -19,6 +19,7 @@ const sidebarLinks = [
 		group: "HR",
 		links: [
 			{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
+			{ name: "Calendar", path: "/admin/calendar", icon: <FaCalendarAlt /> },
 			{ name: "Manage Leaves", path: "/admin/manage-leaves", icon: <FaEdit /> },
 			{ name: "Time", path: "/time", icon: <FaClock /> },
 			{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
