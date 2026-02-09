@@ -30,12 +30,18 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get("date");
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
+    const activeBreakCheck = searchParams.get("activeBreakCheck");
     
     conn = await pool.getConnection();
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
     }
     await ensureAttendanceTable(conn);
+
+    if (activeBreakCheck && employeeId) {
+      const breakStatus = await checkActiveBreaks(conn, employeeId);
+      return NextResponse.json({ success: true, ...breakStatus });
+    }
     let rows;
     // Join with hrm_employees for employee name and pseudonym, and departments for department name
     const baseQuery = `
@@ -162,6 +168,60 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Helper function to check if employee has active breaks
+async function checkActiveBreaks(conn: any, employee_id: string) {
+  try {
+    // Get all columns from breaks table to check dynamically
+    const [breakRecords] = await conn.execute(
+      `SELECT * FROM breaks 
+       WHERE employee_id = ? AND DATE(date) = CURDATE() LIMIT 1`,
+      [employee_id]
+    );
+    
+    const breakRecord = (breakRecords as any[])[0];
+    if (!breakRecord) {
+      return { hasActiveBreak: false, breakType: null };
+    }
+
+    // Check if regular break is active (started but not ended)
+    if (breakRecord.break_start && !breakRecord.break_end) {
+      return { hasActiveBreak: true, breakType: 'break' };
+    }
+
+    // Check if prayer break is active - handle both old and new column names
+    const prayerStart = breakRecord.prayer_break_start || breakRecord.prayerBreakStart;
+    const prayerEnd = breakRecord.prayer_break_end || breakRecord.prayerBreakEnd;
+    
+    if (prayerStart && !prayerEnd) {
+      return { hasActiveBreak: true, breakType: 'prayer_break' };
+    }
+
+    // Also check prayer_breaks table if it exists
+    try {
+      const [prayerRows] = await conn.execute(
+        `SELECT prayer_break_start, prayer_break_end
+         FROM prayer_breaks
+         WHERE employee_id = ? AND prayer_break_end IS NULL
+         ORDER BY prayer_break_start DESC LIMIT 1`,
+        [employee_id]
+      );
+      const prayerRecord = (prayerRows as any[])[0];
+      if (prayerRecord?.prayer_break_start && !prayerRecord.prayer_break_end) {
+        return { hasActiveBreak: true, breakType: 'prayer_break' };
+      }
+    } catch (error) {
+      console.error('Error checking prayer_breaks table:', error);
+    }
+
+    return { hasActiveBreak: false, breakType: null };
+  } catch (error) {
+    console.error('Error checking breaks:', error);
+    // If there's an error checking breaks, allow clock out to proceed
+    // but log the error for debugging
+    return { hasActiveBreak: false, breakType: null };
+  }
+}
+
 // POST: Add or update attendance record
 export async function POST(req: NextRequest) {
   let conn;
@@ -191,6 +251,22 @@ export async function POST(req: NextRequest) {
       );
       console.log("Clock-in record inserted successfully");
     } else if (clock_out !== undefined && clock_out !== null) {
+      // Check for active breaks before allowing clock out
+      const { hasActiveBreak, breakType } = await checkActiveBreaks(conn, employee_id);
+      
+      if (hasActiveBreak) {
+        const breakName = breakType === 'prayer_break' ? 'Prayer Break' : 'Break';
+        console.warn(`Clock-out prevented: ${breakName} is active for employee ${employee_id}`);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Cannot clock out. ${breakName} is still active. Please end your ${breakName.toLowerCase()} first.`,
+            errorCode: 'ACTIVE_BREAK'
+          }, 
+          { status: 400 }
+        );
+      }
+
       // Clock Out: find the most recent row without clock_out for this employee (regardless of date) and UPDATE it
       const [pendingRows] = await conn.execute(
         `SELECT id FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,

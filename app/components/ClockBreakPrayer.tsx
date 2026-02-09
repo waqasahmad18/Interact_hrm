@@ -37,8 +37,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [prayerBreakTimer, setPrayerBreakTimer] = React.useState(0);
   const [loadingPrayerBreak, setLoadingPrayerBreak] = React.useState(true);
   
-  // Fade-in animation state
+  // Error and confirmation states
   const [fadeIn, setFadeIn] = React.useState(false);
+  const [showClockOutConfirm, setShowClockOutConfirm] = React.useState(false);
+  const [showActiveBreakModal, setShowActiveBreakModal] = React.useState(false);
+  const [activeBreakTitle, setActiveBreakTitle] = React.useState("Active Break");
+  const [activeBreakErrorMsg, setActiveBreakErrorMsg] = React.useState<string | null>(null);
 
   // Fade-in on mount and force backend-only sync for clock state
   React.useEffect(() => {
@@ -110,10 +114,27 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     }
   };
 
-  const [showClockOutConfirm, setShowClockOutConfirm] = React.useState(false);
-
   const handleClockOut = async () => {
     if (!employeeId) return;
+    
+    // Check for active breaks BEFORE showing confirmation
+    try {
+      const res = await fetch(`/api/attendance?employeeId=${employeeId}&activeBreakCheck=1`);
+      const data = await res.json();
+
+      if (data?.hasActiveBreak) {
+        const activeBreakType = data.breakType === 'prayer_break' ? 'Prayer Break' : 'Break';
+        setActiveBreakTitle(`Active ${activeBreakType}`);
+        setActiveBreakErrorMsg(`There Is An Active ${activeBreakType}. Please End Your ${activeBreakType} First.`);
+        setShowActiveBreakModal(true);
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking breaks:', error);
+      // Continue with clock out even if break check fails
+    }
+    
+    // If no active break, show confirmation
     setShowClockOutConfirm(true);
   };
 
@@ -136,10 +157,17 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         // Force sync from backend instead of manual state management
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
       } else {
-        alert(data.error || "Failed to clock out. Please try again.");
+        // Show error modal for API errors
+        const errorMsg = data.error || "Failed to clock out. Please try again.";
+        setActiveBreakTitle("Clock Out Error");
+        setActiveBreakErrorMsg(errorMsg);
+        setShowActiveBreakModal(true);
       }
     } catch (error) {
-      alert("Error while clocking out. Please try again.");
+      const errorMsg = "Error while clocking out. Please try again.";
+      setActiveBreakTitle("Clock Out Error");
+      setActiveBreakErrorMsg(errorMsg);
+      setShowActiveBreakModal(true);
     }
   };
 
@@ -305,6 +333,65 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                 <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#3478f6", marginBottom: 6 }}>Working</div>
                 <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(timer)}</div>
               </div>
+            )}
+            {showActiveBreakModal && (
+              <>
+                <style>{`
+                  .cbp-break-modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: rgba(0,0,0,0.35);
+                    display: flex; align-items: center; justify-content: center;
+                    z-index: 9999;
+                    animation: cbp-fade-in 0.3s;
+                  }
+                  .cbp-break-modal-box {
+                    background: #fff;
+                    border-radius: 18px;
+                    padding: 38px 32px 32px 32px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+                    min-width: 360px;
+                    text-align: center;
+                    animation: cbp-modal-pop 0.35s cubic-bezier(.22,1,.36,1);
+                  }
+                  .cbp-break-modal-title {
+                    font-weight: 700;
+                    font-size: 1.25rem;
+                    margin-bottom: 8px;
+                    color: #e74c3c;
+                  }
+                  .cbp-break-modal-message {
+                    font-weight: 500;
+                    font-size: 1.05rem;
+                    margin-bottom: 22px;
+                    color: #2d3436;
+                    line-height: 1.5;
+                  }
+                  .cbp-break-modal-btn-ok {
+                    border: none;
+                    border-radius: 8px;
+                    padding: 12px 42px;
+                    font-weight: 600;
+                    font-size: 1.1rem;
+                    cursor: pointer;
+                    background: linear-gradient(90deg,#e74c3c 60%,#e67e22 100%);
+                    color: #fff;
+                    transition: background 0.18s, box-shadow 0.18s;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                  }
+                  .cbp-break-modal-btn-ok:hover {
+                    background: linear-gradient(90deg,#e67e22 0%,#e74c3c 100%);
+                  }
+                `}</style>
+                <div className="cbp-break-modal-overlay">
+                  <div className="cbp-break-modal-box">
+                    <div style={{ fontSize: "3rem", marginBottom: 12 }}>⚠️</div>
+                    <div className="cbp-break-modal-title">{activeBreakTitle}</div>
+                    <div className="cbp-break-modal-message">{activeBreakErrorMsg}</div>
+                    <button className="cbp-break-modal-btn-ok" onClick={() => setShowActiveBreakModal(false)}>OK</button>
+                  </div>
+                </div>
+              </>
             )}
           </>
         )}
