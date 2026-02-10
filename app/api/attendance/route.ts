@@ -171,37 +171,27 @@ export async function GET(req: NextRequest) {
 // Helper function to check if employee has active breaks
 async function checkActiveBreaks(conn: any, employee_id: string) {
   try {
-    // Get all columns from breaks table to check dynamically
+    // Check for active regular break (not ended yet)
     const [breakRecords] = await conn.execute(
       `SELECT * FROM breaks 
-       WHERE employee_id = ? AND DATE(break_start) = CURDATE() LIMIT 1`,
+       WHERE employee_id = ? AND break_end IS NULL
+       ORDER BY break_start DESC LIMIT 1`,
       [Number(employee_id)]
     );
     
     const breakRecord = (breakRecords as any[])[0];
-    if (!breakRecord) {
-      return { hasActiveBreak: false, breakType: null };
-    }
-
+    
     // Check if regular break is active (started but not ended)
-    if (breakRecord.break_start && !breakRecord.break_end) {
+    if (breakRecord?.break_start && !breakRecord.break_end) {
       return { hasActiveBreak: true, breakType: 'break' };
     }
 
-    // Check if prayer break is active - handle both old and new column names
-    const prayerStart = breakRecord.prayer_break_start || breakRecord.prayerBreakStart;
-    const prayerEnd = breakRecord.prayer_break_end || breakRecord.prayerBreakEnd;
-    
-    if (prayerStart && !prayerEnd) {
-      return { hasActiveBreak: true, breakType: 'prayer_break' };
-    }
-
-    // Also check prayer_breaks table if it exists
+    // Also check prayer_breaks table for active prayer breaks
     try {
       const [prayerRows] = await conn.execute(
         `SELECT prayer_break_start, prayer_break_end
          FROM prayer_breaks
-         WHERE employee_id = ? AND DATE(prayer_break_start) = CURDATE() AND prayer_break_end IS NULL
+         WHERE employee_id = ? AND prayer_break_end IS NULL
          ORDER BY prayer_break_start DESC LIMIT 1`,
         [Number(employee_id)]
       );
