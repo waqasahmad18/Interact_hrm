@@ -107,3 +107,69 @@ export async function POST(req: NextRequest) {
     if (conn) conn.release();
   }
 }
+// PUT: Update existing break record (Admin manual edit)
+export async function PUT(req: NextRequest) {
+  let conn;
+  try {
+    const data = await req.json();
+    const { id, employee_id, employee_name, date, break_start, break_end } = data || {};
+
+    if (!id || !employee_id) {
+      return NextResponse.json({ success: false, error: "Missing required fields: id or employee_id" }, { status: 400 });
+    }
+
+    conn = await pool.getConnection();
+
+    const formattedDate = date ? new Date(date).toISOString().slice(0, 10) : null;
+    const formattedBreakStart = break_start ? new Date(break_start).toISOString().slice(0, 19).replace('T', ' ') : null;
+    const formattedBreakEnd = break_end ? new Date(break_end).toISOString().slice(0, 19).replace('T', ' ') : null;
+
+    // Calculate duration if both start and end are provided
+    let breakDuration = null;
+    if (formattedBreakStart && formattedBreakEnd) {
+      const startTime = new Date(break_start).getTime();
+      const endTime = new Date(break_end).getTime();
+      breakDuration = Math.floor((endTime - startTime) / 1000); // Duration in seconds
+    }
+
+    await conn.execute(
+      `UPDATE breaks 
+       SET employee_name = ?, date = ?, break_start = ?, break_end = ?, 
+           break_duration = ?
+       WHERE id = ?`,
+      [employee_name || '', formattedDate, formattedBreakStart, formattedBreakEnd, breakDuration, id]
+    );
+
+    return NextResponse.json({ success: true, message: 'Break updated successfully' });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('PUT breaks error:', error);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+// DELETE: Delete break record
+export async function DELETE(req: NextRequest) {
+  let conn;
+  try {
+    const data = await req.json();
+    const { id } = data || {};
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Missing required field: id" }, { status: 400 });
+    }
+
+    conn = await pool.getConnection();
+    await conn.execute(`DELETE FROM breaks WHERE id = ?`, [id]);
+
+    return NextResponse.json({ success: true, message: 'Break deleted successfully' });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('DELETE breaks error:', error);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
+  }
+}
