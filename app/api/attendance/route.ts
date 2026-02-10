@@ -175,7 +175,7 @@ async function checkActiveBreaks(conn: any, employee_id: string) {
     const [breakRecords] = await conn.execute(
       `SELECT * FROM breaks 
        WHERE employee_id = ? AND DATE(break_start) = CURDATE() LIMIT 1`,
-      [employee_id]
+      [Number(employee_id)]
     );
     
     const breakRecord = (breakRecords as any[])[0];
@@ -203,7 +203,7 @@ async function checkActiveBreaks(conn: any, employee_id: string) {
          FROM prayer_breaks
          WHERE employee_id = ? AND DATE(prayer_break_start) = CURDATE() AND prayer_break_end IS NULL
          ORDER BY prayer_break_start DESC LIMIT 1`,
-        [employee_id]
+        [Number(employee_id)]
       );
       const prayerRecord = (prayerRows as any[])[0];
       if (prayerRecord?.prayer_break_start && !prayerRecord.prayer_break_end) {
