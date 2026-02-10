@@ -174,7 +174,7 @@ async function checkActiveBreaks(conn: any, employee_id: string) {
     // Get all columns from breaks table to check dynamically
     const [breakRecords] = await conn.execute(
       `SELECT * FROM breaks 
-       WHERE employee_id = ? AND DATE(date) = CURDATE() LIMIT 1`,
+       WHERE employee_id = ? AND DATE(break_start) = CURDATE() LIMIT 1`,
       [employee_id]
     );
     
@@ -201,7 +201,7 @@ async function checkActiveBreaks(conn: any, employee_id: string) {
       const [prayerRows] = await conn.execute(
         `SELECT prayer_break_start, prayer_break_end
          FROM prayer_breaks
-         WHERE employee_id = ? AND prayer_break_end IS NULL
+         WHERE employee_id = ? AND DATE(prayer_break_start) = CURDATE() AND prayer_break_end IS NULL
          ORDER BY prayer_break_start DESC LIMIT 1`,
         [employee_id]
       );
@@ -311,7 +311,7 @@ export async function PUT(req: NextRequest) {
         `UPDATE ${ATTENDANCE_TABLE}
          SET clock_out = DATE_ADD(clock_in, INTERVAL 8 HOUR),
              total_hours = 8.00
-         WHERE employee_id = ? AND clock_out IS NULL AND DATE(date) < CURDATE()`,
+         WHERE employee_id = ? AND clock_out IS NULL AND DATE(clock_in) < CURDATE()`,
         [employee_id]
       );
       return NextResponse.json({ success: true, message: 'Old open records closed' });

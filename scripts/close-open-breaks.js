@@ -109,7 +109,7 @@ async function closeAllOpenTodayBreaks() {
     const [openBreaks] = await conn.execute(
       `SELECT id, break_start, break_end, prayer_break_start, prayer_break_end
        FROM breaks 
-       WHERE DATE(date) = CURDATE()
+       WHERE DATE(break_start) = CURDATE()
          AND ((break_end IS NULL AND break_start IS NOT NULL) 
            OR (prayer_break_end IS NULL AND prayer_break_start IS NOT NULL))`
     );
@@ -165,7 +165,7 @@ async function closeAllOldOpenBreaks() {
     const [openBreaks] = await conn.execute(
       `SELECT id, break_start, prayer_break_start
        FROM breaks 
-       WHERE DATE(date) < CURDATE()
+       WHERE DATE(break_start) < CURDATE()
          AND ((break_end IS NULL AND break_start IS NOT NULL) 
            OR (prayer_break_end IS NULL AND prayer_break_start IS NOT NULL))`
     );
