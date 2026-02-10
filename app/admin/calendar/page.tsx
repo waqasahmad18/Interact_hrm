@@ -2,6 +2,7 @@
 
 import React from "react";
 import LayoutDashboard from "../../layout-dashboard";
+import styles from "../../attendance-summary/attendance-summary.module.css";
 
 interface CalendarDayOverride {
   date: string;
@@ -117,271 +118,307 @@ export default function AdminCalendarPage() {
   return (
     <LayoutDashboard>
       <style>{`
-        @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap");
-        .calendar-shell {
-          position: relative;
-          overflow: hidden;
-          padding: 16px;
-          border-radius: 20px;
-          background: radial-gradient(1200px 600px at 10% -10%, #ffe9d6 0%, rgba(255,233,214,0) 60%),
-            radial-gradient(900px 500px at 90% -20%, #d7f3ff 0%, rgba(215,243,255,0) 60%),
-            linear-gradient(135deg, #f7f4ff 0%, #eef7ff 45%, #fef3f2 100%);
-          box-shadow: 0 24px 48px rgba(20, 30, 60, 0.12);
-          font-family: "Space Grotesk", sans-serif;
-        }
-        .calendar-orb {
-          position: absolute;
-          border-radius: 999px;
-          filter: blur(0px);
-          opacity: 0.5;
-          pointer-events: none;
-        }
-        .calendar-orb.one {
-          width: 170px;
-          height: 170px;
-          background: linear-gradient(135deg, #ffd7a8, #ffb6c8);
-          top: -60px;
-          left: -40px;
-        }
-        .calendar-orb.two {
-          width: 180px;
-          height: 180px;
-          background: linear-gradient(135deg, #b7e4ff, #d7d6ff);
-          bottom: -80px;
-          right: -60px;
-        }
-        .calendar-card {
-          position: relative;
-          background: rgba(255,255,255,0.92);
+        .calendar-container {
+          background: #fff;
           border-radius: 18px;
-          padding: 16px;
-          box-shadow: 0 12px 24px rgba(20, 30, 60, 0.08);
-          backdrop-filter: blur(6px);
+          box-shadow: 0 4px 24px rgba(0,82,204,0.08);
+          padding: 24px;
+          margin-bottom: 24px;
+          border: 1px solid #E2E8F0;
+          max-width: 100%;
+          overflow: hidden;
+        }
+        .calendar-header {
+          margin-bottom: 20px;
         }
         .calendar-title {
-          font-family: "Fraunces", serif;
-          font-size: 1.4rem;
-          font-weight: 600;
-          color: #2d2a3e;
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: #22223B;
+          margin-bottom: 4px;
         }
         .calendar-subtitle {
-          color: #5c5f73;
-          margin-top: 4px;
-          font-size: 0.85rem;
+          color: #4A5568;
+          font-size: 0.9rem;
         }
         .calendar-controls {
           display: flex;
           align-items: center;
-          gap: 8px;
-          background: #fff;
-          border-radius: 999px;
-          padding: 4px 8px;
-          box-shadow: inset 0 0 0 1px #e6e9f2;
+          gap: 12px;
+          margin-top: 16px;
+          flex-wrap: wrap;
         }
         .calendar-btn {
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 0;
-          font-weight: 700;
-          font-size: 0.85rem;
-          background: linear-gradient(135deg, #5d5fef, #8b5cf6);
-          color: #fff;
+          padding: 10px 18px;
+          border-radius: 10px;
+          border: none;
+          font-weight: 600;
+          font-size: 0.9rem;
           cursor: pointer;
-          transition: transform 0.15s ease, box-shadow 0.15s ease;
-          box-shadow: 0 6px 16px rgba(93, 95, 239, 0.28);
+          transition: all 0.3s;
+          background: linear-gradient(135deg, #0052CC 0%, #00B8A9 100%);
+          color: white;
+          box-shadow: 0 2px 8px rgba(0,82,204,0.25);
+        }
+        .calendar-btn:hover {
+          box-shadow: 0 4px 16px rgba(0,82,204,0.35);
+          transform: translateY(-2px);
         }
         .calendar-btn.secondary {
-          background: #f4f6ff;
-          color: #2d2a3e;
+          background: #F7FAFC;
+          color: #22223B;
+          border: 2px solid #E2E8F0;
           box-shadow: none;
-          border: 1px solid #e1e6f5;
         }
-        .calendar-btn:hover { transform: translateY(-1px); }
+        .calendar-btn.secondary:hover {
+          background: #E2E8F0;
+        }
+        .calendar-month-label {
+          font-weight: 700;
+          color: #22223B;
+          font-size: 1.1rem;
+          margin: 0 8px;
+        }
         .weekday-row {
           display: grid;
           grid-template-columns: repeat(7, 1fr);
-          gap: 8px;
-          margin: 8px 0 6px;
-          font-weight: 700;
-          color: #5d6075;
+          gap: 6px;
+          margin: 16px 0 8px;
+          font-weight: 600;
+          color: #4A5568;
           text-transform: uppercase;
-          font-size: 0.68rem;
-          letter-spacing: 0.04em;
+          font-size: 0.7rem;
+          letter-spacing: 0.5px;
+        }
+        .weekday-cell {
+          text-align: center;
+          padding: 4px;
         }
         .days-grid {
           display: grid;
           grid-template-columns: repeat(7, 1fr);
-          gap: 8px;
-        }
-        .day-card {
-          border-radius: 14px;
-          padding: 8px;
-          min-height: 112px;
-          border: 1px solid #e8ecf6;
-          background: #f9fbff;
-          box-shadow: 0 8px 16px rgba(26, 33, 68, 0.06);
-          display: flex;
-          flex-direction: column;
           gap: 6px;
         }
+        .day-card {
+          border-radius: 8px;
+          padding: 6px;
+          min-height: 85px;
+          border: 1px solid #E2E8F0;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          transition: all 0.2s;
+        }
+        .day-card:hover {
+          box-shadow: 0 2px 8px rgba(0,82,204,0.15);
+          border-color: #0052CC;
+        }
         .day-card.off {
-          background: #fff0f0;
-          border-color: #ffd6d6;
+          background: #FFF5F5;
+          border-color: #FEB2B2;
         }
         .day-top {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          margin-bottom: 2px;
         }
         .day-num {
           font-weight: 700;
-          color: #2d2a3e;
-          font-size: 0.9rem;
+          color: #22223B;
+          font-size: 0.85rem;
         }
         .day-pill {
-          padding: 3px 8px;
-          border-radius: 999px;
-          font-size: 0.65rem;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.6rem;
           font-weight: 700;
+          text-transform: uppercase;
         }
-        .day-pill.off { background: #ffe3e3; color: #c0392b; }
-        .day-pill.work { background: #e7f8ed; color: #1f7a3f; }
+        .day-pill.off { 
+          background: #FEB2B2; 
+          color: #742A2A; 
+        }
+        .day-pill.work { 
+          background: #9AE6B4; 
+          color: #22543D; 
+        }
         .day-week {
-          font-size: 0.75rem;
-          color: #767b90;
+          font-size: 0.65rem;
+          color: #718096;
+          margin-bottom: 2px;
         }
         .day-select, .day-note {
-          border-radius: 10px;
-          border: 1px solid #d7ddef;
-          padding: 6px 8px;
-          background: #fff;
+          border-radius: 6px;
+          border: 1px solid #E2E8F0;
+          padding: 4px 6px;
+          background: #F7FAFC;
+          font-size: 0.7rem;
+          width: 100%;
+        }
+        .day-select {
           font-weight: 600;
-          font-size: 0.8rem;
         }
         .day-note {
-          font-weight: 500;
+          font-weight: 400;
+          resize: none;
+          font-family: inherit;
+        }
+        .day-note:disabled {
+          background: #F7FAFC;
+          color: #718096;
+        }
+        .day-actions {
+          display: flex;
+          gap: 3px;
+          margin-top: 2px;
+        }
+        .day-btn {
+          padding: 3px 6px;
+          border-radius: 4px;
+          border: none;
+          font-size: 0.65rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          flex: 1;
+        }
+        .day-btn.edit {
+          background: #E2E8F0;
+          color: #22223B;
+        }
+        .day-btn.edit:hover {
+          background: #CBD5E0;
+        }
+        .day-btn.set {
+          background: #0052CC;
+          color: white;
+        }
+        .day-btn.set:hover {
+          background: #003D99;
+        }
+        .day-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .saving-chip {
-          font-size: 0.72rem;
-          color: #6b7280;
+          font-size: 0.65rem;
+          color: #4A5568;
+          font-style: italic;
         }
         @media (max-width: 1100px) {
-          .days-grid, .weekday-row { grid-template-columns: repeat(4, 1fr); }
+          .days-grid, .weekday-row { 
+            grid-template-columns: repeat(5, 1fr); 
+          }
         }
-        @media (max-width: 720px) {
-          .days-grid, .weekday-row { grid-template-columns: repeat(2, 1fr); }
-          .calendar-controls { flex-wrap: wrap; justify-content: center; }
+        @media (max-width: 768px) {
+          .days-grid, .weekday-row { 
+            grid-template-columns: repeat(3, 1fr); 
+          }
+          .calendar-controls {
+            justify-content: center;
+          }
         }
       `}</style>
-      <div className="calendar-shell">
-        <div className="calendar-orb one" />
-        <div className="calendar-orb two" />
-
-        <div className="calendar-card">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div>
-              <div className="calendar-title">Calendar Management</div>
-              <div className="calendar-subtitle">Set company off days and working days with notes.</div>
-            </div>
-            <div className="calendar-controls">
-              <button onClick={handlePrevMonth} className="calendar-btn secondary">Prev</button>
-              <div style={{ fontWeight: 700, color: "#2d2a3e", minWidth: 180, textAlign: "center" }}>{formatMonthLabel(currentMonth)}</div>
-              <button onClick={handleNextMonth} className="calendar-btn">Next</button>
-            </div>
+      <div className="calendar-container">
+        <div className="calendar-header">
+          <div className="calendar-title">Calendar Management</div>
+          <div className="calendar-subtitle">Set company off days and working days with notes.</div>
+          <div className="calendar-controls">
+            <button onClick={handlePrevMonth} className="calendar-btn secondary">Prev</button>
+            <div className="calendar-month-label">{formatMonthLabel(currentMonth)}</div>
+            <button onClick={handleNextMonth} className="calendar-btn">Next</button>
           </div>
-
-          <div style={{ marginTop: 10, marginBottom: 6, fontWeight: 700, color: "#3b3f5c" }}>
-            {formatMonthLabel(currentMonth)}
-          </div>
-
-          {loading ? (
-            <div style={{ padding: 12, color: "#666" }}>Loading...</div>
-          ) : (
-            <div>
-              <div className="weekday-row">
-                {"Sun Mon Tue Wed Thu Fri Sat".split(" ").map((d) => (
-                  <div key={d} style={{ textAlign: "center" }}>{d}</div>
-                ))}
-              </div>
-
-              <div className="days-grid">
-                {Array.from({ length: firstDay }).map((_, idx) => (
-                  <div key={`empty-${idx}`} />
-                ))}
-                {monthDays.map((day) => {
-                  const iso = formatISO(day);
-                  const status = getStatus(day);
-                  const statusLabel = getStatusLabel(day);
-                  const isOff = status === "off";
-                  const isSaving = savingDate === iso;
-                  const noteValue = noteDrafts[iso] ?? overrides[iso]?.note ?? "";
-                  const isEditing = editingNote[iso] === true;
-
-                  return (
-                    <div key={iso} className={`day-card ${isOff ? "off" : ""}`}>
-                      <div className="day-top">
-                        <div className="day-num">{day.getDate()}</div>
-                        <span className={`day-pill ${isOff ? "off" : "work"}`}>{statusLabel}</span>
-                      </div>
-
-                      <div className="day-week">{day.toLocaleString("en-US", { weekday: "long" })}</div>
-
-                      <select
-                        value={status}
-                        onChange={(e) => updateDay(day, e.target.value as "off" | "working", noteValue)}
-                        disabled={isSaving}
-                        className="day-select"
-                      >
-                        <option value="working">Working</option>
-                        <option value="off">Off</option>
-                      </select>
-
-                      <input
-                        type="text"
-                        value={noteValue}
-                        disabled={!isEditing}
-                        onChange={(e) => {
-                          const next = e.target.value;
-                          setNoteDrafts((prev) => ({ ...prev, [iso]: next }));
-                        }}
-                        placeholder="Note (optional)"
-                        className="day-note"
-                      />
-
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          className="calendar-btn secondary"
-                          type="button"
-                          onClick={() => {
-                            setEditingNote((prev) => ({ ...prev, [iso]: true }));
-                            if (noteDrafts[iso] === undefined) {
-                              setNoteDrafts((prev) => ({ ...prev, [iso]: overrides[iso]?.note ?? "" }));
-                            }
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="calendar-btn"
-                          type="button"
-                          disabled={!isEditing || isSaving}
-                          onClick={() => {
-                            setEditingNote((prev) => ({ ...prev, [iso]: false }));
-                            updateDay(day, status, noteValue);
-                          }}
-                        >
-                          Set
-                        </button>
-                      </div>
-
-                      {isSaving && <div className="saving-chip">Saving...</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
+
+        {loading ? (
+          <div style={{ padding: 12, color: "#4A5568" }}>Loading...</div>
+        ) : (
+          <div>
+            <div className="weekday-row">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                <div key={d} className="weekday-cell">{d}</div>
+              ))}
+            </div>
+
+            <div className="days-grid">
+              {Array.from({ length: firstDay }).map((_, idx) => (
+                <div key={`empty-${idx}`} />
+              ))}
+              {monthDays.map((day) => {
+                const iso = formatISO(day);
+                const status = getStatus(day);
+                const statusLabel = getStatusLabel(day);
+                const isOff = status === "off";
+                const isSaving = savingDate === iso;
+                const noteValue = noteDrafts[iso] ?? overrides[iso]?.note ?? "";
+                const isEditing = editingNote[iso] === true;
+
+                return (
+                  <div key={iso} className={`day-card ${isOff ? "off" : ""}`}>
+                    <div className="day-top">
+                      <div className="day-num">{day.getDate()}</div>
+                      <span className={`day-pill ${isOff ? "off" : "work"}`}>{statusLabel}</span>
+                    </div>
+
+                    <div className="day-week">{day.toLocaleString("en-US", { weekday: "short" })}</div>
+
+                    <select
+                      value={status}
+                      onChange={(e) => updateDay(day, e.target.value as "off" | "working", noteValue)}
+                      disabled={isSaving}
+                      className="day-select"
+                    >
+                      <option value="working">Working</option>
+                      <option value="off">Off</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      value={noteValue}
+                      disabled={!isEditing}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setNoteDrafts((prev) => ({ ...prev, [iso]: next }));
+                      }}
+                      placeholder="Note"
+                      className="day-note"
+                    />
+
+                    <div className="day-actions">
+                      <button
+                        className="day-btn edit"
+                        type="button"
+                        onClick={() => {
+                          setEditingNote((prev) => ({ ...prev, [iso]: true }));
+                          if (noteDrafts[iso] === undefined) {
+                            setNoteDrafts((prev) => ({ ...prev, [iso]: overrides[iso]?.note ?? "" }));
+                          }
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="day-btn set"
+                        type="button"
+                        disabled={!isEditing || isSaving}
+                        onClick={() => {
+                          setEditingNote((prev) => ({ ...prev, [iso]: false }));
+                          updateDay(day, status, noteValue);
+                        }}
+                      >
+                        Set
+                      </button>
+                    </div>
+
+                    {isSaving && <div className="saving-chip">Saving...</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </LayoutDashboard>
   );

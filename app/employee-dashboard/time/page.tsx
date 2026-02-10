@@ -48,17 +48,38 @@ function formatLateTime(minutes: number) {
   return `${h}h ${m}m`;
 }
 
+// Helper to format dates without timezone shift
+function formatDateOnly(dateValue: string | null | undefined) {
+  if (!dateValue) return "";
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateValue);
+  if (dateOnlyMatch) {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    if (!year || !month || !day) return dateValue;
+    return new Date(year, month - 1, day).toLocaleDateString();
+  }
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return dateValue;
+  return parsed.toLocaleDateString();
+}
+
+function getLocalDateString(date: Date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export default function EmployeeTimePage() {
   const [activeTab, setActiveTab] = useState("break");
   const [breaks, setBreaks] = useState<any[]>([]);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [breakFromDate, setBreakFromDate] = useState("");
-  const [breakToDate, setBreakToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [breakToDate, setBreakToDate] = useState(getLocalDateString());
   const [prayerFromDate, setPrayerFromDate] = useState("");
-  const [prayerToDate, setPrayerToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [prayerToDate, setPrayerToDate] = useState(getLocalDateString());
   const [attFromDate, setAttFromDate] = useState("");
-  const [attToDate, setAttToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attToDate, setAttToDate] = useState(getLocalDateString());
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
   // For live timer
@@ -154,7 +175,7 @@ export default function EmployeeTimePage() {
       .then(data => {
         if (data.success) {
           const filtered = (data.attendance || []).filter((a: any) =>
-            isInRange(a.date || a.clock_in, attFromDate, attToDate)
+            isInRange(a.clock_in || a.date, attFromDate, attToDate)
           );
           setAttendance(filtered);
         }
@@ -578,7 +599,7 @@ export default function EmployeeTimePage() {
                         <td>{employeeName}</td>
                         <td>{a.pseudonym || 'undefined'}</td>
                         <td>{a.department_name || '-'}</td>
-                        <td>{a.date ? new Date(a.date).toLocaleDateString() : ""}</td>
+                        <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
                         <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
                         <td>
                           {a.clock_out

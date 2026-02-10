@@ -167,3 +167,165 @@
   padding: 24px !important;
   font-style: italic;
 }
+
+.attendanceCardsGrid {
+  display: grid;
+  gap: 20px;
+}
+
+.attendanceEmployeeCard {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 12px rgba(0, 82, 204, 0.08);
+  padding: 16px;
+}
+
+.attendanceEmployeeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.attendanceEmployeeActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.attendanceEmployeeName {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.attendanceEmployeeMeta {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.attendanceEmployeeId {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2b6cb0;
+  background: #ebf4ff;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.attendanceMonthFilter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f7fafc;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+}
+
+.attendanceMonthLabel {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.attendanceMonthInput {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--font-main);
+  color: var(--color-text);
+}
+
+.attendanceMonthTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+
+.attendanceEmployeeTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 82, 204, 0.08);
+}
+
+.attendanceEmployeeTable {
+  min-width: 960px;
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0;
+}
+
+.attendanceEmployeeTable thead {
+  background: linear-gradient(135deg, #0052cc 0%, #00b8a9 100%) !important;
+}
+
+.attendanceEmployeeTable th {
+  padding: 8px 5px !important;
+  text-align: left;
+  font-weight: 600 !important;
+  color: #fff !important;
+  border: none !important;
+  font-size: 11px !important;
+  letter-spacing: 0.3px;
+  background: transparent !important;
+  white-space: nowrap;
+}
+
+.attendanceEmployeeTable td {
+  padding: 6px 5px !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  font-size: 12px !important;
+  color: var(--color-text) !important;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.attendanceEmployeeTable tbody tr {
+  background: #fff;
+}
+
+.attendanceEmployeeTable tbody tr:hover {
+  background: #f7fafc !important;
+  transition: background 0.2s;
+}
+
+.attendanceEmployeeTable tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+.attendanceEmployeeDate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attendanceEmployeeDateNumber {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.attendanceEmployeeDateText {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.attendanceEmployeeRecords {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .attendanceEmployeeTable {
+    min-width: 820px;
+  }
+}
