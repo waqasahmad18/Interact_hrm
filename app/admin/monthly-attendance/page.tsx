@@ -405,6 +405,98 @@ export default function MonthlyAttendancePage() {
     XLSX.writeFile(workbook, fileName);
   }
 
+  // Export single employee's month table
+  function downloadEmployeeExcel(employee: any) {
+    // Build table rows for this employee for the selected month
+    const rows: any[] = [];
+    if (!monthInfo.days) return;
+    monthInfo.days.forEach((day) => {
+      const dayRecords = employee.byDate[day.dateKey] || [];
+      const meta = employee.dateMeta[day.dateKey];
+      const workingDay = isWorkingDay(day.dateKey);
+      if (dayRecords.length === 0) {
+        // Check for approved leave
+        let statusLabel = workingDay ? "Absent" : "Off";
+        let deduction = workingDay ? "100%" : "";
+        if (
+          workingDay &&
+          approvedLeavesMap[employee.employeeId] &&
+          approvedLeavesMap[employee.employeeId][day.dateKey]
+        ) {
+          statusLabel = "Leave";
+          deduction = "0%";
+        }
+        rows.push({
+          Day: day.weekday,
+          Date: formatDateKey(day.dateKey),
+          "Clock In": "---",
+          "Clock Out": "---",
+          "Total W.H": "---",
+          "Assigned W.H": "---",
+          OverTime: "---",
+          "Tardy Count": meta?.runningLate ? meta.runningLate : "",
+          Status: statusLabel,
+          Deduction: deduction
+        });
+      } else {
+        dayRecords.forEach((record: any, index: number) => {
+          // Use the same formatting as the table
+          rows.push({
+            Day: day.weekday,
+            Date: formatDateKey(day.dateKey),
+            "Clock In": formatTime(record.clock_in),
+            "Clock Out": formatTime(record.clock_out),
+            "Total W.H": record.total_hours ? formatHoursMins(record.total_hours) : "---",
+            "Assigned W.H": record.assigned_working_hours ? formatHoursMins(record.assigned_working_hours) : (record.assigned_shift_seconds ? formatDurationHM(record.assigned_shift_seconds) : "---"),
+            OverTime: record.overtime ? formatDurationHM(record.overtime) : "---",
+            "Tardy Count": meta?.runningLate ? meta.runningLate : "",
+            Status: meta?.statusLabel || "",
+            Deduction: meta?.deduction || ""
+          });
+        });
+      }
+    });
+    // Calculate total deduction (same as in table)
+    let totalDeduction = 0;
+    rows.forEach((row) => {
+      if (row.Deduction && typeof row.Deduction === 'string' && row.Deduction.endsWith('%')) {
+        const val = parseFloat(row.Deduction.replace('%', ''));
+        if (!isNaN(val)) totalDeduction += val;
+      }
+    });
+    // Add total deduction row
+    rows.push({
+      Day: '',
+      Date: '',
+      "Clock In": '',
+      "Clock Out": '',
+      "Total W.H": '',
+      "Assigned W.H": '',
+      OverTime: '',
+      "Tardy Count": '',
+      Status: 'Total Deduction',
+      Deduction: `${totalDeduction}%`
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, employee.employeeName);
+    worksheet['!cols'] = [
+      { wch: 8 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 13 },
+      { wch: 13 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 12 }
+    ];
+    const fileName = `attendance-${employee.employeeName.replace(/\s+/g, "_")}-${selectedMonth}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  }
+
   const monthInfo = React.useMemo(() => {
     if (!selectedMonth) return { label: "", days: [] as { day: number; dateKey: string; weekday: string }[] };
     const [yearStr, monthStr] = selectedMonth.split("-");
@@ -567,6 +659,13 @@ export default function MonthlyAttendancePage() {
                     </div>
                     <div className={styles.attendanceEmployeeActions}>
                       <div className={styles.attendanceEmployeeId}>ID: {employee.employeeId}</div>
+                      <button
+                        title="Export this employee's month record as XLS"
+                        style={{ marginRight: 8, background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => downloadEmployeeExcel(employee)}
+                      >
+                        <FaFileExcel /> Export XLS
+                      </button>
                       <div className={styles.attendanceMonthFilter}>
                         <span className={styles.attendanceMonthLabel}>Month</span>
                         <input
