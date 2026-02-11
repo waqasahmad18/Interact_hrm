@@ -478,11 +478,29 @@ export default function MonthlyAttendancePage() {
       Deduction: `${totalDeduction}%`
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    // Add employee info as header rows ABOVE the table headers
+    // First, extract table headers from the first data row
+    const tableHeaders = rows.length > 0 ? Object.keys(rows[0]) : [];
+    // Build a blank row for spacing
+    const blankRow: any = {};
+    tableHeaders.forEach(h => blankRow[h] = '');
+    // Build header rows as objects with only first column filled
+    const headerRows = [
+      { [tableHeaders[0]]: `Employee Name: ${employee.employeeName}` },
+      { [tableHeaders[0]]: `Pseudonym: ${employee.pseudonym}` },
+      { [tableHeaders[0]]: `Department: ${employee.departmentName}` },
+      blankRow
+    ];
+    // Add table headers as the next row
+    const headerRowObj: any = {};
+    tableHeaders.forEach(h => { headerRowObj[h] = h; });
+    const allRows = [...headerRows, headerRowObj, ...rows];
+
+    const worksheet = XLSX.utils.json_to_sheet(allRows, { skipHeader: true });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, employee.employeeName);
     worksheet['!cols'] = [
-      { wch: 8 },
+      { wch: 24 },
       { wch: 12 },
       { wch: 15 },
       { wch: 15 },
