@@ -87,6 +87,7 @@ export default function MonthlyAttendancePage() {
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
+  const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
 
   // Fetch departments
   useEffect(() => {
@@ -167,10 +168,63 @@ export default function MonthlyAttendancePage() {
             records = records.filter((r: any) => (r.employee_name || "").toLowerCase().includes(searchName.toLowerCase()));
           }
           setAttendance(records);
+
+          // Fetch approved leaves for employees in the date range
+          const uniqueEmployees = [...new Set(records.map(r => r.employee_id))];
+          if (uniqueEmployees.length > 0) {
+            fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
+          }
         }
       })
       .catch(err => console.error("Error fetching attendance:", err))
       .finally(() => setLoading(false));
+  };
+
+  // Fetch approved leaves for given employees and date range
+  const fetchApprovedLeaves = async (employeeIds: string[], from: string, to: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.append("employees", employeeIds.join(","));
+      params.append("fromDate", from);
+      params.append("toDate", to);
+
+      const response = await fetch(`/api/leaves?${params.toString()}`, { cache: "no-store" });
+      const data = await response.json();
+
+      if (data.success && data.leaves) {
+        console.log('leaves from backend:', data.leaves);
+        // Build map of employee_id -> date -> true (for approved leaves)
+        const leavesMap: Record<string, Record<string, boolean>> = {};
+
+        data.leaves.forEach((leave: any) => {
+          if (leave.status === "approved") {
+            const empId = String(leave.employee_id);
+            if (!leavesMap[empId]) {
+              leavesMap[empId] = {};
+            }
+
+            // Parse dates and mark all dates within the range
+            const startDate = new Date(leave.start_date);
+            const endDate = new Date(leave.end_date);
+            let currentDate = new Date(startDate);
+
+            while (currentDate <= endDate) {
+              // Use local date string (not UTC) for correct mapping
+              const dateKey = currentDate.getFullYear() + '-' +
+                String(currentDate.getMonth() + 1).padStart(2, '0') + '-' +
+                String(currentDate.getDate()).padStart(2, '0');
+              leavesMap[empId][dateKey] = true;
+              currentDate.setDate(currentDate.getDate() + 1);
+            }
+          }
+        });
+
+        console.log('approvedLeavesMap:', leavesMap);
+        setApprovedLeavesMap(leavesMap);
+      }
+    } catch (err) {
+      console.error("Error fetching approved leaves:", err);
+    }
   };
 
 
@@ -275,6 +329,38 @@ export default function MonthlyAttendancePage() {
     return getDateKey(record.clock_in || record.clock_out || record.date || "");
   }
 
+  function calculateTotalDeduction(employee: any) {
+    let totalDeduction = 0;
+    monthInfo.days.forEach((day) => {
+      const dayRecords = employee.byDate[day.dateKey] || [];
+      const meta = employee.dateMeta[day.dateKey];
+      const workingDay = isWorkingDay(day.dateKey);
+      
+      let dayDeduction = 0;
+      if (dayRecords.length === 0) {
+        // No records for this day
+        if (workingDay) {
+          // Check for approved leave
+          if (
+            approvedLeavesMap[employee.employeeId] &&
+            approvedLeavesMap[employee.employeeId][day.dateKey]
+          ) {
+            dayDeduction = 0; // Approved leave, no deduction
+          } else {
+            dayDeduction = 100; // Absent on working day
+          }
+        }
+      } else {
+        // Has records, use meta deduction
+        if (meta?.deduction) {
+          dayDeduction = parseInt(meta.deduction) || 0;
+        }
+      }
+      totalDeduction += dayDeduction;
+    });
+    return totalDeduction;
+  }
+
   function isWorkingDay(dateKey: string) {
     if (!dateKey) return false;
     const override = calendarOverrides[dateKey];
@@ -292,9 +378,6 @@ export default function MonthlyAttendancePage() {
   function downloadExcel() {
     const dataToExport = attendance.map(record => ({
       "ID": record.employee_id,
-      "Full Name": record.employee_name,
-      "P.Name": record.pseudonym,
-      "Department": record.department_name,
       "Date": formatDate(record.date),
       "Clock In": formatTime(record.clock_in),
       "Clock Out": formatTime(record.clock_out),
@@ -502,15 +585,12 @@ export default function MonthlyAttendancePage() {
                         <tr>
                           <th>Day</th>
                           <th>Date</th>
-                          <th>Full Name</th>
-                          <th>P.Name</th>
-                          <th>Department</th>
                           <th>Clock In</th>
                           <th>Clock Out</th>
-                          <th>Total Work Hours</th>
-                          <th>Assigned Working Hours</th>
+                          <th>Total W.H</th>
+                          <th>Assigned W.H</th>
                           <th>OverTime</th>
-                          <th>Running Tardy Count</th>
+                          <th>Tardy Count</th>
                           <th>Status</th>
                           <th>Deduction</th>
                         </tr>
@@ -521,16 +601,27 @@ export default function MonthlyAttendancePage() {
                           const meta = employee.dateMeta[day.dateKey];
                           const workingDay = isWorkingDay(day.dateKey);
                           if (dayRecords.length === 0) {
-                            const statusLabel = workingDay ? "Absent" : "Off";
-                            const statusColor = workingDay ? "#E53E3E" : "#4A5568";
-                            const deduction = workingDay ? "100%" : "";
+                            // Check for approved leave
+                            let statusLabel = workingDay ? "Absent" : "Off";
+                            let statusColor = workingDay ? "#E53E3E" : "#4A5568";
+                            let deduction = workingDay ? "100%" : "";
+                            if (
+                              workingDay &&
+                              approvedLeavesMap[employee.employeeId] &&
+                              approvedLeavesMap[employee.employeeId][day.dateKey]
+                            ) {
+                              statusLabel = "Leave";
+                              statusColor = "#3182CE"; // blue
+                              deduction = "0%";
+                            }
+                            // Debug log for mapping
+                            if (workingDay) {
+                              console.log('employeeId:', employee.employeeId, 'dateKey:', day.dateKey, 'leave:', approvedLeavesMap[employee.employeeId]?.[day.dateKey]);
+                            }
                             return (
                               <tr key={`${employee.employeeId}-${day.dateKey}-empty`}>
                                 <td>{day.weekday}</td>
                                 <td>{formatDateKey(day.dateKey)}</td>
-                                <td>{employee.employeeName}</td>
-                                <td>{employee.pseudonym}</td>
-                                <td>{employee.departmentName}</td>
                                 <td>---</td>
                                 <td>---</td>
                                 <td>---</td>
@@ -548,9 +639,6 @@ export default function MonthlyAttendancePage() {
                             <tr key={`${record.id ?? `${employee.employeeId}-${day.dateKey}-${index}`}`}>
                               <td>{day.weekday}</td>
                               <td>{formatDateKey(day.dateKey)}</td>
-                              <td>{employee.employeeName}</td>
-                              <td>{employee.pseudonym}</td>
-                              <td>{employee.departmentName}</td>
                               <td>{formatTime(record.clock_in)}</td>
                               <td>{formatTime(record.clock_out)}</td>
                               <td>{formatHoursMins(record.total_hours)}</td>
@@ -565,6 +653,14 @@ export default function MonthlyAttendancePage() {
                           ));
                         })}
                       </tbody>
+                      <tfoot>
+                        <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC", borderTop: "2px solid #E2E8F0" }}>
+                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                            Total Deduction:
+                          </td>
+                          <td>{calculateTotalDeduction(employee)}%</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>

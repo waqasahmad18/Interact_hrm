@@ -30,9 +30,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "../../../lib/db";
 
 // GET: Fetch all leave requests
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const leaves = await query("SELECT * FROM employee_leaves ORDER BY requested_at DESC");
+    const { searchParams } = new URL(req.url);
+    const employeesParam = searchParams.get('employees');
+    const fromDate = searchParams.get('fromDate');
+    const toDate = searchParams.get('toDate');
+    const status = searchParams.get('status');
+
+    let sql = "SELECT * FROM employee_leaves WHERE 1=1";
+    const params: any[] = [];
+
+    if (status) {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+
+    if (employeesParam) {
+      const employees = employeesParam.split(',').map(e => e.trim()).filter(Boolean);
+      if (employees.length > 0) {
+        sql += ` AND employee_id IN (${employees.map(() => '?').join(',')})`;
+        params.push(...employees);
+      }
+    }
+
+    if (fromDate && toDate) {
+      // leave overlaps with range: (start_date <= toDate AND end_date >= fromDate)
+      sql += ' AND start_date <= ? AND end_date >= ?';
+      params.push(toDate, fromDate);
+    } else if (fromDate) {
+      sql += ' AND end_date >= ?';
+      params.push(fromDate);
+    } else if (toDate) {
+      sql += ' AND start_date <= ?';
+      params.push(toDate);
+    }
+
+    sql += ' ORDER BY requested_at DESC';
+    const leaves = await query(sql, params);
     return NextResponse.json({ success: true, leaves });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) });
