@@ -170,7 +170,7 @@ export default function MonthlyAttendancePage() {
           setAttendance(records);
 
           // Fetch approved leaves for employees in the date range
-          const uniqueEmployees = [...new Set(records.map(r => r.employee_id))];
+          const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
           if (uniqueEmployees.length > 0) {
             fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
           }
