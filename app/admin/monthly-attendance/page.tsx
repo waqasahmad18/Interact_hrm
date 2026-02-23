@@ -481,19 +481,46 @@ export default function MonthlyAttendancePage() {
         if (!isNaN(val)) totalDeduction += val;
       }
     });
-    // Add total deduction row
-    rows.push({
-      Day: '',
-      Date: '',
-      "Clock In": '',
-      "Clock Out": '',
-      "Total W.H": '',
-      "Assigned W.H": '',
-      OverTime: '',
-      "Tardy Count": '',
-      Status: 'Total Deduction',
-      Deduction: `${totalDeduction}%`
-    });
+
+    // Add summary rows for Total Deduction, Extra Hours, and Total Working Days
+    rows.push(
+      {
+        Day: '',
+        Date: '',
+        "Clock In": '',
+        "Clock Out": '',
+        "Total W.H": '',
+        "Assigned W.H": '',
+        OverTime: '',
+        "Tardy Count": '',
+        Status: 'Total Deduction:',
+        Deduction: `${totalDeduction}%`
+      },
+      {
+        Day: '',
+        Date: '',
+        "Clock In": '',
+        "Clock Out": '',
+        "Total W.H": '',
+        "Assigned W.H": '',
+        OverTime: '',
+        "Tardy Count": '',
+        Status: 'Extra Hours:',
+        Deduction: `${getEmployeeTotalOvertime(employee)}`
+      },
+      {
+        Day: '',
+        Date: '',
+        "Clock In": '',
+        "Clock Out": '',
+        "Total W.H": '',
+        "Assigned W.H": '',
+        OverTime: '',
+        "Tardy Count": '',
+        Status: 'Total Working Days:',
+        Deduction: `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`
+      }
+    );
 
     // Add employee info as header rows ABOVE the table headers
     // First, extract table headers from the first data row
