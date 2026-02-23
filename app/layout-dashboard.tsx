@@ -33,6 +33,7 @@ const sidebarLinks = [
 			{ name: "Shift Management", path: "/admin/shift-management", icon: <FaClock /> },
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
+            { name: "Roles & Permissions", path: "/admin/roles-permissions", icon: <FaCog /> },
 		],
 	},
 	{

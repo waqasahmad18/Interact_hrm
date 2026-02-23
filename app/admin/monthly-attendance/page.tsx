@@ -1,9 +1,12 @@
 "use client";
+
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
+
+// ...existing code...
 
 interface AttendanceRecord {
   id: number;
@@ -26,6 +29,20 @@ interface CalendarDayOverride {
 }
 
 export default function MonthlyAttendancePage() {
+    // Calculate total working days for the month (excluding leaves and off days)
+    function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
+      let count = 0;
+      if (!monthInfo || !monthInfo.days) return count;
+      monthInfo.days.forEach((day: any) => {
+        const workingDay = isWorkingDay(day.dateKey);
+        // Exclude off days and approved leaves
+        if (workingDay) {
+          const isLeave = approvedLeavesMap[employee.employeeId]?.[day.dateKey];
+          if (!isLeave) count++;
+        }
+      });
+      return count;
+    }
   // Format hours and minutes only (remove seconds)
   function formatHoursMins(duration: string) {
     // Expects format: 01h 38m 02s
@@ -192,7 +209,7 @@ export default function MonthlyAttendancePage() {
       const data = await response.json();
 
       if (data.success && data.leaves) {
-        console.log('leaves from backend:', data.leaves);
+        // console.log('leaves from backend:', data.leaves);
         // Build map of employee_id -> date -> true (for approved leaves)
         const leavesMap: Record<string, Record<string, boolean>> = {};
 
@@ -219,7 +236,7 @@ export default function MonthlyAttendancePage() {
           }
         });
 
-        console.log('approvedLeavesMap:', leavesMap);
+        // console.log('approvedLeavesMap:', leavesMap);
         setApprovedLeavesMap(leavesMap);
       }
     } catch (err) {
@@ -600,6 +617,22 @@ export default function MonthlyAttendancePage() {
     return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
   }, [attendance]);
 
+  // Calculate total overtime (extra hours) for the month for an employee
+  function getEmployeeTotalOvertime(emp: any) {
+    let totalSeconds = 0;
+    Object.values(emp.byDate).forEach((records) => {
+      (records as any[]).forEach((record) => {
+        if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+          totalSeconds += record.overtime;
+        }
+      });
+    });
+    if (totalSeconds <= 0) return "-";
+    const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
+    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
+    return `${h}h ${m}m`;
+  }
+
   return (
     <LayoutDashboard>
       <div className={styles.attendanceSummaryContainer}>
@@ -676,28 +709,30 @@ export default function MonthlyAttendancePage() {
                       </div>
                     </div>
                     <div className={styles.attendanceEmployeeActions}>
-                      <div className={styles.attendanceEmployeeId}>ID: {employee.employeeId}</div>
-                      <button
-                        title="Export this employee's month record as XLS"
-                        style={{ marginRight: 8, background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                        onClick={() => downloadEmployeeExcel(employee)}
-                      >
-                        <FaFileExcel /> Export XLS
-                      </button>
-                      <div className={styles.attendanceMonthFilter}>
-                        <span className={styles.attendanceMonthLabel}>Month</span>
-                        <input
-                          type="month"
-                          value={selectedMonth}
-                          onChange={(e) => setSelectedMonth(e.target.value)}
-                          className={styles.attendanceMonthInput}
-                        />
+                      <div className={styles.attendanceEmployeeIdProminent}>Emp. ID {employee.employeeId}</div>
+                      <div className={styles.attendanceMonthFilter} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span className={styles.attendanceMonthLabel}>Month</span>
+                          <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className={styles.attendanceMonthInput}
+                          />
+                        </div>
+                        <button
+                          title="Export this employee's month record as XLS"
+                          style={{ background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => downloadEmployeeExcel(employee)}
+                        >
+                          <FaFileExcel /> Export XLS
+                        </button>
                       </div>
                     </div>
                   </div>
-                  <div className={styles.attendanceMonthTitle}>{monthInfo.label}</div>
+                  {/* <div className={styles.attendanceMonthTitle}>{monthInfo.label}</div> */}
                   <div className={styles.attendanceEmployeeTableWrapper}>
-                    <table className={styles.attendanceEmployeeTable}>
+                    <table className={`${styles.attendanceEmployeeTable} ${styles.hideAssignedWH}`}>
                       <thead>
                         <tr>
                           <th>Day</th>
@@ -733,7 +768,7 @@ export default function MonthlyAttendancePage() {
                             }
                             // Debug log for mapping
                             if (workingDay) {
-                              console.log('employeeId:', employee.employeeId, 'dateKey:', day.dateKey, 'leave:', approvedLeavesMap[employee.employeeId]?.[day.dateKey]);
+                              // console.log('employeeId:', employee.employeeId, 'dateKey:', day.dateKey, 'leave:', approvedLeavesMap[employee.employeeId]?.[day.dateKey]);
                             }
                             return (
                               <tr key={`${employee.employeeId}-${day.dateKey}-empty`}>
@@ -777,7 +812,20 @@ export default function MonthlyAttendancePage() {
                           </td>
                           <td>{calculateTotalDeduction(employee)}%</td>
                         </tr>
+                        <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
+                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                            Extra Hours:
+                          </td>
+                          <td>{getEmployeeTotalOvertime(employee)}</td>
+                        </tr>
+                        <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
+                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                            Total Working Days:
+                          </td>
+                          <td>{getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}</td>
+                        </tr>
                       </tfoot>
+
                     </table>
                   </div>
                 </div>

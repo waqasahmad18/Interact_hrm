@@ -1,4 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+.attendanceEmployeeIdProminent {
+  font-weight: 700;
+  color: #22223B;
+  font-size: 1.1rem;
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+.hideAssignedWH th:nth-child(6),
+.hideAssignedWH td:nth-child(6) {
+  display: none !important;
+}
 /* Responsive table wrapper and table width */
 .attendanceSummaryTableWrapper {
   width: 100%;

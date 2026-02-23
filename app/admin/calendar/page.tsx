@@ -356,39 +356,14 @@ export default function AdminCalendarPage() {
                 const isEditing = editingNote[iso] === true;
 
                 return (
-                  <div key={iso} className={`day-card ${isOff ? "off" : ""}`}>
+                  <div key={iso} className={`day-card ${isOff ? "off" : ""}`}> 
                     <div className="day-top">
                       <div className="day-num">{day.getDate()}</div>
                       <span className={`day-pill ${isOff ? "off" : "work"}`}>{statusLabel}</span>
                     </div>
-
                     <div className="day-week">{day.toLocaleString("en-US", { weekday: "short" })}</div>
-
-                    <select
-                      value={status}
-                      onChange={(e) => updateDay(day, e.target.value as "off" | "working", noteValue)}
-                      disabled={isSaving}
-                      className="day-select"
-                    >
-                      <option value="working">Working</option>
-                      <option value="off">Off</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      value={noteValue}
-                      disabled={!isEditing}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setNoteDrafts((prev) => ({ ...prev, [iso]: next }));
-                      }}
-                      placeholder="Note"
-                      className="day-note"
-                    />
-
-                    <div className="day-actions">
+                    {!isEditing && (
                       <button
-                        className="day-btn edit"
                         type="button"
                         onClick={() => {
                           setEditingNote((prev) => ({ ...prev, [iso]: true }));
@@ -396,23 +371,92 @@ export default function AdminCalendarPage() {
                             setNoteDrafts((prev) => ({ ...prev, [iso]: overrides[iso]?.note ?? "" }));
                           }
                         }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="day-btn set"
-                        type="button"
-                        disabled={!isEditing || isSaving}
-                        onClick={() => {
-                          setEditingNote((prev) => ({ ...prev, [iso]: false }));
-                          updateDay(day, status, noteValue);
+                        style={{
+                          width: '100%',
+                          marginTop: 8,
+                          padding: '8px 0',
+                          borderRadius: '10px',
+                          background: 'linear-gradient(135deg, #00B8A9 0%, #0052CC 100%)',
+                          color: '#fff',
+                          fontWeight: 700,
+                          fontSize: '0.95rem',
+                          border: 'none',
+                          boxShadow: '0 2px 8px rgba(0,82,204,0.10)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          cursor: 'pointer',
+                          transition: 'background 0.2s',
                         }}
+                        className="calendar-edit-btn"
                       >
-                        Set
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" style={{ marginRight: 5 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a4 4 0 01-1.414.828l-4.243 1.414 1.414-4.243a4 4 0 01.828-1.414z" />
+                        </svg>
+                        Edit Day
                       </button>
-                    </div>
-
-                    {isSaving && <div className="saving-chip">Saving...</div>}
+                    )}
+                    {isEditing && (
+                      <div style={{ position: 'relative', zIndex: 10, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, padding: 8, marginTop: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                          <button
+                            type="button"
+                            aria-label="Close"
+                            onClick={() => setEditingNote((prev) => ({ ...prev, [iso]: false }))}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 2,
+                              marginRight: 2,
+                              marginBottom: 2,
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#22223B" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l8 8M6 14L14 6" />
+                            </svg>
+                          </button>
+                        </div>
+                        <select
+                          value={status}
+                          onChange={(e) => updateDay(day, e.target.value as "off" | "working", noteValue)}
+                          disabled={isSaving}
+                          className="day-select"
+                        >
+                          <option value="working">Working</option>
+                          <option value="off">Off</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={noteValue}
+                          disabled={!isEditing}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setNoteDrafts((prev) => ({ ...prev, [iso]: next }));
+                          }}
+                          placeholder="Note"
+                          className="day-note"
+                          style={{ marginTop: 4 }}
+                        />
+                        <div className="day-actions">
+                          <button
+                            className="day-btn set"
+                            type="button"
+                            disabled={!isEditing || isSaving}
+                            onClick={() => {
+                              setEditingNote((prev) => ({ ...prev, [iso]: false }));
+                              updateDay(day, status, noteValue);
+                            }}
+                          >
+                            Set
+                          </button>
+                        </div>
+                        {isSaving && <div className="saving-chip">Saving...</div>}
+                      </div>
+                    )}
                   </div>
                 );
               })}
