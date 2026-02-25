@@ -1,3 +1,12 @@
+// GET /api/employee_salaries/all - return all employee salaries
+export async function GET_ALL(req: NextRequest) {
+	try {
+		const [rows]: any = await pool.execute('SELECT employee_id, amount FROM employee_salaries');
+		return NextResponse.json({ success: true, salaries: rows });
+	} catch (err) {
+		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+	}
+}
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '../../../lib/db';
 

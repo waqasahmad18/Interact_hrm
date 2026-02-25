@@ -34,6 +34,8 @@ const sidebarLinks = [
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
             { name: "Roles & Permissions", path: "/admin/roles-permissions", icon: <FaCog /> },
+		   { name: "Payroll", path: "/admin/payroll", icon: <FaFileAlt /> },
+		   { name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
 		],
 	},
 	{
