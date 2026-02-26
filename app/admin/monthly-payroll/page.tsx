@@ -90,6 +90,9 @@ export default function MonthlyAttendancePage() {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
+
+
+    // After attendanceByEmployee is defined (around line 660):
   const [selectedDepartment, setSelectedDepartment] = useState("");
   
   // Set default dates - start of current month to today
@@ -393,32 +396,33 @@ export default function MonthlyAttendancePage() {
   }
 
   function downloadExcel() {
-    const dataToExport = attendance.map(record => ({
-      "ID": record.employee_id,
-      "Date": formatDate(record.date),
-      "Clock In": formatTime(record.clock_in),
-      "Clock Out": formatTime(record.clock_out),
-      "Total Hours": record.total_hours,
-      "Late": record.is_late ? formatLateTime(record.late_minutes) : "On Time"
+    // Export the same data as shown in the table (filteredEmployees)
+    // Export the same data as shown in the table (filteredEmployees)
+    const dataToExport = filteredEmployees.map(emp => ({
+      "ID": emp.employeeId,
+      "Employee Name": emp.employeeName,
+      "Pseudonym": emp.pseudonym,
+      "Department": emp.departmentName,
+      "Basic Salary": emp.basicSalary !== undefined ? emp.basicSalary : '--',
+      "T.W Days": Object.keys(emp.byDate).length > 0 ? getTotalWorkingDays(emp, monthInfo, approvedLeavesMap) : '--',
+      "T.Unpaid Days": Object.keys(emp.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(emp) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--',
+      "O. T Hours": Object.keys(emp.byDate).length > 0 ? getEmployeeTotalOvertime(emp) : '--',
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Attendance");
-    
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Payroll");
     worksheet['!cols'] = [
       { wch: 8 },
+      { wch: 24 },
+      { wch: 15 },
       { wch: 18 },
       { wch: 15 },
+      { wch: 12 },
       { wch: 15 },
-      { wch: 12 },
-      { wch: 13 },
-      { wch: 13 },
-      { wch: 12 },
       { wch: 15 }
     ];
-
-    const fileName = `monthly-attendance-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `monthly-payroll-${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, fileName);
   }
 
@@ -694,6 +698,13 @@ export default function MonthlyAttendancePage() {
     return `${h}h ${m}m`;
   }
 
+  // Filter attendanceByEmployee for table and export
+  const filteredEmployees = attendanceByEmployee.filter((emp: any) => {
+    const matchesName = searchName ? (emp.employeeName || "").toLowerCase().includes(searchName.toLowerCase()) : true;
+    const matchesDept = selectedDepartment ? (emp.departmentName || "").toLowerCase() === selectedDepartment.toLowerCase() : true;
+    return matchesName && matchesDept;
+  });
+
   return (
     <LayoutDashboard>
       <div className={styles.attendanceSummaryContainer}>
@@ -791,19 +802,19 @@ export default function MonthlyAttendancePage() {
           <table style={{ width: '100%', borderRadius: 16, overflow: 'hidden', background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff' }}>
             <thead>
               <tr>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>ID</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>Employee Name</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>Pseudonym</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>Department</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>Basic Salary</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>T.W Days</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>T.Unpaid Days</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left' }}>O. T Hours</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>ID</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Employee Name</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Pseudonym</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Department</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Basic Salary</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.W Days</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.Unpaid Days</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>O. T Hours</th>
               </tr>
             </thead>
             <tbody style={{ background: '#fff', color: '#22223B' }}>
-              {attendanceByEmployee && attendanceByEmployee.length > 0 ? (
-                attendanceByEmployee.map((employee) => (
+              {filteredEmployees && filteredEmployees.length > 0 ? (
+                filteredEmployees.map((employee) => (
                   <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
                     <td style={{ padding: '10px 16px' }}>{employee.employeeId}</td>
                     <td style={{ padding: '10px 16px' }}>{employee.employeeName}</td>
