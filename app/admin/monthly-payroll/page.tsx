@@ -682,16 +682,20 @@ export default function MonthlyAttendancePage() {
     });
   }, [attendance, allEmployees, salaryMap]);
 
-  // Calculate total overtime (extra hours) for the month for an employee
+  // Calculate total overtime (extra hours) for the SELECTED MONTH ONLY for an employee
   function getEmployeeTotalOvertime(emp: any) {
     let totalSeconds = 0;
-    Object.values(emp.byDate).forEach((records) => {
-      (records as any[]).forEach((record) => {
-        if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
-          totalSeconds += record.overtime;
-        }
+    // Only sum overtime for dates in the selected month
+    if (monthInfo.days && monthInfo.days.length > 0) {
+      monthInfo.days.forEach((day) => {
+        const records = emp.byDate[day.dateKey] || [];
+        (records as any[]).forEach((record) => {
+          if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+            totalSeconds += record.overtime;
+          }
+        });
       });
-    });
+    }
     if (totalSeconds <= 0) return "-";
     const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
     const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
@@ -737,19 +741,16 @@ export default function MonthlyAttendancePage() {
               </option>
             ))}
           </select>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
-          />
-          <span style={{ color: "#718096" }}>to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ color: '#4A5568', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className={styles.attendanceSummaryDate}
+              style={{ minWidth: '160px' }}
+            />
+          </div>
           <button
             onClick={fetchAttendance}
             className={styles.attendanceSummaryXLSButton}
@@ -799,6 +800,7 @@ export default function MonthlyAttendancePage() {
         */}
 
         <div style={{ marginTop: 40 }}>
+          <h3 style={{ color: '#22223B', marginBottom: 10 }}>{monthInfo.label && `Payroll for ${monthInfo.label}`}</h3>
           <table style={{ width: '100%', borderRadius: 16, overflow: 'hidden', background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff' }}>
             <thead>
               <tr>
@@ -816,18 +818,21 @@ export default function MonthlyAttendancePage() {
             <tbody style={{ background: '#fff', color: '#22223B' }}>
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
-                  // Calculate O.T Salary
+                  // Calculate O.T Salary - ONLY FOR SELECTED MONTH
                   let otSalary = '--';
                   if (Object.keys(employee.byDate).length > 0) {
-                    // Get O.T seconds
+                    // Get O.T seconds ONLY FOR SELECTED MONTH
                     let totalOvertimeSeconds = 0;
-                    Object.values(employee.byDate).forEach((records) => {
-                      (records).forEach((record) => {
-                        if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
-                          totalOvertimeSeconds += record.overtime;
-                        }
+                    if (monthInfo.days && monthInfo.days.length > 0) {
+                      monthInfo.days.forEach((day) => {
+                        const records = employee.byDate[day.dateKey] || [];
+                        (records as any[]).forEach((record) => {
+                          if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+                            totalOvertimeSeconds += record.overtime;
+                          }
+                        });
                       });
-                    });
+                    }
                     // Convert seconds to hours (fractional)
                     const overtimeHours = totalOvertimeSeconds / 3600;
                     // Get working days
