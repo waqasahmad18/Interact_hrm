@@ -393,32 +393,204 @@ export default function MonthlyAttendancePage() {
   }
 
   function downloadExcel() {
-    const dataToExport = attendance.map(record => ({
-      "ID": record.employee_id,
-      "Date": formatDate(record.date),
-      "Clock In": formatTime(record.clock_in),
-      "Clock Out": formatTime(record.clock_out),
-      "Total Hours": record.total_hours,
-      "Late": record.is_late ? formatLateTime(record.late_minutes) : "On Time"
-    }));
+    // Export all employees in one single sheet
+    if (attendanceByEmployee.length === 0) {
+      alert("No employees to export");
+      return;
+    }
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    console.log(`Exporting ${attendanceByEmployee.length} employees to Excel in one sheet`);
+    
+    const allDataRows: any[] = [];
+
+    attendanceByEmployee.forEach((employee, empIndex) => {
+      console.log(`Processing employee ${empIndex + 1}/${attendanceByEmployee.length}: ${employee.employeeName}`);
+      
+      // Add employee header section (Row 1: Employee Info)
+      allDataRows.push({
+        "Col1": `Emp. ID: ${employee.employeeId}`,
+        "Col2": employee.employeeName,
+        "Col3": employee.pseudonym,
+        "Col4": employee.departmentName,
+        "Col5": "",
+        "Col6": "",
+        "Col7": "",
+        "Col8": "",
+        "Col9": "",
+        "Col10": ""
+      });
+
+      // Add blank row
+      allDataRows.push({
+        "Col1": "",
+        "Col2": "",
+        "Col3": "",
+        "Col4": "",
+        "Col5": "",
+        "Col6": "",
+        "Col7": "",
+        "Col8": "",
+        "Col9": "",
+        "Col10": ""
+      });
+
+      // Add column headers for attendance data
+      allDataRows.push({
+        "Col1": "Day",
+        "Col2": "Date",
+        "Col3": "Clock In",
+        "Col4": "Clock Out",
+        "Col5": "Total W.H",
+        "Col6": "Assigned W.H",
+        "Col7": "OverTime",
+        "Col8": "Tardy Count",
+        "Col9": "Status",
+        "Col10": "Deduction"
+      });
+
+      // Build attendance data rows for this employee
+      if (monthInfo.days) {
+        monthInfo.days.forEach((day) => {
+          const dayRecords = employee.byDate[day.dateKey] || [];
+          const meta = employee.dateMeta[day.dateKey];
+          const workingDay = isWorkingDay(day.dateKey);
+          
+          if (dayRecords.length === 0) {
+            let statusLabel = workingDay ? "Absent" : "Off";
+            let deduction = workingDay ? "100%" : "";
+            if (
+              workingDay &&
+              approvedLeavesMap[employee.employeeId] &&
+              approvedLeavesMap[employee.employeeId][day.dateKey]
+            ) {
+              statusLabel = "Leave";
+              deduction = "0%";
+            }
+            allDataRows.push({
+              "Col1": day.weekday,
+              "Col2": formatDateKey(day.dateKey),
+              "Col3": "---",
+              "Col4": "---",
+              "Col5": "---",
+              "Col6": "---",
+              "Col7": "---",
+              "Col8": meta?.runningLate || "",
+              "Col9": statusLabel,
+              "Col10": deduction
+            });
+          } else {
+            dayRecords.forEach((record: any) => {
+              allDataRows.push({
+                "Col1": day.weekday,
+                "Col2": formatDateKey(day.dateKey),
+                "Col3": formatTime(record.clock_in),
+                "Col4": formatTime(record.clock_out),
+                "Col5": record.total_hours ? formatHoursMins(record.total_hours) : "---",
+                "Col6": record.assigned_working_hours ? formatHoursMins(record.assigned_working_hours) : (record.assigned_shift_seconds ? formatDurationHM(record.assigned_shift_seconds) : "---"),
+                "Col7": record.overtime ? formatDurationHM(record.overtime) : "---",
+                "Col8": meta?.runningLate || "",
+                "Col9": meta?.statusLabel || "",
+                "Col10": meta?.deduction || ""
+              });
+            });
+          }
+        });
+      }
+
+      // Calculate total deduction for this employee
+      let totalDeduction = calculateTotalDeduction(employee);
+      
+      // Add summary rows for this employee
+      allDataRows.push(
+        {
+          "Col1": "",
+          "Col2": "",
+          "Col3": "",
+          "Col4": "",
+          "Col5": "",
+          "Col6": "",
+          "Col7": "",
+          "Col8": "",
+          "Col9": "Total Deduction:",
+          "Col10": `${totalDeduction}%`
+        },
+        {
+          "Col1": "",
+          "Col2": "",
+          "Col3": "",
+          "Col4": "",
+          "Col5": "",
+          "Col6": "",
+          "Col7": "",
+          "Col8": "",
+          "Col9": "Extra Hours:",
+          "Col10": getEmployeeTotalOvertime(employee)
+        },
+        {
+          "Col1": "",
+          "Col2": "",
+          "Col3": "",
+          "Col4": "",
+          "Col5": "",
+          "Col6": "",
+          "Col7": "",
+          "Col8": "",
+          "Col9": "Total Working Days:",
+          "Col10": `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`
+        }
+      );
+
+      // Add blank rows between employees
+      if (empIndex < attendanceByEmployee.length - 1) {
+        allDataRows.push(
+          {
+            "Col1": "",
+            "Col2": "",
+            "Col3": "",
+            "Col4": "",
+            "Col5": "",
+            "Col6": "",
+            "Col7": "",
+            "Col8": "",
+            "Col9": "",
+            "Col10": ""
+          },
+          {
+            "Col1": "",
+            "Col2": "",
+            "Col3": "",
+            "Col4": "",
+            "Col5": "",
+            "Col6": "",
+            "Col7": "",
+            "Col8": "",
+            "Col9": "",
+            "Col10": ""
+          }
+        );
+      }
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(allDataRows, { skipHeader: true });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Attendance");
     
     worksheet['!cols'] = [
-      { wch: 8 },
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 13 },
-      { wch: 13 },
-      { wch: 12 },
-      { wch: 15 }
+      { wch: 8 },   // Day
+      { wch: 12 },  // Date
+      { wch: 12 },  // Clock In
+      { wch: 12 },  // Clock Out
+      { wch: 12 },  // Total W.H
+      { wch: 15 },  // Assigned W.H
+      { wch: 12 },  // OverTime
+      { wch: 12 },  // Tardy Count
+      { wch: 15 },  // Status
+      { wch: 12 }   // Deduction
     ];
 
-    const fileName = `monthly-attendance-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const dateRange = fromDate && toDate ? `-${fromDate}-to-${toDate}` : '';
+    const departmentSuffix = selectedDepartment ? `-${selectedDepartment}` : '';
+    const fileName = `monthly-attendance${departmentSuffix}${dateRange}.xlsx`;
     XLSX.writeFile(workbook, fileName);
   }
 
@@ -665,7 +837,7 @@ export default function MonthlyAttendancePage() {
       <div className={styles.attendanceSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#22223B", margin: 0 }}>
-            Monthly Attendance
+            Monthly Attendance {monthInfo.label && `- ${monthInfo.label}`}
           </h1>
           <p style={{ color: "#4A5568", fontSize: "0.9rem", marginTop: 4 }}>
             View and manage all employee attendance records
@@ -692,19 +864,16 @@ export default function MonthlyAttendancePage() {
               </option>
             ))}
           </select>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
-          />
-          <span style={{ color: "#718096" }}>to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ color: '#4A5568', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className={styles.attendanceSummaryDate}
+              style={{ minWidth: '160px' }}
+            />
+          </div>
           <button
             onClick={fetchAttendance}
             className={styles.attendanceSummaryXLSButton}
@@ -737,24 +906,13 @@ export default function MonthlyAttendancePage() {
                     </div>
                     <div className={styles.attendanceEmployeeActions}>
                       <div className={styles.attendanceEmployeeIdProminent}>Emp. ID {employee.employeeId}</div>
-                      <div className={styles.attendanceMonthFilter} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className={styles.attendanceMonthLabel}>Month</span>
-                          <input
-                            type="month"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className={styles.attendanceMonthInput}
-                          />
-                        </div>
-                        <button
-                          title="Export this employee's month record as XLS"
-                          style={{ background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => downloadEmployeeExcel(employee)}
-                        >
-                          <FaFileExcel /> Export XLS
-                        </button>
-                      </div>
+                      <button
+                        title="Export this employee's month record as XLS"
+                        style={{ background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => downloadEmployeeExcel(employee)}
+                      >
+                        <FaFileExcel /> Export XLS
+                      </button>
                     </div>
                   </div>
                   {/* <div className={styles.attendanceMonthTitle}>{monthInfo.label}</div> */}

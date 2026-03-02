@@ -810,22 +810,54 @@ export default function MonthlyAttendancePage() {
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.W Days</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.Unpaid Days</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>O. T Hours</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>O.T Salary</th>
               </tr>
             </thead>
             <tbody style={{ background: '#fff', color: '#22223B' }}>
               {filteredEmployees && filteredEmployees.length > 0 ? (
-                filteredEmployees.map((employee) => (
-                  <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
-                    <td style={{ padding: '10px 16px' }}>{employee.employeeId}</td>
-                    <td style={{ padding: '10px 16px' }}>{employee.employeeName}</td>
-                    <td style={{ padding: '10px 16px' }}>{employee.pseudonym}</td>
-                    <td style={{ padding: '10px 16px' }}>{employee.departmentName}</td>
-                    <td style={{ padding: '10px 16px' }}>{employee.basicSalary !== undefined ? employee.basicSalary : '--'}</td>
-                    <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
-                    <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
-                    <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                  </tr>
-                ))
+                filteredEmployees.map((employee) => {
+                  // Calculate O.T Salary
+                  let otSalary = '--';
+                  if (Object.keys(employee.byDate).length > 0) {
+                    // Get O.T seconds
+                    let totalOvertimeSeconds = 0;
+                    Object.values(employee.byDate).forEach((records) => {
+                      (records).forEach((record) => {
+                        if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+                          totalOvertimeSeconds += record.overtime;
+                        }
+                      });
+                    });
+                    // Convert seconds to hours (fractional)
+                    const overtimeHours = totalOvertimeSeconds / 3600;
+                    // Get working days
+                    const totalWorkingDays = getTotalWorkingDays(employee, monthInfo, approvedLeavesMap);
+                    // Get basic salary
+                    const basicSalary = employee.basicSalary;
+                    // Working hours per day: 5 if pseudonym is 'Developer', else 9
+                    let workingHoursPerDay = 9;
+                    if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
+                      workingHoursPerDay = 5;
+                    }
+                    if (basicSalary && totalWorkingDays && overtimeHours > 0) {
+                      const perHourSalary = basicSalary / totalWorkingDays / workingHoursPerDay;
+                      otSalary = Math.round(perHourSalary * overtimeHours).toString();
+                    }
+                  }
+                  return (
+                    <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
+                      <td style={{ padding: '10px 16px' }}>{employee.employeeId}</td>
+                      <td style={{ padding: '10px 16px' }}>{employee.employeeName}</td>
+                      <td style={{ padding: '10px 16px' }}>{employee.pseudonym}</td>
+                      <td style={{ padding: '10px 16px' }}>{employee.departmentName}</td>
+                      <td style={{ padding: '10px 16px' }}>{employee.basicSalary !== undefined ? employee.basicSalary : '--'}</td>
+                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
+                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
+                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
+                      <td style={{ padding: '10px 16px' }}>{otSalary}</td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr><td colSpan={8} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
               )}
