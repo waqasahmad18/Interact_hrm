@@ -6,6 +6,7 @@ import { PrayerButton } from "./PrayerButton";
 import { forceSyncClockState } from "../../lib/ui-sync/forceSyncClockState";
 import { forceSyncBreakState } from "../../lib/ui-sync/forceSyncBreakState";
 import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBreakState";
+import { getDateStringInTimeZone } from "../../lib/timezone";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -98,7 +99,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         body: JSON.stringify({
           employee_id: employeeId,
           employee_name: employeeName,
-          date: now.toISOString().slice(0, 10),
+          date: getDateStringInTimeZone(now),
           clock_in: now.toISOString(),
         }),
       });
@@ -148,7 +149,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employee_id: employeeId,
-          date: now.toISOString().slice(0, 10),
+          date: getDateStringInTimeZone(now),
           clock_out: now.toISOString(),
         }),
       });

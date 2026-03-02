@@ -1,6 +1,11 @@
 "use client";
 import LayoutDashboard from "../layout-dashboard";
 import React, { useEffect, useState } from "react";
+import {
+  getDateStringInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../lib/timezone";
 
 export default function LeavePage() {
   const [leaves, setLeaves] = useState<any[]>([]);
@@ -153,7 +158,7 @@ export default function LeavePage() {
                     <td style={tdStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
                   <td style={tdStyle}>{l.total_days}</td>
                   <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status}</td>
-                  <td style={tdStyle}>{l.requested_at ? new Date(l.requested_at).toLocaleString() : ""}</td>
+                  <td style={tdStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => openModal(l)} style={btnView}>View</button>
@@ -192,7 +197,7 @@ export default function LeavePage() {
                 </div>
               )}
               <div><b>Documents:</b> {(() => { const docs = typeof selectedLeave.document_paths === 'string' ? JSON.parse(selectedLeave.document_paths || '[]') : selectedLeave.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{marginRight: 8}}><button style={{background: '#3478f6', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer'}} onClick={() => handleDocumentDownload(d)}>📄 {d}</button></span>) : <span style={{color: '#999'}}>No documents</span>; })()}</div>
-              <div><b>Requested At:</b> {selectedLeave.requested_at ? new Date(selectedLeave.requested_at).toLocaleString() : ""}</div>
+              <div><b>Requested At:</b> {selectedLeave.requested_at ? formatDateTime(selectedLeave.requested_at) : ""}</div>
               {selectedLeave.status === "pending" && (
                 <div style={{ marginTop: 18 }}>
                   <div style={{ marginBottom: 10 }}>
@@ -211,12 +216,21 @@ export default function LeavePage() {
     </LayoutDashboard>
   );
 }
-// Format date as dd/mm/yyyy
+// Format date as dd/mm/yyyy using Asia/Karachi timezone
 function formatDate(dateString: string) {
   if (!dateString) return "";
-  const d = new Date(dateString);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  const dateKey = getDateStringInTimeZone(dateString, SERVER_TIMEZONE);
+  const [year, month, day] = dateKey.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+// Format date-time as dd/mm/yyyy hh:mm:ss using Asia/Karachi timezone
+function formatDateTime(dateTimeString: string) {
+  if (!dateTimeString) return "";
+  const dateKey = getDateStringInTimeZone(dateTimeString, SERVER_TIMEZONE);
+  const timeStr = getTimeStringInTimeZone(dateTimeString, SERVER_TIMEZONE);
+  const [year, month, day] = dateKey.split("-");
+  return `${day}/${month}/${year} ${timeStr}`;
 }
 
 const thStyle: React.CSSProperties = { padding: "10px 6px", fontWeight: 700, color: "#fff", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: "12px", whiteSpace: "nowrap" };

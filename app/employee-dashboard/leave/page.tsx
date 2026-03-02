@@ -14,6 +14,11 @@ interface Leave {
   // Add any other fields you use from leave object
 }
 import React, { useState, useEffect, useRef } from "react";
+import {
+  getDateStringInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 const LEAVE_CATEGORIES = [
   { value: "annual", label: "Annual" },
@@ -97,6 +102,15 @@ function formatDate(dateString: string) {
   const d = new Date(dateString);
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+// Format datetime as dd/mm/yyyy hh:mm:ss in Asia/Karachi timezone
+function formatDateTime(dateTimeString: string) {
+  if (!dateTimeString) return "";
+  const dateStr = getDateStringInTimeZone(dateTimeString, SERVER_TIMEZONE);
+  const timeStr = getTimeStringInTimeZone(dateTimeString, SERVER_TIMEZONE);
+  const [year, month, day] = dateStr.split("-");
+  return `${day}/${month}/${year} ${timeStr}`;
 }
 
   // Fetch leaves from backend
@@ -372,14 +386,14 @@ function formatDate(dateString: string) {
                               <div><b>Admin Remarks:</b> <span style={{ color: selectedLeave.status === 'rejected' ? '#e74c3c' : '#333' }}>{selectedLeave.admin_remark}</span></div>
                             )}
                             <div><b>Documents:</b> {(() => { const docs = typeof selectedLeave.document_paths === 'string' ? JSON.parse(selectedLeave.document_paths || '[]') : selectedLeave.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{marginRight: 8}}><button style={{background: '#3478f6', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.9rem'}} onClick={() => handleDocumentDownload(d)}>📄 {d}</button></span>) : <span style={{color: '#999'}}>No documents</span>; })()}</div>
-                            <div><b>Requested At:</b> {selectedLeave.requested_at ? new Date(selectedLeave.requested_at).toLocaleString() : ''}</div>
+                            <div><b>Requested At:</b> {selectedLeave.requested_at ? formatDateTime(selectedLeave.requested_at) : ''}</div>
                             <button onClick={closeModal} style={{ background: '#888', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', marginTop: 18, fontWeight: 600, cursor: 'pointer' }}>Close</button>
                           </div>
                         </div>
                       )}
                 <td style={tdStyle}>{(() => { const docs = typeof l.document_paths === 'string' ? JSON.parse(l.document_paths || '[]') : l.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{background: '#E8F4F8', padding: '2px 6px', borderRadius: 4, marginRight: 4, fontSize: '0.9rem'}}>{d}</span>) : <span style={{color: '#999'}}>None</span>; })()}</td>
                 <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 700 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
-                <td style={tdStyle}>{l.requested_at ? new Date(l.requested_at).toLocaleString() : ""}</td>
+                <td style={tdStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
 
               </tr>
             ))}

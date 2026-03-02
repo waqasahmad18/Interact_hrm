@@ -399,7 +399,33 @@ export default function AddEmployeeForm({
     }
   }, [isEdit, editEmployeeId]);
 
+  // Auto-set employment status to "Permanent" if joining date is 3+ months old
+  useEffect(() => {
+    if (jobDetails.joinedDate) {
+      const joinedDate = new Date(jobDetails.joinedDate);
+      const today = new Date();
+      
+      // Calculate if 3 months have passed
+      const threeMonthsLater = new Date(joinedDate);
+      threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+      
+      // If today is 3+ months after joining date, set status to "Permanent"
+      if (today >= threeMonthsLater) {
+        setEmploymentStatus("Permanent");
+        console.log(`[Auto-Status] Joined on ${jobDetails.joinedDate}, 3 months completed - Setting to Permanent`);
+      }
+    }
+  }, [jobDetails.joinedDate]);
 
+  // Sync employment status from Personal Details to Job Details
+  useEffect(() => {
+    if (employmentStatus) {
+      setJobDetails(prev => ({
+        ...prev,
+        employmentStatus: employmentStatus
+      }));
+    }
+  }, [employmentStatus]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -556,7 +582,12 @@ export default function AddEmployeeForm({
               </div>
               <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employment Status</label>
-                <select className={styles.select} value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} required>
+                <select 
+                  className={styles.select} 
+                  value={employmentStatus} 
+                  onChange={e => setEmploymentStatus(e.target.value)} 
+                  required
+                >
                   <option value="">Select Employment Status</option>
                   <option value="Probation">Probation</option>
                   <option value="Permanent">Permanent</option>

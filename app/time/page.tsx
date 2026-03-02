@@ -4,6 +4,11 @@ import LayoutDashboard from "../layout-dashboard";
 import styles from "../break-summary/break-summary.module.css";
 import attStyles from "../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
+import {
+  getDateStringInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../lib/timezone";
 
 // Helper to format duration in hh:mm:ss
 function formatDuration(seconds: number) {
@@ -15,10 +20,7 @@ function formatDuration(seconds: number) {
 
 // Helper to get local YYYY-MM-DD for grouping
 function localDateKey(date: Date) {
-  const y = date.getFullYear();
-  const m = (date.getMonth() + 1).toString().padStart(2, "0");
-  const d = date.getDate().toString().padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return getDateStringInTimeZone(date, SERVER_TIMEZONE);
 }
 
 // Helper to format total hours (with dynamic timer support)
@@ -50,21 +52,14 @@ function formatLateTime(minutes: number) {
 function formatDateOnly(dateValue: string | null | undefined) {
   if (!dateValue) return "";
   const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateValue);
-  if (dateOnlyMatch) {
-    const [year, month, day] = dateValue.split("-").map(Number);
-    if (!year || !month || !day) return dateValue;
-    return new Date(year, month - 1, day).toLocaleDateString();
-  }
+  if (dateOnlyMatch) return dateValue;
   const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) return dateValue;
-  return parsed.toLocaleDateString();
+  return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
 }
 
 function getLocalDateString(date: Date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return getDateStringInTimeZone(date, SERVER_TIMEZONE);
 }
 
 export default function TimePage() {
@@ -90,14 +85,9 @@ export default function TimePage() {
 
   const isInRange = (dateStr: string | null | undefined, fromDate?: string, toDate?: string) => {
     if (!dateStr) return false;
-    const date = new Date(dateStr);
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const from = fromDate ? new Date(fromDate) : null;
-    const to = toDate ? new Date(toDate) : null;
-    const fromOnly = from ? new Date(from.getFullYear(), from.getMonth(), from.getDate()) : null;
-    const toOnly = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate()) : null;
-    if (fromOnly && dateOnly < fromOnly) return false;
-    if (toOnly && dateOnly > toOnly) return false;
+    const dateOnly = getDateStringInTimeZone(dateStr, SERVER_TIMEZONE);
+    if (fromDate && dateOnly < fromDate) return false;
+    if (toDate && dateOnly > toDate) return false;
     return true;
   };
 
@@ -246,13 +236,13 @@ export default function TimePage() {
     return {
       ...b,
       employee_name: b.employee_name || b.name || b.username || "",
-      break_start_display: b.break_start ? new Date(b.break_start).toLocaleTimeString() : "",
-      break_end_display: b.break_end ? new Date(b.break_end).toLocaleTimeString() : (isRunning ? "🔴 Running" : ""),
+      break_end_display: b.break_end ? getTimeStringInTimeZone(b.break_end, SERVER_TIMEZONE) : (isRunning ? "🔴 Running" : ""),
+      break_start_display: b.break_start ? getTimeStringInTimeZone(b.break_start, SERVER_TIMEZONE) : "",
       total_break_time: formatDuration(sessionSeconds),
       total_break_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: b.date ? new Date(b.date).toLocaleDateString() : (b.break_start ? new Date(b.break_start).toLocaleDateString() : ""),
+      date_display: b.date ? getDateStringInTimeZone(b.date, SERVER_TIMEZONE) : (b.break_start ? getDateStringInTimeZone(b.break_start, SERVER_TIMEZONE) : ""),
       isRunning: isRunning
     };
   });
@@ -292,13 +282,13 @@ export default function TimePage() {
     return {
       ...p,
       employee_name: p.employee_name || p.name || p.username || "",
-      prayer_start_display: p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleTimeString() : "",
-      prayer_end_display: p.prayer_break_end ? new Date(p.prayer_break_end).toLocaleTimeString() : (isRunning ? "🔴 Running" : ""),
+      prayer_start_display: p.prayer_break_start ? getTimeStringInTimeZone(p.prayer_break_start, SERVER_TIMEZONE) : "",
+      prayer_end_display: p.prayer_break_end ? getTimeStringInTimeZone(p.prayer_break_end, SERVER_TIMEZONE) : (isRunning ? "🔴 Running" : ""),
       total_prayer_time: formatDuration(sessionSeconds),
       total_prayer_time_today: formatDuration(dailySeconds),
       exceed: sessionExceed > 0 ? formatDuration(sessionExceed) : "",
       exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-      date_display: p.date ? new Date(p.date).toLocaleDateString() : (p.prayer_break_start ? new Date(p.prayer_break_start).toLocaleDateString() : ""),
+      date_display: p.date ? getDateStringInTimeZone(p.date, SERVER_TIMEZONE) : (p.prayer_break_start ? getDateStringInTimeZone(p.prayer_break_start, SERVER_TIMEZONE) : ""),
       isRunning: isRunning
     };
   });
@@ -395,9 +385,9 @@ export default function TimePage() {
     ];
     let csv = headers.join(',    ') + '\n';
     filteredAttendance.forEach(row => {
-      const date = row.date ? new Date(row.date).toLocaleString() : "";
-      const clockIn = row.clock_in ? new Date(row.clock_in).toLocaleString() : "";
-      const clockOut = row.clock_out ? new Date(row.clock_out).toLocaleString() : "";
+      const date = row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "";
+      const clockIn = row.clock_in ? getTimeStringInTimeZone(row.clock_in, SERVER_TIMEZONE) : "";
+      const clockOut = row.clock_out ? getTimeStringInTimeZone(row.clock_out, SERVER_TIMEZONE) : "";
       const totalHours = formatTotalHours(row.clock_in, row.clock_out, now);
       csv += [
         row.employee_id,
@@ -649,10 +639,10 @@ export default function TimePage() {
                         <td>{a.pseudonym || '-'}</td>
                         <td>{a.department_name || '-'}</td>
                         <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
-                        <td>{a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""}</td>
+                        <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
                         <td>
                           {a.clock_out
-                            ? new Date(a.clock_out).toLocaleTimeString()
+                            ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE)
                             : <span style={{color: '#e67e22', fontWeight: 600}}>Running...</span>}
                         </td>
                         <td>

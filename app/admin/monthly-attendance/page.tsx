@@ -5,6 +5,11 @@ import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
+import {
+  getDateStringInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 // ...existing code...
 
@@ -94,14 +99,14 @@ export default function MonthlyAttendancePage() {
   
   // Set default dates - start of current month to today
   const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = getDateStringInTimeZone(today);
+  const firstDayOfMonth = `${todayStr.slice(0, 7)}-01`;
   
   const [fromDate, setFromDate] = useState(firstDayOfMonth);
   const [toDate, setToDate] = useState(todayStr);
   const [loading, setLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(
-    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+    todayStr.slice(0, 7)
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
@@ -299,12 +304,7 @@ export default function MonthlyAttendancePage() {
 
   function formatTime(timeString: string | null) {
     if (!timeString) return "-";
-    const time = new Date(timeString);
-    return time.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    return getTimeStringInTimeZone(timeString, SERVER_TIMEZONE);
   }
 
   function formatDate(dateString: string) {
@@ -336,10 +336,7 @@ export default function MonthlyAttendancePage() {
     if (dateOnlyMatch) return dateValue;
     const parsed = new Date(dateValue);
     if (Number.isNaN(parsed.getTime())) return dateValue.split("T")[0] || "";
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, "0");
-    const day = String(parsed.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
   }
 
   function getRecordDateKey(record: any) {

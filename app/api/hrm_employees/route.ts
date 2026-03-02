@@ -138,6 +138,20 @@ export async function PUT(req: NextRequest) {
     );
     
     console.log('Affected rows:', result.affectedRows);
+    
+    // Also update employment_status in employee_jobs table to keep it in sync
+    if (employment_status) {
+      try {
+        await conn.execute(
+          `UPDATE employee_jobs SET employment_status = ? WHERE employee_id = ?`,
+          [employment_status, whereValue]
+        );
+        console.log('employee_jobs.employment_status also updated');
+      } catch (jobErr) {
+        console.log('Note: Could not update employee_jobs (may not exist yet):', jobErr);
+      }
+    }
+    
     console.log('Update successful');
     return NextResponse.json({ success: true });
   } catch (err) {

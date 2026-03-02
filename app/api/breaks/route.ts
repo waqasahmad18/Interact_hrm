@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
+import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
 
 // GET: Fetch all breaks or by employeeId/date
 export async function GET(req: NextRequest) {
@@ -55,11 +56,17 @@ export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
     const { employee_id, employee_name, date, break_start, break_end } = data || {};
-    if (!employee_id || !date) {
+    if (!employee_id) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
+    const eventTimestamp = break_start ?? break_end ?? date;
+    const formattedDate = eventTimestamp
+      ? getDateStringInTimeZone(eventTimestamp, SERVER_TIMEZONE)
+      : "";
 
-    const formattedDate = new Date(date).toISOString().slice(0, 10); // YYYY-MM-DD
+    if (!formattedDate) {
+      return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
+    }
 
     conn = await pool.getConnection();
 
@@ -120,7 +127,11 @@ export async function PUT(req: NextRequest) {
 
     conn = await pool.getConnection();
 
-    const formattedDate = date ? new Date(date).toISOString().slice(0, 10) : null;
+    const formattedDate = date
+      ? /^\d{4}-\d{2}-\d{2}$/.test(String(date))
+        ? String(date)
+        : getDateStringInTimeZone(date, SERVER_TIMEZONE)
+      : null;
     const formattedBreakStart = break_start ? new Date(break_start).toISOString().slice(0, 19).replace('T', ' ') : null;
     const formattedBreakEnd = break_end ? new Date(break_end).toISOString().slice(0, 19).replace('T', ' ') : null;
 

@@ -4,6 +4,13 @@ import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel, FaSave, FaEdit, FaTimes, FaPlus } from "react-icons/fa";
 import * as XLSX from 'xlsx';
+import {
+  dateTimeLocalToIsoInTimeZone,
+  getDateStringInTimeZone,
+  getDateTimeLocalInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 // Helper to format duration
 function formatDuration(seconds: number) {
@@ -20,20 +27,10 @@ function formatLateTime(minutes: number) {
   return `${h}h ${m}m`;
 }
 
-// Helper to format datetime for datetime-local input (keeps local timezone)
+// Helper to format datetime for datetime-local input (server timezone)
 function formatDateTimeLocal(dateTimeString: string | null): string {
   if (!dateTimeString) return "";
-  
-  const date = new Date(dateTimeString);
-  
-  // Get local date/time components
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return getDateTimeLocalInTimeZone(dateTimeString, SERVER_TIMEZONE);
 }
 
 interface AttendanceRecord {
@@ -57,12 +54,12 @@ export default function ManageAttendancePage() {
   const [searchName, setSearchName] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
+  const [toDate, setToDate] = useState(getDateStringInTimeZone(new Date())); // Default to today
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRecord, setNewRecord] = useState<Partial<AttendanceRecord>>({
     employee_id: "",
-    date: new Date().toISOString().split('T')[0],
+    date: getDateStringInTimeZone(new Date()),
     clock_in: null,
     clock_out: null
   });
@@ -253,7 +250,7 @@ export default function ManageAttendancePage() {
         setShowAddForm(false);
         setNewRecord({
           employee_id: "",
-          date: new Date().toISOString().split('T')[0],
+          date: getDateStringInTimeZone(new Date()),
           clock_in: null,
           clock_out: null
         });
@@ -311,9 +308,9 @@ export default function ManageAttendancePage() {
         "Full Name": a.employee_name,
         "P.Name": a.pseudonym || '-',
         "Department": a.department_name || '-',
-        "Date": a.date ? new Date(a.date).toLocaleDateString() : "",
-        "Clock In": a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : "",
-        "Clock Out": a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : "",
+        "Date": a.date || "",
+        "Clock In": a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : "",
+        "Clock Out": a.clock_out ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE) : "",
         "Total Hours": totalHours,
         "Late": lateText
       };
@@ -330,7 +327,7 @@ export default function ManageAttendancePage() {
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-    XLSX.writeFile(wb, `Attendance_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `Attendance_${getDateStringInTimeZone(new Date())}.xlsx`);
   };
 
   return (
@@ -412,7 +409,14 @@ export default function ManageAttendancePage() {
                 <input
                   type="datetime-local"
                   value={newRecord.clock_in ? formatDateTimeLocal(newRecord.clock_in) : ""}
-                  onChange={(e) => setNewRecord({ ...newRecord, clock_in: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  onChange={(e) =>
+                    setNewRecord({
+                      ...newRecord,
+                      clock_in: e.target.value
+                        ? dateTimeLocalToIsoInTimeZone(e.target.value, SERVER_TIMEZONE)
+                        : null,
+                    })
+                  }
                   style={{
                     width: "100%",
                     padding: "8px",
@@ -427,7 +431,14 @@ export default function ManageAttendancePage() {
                 <input
                   type="datetime-local"
                   value={newRecord.clock_out ? formatDateTimeLocal(newRecord.clock_out) : ""}
-                  onChange={(e) => setNewRecord({ ...newRecord, clock_out: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  onChange={(e) =>
+                    setNewRecord({
+                      ...newRecord,
+                      clock_out: e.target.value
+                        ? dateTimeLocalToIsoInTimeZone(e.target.value, SERVER_TIMEZONE)
+                        : null,
+                    })
+                  }
                   style={{
                     width: "100%",
                     padding: "8px",
@@ -563,12 +574,12 @@ export default function ManageAttendancePage() {
                         {a.isEditing ? (
                           <input
                             type="date"
-                            value={a.date ? new Date(a.date).toISOString().split('T')[0] : ""}
+                            value={a.date ? getDateStringInTimeZone(a.date, SERVER_TIMEZONE) : ""}
                             onChange={(e) => updateField(a.id!, "date", e.target.value)}
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          a.date ? new Date(a.date).toLocaleDateString() : ""
+                          a.date || ""
                         )}
                       </td>
                       <td>
@@ -576,11 +587,19 @@ export default function ManageAttendancePage() {
                           <input
                             type="datetime-local"
                             value={formatDateTimeLocal(a.clock_in)}
-                            onChange={(e) => updateField(a.id!, "clock_in", e.target.value ? new Date(e.target.value).toISOString() : null)}
+                            onChange={(e) =>
+                              updateField(
+                                a.id!,
+                                "clock_in",
+                                e.target.value
+                                  ? dateTimeLocalToIsoInTimeZone(e.target.value, SERVER_TIMEZONE)
+                                  : null
+                              )
+                            }
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          a.clock_in ? new Date(a.clock_in).toLocaleTimeString() : ""
+                          a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""
                         )}
                       </td>
                       <td>
@@ -588,11 +607,19 @@ export default function ManageAttendancePage() {
                           <input
                             type="datetime-local"
                             value={formatDateTimeLocal(a.clock_out)}
-                            onChange={(e) => updateField(a.id!, "clock_out", e.target.value ? new Date(e.target.value).toISOString() : null)}
+                            onChange={(e) =>
+                              updateField(
+                                a.id!,
+                                "clock_out",
+                                e.target.value
+                                  ? dateTimeLocalToIsoInTimeZone(e.target.value, SERVER_TIMEZONE)
+                                  : null
+                              )
+                            }
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          a.clock_out ? new Date(a.clock_out).toLocaleTimeString() : ""
+                          a.clock_out ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE) : ""
                         )}
                       </td>
                       <td>

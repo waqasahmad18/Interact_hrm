@@ -5,6 +5,11 @@ import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
+import {
+  getDateStringInTimeZone,
+  getTimeStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 // ...existing code...
 
@@ -97,8 +102,8 @@ export default function MonthlyAttendancePage() {
   
   // Set default dates - start of current month to today
   const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = getDateStringInTimeZone(today, SERVER_TIMEZONE);
+  const firstDayOfMonth = `${todayStr.slice(0, 7)}-01`;
   
   const [fromDate, setFromDate] = useState(firstDayOfMonth);
   const [toDate, setToDate] = useState(todayStr);
@@ -302,12 +307,7 @@ export default function MonthlyAttendancePage() {
 
   function formatTime(timeString: string | null) {
     if (!timeString) return "-";
-    const time = new Date(timeString);
-    return time.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    return getTimeStringInTimeZone(timeString, SERVER_TIMEZONE);
   }
 
   function formatDate(dateString: string) {
@@ -422,7 +422,7 @@ export default function MonthlyAttendancePage() {
       { wch: 15 },
       { wch: 15 }
     ];
-    const fileName = `monthly-payroll-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `monthly-payroll-${getDateStringInTimeZone(new Date(), SERVER_TIMEZONE)}.xlsx`;
     XLSX.writeFile(workbook, fileName);
   }
 

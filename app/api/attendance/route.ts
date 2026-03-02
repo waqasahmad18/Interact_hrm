@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
+import {
+  getDateStringInTimeZone,
+  getTimeInMinutesInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 // Use a dedicated table for attendance to avoid legacy conflicts
 const ATTENDANCE_TABLE = "employee_attendance";
@@ -137,11 +142,12 @@ export async function GET(req: NextRequest) {
       let late_minutes = 0;
       const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
       if (clockInDate && shiftStartMinutes !== null) {
-        const shiftStart = new Date(clockInDate);
-        const shiftHours = Math.floor(shiftStartMinutes / 60);
-        const shiftMins = shiftStartMinutes % 60;
-        shiftStart.setHours(shiftHours, shiftMins, 0, 0);
-        const diffMinutes = Math.floor((clockInDate.getTime() - shiftStart.getTime()) / 60000);
+        const clockInMinutes = getTimeInMinutesInTimeZone(
+          clockInDate,
+          SERVER_TIMEZONE
+        );
+        const diffMinutes =
+          clockInMinutes === null ? 0 : clockInMinutes - shiftStartMinutes;
         if (diffMinutes > GRACE_MINUTES) {
           late_minutes = diffMinutes - GRACE_MINUTES;
           is_late = late_minutes > 0;
@@ -221,8 +227,13 @@ export async function POST(req: NextRequest) {
     
     console.log("Attendance API POST Data:", { employee_id, employee_name, date, clock_in, clock_out });
     
-    // Ensure date is in YYYY-MM-DD format for database consistency
-    const formattedDate = date;
+    // Restrict attendance date to server timezone (Asia/Karachi)
+    const eventTimestamp = clock_in ?? clock_out ?? null;
+    const formattedDate = eventTimestamp
+      ? getDateStringInTimeZone(eventTimestamp, SERVER_TIMEZONE)
+      : date
+      ? String(date).slice(0, 10)
+      : "";
 
     if (!employee_id || !formattedDate) {
       return NextResponse.json({ success: false, error: "Missing required fields: employee_id or date" }, { status: 400 });
@@ -313,7 +324,11 @@ export async function PUT(req: NextRequest) {
 
     const formattedClockIn = clock_in ? new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ') : null;
     const formattedClockOut = clock_out ? new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ') : null;
-    const formattedDate = new Date(date).toISOString().slice(0, 10);
+    const formattedDate = date
+      ? /^\d{4}-\d{2}-\d{2}$/.test(String(date))
+        ? String(date)
+        : getDateStringInTimeZone(date, SERVER_TIMEZONE)
+      : null;
 
     await conn.execute(
       `UPDATE ${ATTENDANCE_TABLE} 

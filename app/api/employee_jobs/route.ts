@@ -50,6 +50,19 @@ export async function PUT(req: NextRequest) {
 				[joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
 			);
 			console.log('PUT employee_jobs - Successfully UPDATED employee_id:', employee_id, 'with department_id:', departmentId || null);
+			
+			// Also sync employment_status back to hrm_employees table
+			if (employmentStatus) {
+				try {
+					await pool.execute(
+						`UPDATE hrm_employees SET employment_status = ? WHERE id = ?`,
+						[employmentStatus, employee_id]
+					);
+					console.log('PUT employee_jobs - Also synced employment_status to hrm_employees');
+				} catch (syncErr) {
+					console.log('PUT employee_jobs - Note: Could not sync to hrm_employees:', syncErr);
+				}
+			}
 		} else {
 			// Record doesn't exist, INSERT
 			await pool.execute(
@@ -83,6 +96,20 @@ export async function POST(req: NextRequest) {
 			[employee_id, joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 		);
 		console.log('POST employee_jobs - Successfully inserted employee_id:', employee_id, 'with department_id:', departmentId || null);
+		
+		// Also sync employment_status to hrm_employees table
+		if (employmentStatus) {
+			try {
+				await pool.execute(
+					`UPDATE hrm_employees SET employment_status = ? WHERE id = ?`,
+					[employmentStatus, employee_id]
+				);
+				console.log('POST employee_jobs - Also synced employment_status to hrm_employees');
+			} catch (syncErr) {
+				console.log('POST employee_jobs - Note: Could not sync to hrm_employees:', syncErr);
+			}
+		}
+		
 		return NextResponse.json({ success: true });
 	} catch (err) {
 		return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
