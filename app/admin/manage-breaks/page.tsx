@@ -4,6 +4,12 @@ import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel, FaSave, FaEdit, FaTimes, FaPlus } from "react-icons/fa";
 import * as XLSX from 'xlsx';
+import {
+  getDateTimeLocalInTimeZone,
+  getTimeStringInTimeZone,
+  getDateStringInTimeZone,
+  SERVER_TIMEZONE,
+} from "../../../lib/timezone";
 
 // Helper to format duration
 function formatDuration(seconds: number) {
@@ -13,20 +19,10 @@ function formatDuration(seconds: number) {
   return `${h}h ${m}m ${s}s`;
 }
 
-// Helper to format datetime for datetime-local input (keeps local timezone)
+// Helper to format datetime for datetime-local input using server timezone
 function formatDateTimeLocal(dateTimeString: string | null): string {
   if (!dateTimeString) return "";
-  
-  const date = new Date(dateTimeString);
-  
-  // Get local date/time components
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return getDateTimeLocalInTimeZone(dateTimeString, SERVER_TIMEZONE);
 }
 
 interface BreakRecord {
@@ -654,7 +650,7 @@ export default function ManageBreaksPage() {
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          b.date ? new Date(b.date).toLocaleDateString() : ""
+                          b.date ? getDateStringInTimeZone(b.date, SERVER_TIMEZONE) : ""
                         )}
                       </td>
                       <td>
@@ -666,7 +662,7 @@ export default function ManageBreaksPage() {
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          b.break_start ? new Date(b.break_start).toLocaleTimeString() : ""
+                          b.break_start ? getTimeStringInTimeZone(b.break_start, SERVER_TIMEZONE) : ""
                         )}
                       </td>
                       <td>
@@ -678,7 +674,7 @@ export default function ManageBreaksPage() {
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          b.break_end ? new Date(b.break_end).toLocaleTimeString() : ""
+                          b.break_end ? getTimeStringInTimeZone(b.break_end, SERVER_TIMEZONE) : ""
                         )}
                       </td>
                       <td>

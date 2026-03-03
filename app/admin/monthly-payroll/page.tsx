@@ -431,6 +431,7 @@ export default function MonthlyAttendancePage() {
       "T.W Days": Object.keys(emp.byDate).length > 0 ? getTotalWorkingDays(emp, monthInfo, approvedLeavesMap) : '--',
       "T.Unpaid Days": Object.keys(emp.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(emp) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--',
       "O. T Hours": Object.keys(emp.byDate).length > 0 ? getEmployeeTotalOvertime(emp) : '--',
+      "O. T Salary": getEmployeeOTSalary(emp),
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -443,6 +444,7 @@ export default function MonthlyAttendancePage() {
       { wch: 18 },
       { wch: 15 },
       { wch: 12 },
+      { wch: 15 },
       { wch: 15 },
       { wch: 15 }
     ];
@@ -733,6 +735,42 @@ export default function MonthlyAttendancePage() {
     return `${h}h ${m}m`;
   }
 
+  // Calculate O.T Salary for the SELECTED MONTH ONLY for an employee
+  function getEmployeeOTSalary(employee: any) {
+    let otSalary = '--';
+    // Check if overtime is allowed for this employee
+    if (employee.allowOvertime && Object.keys(employee.byDate).length > 0) {
+      // Get O.T seconds ONLY FOR SELECTED MONTH
+      let totalOvertimeSeconds = 0;
+      if (monthInfo.days && monthInfo.days.length > 0) {
+        monthInfo.days.forEach((day) => {
+          const records = employee.byDate[day.dateKey] || [];
+          (records as any[]).forEach((record) => {
+            if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+              totalOvertimeSeconds += record.overtime;
+            }
+          });
+        });
+      }
+      // Convert seconds to hours (fractional)
+      const overtimeHours = totalOvertimeSeconds / 3600;
+      // Get working days
+      const totalWorkingDays = getTotalWorkingDays(employee, monthInfo, approvedLeavesMap);
+      // Get basic salary
+      const basicSalary = employee.basicSalary;
+      // Working hours per day: 5 if pseudonym is 'Developer', else 9
+      let workingHoursPerDay = 9;
+      if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
+        workingHoursPerDay = 5;
+      }
+      if (basicSalary && totalWorkingDays && overtimeHours > 0) {
+        const perHourSalary = basicSalary / totalWorkingDays / workingHoursPerDay;
+        otSalary = Math.round(perHourSalary * overtimeHours).toString();
+      }
+    }
+    return otSalary;
+  }
+
   // Filter attendanceByEmployee for table and export
   const filteredEmployees = attendanceByEmployee.filter((emp: any) => {
     const matchesName = searchName ? (emp.employeeName || "").toLowerCase().includes(searchName.toLowerCase()) : true;
@@ -849,38 +887,6 @@ export default function MonthlyAttendancePage() {
             <tbody style={{ background: '#fff', color: '#22223B' }}>
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
-                  // Calculate O.T Salary - ONLY FOR SELECTED MONTH
-                  let otSalary = '--';
-                  // Check if overtime is allowed for this employee
-                  if (employee.allowOvertime && Object.keys(employee.byDate).length > 0) {
-                    // Get O.T seconds ONLY FOR SELECTED MONTH
-                    let totalOvertimeSeconds = 0;
-                    if (monthInfo.days && monthInfo.days.length > 0) {
-                      monthInfo.days.forEach((day) => {
-                        const records = employee.byDate[day.dateKey] || [];
-                        (records as any[]).forEach((record) => {
-                          if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
-                            totalOvertimeSeconds += record.overtime;
-                          }
-                        });
-                      });
-                    }
-                    // Convert seconds to hours (fractional)
-                    const overtimeHours = totalOvertimeSeconds / 3600;
-                    // Get working days
-                    const totalWorkingDays = getTotalWorkingDays(employee, monthInfo, approvedLeavesMap);
-                    // Get basic salary
-                    const basicSalary = employee.basicSalary;
-                    // Working hours per day: 5 if pseudonym is 'Developer', else 9
-                    let workingHoursPerDay = 9;
-                    if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
-                      workingHoursPerDay = 5;
-                    }
-                    if (basicSalary && totalWorkingDays && overtimeHours > 0) {
-                      const perHourSalary = basicSalary / totalWorkingDays / workingHoursPerDay;
-                      otSalary = Math.round(perHourSalary * overtimeHours).toString();
-                    }
-                  }
                   return (
                     <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
                       <td style={{ padding: '10px 16px' }}>{employee.employeeId}</td>
@@ -891,12 +897,12 @@ export default function MonthlyAttendancePage() {
                       <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
                       <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
                       <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                      <td style={{ padding: '10px 16px' }}>{otSalary}</td>
+                      <td style={{ padding: '10px 16px' }}>{getEmployeeOTSalary(employee)}</td>
                     </tr>
                   );
                 })
               ) : (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
               )}
             </tbody>
           </table>

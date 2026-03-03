@@ -380,7 +380,7 @@ function formatDateTime(dateTimeString: string) {
                             <h2 style={{ color: '#2b6cb0', fontWeight: 700, fontSize: '1.3rem', marginBottom: 10 }}>Leave Details</h2>
                             <div><b>Category:</b> {selectedLeave.leave_category}</div>
                             <div><b>Dates:</b> {formatDate(selectedLeave.start_date)} - {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)</div>
-                            <div><b>Status:</b> <span style={{ color: selectedLeave.status === 'approved' ? '#27ae60' : selectedLeave.status === 'rejected' ? '#e74c3c' : '#e67e22', fontWeight: 600 }}>{selectedLeave.status}</span></div>
+                            <div><b>Status:</b> <span style={{ color: selectedLeave.status === 'approved' ? '#27ae60' : selectedLeave.status === 'rejected' ? '#e74c3c' : '#e67e22', fontWeight: 600 }}>{selectedLeave.status.charAt(0).toUpperCase() + selectedLeave.status.slice(1)}</span></div>
                             <div><b>Reason:</b> <span style={{ color: '#333' }}>{selectedLeave.reason}</span></div>
                             {selectedLeave.admin_remark && (
                               <div><b>Admin Remarks:</b> <span style={{ color: selectedLeave.status === 'rejected' ? '#e74c3c' : '#333' }}>{selectedLeave.admin_remark}</span></div>

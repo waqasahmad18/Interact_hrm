@@ -157,7 +157,7 @@ export default function LeavePage() {
                   <td style={tdStyle}>{l.leave_category}</td>
                     <td style={tdStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
                   <td style={tdStyle}>{l.total_days}</td>
-                  <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status}</td>
+                  <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
                   <td style={tdStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -184,7 +184,7 @@ export default function LeavePage() {
               <div><b>Employee ID:</b> {selectedLeave.employee_id}</div>
               <div><b>Category:</b> {selectedLeave.leave_category}</div>
                 <div><b>Dates:</b> {formatDate(selectedLeave.start_date)} - {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)</div>
-              <div><b>Status:</b> <span style={{ color: selectedLeave.status === "approved" ? "#27ae60" : selectedLeave.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{selectedLeave.status}</span></div>
+              <div><b>Status:</b> <span style={{ color: selectedLeave.status === "approved" ? "#27ae60" : selectedLeave.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{selectedLeave.status.charAt(0).toUpperCase() + selectedLeave.status.slice(1)}</span></div>
               <div><b>Reason (Employee):</b> <span style={{ color: "#333" }}>{selectedLeave.reason}</span></div>
               {selectedLeave.admin_remark && (
                 <div><b>Admin Remarks:</b> <span style={{ color: "#333" }}>{selectedLeave.admin_remark}</span></div>
