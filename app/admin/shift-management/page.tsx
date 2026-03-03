@@ -19,6 +19,7 @@ interface Employee {
   end_time?: string;
   assigned_date?: string;
   assignment_id?: number;
+  allow_overtime?: number;
   department_name?: string;
   pseudonym?: string;
 }
@@ -68,8 +69,17 @@ export default function ShiftManagementPage() {
   const [editShiftName, setEditShiftName] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
+  const [editAllowOvertime, setEditAllowOvertime] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
+  
+  // Overtime Target Selection States
+  const [overtimeScope, setOvertimeScope] = useState<string>("");
+  const [overtimeSelectedAll, setOvertimeSelectedAll] = useState(false);
+  const [overtimeSelectedEmployeeIds, setOvertimeSelectedEmployeeIds] = useState<number[]>([]);
+  const [overtimeDropdownOpen, setOvertimeDropdownOpen] = useState(false);
+  const [overtimeTargetSearch, setOvertimeTargetSearch] = useState("");
+  const [updatingOvertimeId, setUpdatingOvertimeId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchEmployees();
@@ -236,6 +246,7 @@ export default function ShiftManagementPage() {
     setEditShiftName(emp.shift_name || "");
     setEditStartTime(emp.start_time || "");
     setEditEndTime(emp.end_time || "");
+    setEditAllowOvertime((emp as any).allow_overtime !== false);
     setError("");
   };
 
@@ -258,6 +269,7 @@ export default function ShiftManagementPage() {
           shift_name: editShiftName,
           start_time: editStartTime,
           end_time: editEndTime,
+          allow_overtime: editAllowOvertime,
         }),
       });
 
@@ -281,6 +293,7 @@ export default function ShiftManagementPage() {
     setEditShiftName("");
     setEditStartTime("");
     setEditEndTime("");
+    setEditAllowOvertime(true);
     setError("");
   };
 
@@ -292,7 +305,143 @@ export default function ShiftManagementPage() {
     );
   };
 
-  const handleDeleteShift = async (emp: Employee) => {
+  const toggleOvertimeEmployeeSelection = (empId: number) => {
+    setOvertimeSelectedAll(false);
+    setOvertimeScope("");
+    setOvertimeSelectedEmployeeIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  const handleAllowOvertime = async () => {
+    const hasManualEmployees = overtimeSelectedEmployeeIds.length > 0;
+
+    if (!overtimeSelectedAll && !overtimeScope && !hasManualEmployees) {
+      setError("Please select target for overtime (all / department / employees)");
+      return;
+    }
+
+    const isAll = overtimeSelectedAll || overtimeScope === "all";
+    const isDept = overtimeScope.startsWith("dept-");
+
+    setUpdatingOvertimeId(null);
+    setError("");
+    setSuccess("");
+
+    try {
+      let targetEmployees: number[] = [];
+
+      if (isAll) {
+        targetEmployees = employees.map(e => e.id);
+      } else if (isDept) {
+        const deptId = parseInt(overtimeScope.replace("dept-", ""));
+        targetEmployees = employees
+          .filter(e => {
+            const empListItem = employees.find(emp => emp.id === e.id);
+            return empListItem && empListItem.department_name === departments.find(d => d.id === deptId)?.name;
+          })
+          .map(e => e.id);
+      } else {
+        targetEmployees = overtimeSelectedEmployeeIds;
+      }
+
+      if (targetEmployees.length === 0) {
+        setError("No target employees found for selected filter");
+        return;
+      }
+
+      const res = await fetch("/api/hrm-shifts-assignments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_ids: targetEmployees,
+          allow_overtime: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error || "Failed to allow overtime for selected employees");
+        return;
+      }
+
+      setSuccess("Overtime allowed for selected employees!");
+      setOvertimeScope("");
+      setOvertimeSelectedAll(false);
+      setOvertimeSelectedEmployeeIds([]);
+      fetchEmployees(); // Refresh list
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      setError("Failed to update overtime settings");
+    } finally {
+      setUpdatingOvertimeId(null);
+    }
+  };
+
+  const handleDisallowOvertime = async () => {
+    const hasManualEmployees = overtimeSelectedEmployeeIds.length > 0;
+
+    if (!overtimeSelectedAll && !overtimeScope && !hasManualEmployees) {
+      setError("Please select target (all / department / employees)");
+      return;
+    }
+
+    const isAll = overtimeSelectedAll || overtimeScope === "all";
+    const isDept = overtimeScope.startsWith("dept-");
+
+    setUpdatingOvertimeId(null);
+    setError("");
+    setSuccess("");
+
+    try {
+      let targetEmployees: number[] = [];
+
+      if (isAll) {
+        targetEmployees = employees.map(e => e.id);
+      } else if (isDept) {
+        const deptId = parseInt(overtimeScope.replace("dept-", ""));
+        targetEmployees = employees
+          .filter(e => {
+            const empListItem = employees.find(emp => emp.id === e.id);
+            return empListItem && empListItem.department_name === departments.find(d => d.id === deptId)?.name;
+          })
+          .map(e => e.id);
+      } else {
+        targetEmployees = overtimeSelectedEmployeeIds;
+      }
+
+      if (targetEmployees.length === 0) {
+        setError("No target employees found for selected filter");
+        return;
+      }
+
+      const res = await fetch("/api/hrm-shifts-assignments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_ids: targetEmployees,
+          allow_overtime: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error || "Failed to disallow overtime for selected employees");
+        return;
+      }
+
+      setSuccess("Overtime disabled for selected employees!");
+      setOvertimeScope("");
+      setOvertimeSelectedAll(false);
+      setOvertimeSelectedEmployeeIds([]);
+      fetchEmployees(); // Refresh list
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      setError("Failed to update overtime settings");
+    } finally {
+      setUpdatingOvertimeId(null);
+    }
+  };  const handleDeleteShift = async (emp: Employee) => {
     if (!emp.assignment_id) {
       setError("No shift assignment found");
       return;
@@ -556,27 +705,175 @@ export default function ShiftManagementPage() {
           </button>
         </div>
 
-        {loading ? (
-          <div className={styles.loading}>Loading employees...</div>
-        ) : (
-          <div className={styles.employeeList}>
-            <table className={styles.employeeTable}>
-              <thead>
-                <tr>
-                  <th>Id</th>
-                  <th>Full Name</th>
-                  <th>P.Name</th>
-                  <th>Department</th>
-                  <th>Status</th>
-                  <th>Assigned Shift</th>
+        {/* OVERTIME ALLOWANCE SECTION */}
+        <div style={{ marginTop: "35px", backgroundColor: "#F7FAFC", borderRadius: "10px", padding: "20px", border: "1px solid #E2E8F0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "200px" }}>
+              <FaClock style={{ color: "#ED8936", fontSize: "16px" }} />
+              <span style={{ fontSize: "13px", fontWeight: "600", color: "#2D3748" }}>Select Target for Over Time</span>
+            </div>
+
+            <div style={{ flex: 1, minWidth: "250px" }}>
+              <div className={styles.customDropdown}>
+                <div
+                  className={styles.dropdownToggle}
+                  onClick={() => setOvertimeDropdownOpen(!overtimeDropdownOpen)}
+                  style={{ padding: "9px 12px", fontSize: "13px", borderRadius: "6px" }}
+                >
+                  {overtimeSelectedAll ? (
+                    <span style={{ color: "#48BB78", fontWeight: "600" }}>✓ All</span>
+                  ) : overtimeScope.startsWith("dept-") ? (
+                    `Dept: ${departments.find(d => d.id === parseInt(overtimeScope.replace("dept-", "")))?.name || "..."}`
+                  ) : overtimeSelectedEmployeeIds.length > 0 ? (
+                    `${overtimeSelectedEmployeeIds.length} emp${overtimeSelectedEmployeeIds.length > 1 ? "s" : ""}`
+                  ) : (
+                    "-- Choose --"
+                  )}
+                </div>
+
+                {overtimeDropdownOpen && (
+                  <div className={styles.dropdownMenu} style={{ maxHeight: "350px", overflowY: "auto" }}>
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={overtimeTargetSearch}
+                      onChange={(e) => setOvertimeTargetSearch(e.target.value.toLowerCase())}
+                      className={styles.dropdownSearch}
+                      autoFocus
+                      style={{ padding: "8px 10px", fontSize: "13px", marginBottom: "6px" }}
+                    />
+
+                    <div className={styles.dropdownContent}>
+                      <div
+                        className={`${styles.dropdownOption} ${overtimeSelectedAll ? styles.dropdownOptionSelected : ""}`}
+                        onClick={() => {
+                          setOvertimeSelectedAll(true);
+                          setOvertimeScope("all");
+                          setOvertimeSelectedEmployeeIds(employees.map(e => e.id));
+                          setOvertimeDropdownOpen(false);
+                          setOvertimeTargetSearch("");
+                        }}
+                        style={{ padding: "8px 10px", fontSize: "13px" }}
+                      >
+                        <div className={styles.optionRow}>
+                          <span className={`${styles.optionCheckbox} ${overtimeSelectedAll ? styles.optionCheckboxChecked : ""}`}>
+                            {overtimeSelectedAll ? "✓" : ""}
+                          </span>
+                          <span>All employees</span>
+                        </div>
+                      </div>
+
+                      {departments.length > 0 && (
+                        <>
+                          <div className={styles.dropdownGroup}>Departments</div>
+                          {departments.map((d) => (
+                            <div
+                              key={d.id}
+                              className={`${styles.dropdownOption} ${overtimeScope === `dept-${d.id}` ? styles.dropdownOptionSelected : ""}`}
+                              onClick={() => {
+                                setOvertimeScope(`dept-${d.id}`);
+                                setOvertimeSelectedAll(false);
+                                setOvertimeSelectedEmployeeIds([]);
+                                setOvertimeDropdownOpen(false);
+                                setOvertimeTargetSearch("");
+                              }}
+                              style={{ padding: "8px 10px", fontSize: "13px" }}
+                            >
+                              <div className={styles.optionRow}>
+                                <span className={`${styles.optionCheckbox} ${overtimeScope === `dept-${d.id}` ? styles.optionCheckboxChecked : ""}`}>
+                                  {overtimeScope === `dept-${d.id}` ? "✓" : ""}
+                                </span>
+                                <span>{d.name}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      <div className={styles.dropdownGroup}>Employees</div>
+                      {employees
+                        .filter(emp =>
+                          emp.first_name?.toLowerCase().includes(overtimeTargetSearch) ||
+                          emp.last_name?.toLowerCase().includes(overtimeTargetSearch) ||
+                          emp.id?.toString().includes(overtimeTargetSearch)
+                        )
+                        .map((emp) => (
+                          <div
+                            key={emp.id}
+                            className={`${styles.dropdownOption} ${overtimeSelectedEmployeeIds.includes(emp.id) ? styles.dropdownOptionSelected : ""}`}
+                            onClick={() => toggleOvertimeEmployeeSelection(emp.id)}
+                            style={{ padding: "8px 10px", fontSize: "13px" }}
+                          >
+                            <div className={styles.optionRow}>
+                              <span className={`${styles.optionCheckbox} ${overtimeSelectedEmployeeIds.includes(emp.id) ? styles.optionCheckboxChecked : ""}`}>
+                                {overtimeSelectedEmployeeIds.includes(emp.id) ? "✓" : ""}
+                              </span>
+                              <span>{emp.id} - {emp.first_name} {emp.last_name}</span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={handleAllowOvertime}
+              disabled={updatingOvertimeId !== null}
+              style={{
+                padding: "8px 14px",
+                fontSize: "13px",
+                backgroundColor: "#48BB78",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: updatingOvertimeId !== null ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "5px",
+                transition: "all 0.2s ease",
+                opacity: updatingOvertimeId !== null ? 0.65 : 1,
+                boxShadow: "0 2px 6px rgba(72, 187, 120, 0.15)",
+                whiteSpace: "nowrap"
+              }}
+              onMouseEnter={(e) => {
+                if (updatingOvertimeId === null) {
+                  e.currentTarget.style.backgroundColor = "#38A169";
+                  e.currentTarget.style.boxShadow = "0 3px 10px rgba(72, 187, 120, 0.25)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "#48BB78";
+                e.currentTarget.style.boxShadow = "0 2px 6px rgba(72, 187, 120, 0.15)";
+              }}
+            >
+              <FaCheckCircle style={{ fontSize: "12px" }} />
+              <span>{updatingOvertimeId !== null ? "..." : "Allow"}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.tableContainer} style={{ marginTop: "20px" }}>
+          <table className={styles.employeeTable}>
+            <thead>
+              <tr>
+                <th>Employee ID</th>
+                <th>Name</th>
+                <th>Pseudonym</th>
+                <th>Department</th>
+                <th>Status</th>
+                <th>Shift</th>
                   <th>Shift Timing</th>
+                  <th>Overtime?</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: "center", padding: "20px" }}>
+                    <td colSpan={9} style={{ textAlign: "center", padding: "20px" }}>
                       No employees found
                     </td>
                   </tr>
@@ -644,6 +941,20 @@ export default function ShiftManagementPage() {
                           </div>
                         )}
                       </td>
+                      <td>
+                        {editingId === emp.id ? (
+                          <input
+                            type="checkbox"
+                            checked={editAllowOvertime}
+                            onChange={(e) => setEditAllowOvertime(e.target.checked)}
+                            style={{ cursor: "pointer", width: "18px", height: "18px" }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "18px", color: (emp as any).allow_overtime === 1 || (emp as any).allow_overtime === true ? "#48BB78" : "#999" }}>
+                            {(emp as any).allow_overtime === 1 || (emp as any).allow_overtime === true ? "✓" : "-"}
+                          </span>
+                        )}
+                      </td>
                       <td className={styles.actionsCell}>
                         {editingId === emp.id ? (
                           <div className={styles.actionButtons}>
@@ -687,7 +998,6 @@ export default function ShiftManagementPage() {
               </tbody>
             </table>
           </div>
-        )}
       </div>
     </LayoutDashboard>
   );

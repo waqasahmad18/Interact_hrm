@@ -99,6 +99,7 @@ export default function MonthlyAttendancePage() {
 
     // After attendanceByEmployee is defined (around line 660):
   const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [allowOvertimeMap, setAllowOvertimeMap] = useState<Record<string, boolean>>({});
   
   // Set default dates - start of current month to today
   const today = new Date();
@@ -252,10 +253,33 @@ export default function MonthlyAttendancePage() {
     }
   };
 
+  // Fetch shift assignment allow_overtime flags for all employees
+  const fetchOverTimeSettings = async () => {
+    try {
+      const response = await fetch("/api/hrm-shifts-assignments", { cache: "no-store" });
+      const data = await response.json();
+
+      if (data.success && data.employees) {
+        // Build map of employee_id -> allow_overtime
+        const otMap: Record<string, boolean> = {};
+        data.employees.forEach((emp: any) => {
+          const empId = String(emp.id);
+          // Latest assignment (returned by API) determines OT allowance
+          if (emp.allow_overtime !== undefined && emp.allow_overtime !== null) {
+            otMap[empId] = emp.allow_overtime === 1 || emp.allow_overtime === true;
+          }
+        });
+        setAllowOvertimeMap(otMap);
+      }
+    } catch (err) {
+      console.error("Error fetching overtime settings:", err);
+    }
+  };
 
   // Sync filters with page: fetch data whenever any filter changes
   useEffect(() => {
     fetchAttendance();
+    fetchOverTimeSettings();
   }, [fromDate, toDate, selectedDepartment, searchName]);
 
   useEffect(() => {
@@ -670,20 +694,27 @@ export default function MonthlyAttendancePage() {
       const att = attMap[empId];
       // Always show salary from salaryMap (amount, any component)
       const basicSalary = salaryMap[empId];
+      const allowOT = allowOvertimeMap[empId] !== false;
       return {
         employeeId: empId,
         employeeName: (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.employee_name || "-"),
         pseudonym: emp.pseudonym || "-",
         departmentName: emp.department_name || "-",
         basicSalary,
+        allowOvertime: allowOT,
         byDate: att ? att.byDate : {},
         dateMeta: att ? att.dateMeta : {},
       };
     });
-  }, [attendance, allEmployees, salaryMap]);
+  }, [attendance, allEmployees, salaryMap, allowOvertimeMap]);
 
   // Calculate total overtime (extra hours) for the SELECTED MONTH ONLY for an employee
   function getEmployeeTotalOvertime(emp: any) {
+    // If employee doesn't have overtime allowed, show "--"
+    if (!emp.allowOvertime) {
+      return "--";
+    }
+    
     let totalSeconds = 0;
     // Only sum overtime for dates in the selected month
     if (monthInfo.days && monthInfo.days.length > 0) {
@@ -820,7 +851,8 @@ export default function MonthlyAttendancePage() {
                 filteredEmployees.map((employee) => {
                   // Calculate O.T Salary - ONLY FOR SELECTED MONTH
                   let otSalary = '--';
-                  if (Object.keys(employee.byDate).length > 0) {
+                  // Check if overtime is allowed for this employee
+                  if (employee.allowOvertime && Object.keys(employee.byDate).length > 0) {
                     // Get O.T seconds ONLY FOR SELECTED MONTH
                     let totalOvertimeSeconds = 0;
                     if (monthInfo.days && monthInfo.days.length > 0) {

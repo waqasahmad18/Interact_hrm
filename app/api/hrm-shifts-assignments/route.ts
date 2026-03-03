@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
           sa.start_time,
           sa.end_time,
           sa.assigned_date,
+          sa.allow_overtime,
           sa.created_at,
           sa.updated_at
         FROM shift_assignments sa
@@ -43,11 +44,19 @@ export async function GET(req: NextRequest) {
         sa.start_time,
         sa.end_time,
         sa.assigned_date,
+        sa.allow_overtime,
         sa.created_at
       FROM hrm_employees e
-      LEFT JOIN shift_assignments sa ON e.id = sa.employee_id
+      LEFT JOIN shift_assignments sa
+        ON sa.id = (
+          SELECT s2.id
+          FROM shift_assignments s2
+          WHERE s2.employee_id = e.id
+          ORDER BY s2.assigned_date DESC, s2.id DESC
+          LIMIT 1
+        )
       WHERE e.status IN ('enabled', 'active')
-      ORDER BY e.id, sa.assigned_date DESC`
+      ORDER BY e.id ASC`
     )) as any[];
 
     return NextResponse.json({ success: true, employees });
@@ -72,6 +81,7 @@ export async function POST(req: NextRequest) {
       assigned_date,
       assign_all,
       department_id,
+      allow_overtime,
     } = body;
 
     if (!shift_name || !start_time || !end_time) {
@@ -84,7 +94,7 @@ export async function POST(req: NextRequest) {
     const assignDate = assigned_date || new Date().toISOString().split("T")[0];
 
     // Helper to upsert one employee
-    const upsertOne = async (empId: number) => {
+    const upsertOne = async (empId: number, allowOT: boolean = true) => {
       const existing = (await query(
         `SELECT id FROM shift_assignments 
          WHERE employee_id = ? AND assigned_date = ?`,
@@ -94,16 +104,16 @@ export async function POST(req: NextRequest) {
       if (existing.length > 0) {
         await query(
           `UPDATE shift_assignments 
-           SET shift_name = ?, start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP
+           SET shift_name = ?, start_time = ?, end_time = ?, allow_overtime = ?, updated_at = CURRENT_TIMESTAMP
            WHERE employee_id = ? AND assigned_date = ?`,
-          [shift_name, start_time, end_time, empId, assignDate]
+          [shift_name, start_time, end_time, allowOT ? 1 : 0, empId, assignDate]
         );
       } else {
         await query(
           `INSERT INTO shift_assignments 
-           (employee_id, shift_name, start_time, end_time, assigned_date) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [empId, shift_name, start_time, end_time, assignDate]
+           (employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [empId, shift_name, start_time, end_time, assignDate, allowOT ? 1 : 0]
         );
       }
     };
@@ -114,7 +124,8 @@ export async function POST(req: NextRequest) {
         `SELECT id FROM hrm_employees WHERE status IN ('enabled', 'active')`
       )) as any[];
 
-      await Promise.all(allEmployees.map((row) => upsertOne(row.id)));
+      const allowOT = allow_overtime !== false;
+      await Promise.all(allEmployees.map((row) => upsertOne(row.id, allowOT)));
 
       return NextResponse.json({ success: true, message: "Shift assigned to all employees" });
     }
@@ -142,7 +153,8 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await Promise.all(deptEmployees.map((row) => upsertOne(row.employee_id)));
+      const allowOT = allow_overtime !== false;
+      await Promise.all(deptEmployees.map((row) => upsertOne(row.employee_id, allowOT)));
 
       return NextResponse.json({ 
         success: true, 
@@ -152,7 +164,8 @@ export async function POST(req: NextRequest) {
 
     // Multiple specific employees
     if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
-      await Promise.all(employee_ids.map((empId: number) => upsertOne(empId)));
+      const allowOT = allow_overtime !== false;
+      await Promise.all(employee_ids.map((empId: number) => upsertOne(empId, allowOT)));
 
       return NextResponse.json({ success: true, message: "Shift assigned to selected employees" });
     }
@@ -165,7 +178,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await upsertOne(employee_id);
+    const allowOT = allow_overtime !== false;
+    await upsertOne(employee_id, allowOT);
 
     return NextResponse.json({
       success: true,
@@ -183,7 +197,59 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, shift_name, start_time, end_time } = body;
+    const { id, employee_id, employee_ids, shift_name, start_time, end_time, allow_overtime } = body;
+
+    const hasBulkEmployees = Array.isArray(employee_ids) && employee_ids.length > 0;
+    const hasSingleEmployee = !!employee_id;
+
+    // Bulk/single update by employee id(s): update latest assignment OT flag, or create OT-only row if no assignment exists
+    if (!id && (hasBulkEmployees || hasSingleEmployee)) {
+      if (allow_overtime === undefined) {
+        return NextResponse.json(
+          { success: false, error: "allow_overtime is required for employee-based overtime update" },
+          { status: 400 }
+        );
+      }
+
+      const targetEmployeeIds = hasBulkEmployees
+        ? employee_ids.map((empId: any) => Number(empId)).filter((empId: number) => Number.isFinite(empId) && empId > 0)
+        : [Number(employee_id)].filter((empId: number) => Number.isFinite(empId) && empId > 0);
+
+      if (targetEmployeeIds.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "Valid employee id(s) are required" },
+          { status: 400 }
+        );
+      }
+
+      const allowOTValue = allow_overtime ? 1 : 0;
+      const assignDate = new Date().toISOString().split("T")[0];
+
+      for (const empId of targetEmployeeIds) {
+        const latestAssignment = (await query(
+          `SELECT id FROM shift_assignments WHERE employee_id = ? ORDER BY assigned_date DESC, id DESC LIMIT 1`,
+          [empId]
+        )) as any[];
+
+        if (latestAssignment.length > 0) {
+          await query(
+            `UPDATE shift_assignments
+             SET allow_overtime = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [allowOTValue, latestAssignment[0].id]
+          );
+        } else {
+          await query(
+            `INSERT INTO shift_assignments
+             (employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime)
+             VALUES (?, NULL, NULL, NULL, ?, ?)`,
+            [empId, assignDate, allowOTValue]
+          );
+        }
+      }
+
+      return NextResponse.json({ success: true, updated: targetEmployeeIds.length });
+    }
 
     if (!id) {
       return NextResponse.json(
@@ -192,11 +258,35 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    // Build dynamic update query based on what fields are provided
+    let updateFields = [];
+    let updateValues = [];
+    
+    if (shift_name !== undefined) {
+      updateFields.push('shift_name = ?');
+      updateValues.push(shift_name);
+    }
+    if (start_time !== undefined) {
+      updateFields.push('start_time = ?');
+      updateValues.push(start_time);
+    }
+    if (end_time !== undefined) {
+      updateFields.push('end_time = ?');
+      updateValues.push(end_time);
+    }
+    if (allow_overtime !== undefined) {
+      updateFields.push('allow_overtime = ?');
+      updateValues.push(allow_overtime ? 1 : 0);
+    }
+    
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+    updateValues.push(id);
+
     await query(
       `UPDATE shift_assignments 
-       SET shift_name = ?, start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP
+       SET ${updateFields.join(', ')}
        WHERE id = ?`,
-      [shift_name, start_time, end_time, id]
+      updateValues
     );
 
     return NextResponse.json({ success: true });
