@@ -33,6 +33,27 @@ interface CalendarDayOverride {
   note?: string | null;
 }
 
+interface EmployeeCommissionRow {
+  employee_id: string | number;
+  month: string;
+  train_6h_amt: number;
+  arrears: number;
+  kpi_add: number;
+  commission: number;
+  existing_client_incentive: number;
+  trainer_incentive: number;
+  floor_incentive: number;
+}
+
+type CommissionAmountField =
+  | "train_6h_amt"
+  | "arrears"
+  | "kpi_add"
+  | "commission"
+  | "existing_client_incentive"
+  | "trainer_incentive"
+  | "floor_incentive";
+
 export default function MonthlyAttendancePage() {
     // Calculate total working days for the month (excluding leaves and off days)
     function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
@@ -114,6 +135,7 @@ export default function MonthlyAttendancePage() {
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
+  const [commissionsMap, setCommissionsMap] = useState<Record<string, EmployeeCommissionRow>>({});
 
   // Fetch departments
   useEffect(() => {
@@ -276,6 +298,42 @@ export default function MonthlyAttendancePage() {
     }
   };
 
+  const fetchCommissions = async (month: string) => {
+    if (!month) {
+      setCommissionsMap({});
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/commissions?month=${month}`, { cache: "no-store" });
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.data)) {
+        const map: Record<string, EmployeeCommissionRow> = {};
+        data.data.forEach((row: any) => {
+          const empId = String(row.employee_id);
+          map[empId] = {
+            employee_id: row.employee_id,
+            month: row.month,
+            train_6h_amt: Number(row.train_6h_amt ?? 0),
+            arrears: Number(row.arrears ?? 0),
+            kpi_add: Number(row.kpi_add ?? 0),
+            commission: Number(row.commission ?? 0),
+            existing_client_incentive: Number(row.existing_client_incentive ?? 0),
+            trainer_incentive: Number(row.trainer_incentive ?? 0),
+            floor_incentive: Number(row.floor_incentive ?? 0),
+          };
+        });
+        setCommissionsMap(map);
+      } else {
+        setCommissionsMap({});
+      }
+    } catch (err) {
+      console.error("Error fetching commissions:", err);
+      setCommissionsMap({});
+    }
+  };
+
   // Sync filters with page: fetch data whenever any filter changes
   useEffect(() => {
     fetchAttendance();
@@ -293,6 +351,11 @@ export default function MonthlyAttendancePage() {
     const lastDate = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, "0")}`;
     setFromDate(firstDate);
     setToDate(lastDate);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    if (!selectedMonth) return;
+    fetchCommissions(selectedMonth);
   }, [selectedMonth]);
 
   useEffect(() => {
@@ -432,6 +495,14 @@ export default function MonthlyAttendancePage() {
       "T.Unpaid Days": Object.keys(emp.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(emp) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--',
       "O. T Hours": Object.keys(emp.byDate).length > 0 ? getEmployeeTotalOvertime(emp) : '--',
       "O. T Salary": getEmployeeOTSalary(emp),
+      "6H Train Amt": getCommissionDisplay(emp.employeeId, "train_6h_amt"),
+      "Arrears": getCommissionDisplay(emp.employeeId, "arrears"),
+      "KPI Add": getCommissionDisplay(emp.employeeId, "kpi_add"),
+      "Commission": getCommissionDisplay(emp.employeeId, "commission"),
+      "Existing Client Incentive": getCommissionDisplay(emp.employeeId, "existing_client_incentive"),
+      "Trainer Incentive": getCommissionDisplay(emp.employeeId, "trainer_incentive"),
+      "Floor Incentive": getCommissionDisplay(emp.employeeId, "floor_incentive"),
+      "Gross Salary": getEmployeeGrossSalary(emp),
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -446,6 +517,14 @@ export default function MonthlyAttendancePage() {
       { wch: 12 },
       { wch: 15 },
       { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 18 },
       { wch: 15 }
     ];
     const fileName = `monthly-payroll-${getDateStringInTimeZone(new Date(), SERVER_TIMEZONE)}.xlsx`;
@@ -771,6 +850,63 @@ export default function MonthlyAttendancePage() {
     return otSalary;
   }
 
+  function formatAmountValue(value: number) {
+    if (!Number.isFinite(value)) return "--";
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(2).replace(/\.00$/, "");
+  }
+
+  function getCommissionAmount(employeeId: string | number, field: CommissionAmountField): number | null {
+    const commissionData = commissionsMap[String(employeeId)];
+    if (!commissionData) return null;
+    const amount = Number(commissionData[field] ?? 0);
+    return Number.isNaN(amount) ? 0 : amount;
+  }
+
+  function getCommissionDisplay(employeeId: string | number, field: CommissionAmountField) {
+    const amount = getCommissionAmount(employeeId, field);
+    if (amount === null) return "--";
+    return formatAmountValue(amount);
+  }
+
+  function getEmployeeGrossSalary(employee: any) {
+    const trainAmt = getCommissionAmount(employee.employeeId, "train_6h_amt");
+    const arrears = getCommissionAmount(employee.employeeId, "arrears");
+    const kpiAdd = getCommissionAmount(employee.employeeId, "kpi_add");
+    const commission = getCommissionAmount(employee.employeeId, "commission");
+    const existingClientIncentive = getCommissionAmount(employee.employeeId, "existing_client_incentive");
+    const trainerIncentive = getCommissionAmount(employee.employeeId, "trainer_incentive");
+    const floorIncentive = getCommissionAmount(employee.employeeId, "floor_incentive");
+
+    const hasCommissionRow =
+      trainAmt !== null ||
+      arrears !== null ||
+      kpiAdd !== null ||
+      commission !== null ||
+      existingClientIncentive !== null ||
+      trainerIncentive !== null ||
+      floorIncentive !== null;
+
+    if (!hasCommissionRow) return "--";
+
+    const basicSalary = Number(employee.basicSalary ?? 0) || 0;
+    const otSalaryParsed = Number(getEmployeeOTSalary(employee));
+    const otSalary = Number.isNaN(otSalaryParsed) ? 0 : otSalaryParsed;
+
+    const grossSalary =
+      basicSalary +
+      otSalary +
+      (trainAmt ?? 0) +
+      (arrears ?? 0) +
+      (kpiAdd ?? 0) +
+      (commission ?? 0) +
+      (existingClientIncentive ?? 0) +
+      (trainerIncentive ?? 0) +
+      (floorIncentive ?? 0);
+
+    return formatAmountValue(grossSalary);
+  }
+
   // Filter attendanceByEmployee for table and export
   const filteredEmployees = attendanceByEmployee.filter((emp: any) => {
     const matchesName = searchName ? (emp.employeeName || "").toLowerCase().includes(searchName.toLowerCase()) : true;
@@ -821,7 +957,10 @@ export default function MonthlyAttendancePage() {
             />
           </div>
           <button
-            onClick={fetchAttendance}
+            onClick={() => {
+              fetchAttendance();
+              fetchCommissions(selectedMonth);
+            }}
             className={styles.attendanceSummaryXLSButton}
             style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)" }}
           >
@@ -868,20 +1007,29 @@ export default function MonthlyAttendancePage() {
         </div>
         */}
 
-        <div style={{ marginTop: 40 }}>
+        <div style={{ marginTop: 40, overflow: 'hidden', position: 'relative' }}>
           <h3 style={{ color: '#22223B', marginBottom: 10 }}>{monthInfo.label && `Payroll for ${monthInfo.label}`}</h3>
-          <table style={{ width: '100%', borderRadius: 16, overflow: 'hidden', background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff' }}>
-            <thead>
+          <div style={{ overflowX: 'auto', overflowY: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8, width: 'calc(100vw - 230px)', maxHeight: '600px', boxSizing: 'border-box' }}>
+          <table style={{ width: '1900px', tableLayout: 'auto', borderRadius: 8, background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0 }}>
               <tr>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>ID</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Employee Name</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Pseudonym</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Department</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>Basic Salary</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.W Days</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>T.Unpaid Days</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>O. T Hours</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', whiteSpace: 'nowrap' }}>O.T Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '50px' }}>ID</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '140px' }}>Employee Name</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Pseudonym</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Department</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Basic Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>T.W Days</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>T.Unpaid Days</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>O.T Hours</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>O.T Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>6H Train Amt</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>Arrears</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>KPI Add</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Commission</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '160px' }}>Existing Client Incentive</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Trainer Incentive</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Floor Incentive</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Gross Salary</th>
               </tr>
             </thead>
             <tbody style={{ background: '#fff', color: '#22223B' }}>
@@ -889,23 +1037,32 @@ export default function MonthlyAttendancePage() {
                 filteredEmployees.map((employee) => {
                   return (
                     <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
-                      <td style={{ padding: '10px 16px' }}>{employee.employeeId}</td>
-                      <td style={{ padding: '10px 16px' }}>{employee.employeeName}</td>
-                      <td style={{ padding: '10px 16px' }}>{employee.pseudonym}</td>
-                      <td style={{ padding: '10px 16px' }}>{employee.departmentName}</td>
-                      <td style={{ padding: '10px 16px' }}>{employee.basicSalary !== undefined ? employee.basicSalary : '--'}</td>
-                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
-                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
-                      <td style={{ padding: '10px 16px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                      <td style={{ padding: '10px 16px' }}>{getEmployeeOTSalary(employee)}</td>
+                      <td style={{ padding: '10px 8px', width: '50px' }}>{employee.employeeId}</td>
+                      <td style={{ padding: '10px 8px', width: '140px' }}>{employee.employeeName}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{employee.pseudonym}</td>
+                      <td style={{ padding: '10px 8px', width: '110px' }}>{employee.departmentName}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{employee.basicSalary !== undefined ? employee.basicSalary : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '80px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '90px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '90px' }}>{getEmployeeOTSalary(employee)}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{getCommissionDisplay(employee.employeeId, "train_6h_amt")}</td>
+                      <td style={{ padding: '10px 8px', width: '90px' }}>{getCommissionDisplay(employee.employeeId, "arrears")}</td>
+                      <td style={{ padding: '10px 8px', width: '80px' }}>{getCommissionDisplay(employee.employeeId, "kpi_add")}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{getCommissionDisplay(employee.employeeId, "commission")}</td>
+                      <td style={{ padding: '10px 8px', width: '160px' }}>{getCommissionDisplay(employee.employeeId, "existing_client_incentive")}</td>
+                      <td style={{ padding: '10px 8px', width: '120px' }}>{getCommissionDisplay(employee.employeeId, "trainer_incentive")}</td>
+                      <td style={{ padding: '10px 8px', width: '110px' }}>{getCommissionDisplay(employee.employeeId, "floor_incentive")}</td>
+                      <td style={{ padding: '10px 8px', width: '100px' }}>{getEmployeeGrossSalary(employee)}</td>
                     </tr>
                   );
                 })
               ) : (
-                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
+                <tr><td colSpan={17} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </LayoutDashboard>

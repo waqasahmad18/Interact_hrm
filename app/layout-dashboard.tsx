@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign } from "react-icons/fa";
 
 const sidebarLinks = [
 	{
@@ -34,6 +34,7 @@ const sidebarLinks = [
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
             { name: "Roles & Permissions", path: "/admin/roles-permissions", icon: <FaCog /> },
 			{ name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
+			{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
 		],
 	},
 	{
