@@ -107,7 +107,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: transparent;
+    background: #F7FAFC !important;
   }
 
 :root {
@@ -271,7 +271,7 @@
   .layout {
     min-height: 100vh;
     display: flex;
-    background: var(--color-bg);
+    background: #F7FAFC !important;
     font-family: var(--font-main);
     position: relative;
     padding-top: 72px;
@@ -283,7 +283,7 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    background: transparent;
+    background: #F7FAFC !important;
     margin-top: 0;
     min-height: calc(100vh - 72px);
     .topBar {

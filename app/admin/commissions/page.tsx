@@ -115,7 +115,7 @@ export default function CommissionsPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.attendanceSummaryContainer}>
+      <div className={styles.attendanceSummaryContainer} style={{ minHeight: 'calc(100vh - 96px)' }}>
         <h1 style={{ color: "#22223B", marginBottom: 20 }}>Employee Commissions & Incentives</h1>
         
         {/* Month Selection & Actions */}
@@ -218,12 +218,13 @@ export default function CommissionsPage() {
               Loading...
             </div>
           ) : commissionsData.length > 0 ? (
-            <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-              <table style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                background: "#fff",
-              }}>
+            <div style={{ overflow: 'hidden', position: 'relative' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8, width: 'calc(100vw - 290px)', maxHeight: '600px', boxSizing: 'border-box' }}>
+                <table style={{
+                  width: "1400px",
+                  borderCollapse: "collapse",
+                  background: "#fff",
+                }}>
                 <thead>
                   <tr style={{
                     background: "linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)",
@@ -262,6 +263,7 @@ export default function CommissionsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ) : (
             <div style={{
