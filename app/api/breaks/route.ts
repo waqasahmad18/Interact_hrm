@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
+import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
 
 // GET: Fetch all breaks or by employeeId/date
 export async function GET(req: NextRequest) {
@@ -15,11 +16,13 @@ export async function GET(req: NextRequest) {
     }
     let rows;
     // Join with hrm_employees for pseudonym and departments for department name
-    let query = `SELECT b.*, e.pseudonym, d.name AS department_name
+    let query = `SELECT b.*, e.pseudonym, d.name AS department_name, 
+      sa.shift_name, sa.start_time, sa.end_time, sa.assigned_date
       FROM breaks b
       LEFT JOIN hrm_employees e ON b.employee_id = e.id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
+      LEFT JOIN shift_assignments sa ON b.shift_assignment_id = sa.id
       WHERE 1=1`;
     const params: (string|number)[] = [];
     if (employeeId) {
@@ -72,17 +75,20 @@ export async function POST(req: NextRequest) {
 
     // Lunch break logic only
     if (break_start) {
-      // Starting a new lunch break
+      // Get active shift assignment for this employee at break start time
+      const shiftAssignmentId = await getActiveShiftAssignment(employee_id, break_start);
+      
+      // Starting a new lunch break - check for ongoing breaks in the SAME SHIFT
       const [ongoingBreaks] = await conn.execute(
-        "SELECT id FROM breaks WHERE employee_id = ? AND DATE(break_start) = ? AND break_end IS NULL",
-        [Number(employee_id), formattedDate]
+        "SELECT id FROM breaks WHERE employee_id = ? AND break_end IS NULL AND shift_assignment_id = ?",
+        [Number(employee_id), shiftAssignmentId]
       );
       if ((ongoingBreaks as any[]).length > 0) {
-        return NextResponse.json({ success: false, error: "An ongoing lunch break already exists for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "An ongoing lunch break already exists for this employee in this shift." }, { status: 400 });
       }
       await conn.execute(
-        "INSERT INTO breaks (employee_id, employee_name, date, break_start, break_end, break_duration) VALUES (?, ?, ?, ?, NULL, NULL)",
-        [Number(employee_id), employee_name || "", formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        "INSERT INTO breaks (employee_id, employee_name, shift_assignment_id, date, break_start, break_end, break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+        [Number(employee_id), employee_name || "", shiftAssignmentId, formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (break_end) {
       // Ending an existing lunch break - find ANY open break (not just today)

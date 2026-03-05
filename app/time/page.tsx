@@ -201,7 +201,7 @@ export default function TimePage() {
       return bTime - aTime; // Descending order (latest first)
     });
 
-  // Aggregate all breaks per employee per day (matches widget logic - including running breaks)
+  // Aggregate all breaks per employee per shift (using shift_assignment_id instead of date)
   const dailyBreakTotals = (() => {
     const map = new Map<string, number>();
     for (const b of filteredBreaks) {
@@ -209,9 +209,10 @@ export default function TimePage() {
       const start = new Date(b.break_start);
       const end = b.break_end ? new Date(b.break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
-      const dateForKey = b.date ? new Date(b.date) : start;
       const empKey = (b.employee_id ?? b.employeeId ?? "").toString() || (b.employee_name || b.name || b.username || "");
-      const key = `${empKey}|${localDateKey(dateForKey)}`;
+      // Group by shift_assignment_id instead of date to separate breaks from different shifts on same day
+      const shiftKey = b.shift_assignment_id || "no-shift";
+      const key = `${empKey}|${shiftKey}`;
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
     return map;
@@ -227,10 +228,10 @@ export default function TimePage() {
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
-    const start = b.break_start ? new Date(b.break_start) : null;
-    const dateForKey = b.date ? new Date(b.date) : (start as Date | null);
     const empKey = (b.employee_id ?? b.employeeId ?? "").toString() || (b.employee_name || b.name || b.username || "");
-    const key = dateForKey ? `${empKey}|${localDateKey(dateForKey)}` : "";
+    // Use shift_assignment_id for grouping instead of date
+    const shiftKey = b.shift_assignment_id || "no-shift";
+    const key = `${empKey}|${shiftKey}`;
     const dailySeconds = key ? (dailyBreakTotals.get(key) || 0) : sessionSeconds;
     const dailyExceed = dailySeconds > 3600 ? dailySeconds - 3600 : 0;
     return {
@@ -255,9 +256,10 @@ export default function TimePage() {
       const start = new Date(p.prayer_break_start);
       const end = p.prayer_break_end ? new Date(p.prayer_break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
-      const dateForKey = p.date ? new Date(p.date) : start;
       const empKey = (p.employee_id ?? p.employeeId ?? "").toString() || (p.employee_name || p.name || p.username || "");
-      const key = `${empKey}|${localDateKey(dateForKey)}`;
+      // Group by shift_assignment_id instead of date to separate prayer breaks from different shifts on same day
+      const shiftKey = p.shift_assignment_id || "no-shift";
+      const key = `${empKey}|${shiftKey}`;
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
     return map;
@@ -273,10 +275,10 @@ export default function TimePage() {
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
-    const start = p.prayer_break_start ? new Date(p.prayer_break_start) : null;
-    const dateForKey = p.date ? new Date(p.date) : (start as Date | null);
     const empKey = (p.employee_id ?? p.employeeId ?? "").toString() || (p.employee_name || p.name || p.username || "");
-    const key = dateForKey ? `${empKey}|${localDateKey(dateForKey)}` : "";
+    // Use shift_assignment_id for grouping instead of date
+    const shiftKey = p.shift_assignment_id || "no-shift";
+    const key = `${empKey}|${shiftKey}`;
     const dailySeconds = key ? (dailyPrayerTotals.get(key) || 0) : sessionSeconds;
     const dailyExceed = dailySeconds > 1800 ? dailySeconds - 1800 : 0;
     return {
@@ -486,14 +488,16 @@ export default function TimePage() {
                     </tr>
                   ) : (
                     (() => {
-                      // Find last break index for each employee per day
+                      // Find last break index for each employee per shift (using shift_assignment_id)
                       const lastIndexMap = new Map();
                       breakRows.forEach((row, idx) => {
-                        const key = `${row.employee_id}|${row.date_display}`;
+                        const shiftKey = row.shift_assignment_id || "no-shift";
+                        const key = `${row.employee_id}|${shiftKey}`;
                         lastIndexMap.set(key, idx);
                       });
                       return breakRows.map((b, idx) => {
-                        const key = `${b.employee_id}|${b.date_display}`;
+                        const shiftKey = b.shift_assignment_id || "no-shift";
+                        const key = `${b.employee_id}|${shiftKey}`;
                         const isLast = lastIndexMap.get(key) === idx;
                         return (
                           <tr key={b.id || idx}>
@@ -560,14 +564,16 @@ export default function TimePage() {
                     </tr>
                   ) : (
                     (() => {
-                      // Find last prayer break index for each employee per day
+                      // Find last prayer break index for each employee per shift (using shift_assignment_id)
                       const lastIndexMap = new Map();
                       prayerRows.forEach((row, idx) => {
-                        const key = `${row.employee_id}|${row.date_display}`;
+                        const shiftKey = row.shift_assignment_id || "no-shift";
+                        const key = `${row.employee_id}|${shiftKey}`;
                         lastIndexMap.set(key, idx);
                       });
                       return prayerRows.map((p, idx) => {
-                        const key = `${p.employee_id}|${p.date_display}`;
+                        const shiftKey = p.shift_assignment_id || "no-shift";
+                        const key = `${p.employee_id}|${shiftKey}`;
                         const isLast = lastIndexMap.get(key) === idx;
                         return (
                           <tr key={p.id || idx}>

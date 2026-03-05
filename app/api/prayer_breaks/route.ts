@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
+import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
 
 // GET: Fetch all prayer breaks or by employeeId/date
 export async function GET(req: NextRequest) {
@@ -13,11 +14,13 @@ export async function GET(req: NextRequest) {
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
     }
-    let query = `SELECT pb.*, e.pseudonym, d.name AS department_name
+    let query = `SELECT pb.*, e.pseudonym, d.name AS department_name,
+      sa.shift_name, sa.start_time, sa.end_time, sa.assigned_date
       FROM prayer_breaks pb
       LEFT JOIN hrm_employees e ON pb.employee_id = e.id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
+      LEFT JOIN shift_assignments sa ON pb.shift_assignment_id = sa.id
       WHERE 1=1`;
     const params: (string|number)[] = [];
     if (employeeId) {
@@ -67,17 +70,20 @@ export async function POST(req: NextRequest) {
     }
     conn = await pool.getConnection();
     if (prayer_break_start) {
-      // Starting a new prayer break
+      // Get active shift assignment for this employee at prayer break start time
+      const shiftAssignmentId = await getActiveShiftAssignment(employee_id, prayer_break_start);
+      
+      // Starting a new prayer break - check for ongoing prayer breaks in the SAME SHIFT
       const [ongoingPrayerBreaks] = await conn.execute(
-        "SELECT id FROM prayer_breaks WHERE employee_id = ? AND DATE(prayer_break_start) = ? AND prayer_break_end IS NULL",
-        [Number(employee_id), formattedDate]
+        "SELECT id FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL AND shift_assignment_id = ?",
+        [Number(employee_id), shiftAssignmentId]
       );
       if ((ongoingPrayerBreaks as any[]).length > 0) {
-        return NextResponse.json({ success: false, error: "An ongoing prayer break already exists for this employee for today." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "An ongoing prayer break already exists for this employee in this shift." }, { status: 400 });
       }
       await conn.execute(
-        "INSERT INTO prayer_breaks (employee_id, employee_name, date, prayer_break_start, prayer_break_end, prayer_break_duration) VALUES (?, ?, ?, ?, NULL, NULL)",
-        [Number(employee_id), employee_name || "", formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        "INSERT INTO prayer_breaks (employee_id, employee_name, shift_assignment_id, date, prayer_break_start, prayer_break_end, prayer_break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+        [Number(employee_id), employee_name || "", shiftAssignmentId, formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (prayer_break_end) {
       // Ending an existing prayer break - find ANY open prayer break (not just today)
