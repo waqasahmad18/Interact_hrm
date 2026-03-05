@@ -21,11 +21,6 @@ function formatDuration(seconds: number) {
   return `${h}h ${m}m ${s}s`;
 }
 
-// Helper to get local YYYY-MM-DD for grouping
-function localDateKey(date: Date) {
-  return getDateStringInTimeZone(date, SERVER_TIMEZONE);
-}
-
 // Helper to format total hours
 function formatTotalHours(clockIn: string, clockOut: string) {
   if (!clockIn) return "00h 00m 00s";
@@ -62,6 +57,32 @@ function formatDateOnly(dateValue: string | null | undefined) {
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
+}
+
+function getSessionGroupingKey(
+  record: any,
+  startField: "break_start" | "prayer_break_start"
+) {
+  const attendanceSessionId =
+    record.attendance_session_id ?? record.attendanceSessionId;
+
+  if (
+    attendanceSessionId !== undefined &&
+    attendanceSessionId !== null &&
+    attendanceSessionId !== ""
+  ) {
+    return `attendance:${attendanceSessionId}`;
+  }
+
+  if (
+    record.shift_assignment_id !== undefined &&
+    record.shift_assignment_id !== null &&
+    record.shift_assignment_id !== ""
+  ) {
+    return `shift:${record.shift_assignment_id}`;
+  }
+
+  return `fallback:${record.id ?? record[startField] ?? "unknown"}`;
 }
 
 export default function EmployeeTimePage() {
@@ -173,7 +194,7 @@ export default function EmployeeTimePage() {
       });
   }, [employeeId, attFromDate, attToDate]);
 
-  // Aggregate all breaks per day for this employee (including running breaks)
+  // Aggregate all breaks per attendance session for this employee
   const dailyBreakTotals = (() => {
     const map = new Map<string, number>();
     for (const b of breaks) {
@@ -181,8 +202,7 @@ export default function EmployeeTimePage() {
       const start = new Date(b.break_start);
       const end = b.break_end ? new Date(b.break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
-      const dateForKey = b.date ? new Date(b.date) : start;
-      const key = localDateKey(dateForKey);
+      const key = getSessionGroupingKey(b, "break_start");
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
     return map;
@@ -198,9 +218,8 @@ export default function EmployeeTimePage() {
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
-    const start = b.break_start ? new Date(b.break_start) : null;
-    const dateForKey = b.date ? new Date(b.date) : (start as Date | null);
-    const dailySeconds = dateForKey ? (dailyBreakTotals.get(localDateKey(dateForKey)) || 0) : sessionSeconds;
+    const key = getSessionGroupingKey(b, "break_start");
+    const dailySeconds = dailyBreakTotals.get(key) || sessionSeconds;
     const dailyExceed = dailySeconds > 3600 ? dailySeconds - 3600 : 0;
     return {
       ...b,
@@ -222,8 +241,7 @@ export default function EmployeeTimePage() {
       const start = new Date(p.prayer_break_start);
       const end = p.prayer_break_end ? new Date(p.prayer_break_end) : new Date(now);
       const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
-      const dateForKey = p.date ? new Date(p.date) : start;
-      const key = localDateKey(dateForKey);
+      const key = getSessionGroupingKey(p, "prayer_break_start");
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
     return map;
@@ -239,9 +257,8 @@ export default function EmployeeTimePage() {
       sessionSeconds = Math.floor((end - start) / 1000);
     }
     const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
-    const start = p.prayer_break_start ? new Date(p.prayer_break_start) : null;
-    const dateForKey = p.date ? new Date(p.date) : (start as Date | null);
-    const dailySeconds = dateForKey ? (dailyPrayerTotals.get(localDateKey(dateForKey)) || 0) : sessionSeconds;
+    const key = getSessionGroupingKey(p, "prayer_break_start");
+    const dailySeconds = dailyPrayerTotals.get(key) || sessionSeconds;
     const dailyExceed = dailySeconds > 1800 ? dailySeconds - 1800 : 0;
     return {
       ...p,
@@ -419,14 +436,14 @@ export default function EmployeeTimePage() {
                   </tr>
                 ) : (
                   (() => {
-                    // Find last break index for each day
+                    // Find last break index for each attendance session
                     const lastIndexMap = new Map();
                     breakRows.forEach((row, idx) => {
-                      const key = row.date_display;
+                      const key = getSessionGroupingKey(row, "break_start");
                       lastIndexMap.set(key, idx);
                     });
                     return breakRows.map((b, idx) => {
-                      const key = b.date_display;
+                      const key = getSessionGroupingKey(b, "break_start");
                       const isLast = lastIndexMap.get(key) === idx;
                       return (
                         <tr key={b.id || idx}>
@@ -498,14 +515,14 @@ export default function EmployeeTimePage() {
                   </tr>
                 ) : (
                   (() => {
-                    // Find last prayer break index for each day
+                    // Find last prayer break index for each attendance session
                     const lastIndexMap = new Map();
                     prayerRows.forEach((row, idx) => {
-                      const key = row.date_display;
+                      const key = getSessionGroupingKey(row, "prayer_break_start");
                       lastIndexMap.set(key, idx);
                     });
                     return prayerRows.map((p, idx) => {
-                      const key = p.date_display;
+                      const key = getSessionGroupingKey(p, "prayer_break_start");
                       const isLast = lastIndexMap.get(key) === idx;
                       return (
                         <tr key={p.id || idx}>

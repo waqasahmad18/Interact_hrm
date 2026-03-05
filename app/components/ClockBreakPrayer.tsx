@@ -457,13 +457,85 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
     const fetchBreaks = async () => {
       try {
         if (!employeeId) return;
-        const today = new Date().toISOString().slice(0, 10);
-        const res = await fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`);
-        const data = await res.json();
-        if (data.success && data.breaks.length > 0) {
+        const today = getDateStringInTimeZone(new Date());
+        const [breakRes, attendanceRes] = await Promise.all([
+          fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`),
+          fetch(`/api/attendance?employeeId=${employeeId}`),
+        ]);
+
+        const [breakData, attendanceData] = await Promise.all([
+          breakRes.json(),
+          attendanceRes.json(),
+        ]);
+
+        const breakRows =
+          breakData.success && Array.isArray(breakData.breaks)
+            ? breakData.breaks
+            : [];
+        const attendanceRows = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
+
+        const sortedAttendance = attendanceRows
+          .filter((a: any) => a.clock_in)
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+          );
+
+        const activeOrLatestAttendance =
+          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+          sortedAttendance[0] ||
+          null;
+
+        const activeAttendanceId =
+          activeOrLatestAttendance?.id !== undefined &&
+          activeOrLatestAttendance?.id !== null
+            ? Number(activeOrLatestAttendance.id)
+            : null;
+
+        const sessionStartMs = activeOrLatestAttendance?.clock_in
+          ? new Date(activeOrLatestAttendance.clock_in).getTime()
+          : null;
+        const sessionEndMs = activeOrLatestAttendance?.clock_out
+          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+          : null;
+
+        const belongsToCurrentSession = (row: any) => {
+          if (!activeOrLatestAttendance) return true;
+
+          const rowSessionId = row.attendance_session_id;
+          if (
+            activeAttendanceId !== null &&
+            rowSessionId !== undefined &&
+            rowSessionId !== null &&
+            rowSessionId !== ""
+          ) {
+            return Number(rowSessionId) === activeAttendanceId;
+          }
+
+          if (!row.break_start || sessionStartMs === null) return false;
+          const breakStartMs = new Date(row.break_start).getTime();
+          if (Number.isNaN(breakStartMs) || Number.isNaN(sessionStartMs)) {
+            return false;
+          }
+
+          if (breakStartMs < sessionStartMs) return false;
+          if (
+            sessionEndMs !== null &&
+            !Number.isNaN(sessionEndMs) &&
+            breakStartMs > sessionEndMs
+          ) {
+            return false;
+          }
+
+          return true;
+        };
+
+        if (breakRows.length > 0) {
           let total = 0;
-          data.breaks.forEach((b: any) => {
-            if (b.break_start && b.break_end) {
+          breakRows.forEach((b: any) => {
+            if (b.break_start && b.break_end && belongsToCurrentSession(b)) {
               const start = new Date(b.break_start);
               const end = new Date(b.break_end);
               total += Math.floor((end.getTime() - start.getTime()) / 1000);

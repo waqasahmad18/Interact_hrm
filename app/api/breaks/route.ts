@@ -3,6 +3,25 @@ import { pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
 import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
 
+const ATTENDANCE_TABLE = "employee_attendance";
+
+async function ensureAttendanceTable(conn: any) {
+  const createSql = `
+    CREATE TABLE IF NOT EXISTS ${ATTENDANCE_TABLE} (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      employee_id VARCHAR(50) NOT NULL,
+      employee_name VARCHAR(150) NULL,
+      date DATE NOT NULL,
+      clock_in DATETIME NULL,
+      clock_out DATETIME NULL,
+      total_hours DECIMAL(5,2) NULL,
+      INDEX (employee_id),
+      INDEX (date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `;
+  await conn.execute(createSql);
+}
+
 // GET: Fetch all breaks or by employeeId/date
 export async function GET(req: NextRequest) {
   let conn;
@@ -14,10 +33,21 @@ export async function GET(req: NextRequest) {
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
     }
+    await ensureAttendanceTable(conn);
     let rows;
     // Join with hrm_employees for pseudonym and departments for department name
-    let query = `SELECT b.*, e.pseudonym, d.name AS department_name, 
+    let query = `SELECT b.*, e.pseudonym, d.name AS department_name,
       sa.shift_name, sa.start_time, sa.end_time, sa.assigned_date
+      ,(
+        SELECT ea.id
+        FROM ${ATTENDANCE_TABLE} ea
+        WHERE ea.employee_id = b.employee_id
+          AND ea.clock_in IS NOT NULL
+          AND b.break_start >= ea.clock_in
+          AND (ea.clock_out IS NULL OR b.break_start <= ea.clock_out)
+        ORDER BY ea.clock_in DESC, ea.id DESC
+        LIMIT 1
+      ) AS attendance_session_id
       FROM breaks b
       LEFT JOIN hrm_employees e ON b.employee_id = e.id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
@@ -33,12 +63,13 @@ export async function GET(req: NextRequest) {
       query += " AND DATE(b.break_start) = ?";
       params.push(date);
     }
-    query += " ORDER BY b.break_start DESC, b.break_start ASC";
+    query += " ORDER BY b.break_start DESC";
     [rows] = await conn.execute(query, params);
     const formattedBreaks = (rows as any[]).map(row => ({
       ...row,
       employee_name: row.employee_name || "",
       pseudonym: row.pseudonym || "",
+      attendance_session_id: row.attendance_session_id ? Number(row.attendance_session_id) : null,
       break_start: row.break_start ? new Date(row.break_start + 'Z').toISOString() : null,
       break_end: row.break_end ? new Date(row.break_end + 'Z').toISOString() : null,
       break_duration: row.break_duration ? Number(row.break_duration) : null,

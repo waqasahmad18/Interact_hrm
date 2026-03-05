@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { getDateStringInTimeZone } from "../../lib/timezone";
 
 interface PrayerButtonProps {
   employeeId: string;
@@ -180,13 +181,89 @@ function PrayerTotals({ employeeId }: { employeeId: string }) {
     const fetchTotals = async () => {
       try {
         if (!employeeId) return;
-        const today = new Date().toISOString().slice(0, 10);
-        const res = await fetch(`/api/prayer_breaks?employeeId=${employeeId}&date=${today}`);
-        const data = await res.json();
-        if (data.success && Array.isArray(data.prayer_breaks)) {
+        const today = getDateStringInTimeZone(new Date());
+        const [prayerRes, attendanceRes] = await Promise.all([
+          fetch(`/api/prayer_breaks?employeeId=${employeeId}&date=${today}`),
+          fetch(`/api/attendance?employeeId=${employeeId}`),
+        ]);
+
+        const [prayerData, attendanceData] = await Promise.all([
+          prayerRes.json(),
+          attendanceRes.json(),
+        ]);
+
+        const prayerRows =
+          prayerData.success && Array.isArray(prayerData.prayer_breaks)
+            ? prayerData.prayer_breaks
+            : [];
+        const attendanceRows = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
+
+        const sortedAttendance = attendanceRows
+          .filter((a: any) => a.clock_in)
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+          );
+
+        const activeOrLatestAttendance =
+          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+          sortedAttendance[0] ||
+          null;
+
+        const activeAttendanceId =
+          activeOrLatestAttendance?.id !== undefined &&
+          activeOrLatestAttendance?.id !== null
+            ? Number(activeOrLatestAttendance.id)
+            : null;
+
+        const sessionStartMs = activeOrLatestAttendance?.clock_in
+          ? new Date(activeOrLatestAttendance.clock_in).getTime()
+          : null;
+        const sessionEndMs = activeOrLatestAttendance?.clock_out
+          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+          : null;
+
+        const belongsToCurrentSession = (row: any) => {
+          if (!activeOrLatestAttendance) return true;
+
+          const rowSessionId = row.attendance_session_id;
+          if (
+            activeAttendanceId !== null &&
+            rowSessionId !== undefined &&
+            rowSessionId !== null &&
+            rowSessionId !== ""
+          ) {
+            return Number(rowSessionId) === activeAttendanceId;
+          }
+
+          if (!row.prayer_break_start || sessionStartMs === null) return false;
+          const prayerStartMs = new Date(row.prayer_break_start).getTime();
+          if (Number.isNaN(prayerStartMs) || Number.isNaN(sessionStartMs)) {
+            return false;
+          }
+
+          if (prayerStartMs < sessionStartMs) return false;
+          if (
+            sessionEndMs !== null &&
+            !Number.isNaN(sessionEndMs) &&
+            prayerStartMs > sessionEndMs
+          ) {
+            return false;
+          }
+
+          return true;
+        };
+
+        if (prayerRows.length > 0) {
           let total = 0;
-          data.prayer_breaks.forEach((p: any) => {
-            if (p.prayer_break_start && p.prayer_break_end) {
+          prayerRows.forEach((p: any) => {
+            if (
+              p.prayer_break_start &&
+              p.prayer_break_end &&
+              belongsToCurrentSession(p)
+            ) {
               const s = new Date(p.prayer_break_start).getTime();
               const e = new Date(p.prayer_break_end).getTime();
               total += Math.floor((e - s) / 1000);
