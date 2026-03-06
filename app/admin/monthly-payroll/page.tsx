@@ -1007,9 +1007,9 @@ export default function MonthlyAttendancePage() {
         </div>
         */}
 
-        <div style={{ marginTop: 40, overflow: 'hidden', position: 'relative' }}>
+        <div style={{ marginTop: 40, position: 'relative', width: '100%', maxWidth: '100%', minWidth: 0 }}>
           <h3 style={{ color: '#22223B', marginBottom: 10 }}>{monthInfo.label && `Payroll for ${monthInfo.label}`}</h3>
-          <div style={{ overflowX: 'auto', overflowY: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8, width: 'calc(100vw - 230px)', maxHeight: '600px', boxSizing: 'border-box' }}>
+          <div style={{ overflowX: 'auto', overflowY: 'visible', border: '1px solid #e2e8f0', borderRadius: 8, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
           <table style={{ width: '1900px', tableLayout: 'auto', borderRadius: 8, background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff', borderCollapse: 'collapse' }}>
             <thead style={{ position: 'sticky', top: 0 }}>
               <tr>
