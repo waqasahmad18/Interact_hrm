@@ -277,7 +277,7 @@ export default function ShiftSchedulerPage() {
             <div className={styles.empty}>No shifts created yet. Create your first shift above.</div>
           ) : (
             <div className={styles.tableWrapper}>
-              <table className={styles.table}>
+              <table className={`${styles.table} ${editingId !== null ? styles.tableEditing : ""}`}>
                 <thead>
                   <tr>
                     <th>Shift Name</th>
@@ -297,7 +297,7 @@ export default function ShiftSchedulerPage() {
                           <td>
                             <input
                               type="text"
-                              className={styles.input}
+                              className={`${styles.input} ${styles.tableInput}`}
                               value={editShift.shift_name}
                               onChange={e => setEditShift({ ...editShift, shift_name: e.target.value })}
                             />
@@ -305,7 +305,7 @@ export default function ShiftSchedulerPage() {
                           <td>
                             <input
                               type="time"
-                              className={styles.input}
+                              className={`${styles.input} ${styles.tableInput}`}
                               value={editShift.clock_in_time}
                               onChange={e => setEditShift({ ...editShift, clock_in_time: e.target.value })}
                             />
@@ -313,7 +313,7 @@ export default function ShiftSchedulerPage() {
                           <td>
                             <input
                               type="time"
-                              className={styles.input}
+                              className={`${styles.input} ${styles.tableInput}`}
                               value={editShift.clock_out_time}
                               onChange={e => setEditShift({ ...editShift, clock_out_time: e.target.value })}
                             />
@@ -329,7 +329,7 @@ export default function ShiftSchedulerPage() {
                           <td>
                             <input
                               type="text"
-                              className={styles.input}
+                              className={`${styles.input} ${styles.tableInput}`}
                               value={editShift.work_days}
                               onChange={e => setEditShift({ ...editShift, work_days: e.target.value })}
                             />

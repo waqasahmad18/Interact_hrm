@@ -162,7 +162,7 @@ export default function ShiftManagementPage() {
         setMasterShifts(data.shifts || []);
       }
     } catch (err) {
-      // ignore
+      console.error("Error fetching master shifts:", err);
     }
   };
 

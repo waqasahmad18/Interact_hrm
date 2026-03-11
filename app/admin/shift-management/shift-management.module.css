@@ -71,10 +71,13 @@
 
 .controlInput,
 .controlSelect {
-  padding: 12px 15px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   transition: all 0.3s ease;
   font-family: inherit;
 }
@@ -274,7 +277,7 @@
   border-radius: 15px;
   padding: 20px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .tableContainer {
@@ -282,13 +285,41 @@
   border-radius: 12px;
   padding: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: 6px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.tableContainer::-webkit-scrollbar {
+  height: 10px;
+}
+
+.tableContainer::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.tableContainer::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
+.tableContainer::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .employeeTable {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  min-width: 1150px;
+  border-collapse: collapse;
+  table-layout: fixed;
   background: #ffffff;
 }
 
@@ -305,6 +336,47 @@
   text-transform: none;
   letter-spacing: 0.3px;
   white-space: nowrap;
+}
+
+.employeeTable th:nth-child(1) {
+  width: 10%;
+}
+
+.employeeTable th:nth-child(2) {
+  width: 16%;
+}
+
+.employeeTable th:nth-child(3) {
+  width: 12%;
+}
+
+.employeeTable th:nth-child(4) {
+  width: 14%;
+}
+
+.employeeTable th:nth-child(5) {
+  width: 10%;
+}
+
+.employeeTable th:nth-child(6) {
+  width: 14%;
+}
+
+.employeeTable th:nth-child(7) {
+  width: 17%;
+}
+
+.employeeTable th:nth-child(8) {
+  width: 10%;
+}
+
+.employeeTable th:nth-child(9) {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  width: 7%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: -8px 0 12px rgba(15, 29, 64, 0.12);
 }
 
 .employeeTable thead th:first-child {
@@ -336,6 +408,51 @@
   vertical-align: middle;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.employeeTable tbody td:nth-child(1) {
+  width: 10%;
+}
+
+.employeeTable tbody td:nth-child(2) {
+  width: 16%;
+}
+
+.employeeTable tbody td:nth-child(3) {
+  width: 12%;
+}
+
+.employeeTable tbody td:nth-child(4) {
+  width: 14%;
+}
+
+.employeeTable tbody td:nth-child(5) {
+  width: 10%;
+}
+
+.employeeTable tbody td:nth-child(6) {
+  width: 14%;
+}
+
+.employeeTable tbody td:nth-child(7) {
+  width: 17%;
+}
+
+.employeeTable tbody td:nth-child(8) {
+  width: 10%;
+}
+
+.employeeTable tbody td:nth-child(9) {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  width: 7%;
+  background: #ffffff;
+  box-shadow: -8px 0 10px rgba(15, 29, 64, 0.08);
+}
+
+.employeeTable tbody tr:hover td:nth-child(9) {
+  background: #f8f9ff;
 }
 
 .employeeCode {
@@ -571,12 +688,14 @@
 }
 
 .timeInput {
-  width: 70px;
+  width: 80px;
+  min-width: 80px;
   padding: 6px 8px;
   border: 2px solid #667eea;
   border-radius: 6px;
   font-size: 0.9rem;
   font-weight: 500;
+  box-sizing: border-box;
 }
 
 .timeInput:focus {

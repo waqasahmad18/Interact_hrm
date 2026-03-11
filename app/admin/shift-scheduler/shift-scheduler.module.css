@@ -1,7 +1,9 @@
 .page {
   max-width: 1400px;
+  width: 100%;
   margin: 0 auto;
   padding: 24px 18px 40px;
+  box-sizing: border-box;
 }
 
 .header {
@@ -47,6 +49,8 @@
   border-radius: 14px;
   padding: 24px;
   margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cardTitle {
@@ -60,18 +64,22 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-width: 0;
 }
 
 .row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .label {
@@ -81,6 +89,9 @@
 }
 
 .input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 2px solid #B0BEC5;
   border-radius: 10px;
   padding: 12px;
@@ -139,12 +150,48 @@
 
 .tableWrapper {
   overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: 6px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tableWrapper::-webkit-scrollbar {
+  height: 10px;
+}
+
+.tableWrapper::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .table {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.95rem;
+}
+
+.tableEditing {
+  width: 100%;
+  min-width: 980px;
 }
 
 .table thead {
@@ -153,12 +200,13 @@
 }
 
 .table th {
-  padding: 14px 16px;
+  padding: 12px 12px;
   text-align: left;
   font-weight: 700;
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .table tbody tr {
@@ -171,8 +219,68 @@
 }
 
 .table td {
-  padding: 14px 16px;
+  padding: 10px 12px;
   color: #0f1d40;
+  white-space: nowrap;
+}
+
+.tableInput {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+}
+
+.table th:nth-child(1),
+.table td:nth-child(1) {
+  width: 22%;
+}
+
+.table th:nth-child(2),
+.table td:nth-child(2),
+.table th:nth-child(3),
+.table td:nth-child(3) {
+  width: 16%;
+}
+
+.table th:nth-child(4),
+.table td:nth-child(4) {
+  width: 10%;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5) {
+  width: 10%;
+}
+
+.table th:nth-child(6),
+.table td:nth-child(6) {
+  width: 14%;
+}
+
+.table th:nth-child(7),
+.table td:nth-child(7) {
+  width: 12%;
+}
+
+.table th:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #6e59bc;
+}
+
+.table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: #ffffff;
+  box-shadow: -8px 0 10px rgba(15, 29, 64, 0.08);
+}
+
+.table tbody tr:hover td:last-child {
+  background: #f8fbff;
 }
 
 .shiftName {
@@ -203,6 +311,7 @@
 .actions {
   display: flex;
   gap: 8px;
+  min-width: 82px;
 }
 
 .editButton,
