@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "./shift-scheduler.module.css";
 import { FaClock, FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from "react-icons/fa";
@@ -12,6 +12,9 @@ interface Shift {
   overtime_daily: number;
   working_days: string;
 }
+
+type SortKey = "name" | "shift_in" | "shift_out" | "total_hours" | "overtime_daily" | "working_days";
+type SortDirection = "asc" | "desc";
 
 // Convert 24-hour time to 12-hour format with AM/PM
 const formatTimeTo12Hour = (time: string): string => {
@@ -47,6 +50,7 @@ export default function ShiftSchedulerPage() {
     overtime: false,
     work_days: ""
   });
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
 
   useEffect(() => {
     fetchShifts();
@@ -79,6 +83,90 @@ export default function ShiftSchedulerPage() {
     if (diff < 0) diff += 24 * 60; // Handle overnight shifts
     return Math.round((diff / 60) * 10) / 10;
   };
+
+  const parseTimeToMinutes = (time: string): number => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(":").map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0;
+    return hours * 60 + minutes;
+  };
+
+  const getShiftDurationMinutes = (shiftIn: string, shiftOut: string): number => {
+    const inMinutes = parseTimeToMinutes(shiftIn);
+    const outMinutes = parseTimeToMinutes(shiftOut);
+    let diff = outMinutes - inMinutes;
+    if (diff < 0) diff += 24 * 60;
+    return diff;
+  };
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) {
+        return { key, direction: "asc" };
+      }
+
+      if (prev.direction === "asc") {
+        return { key, direction: "desc" };
+      }
+
+      return null;
+    });
+  };
+
+  const getSortIndicator = (key: SortKey) => {
+    if (!sortConfig || sortConfig.key !== key) return "";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
+  const renderSortIndicator = (key: SortKey) => {
+    const indicator = getSortIndicator(key);
+    if (!indicator) return null;
+    return <span className={styles.sortIndicator}>{indicator}</span>;
+  };
+
+  const getAriaSort = (key: SortKey): "ascending" | "descending" | "none" => {
+    if (!sortConfig || sortConfig.key !== key) return "none";
+    return sortConfig.direction === "asc" ? "ascending" : "descending";
+  };
+
+  const sortedShifts = useMemo(() => {
+    if (!sortConfig) {
+      return [...shifts];
+    }
+
+    const cloned = [...shifts];
+
+    cloned.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortConfig.key) {
+        case "name":
+          comparison = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+          break;
+        case "shift_in":
+          comparison = parseTimeToMinutes(a.shift_in) - parseTimeToMinutes(b.shift_in);
+          break;
+        case "shift_out":
+          comparison = parseTimeToMinutes(a.shift_out) - parseTimeToMinutes(b.shift_out);
+          break;
+        case "total_hours":
+          comparison = getShiftDurationMinutes(a.shift_in, a.shift_out) - getShiftDurationMinutes(b.shift_in, b.shift_out);
+          break;
+        case "overtime_daily":
+          comparison = Number(Boolean(a.overtime_daily)) - Number(Boolean(b.overtime_daily));
+          break;
+        case "working_days":
+          comparison = (a.working_days || "").localeCompare(b.working_days || "", undefined, { sensitivity: "base" });
+          break;
+        default:
+          comparison = 0;
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return cloned;
+  }, [shifts, sortConfig]);
 
   const handleCreateShift = async () => {
     if (!newShift.shift_name || !newShift.clock_in_time || !newShift.clock_out_time) {
@@ -280,17 +368,41 @@ export default function ShiftSchedulerPage() {
               <table className={`${styles.table} ${editingId !== null ? styles.tableEditing : ""}`}>
                 <thead>
                   <tr>
-                    <th>Shift Name</th>
-                    <th>Clock IN Time</th>
-                    <th>Clock OUT Time</th>
-                    <th>Total Hours</th>
-                    <th>Overtime</th>
-                    <th>Work Days</th>
+                    <th aria-sort={getAriaSort("name")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("name")}>
+                        Shift Name {renderSortIndicator("name")}
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort("shift_in")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("shift_in")}>
+                        Clock IN Time {renderSortIndicator("shift_in")}
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort("shift_out")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("shift_out")}>
+                        Clock OUT Time {renderSortIndicator("shift_out")}
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort("total_hours")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("total_hours")}>
+                        Total Hours {renderSortIndicator("total_hours")}
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort("overtime_daily")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("overtime_daily")}>
+                        Overtime {renderSortIndicator("overtime_daily")}
+                      </button>
+                    </th>
+                    <th aria-sort={getAriaSort("working_days")}>
+                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("working_days")}>
+                        Work Days {renderSortIndicator("working_days")}
+                      </button>
+                    </th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {shifts.map(shift => (
+                  {sortedShifts.map(shift => (
                     <tr key={shift.id}>
                       {editingId === shift.id ? (
                         <>

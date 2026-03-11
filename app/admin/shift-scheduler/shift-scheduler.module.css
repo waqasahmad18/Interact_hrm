@@ -203,10 +203,38 @@
   padding: 12px 12px;
   text-align: left;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
+}
+
+.sortHeaderButton {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sortHeaderButton:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sortIndicator {
+  font-size: 0.6rem;
+  line-height: 1;
+  opacity: 0.95;
 }
 
 .table tbody tr {

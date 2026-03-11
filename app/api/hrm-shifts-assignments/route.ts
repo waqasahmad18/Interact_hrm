@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, employee_id, employee_ids, shift_name, start_time, end_time, allow_overtime } = body;
+    const { id, employee_id, employee_ids, shift_name, start_time, end_time, allow_overtime, assigned_date } = body;
 
     const hasBulkEmployees = Array.isArray(employee_ids) && employee_ids.length > 0;
     const hasSingleEmployee = !!employee_id;
@@ -258,6 +258,69 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    const existingAssignmentRows = (await query(
+      `SELECT id, employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime
+       FROM shift_assignments
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    )) as any[];
+
+    if (existingAssignmentRows.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "Assignment not found" },
+        { status: 404 }
+      );
+    }
+
+    const existingAssignment = existingAssignmentRows[0];
+    const currentAssignedDate = existingAssignment.assigned_date instanceof Date
+      ? existingAssignment.assigned_date.toISOString().split("T")[0]
+      : String(existingAssignment.assigned_date).slice(0, 10);
+    const effectiveDate = assigned_date || new Date().toISOString().split("T")[0];
+
+    const nextShiftName = shift_name !== undefined ? shift_name : existingAssignment.shift_name;
+    const nextStartTime = start_time !== undefined ? start_time : existingAssignment.start_time;
+    const nextEndTime = end_time !== undefined ? end_time : existingAssignment.end_time;
+    const nextAllowOvertime = allow_overtime !== undefined
+      ? (allow_overtime ? 1 : 0)
+      : existingAssignment.allow_overtime;
+
+    const shouldCreateEffectiveDatedAssignment = currentAssignedDate < effectiveDate;
+
+    if (shouldCreateEffectiveDatedAssignment) {
+      const sameDayAssignmentRows = (await query(
+        `SELECT id
+         FROM shift_assignments
+         WHERE employee_id = ? AND assigned_date = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [existingAssignment.employee_id, effectiveDate]
+      )) as any[];
+
+      if (sameDayAssignmentRows.length > 0) {
+        await query(
+          `UPDATE shift_assignments
+           SET shift_name = ?, start_time = ?, end_time = ?, allow_overtime = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [nextShiftName, nextStartTime, nextEndTime, nextAllowOvertime, sameDayAssignmentRows[0].id]
+        );
+      } else {
+        await query(
+          `INSERT INTO shift_assignments
+           (employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [existingAssignment.employee_id, nextShiftName, nextStartTime, nextEndTime, effectiveDate, nextAllowOvertime]
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        effective_from: effectiveDate,
+        preserved_history: true,
+      });
+    }
+
     // Build dynamic update query based on what fields are provided
     let updateFields = [];
     let updateValues = [];
@@ -276,7 +339,7 @@ export async function PATCH(req: NextRequest) {
     }
     if (allow_overtime !== undefined) {
       updateFields.push('allow_overtime = ?');
-      updateValues.push(allow_overtime ? 1 : 0);
+      updateValues.push(nextAllowOvertime);
     }
     
     updateFields.push('updated_at = CURRENT_TIMESTAMP');

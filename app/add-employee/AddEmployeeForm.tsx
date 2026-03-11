@@ -284,7 +284,7 @@ export default function AddEmployeeForm({
             setFirstName(data.employee.first_name || "");
             setMiddleName(data.employee.pseudonym || data.employee.middle_name || "");
             setLastName(data.employee.last_name || "");
-            setEmployeeId(data.employee.employee_code || editEmployeeId || "");
+            setEmployeeId(String(data.employee.id || editEmployeeId || ""));
             setDob(formatDateForInput(data.employee.dob));
             setGender(data.employee.gender || "");
             setMaritalStatus(data.employee.marital_status || "");
@@ -399,24 +399,6 @@ export default function AddEmployeeForm({
     }
   }, [isEdit, editEmployeeId]);
 
-  // Auto-set employment status to "Permanent" if joining date is 3+ months old
-  useEffect(() => {
-    if (jobDetails.joinedDate) {
-      const joinedDate = new Date(jobDetails.joinedDate);
-      const today = new Date();
-      
-      // Calculate if 3 months have passed
-      const threeMonthsLater = new Date(joinedDate);
-      threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
-      
-      // If today is 3+ months after joining date, set status to "Permanent"
-      if (today >= threeMonthsLater) {
-        setEmploymentStatus("Permanent");
-        console.log(`[Auto-Status] Joined on ${jobDetails.joinedDate}, 3 months completed - Setting to Permanent`);
-      }
-    }
-  }, [jobDetails.joinedDate]);
-
   // Sync employment status from Personal Details to Job Details
   useEffect(() => {
     if (employmentStatus) {
@@ -468,7 +450,16 @@ export default function AddEmployeeForm({
       role: role || 'Officer'
     };
     // Removed unused payload and reference to finalEmployeeId
-    let hrmRes = await fetch('/api/hrm_employees', { method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(isEdit ? { ...hrmPayload, id: employeeId } : hrmPayload) });
+    const editIdentifier = String(employeeId || editEmployeeId || '').trim();
+    const editTargetPayload = /^\d+$/.test(editIdentifier)
+      ? { id: Number(editIdentifier) }
+      : { employee_code: editIdentifier };
+
+    let hrmRes = await fetch('/api/hrm_employees', {
+      method: isEdit ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isEdit ? { ...hrmPayload, ...editTargetPayload } : hrmPayload)
+    });
     let hrmData = await hrmRes.json();
     if (!hrmData.success) {
       if (hrmData.error) {

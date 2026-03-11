@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "./manage-leaves.module.css";
+import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
 
 interface Employee {
   id: number;
@@ -22,6 +23,17 @@ interface Employee {
   pseudonym?: string;
 }
 
+type SortKey =
+  | "id"
+  | "full_name"
+  | "pseudonym"
+  | "department_name"
+  | "employment_status"
+  | "annual_balance"
+  | "bereavement_balance";
+
+type SortDirection = "asc" | "desc";
+
 export default function ManageLeavesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +44,7 @@ export default function ManageLeavesPage() {
     bereavement_current_balance: 3
   });
   const [saving, setSaving] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
 
   useEffect(() => {
     fetchEmployees();
@@ -126,6 +139,137 @@ export default function ManageLeavesPage() {
     setEditingEmployee(null);
   }
 
+  const getFullName = (employee: Employee) => {
+    return `${employee.first_name || ""} ${employee.last_name || ""}`.trim();
+  };
+
+  const handleFilterClick = (key: SortKey) => {
+    setSortConfig((prev) => {
+      if (prev?.key === key) return null;
+      return { key, direction: "asc" };
+    });
+  };
+
+  const handleSortToggle = (key: SortKey) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+    });
+  };
+
+  const getSortIcon = (key: SortKey) => {
+    if (!sortConfig || sortConfig.key !== key) return <FaSort style={{ opacity: 0.75 }} />;
+    return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
+  };
+
+  const sortedEmployees = useMemo(() => {
+    if (!sortConfig) return employees;
+
+    const getText = (value: unknown) => String(value || "").toLowerCase();
+
+    return [...employees].sort((a, b) => {
+      let cmp = 0;
+
+      switch (sortConfig.key) {
+        case "id":
+          cmp = Number(a.id || 0) - Number(b.id || 0);
+          break;
+        case "full_name":
+          cmp = getText(getFullName(a)).localeCompare(getText(getFullName(b)), undefined, {
+            sensitivity: "base",
+          });
+          break;
+        case "pseudonym":
+          cmp = getText(a.pseudonym).localeCompare(getText(b.pseudonym), undefined, {
+            sensitivity: "base",
+          });
+          break;
+        case "department_name":
+          cmp = getText(a.department_name).localeCompare(getText(b.department_name), undefined, {
+            sensitivity: "base",
+          });
+          break;
+        case "employment_status":
+          cmp = getText(a.employment_status).localeCompare(getText(b.employment_status), undefined, {
+            sensitivity: "base",
+          });
+          break;
+        case "annual_balance":
+          cmp = Number(a.annual_current_balance || 0) - Number(b.annual_current_balance || 0);
+          break;
+        case "bereavement_balance":
+          cmp = Number(a.bereavement_current_balance || 0) - Number(b.bereavement_current_balance || 0);
+          break;
+        default:
+          cmp = 0;
+      }
+
+      return sortConfig.direction === "asc" ? cmp : -cmp;
+    });
+  }, [employees, sortConfig]);
+
+  const sortButtonStyle: React.CSSProperties = {
+    border: "none",
+    background: "transparent",
+    color: "#fff",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0",
+    fontSize: "0.8rem",
+  };
+
+  const thStyle: React.CSSProperties = {
+    color: "#fff",
+    fontSize: "12px",
+    padding: "10px 10px",
+    whiteSpace: "nowrap",
+    textAlign: "left",
+    verticalAlign: "middle",
+  };
+
+  const tdStyle: React.CSSProperties = {
+    fontSize: "13px",
+    padding: "8px 10px",
+    whiteSpace: "nowrap",
+    verticalAlign: "middle",
+  };
+
+  const tdAlignedStyle: React.CSSProperties = { ...tdStyle, paddingLeft: 54 };
+  const thActionsStyle: React.CSSProperties = { ...thStyle, minWidth: 200, paddingRight: 30 };
+  const tdActionsStyle: React.CSSProperties = { ...tdStyle, minWidth: 210, paddingRight: 30 };
+
+  const renderSortableHeader = (label: string, key: SortKey) => {
+    const isActive = sortConfig?.key === key;
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "38px 1fr", alignItems: "center", gap: 6, width: "100%" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => handleFilterClick(key)}
+            style={{ ...sortButtonStyle, opacity: isActive ? 1 : 0.78 }}
+            title={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
+            aria-label={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
+          >
+            <FaFilter />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSortToggle(key)}
+            style={sortButtonStyle}
+            title={`Toggle sort direction for ${label}`}
+            aria-label={`Toggle sort direction for ${label}`}
+          >
+            {getSortIcon(key)}
+          </button>
+        </div>
+        <span style={{ lineHeight: 1.2 }}>{label}</span>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <LayoutDashboard>
@@ -151,47 +295,47 @@ export default function ManageLeavesPage() {
           <table className={styles.table}>
             <thead>
               <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Id</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Full Name</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>P.Name</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Department</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Employment Status</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Annual Leave Balance</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Bereavement Leave Balance</th>
-                <th style={{ color: "#fff", fontSize: "12px", padding: "10px 6px", whiteSpace: "nowrap" }}>Actions</th>
+                <th style={thStyle}>{renderSortableHeader("Id", "id")}</th>
+                <th style={thStyle}>{renderSortableHeader("Full Name", "full_name")}</th>
+                <th style={thStyle}>{renderSortableHeader("P.Name", "pseudonym")}</th>
+                <th style={thStyle}>{renderSortableHeader("Department", "department_name")}</th>
+                <th style={thStyle}>{renderSortableHeader("Employment Status", "employment_status")}</th>
+                <th style={thStyle}>{renderSortableHeader("Annual Leave Balance", "annual_balance")}</th>
+                <th style={thStyle}>{renderSortableHeader("Bereavement Leave Balance", "bereavement_balance")}</th>
+                <th style={thActionsStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {employees.length === 0 ? (
+              {sortedEmployees.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: "center" }}>
                     No employees found
                   </td>
                 </tr>
               ) : (
-                employees.map((emp) => {
+                sortedEmployees.map((emp) => {
                   return (
                     <tr key={emp.id}>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.id}</td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.first_name} {emp.last_name}</td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.pseudonym || '-'}</td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>{emp.department_name || '-'}</td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
+                      <td style={tdAlignedStyle}>{emp.id}</td>
+                      <td style={tdAlignedStyle}>{getFullName(emp)}</td>
+                      <td style={tdAlignedStyle}>{emp.pseudonym || '-'}</td>
+                      <td style={tdAlignedStyle}>{emp.department_name || '-'}</td>
+                      <td style={tdAlignedStyle}>
                         <span className={emp.employment_status === "Permanent" ? styles.statusPermanent : styles.statusProbation}>
                           {emp.employment_status || "Permanent"}
                         </span>
                       </td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
+                      <td style={tdAlignedStyle}>
                         <span style={{ fontWeight: 600, color: '#2563eb' }}>
                           {emp.annual_current_balance} / {emp.annual_allowance}
                         </span>
                       </td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
+                      <td style={tdAlignedStyle}>
                         <span style={{ fontWeight: 600, color: '#2563eb' }}>
                           {emp.bereavement_current_balance} / {emp.bereavement_allowance}
                         </span>
                       </td>
-                      <td style={{ fontSize: "13px", padding: "8px 6px", whiteSpace: "nowrap" }}>
+                      <td style={tdActionsStyle}>
                         <button
                           className={styles.editBtn}
                           onClick={() => handleEdit(emp)}

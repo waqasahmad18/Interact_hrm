@@ -1,11 +1,25 @@
 "use client";
 import LayoutDashboard from "../layout-dashboard";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   getDateStringInTimeZone,
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../lib/timezone";
+import { FaFilter, FaSort, FaSortUp, FaSortDown } from "react-icons/fa";
+
+type LeaveSortKey =
+  | "employee_id"
+  | "employee_name"
+  | "pseudonym"
+  | "department_name"
+  | "leave_category"
+  | "start_date"
+  | "total_days"
+  | "status"
+  | "requested_at";
+
+type SortDirection = "asc" | "desc";
 
 export default function LeavePage() {
   const [leaves, setLeaves] = useState<any[]>([]);
@@ -15,6 +29,7 @@ export default function LeavePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
   const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: LeaveSortKey; direction: SortDirection } | null>(null);
 
   // WebSocket for real-time updates
   useEffect(() => {
@@ -118,9 +133,110 @@ export default function LeavePage() {
     setBalanceInfo(null);
   };
 
+  const handleFilterClick = (key: LeaveSortKey) => {
+    setSortConfig((prev) => {
+      if (prev?.key === key) return null;
+      return { key, direction: "asc" };
+    });
+  };
+
+  const handleSortToggle = (key: LeaveSortKey) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+    });
+  };
+
+  const getSortIcon = (key: LeaveSortKey) => {
+    if (!sortConfig || sortConfig.key !== key) return <FaSort style={{ opacity: 0.75 }} />;
+    return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
+  };
+
+  const sortedLeaves = useMemo(() => {
+    if (!sortConfig) return leaves;
+    const { key, direction } = sortConfig;
+    const getText = (v: unknown) => String(v || "").toLowerCase();
+
+    return [...leaves].sort((a, b) => {
+      let cmp = 0;
+      switch (key) {
+        case "employee_id":
+        case "total_days":
+          cmp = Number(a[key] || 0) - Number(b[key] || 0);
+          break;
+        case "employee_name":
+        case "pseudonym":
+        case "department_name":
+        case "leave_category":
+          cmp = getText(a[key]).localeCompare(getText(b[key]), undefined, { sensitivity: "base" });
+          break;
+        case "status":
+          cmp = getText(a.status).localeCompare(getText(b.status), undefined, { sensitivity: "base" });
+          break;
+        case "start_date":
+          cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
+          break;
+        case "requested_at":
+          cmp = new Date(a.requested_at || 0).getTime() - new Date(b.requested_at || 0).getTime();
+          break;
+        default:
+          cmp = 0;
+      }
+      return direction === "asc" ? cmp : -cmp;
+    });
+  }, [leaves, sortConfig]);
+
+  const sortButtonStyle: React.CSSProperties = {
+    border: "none",
+    background: "transparent",
+    color: "#fff",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0",
+    fontSize: "0.8rem",
+  };
+
+  const renderSortableHeader = (label: string, key: LeaveSortKey) => {
+    const isActive = sortConfig?.key === key;
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "38px 1fr", alignItems: "center", gap: 6, width: "100%" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => handleFilterClick(key)}
+            style={{ ...sortButtonStyle, opacity: isActive ? 1 : 0.78 }}
+            title={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
+            aria-label={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
+          >
+            <FaFilter />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSortToggle(key)}
+            style={sortButtonStyle}
+            title={`Toggle sort direction for ${label}`}
+            aria-label={`Toggle sort direction for ${label}`}
+          >
+            {getSortIcon(key)}
+          </button>
+        </div>
+        <span style={{ lineHeight: 1.2 }}>{label}</span>
+      </div>
+    );
+  };
+
   return (
     <LayoutDashboard>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
+      <style>{`
+        .leave-table-wrapper::-webkit-scrollbar { height: 10px; }
+        .leave-table-wrapper::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 999px; }
+        .leave-table-wrapper::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
+        .leave-table-wrapper::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      `}</style>
+      <div style={{ maxWidth: 1020, margin: "0 auto", padding: 24 }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
           <h1 style={{ color: "#2b6cb0", fontWeight: 700, fontSize: "1.5rem", margin: 0 }}>Leave Requests</h1>
         </div>
@@ -129,38 +245,39 @@ export default function LeavePage() {
         ) : error ? (
           <div style={{ color: "#e74c3c" }}>{error}</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px #e2e8f0" }}>
+          <div className="leave-table-wrapper" style={{ overflowX: "auto", overflowY: "hidden", width: "100%", maxWidth: "100%", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", boxShadow: "0 2px 8px #e2e8f0", paddingBottom: 6, scrollbarWidth: "thin" as const, WebkitOverflowScrolling: "touch" }}>
+          <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
-                <th style={thStyle}>Id</th>
-                <th style={thStyle}>Full Name</th>
-                <th style={thStyle}>P.Name</th>
-                <th style={thStyle}>Department</th>
-                <th style={thStyle}>Category</th>
-                <th style={thStyle}>Dates</th>
-                <th style={thStyle}>Days</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Requested At</th>
-                <th style={thStyle}>Actions</th>
+                <th style={thStyle}>{renderSortableHeader("Id", "employee_id")}</th>
+                <th style={thStyle}>{renderSortableHeader("Full Name", "employee_name")}</th>
+                <th style={thStyle}>{renderSortableHeader("P.Name", "pseudonym")}</th>
+                <th style={thStyle}>{renderSortableHeader("Department", "department_name")}</th>
+                <th style={thStyle}>{renderSortableHeader("Category", "leave_category")}</th>
+                <th style={thStyle}>{renderSortableHeader("Dates", "start_date")}</th>
+                <th style={thStyle}>{renderSortableHeader("Days", "total_days")}</th>
+                <th style={thStyle}>{renderSortableHeader("Status", "status")}</th>
+                <th style={thStyle}>{renderSortableHeader("Requested At", "requested_at")}</th>
+                <th style={thActionsStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {leaves.length === 0 && (
+              {sortedLeaves.length === 0 && (
                 <tr><td colSpan={10} style={{ textAlign: "center", color: "#888", padding: 16 }}>No leave requests yet.</td></tr>
               )}
-              {leaves.map(l => (
+              {sortedLeaves.map(l => (
                 <tr key={l.id}>
-                  <td style={tdStyle}>{l.employee_id}</td>
-                  <td style={tdStyle}>{l.employee_name || ""}</td>
-                  <td style={tdStyle}>{l.pseudonym || "-"}</td>
-                  <td style={tdStyle}>{l.department_name || "-"}</td>
-                  <td style={tdStyle}>{l.leave_category}</td>
-                    <td style={tdStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
-                  <td style={tdStyle}>{l.total_days}</td>
-                  <td style={{ ...tdStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
-                  <td style={tdStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                  <td style={tdAlignedStyle}>{l.employee_id}</td>
+                  <td style={tdAlignedStyle}>{l.employee_name || ""}</td>
+                  <td style={tdAlignedStyle}>{l.pseudonym || "-"}</td>
+                  <td style={tdAlignedStyle}>{l.department_name || "-"}</td>
+                  <td style={tdAlignedStyle}>{l.leave_category}</td>
+                    <td style={tdAlignedStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
+                  <td style={tdAlignedStyle}>{l.total_days}</td>
+                  <td style={{ ...tdAlignedStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
+                  <td style={tdAlignedStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
+                  <td style={tdActionsStyle}>
+                    <div style={actionButtonsRowStyle}>
                       <button onClick={() => openModal(l)} style={btnView}>View</button>
                       {l.status === "pending" && (
                         <>
@@ -174,6 +291,7 @@ export default function LeavePage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         {/* Modal for leave details */}
@@ -233,8 +351,12 @@ function formatDateTime(dateTimeString: string) {
   return `${day}/${month}/${year} ${timeStr}`;
 }
 
-const thStyle: React.CSSProperties = { padding: "10px 6px", fontWeight: 700, color: "#fff", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: "12px", whiteSpace: "nowrap" };
-const tdStyle = { padding: "8px 6px", borderBottom: "1px solid #f0f0f0", fontSize: "13px", whiteSpace: "nowrap" };
+const thStyle: React.CSSProperties = { padding: "10px 10px", fontWeight: 700, color: "#fff", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: "12px", whiteSpace: "nowrap", verticalAlign: "middle" };
+const tdStyle = { padding: "8px 10px", borderBottom: "1px solid #f0f0f0", fontSize: "13px", whiteSpace: "nowrap", verticalAlign: "middle" };
+const tdAlignedStyle: React.CSSProperties = { ...tdStyle, paddingLeft: 54 };
+const thActionsStyle: React.CSSProperties = { ...thStyle, minWidth: 220 };
+const tdActionsStyle: React.CSSProperties = { ...tdStyle, minWidth: 230, paddingRight: 10 };
+const actionButtonsRowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", minWidth: 210 };
 const btnApprove = { background: "#27ae60", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };
 const btnReject = { background: "#e74c3c", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer" };
 const btnView = { background: "#3478f6", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", marginRight: 6, cursor: "pointer" };

@@ -1,6 +1,6 @@
 .container {
   padding: 2rem;
-  max-width: 1400px;
+  max-width: 1160px;
   margin: 0 auto;
 }
 
@@ -19,13 +19,43 @@
 .tableContainer {
   background: white;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  box-shadow: 0 2px 8px #e2e8f0;
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 16px 6px 0;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
+}
+
+.tableContainer::-webkit-scrollbar {
+  height: 10px;
+}
+
+.tableContainer::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.tableContainer::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
+.tableContainer::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .table thead {
@@ -47,6 +77,11 @@
   padding: 1rem;
   border-bottom: 1px solid #e5e7eb;
   color: #1f2937;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 30px;
 }
 
 .table tbody tr:hover {
