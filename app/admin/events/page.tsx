@@ -222,6 +222,7 @@ export default function AdminEventsPage() {
           <select value={widgetHeading} onChange={handleHeadingChange} disabled={headingSaving} style={{ ...inputStyle, flex: 1, maxWidth: "300px", cursor: headingSaving ? "not-allowed" : "pointer" }}>
             <option value="Upcoming Events">Upcoming Events</option>
             <option value="Announcements">Announcements</option>
+            <option value="Company Policies">Company Policies</option>
           </select>
           {headingSaving && <span style={{ fontSize: "0.9rem", color: "#6b7b9b" }}>Saving...</span>}
         </div>
@@ -246,7 +247,7 @@ export default function AdminEventsPage() {
 
         <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", padding: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0, fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>Upcoming Events</h2>
+            <h2 style={{ margin: 0, fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>{widgetHeading}</h2>
             {loading && <span style={{ fontSize: "0.9rem", color: "#6b7b9b" }}>Loading...</span>}
           </div>
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>

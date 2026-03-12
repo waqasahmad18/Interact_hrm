@@ -413,8 +413,20 @@ export default function EmployeeTimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper}>
-              <table className={styles.breakSummaryTable}>
+            <div className={styles.breakSummaryTableWrapper} style={{
+              width: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              background: '#fff',
+              borderRadius: 12,
+              boxShadow: '0 2px 8px #e2e8f0',
+              padding: '0',
+              margin: '0',
+              border: '1px solid #e2e8f0',
+              scrollbarWidth: 'thin',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              <table className={styles.breakSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
                 <thead>
                 <tr>
                   <th>Id</th>
@@ -492,8 +504,20 @@ export default function EmployeeTimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper}>
-              <table className={styles.breakSummaryTable}>
+            <div className={styles.breakSummaryTableWrapper} style={{
+              width: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              background: '#fff',
+              borderRadius: 12,
+              boxShadow: '0 2px 8px #e2e8f0',
+              padding: '0',
+              margin: '0',
+              border: '1px solid #e2e8f0',
+              scrollbarWidth: 'thin',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              <table className={styles.breakSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
                 <thead>
                 <tr>
                   <th>Id</th>
@@ -571,8 +595,20 @@ export default function EmployeeTimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={attStyles.attendanceSummaryTableWrapper}>
-              <table className={attStyles.attendanceSummaryTable}>
+            <div className={attStyles.attendanceSummaryTableWrapper} style={{
+              width: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              background: '#fff',
+              borderRadius: 12,
+              boxShadow: '0 2px 8px #e2e8f0',
+              padding: '0',
+              margin: '0',
+              border: '1px solid #e2e8f0',
+              scrollbarWidth: 'thin',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              <table className={attStyles.attendanceSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
                 <thead>
                 <tr>
                   <th>Id</th>

@@ -456,10 +456,82 @@ export default function TimePage() {
     boxShadow: isActive ? "0 -2px 8px rgba(0,82,204,0.15)" : "none",
   });
 
+  // Sort/filter state for each table
+  const [breakSortKey, setBreakSortKey] = useState("");
+  const [breakSortDir, setBreakSortDir] = useState("asc");
+  const [prayerSortKey, setPrayerSortKey] = useState("");
+  const [prayerSortDir, setPrayerSortDir] = useState("asc");
+  const [attSortKey, setAttSortKey] = useState("");
+  const [attSortDir, setAttSortDir] = useState("asc");
+
+  // Icon helpers
+  const sortButtonStyle = { background: "none", border: "none", cursor: "pointer", padding: 0, margin: 0, color: "#fff" };
+  const getSortIcon = (dir: string) => dir === "asc" ? "▲" : "▼";
+  const renderHeaderCell = (label: string, key: string, sortKey: string, sortDir: string, setSortKey: any, setSortDir: any) => (
+    <div style={{ display: "grid", gridTemplateColumns: "28px 1fr", alignItems: "center", gap: 4, width: "100%" }}>
+      <button
+        type="button"
+        onClick={() => {
+          if (sortKey === key) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+          } else {
+            setSortKey(key);
+            setSortDir("asc");
+          }
+        }}
+        style={sortButtonStyle}
+        title={`Sort by ${label}`}
+      >
+        {sortKey === key ? getSortIcon(sortDir) : "⇅"}
+      </button>
+      <span>{label}</span>
+    </div>
+  );
+
+  // Sorting logic
+  // Improved sorting logic by column type
+  const sortRows = (rows: any[], key: string, dir: string) => {
+    if (!key) return rows;
+    return [...rows].sort((a, b) => {
+      let aVal = a[key] ?? "";
+      let bVal = b[key] ?? "";
+      // Numeric sort
+      if (["employee_id", "total_break_time_today", "total_prayer_time_today", "late", "late_minutes"].includes(key)) {
+        aVal = Number(aVal);
+        bVal = Number(bVal);
+        return dir === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      // Date sort
+      if (["date", "date_display", "break_start_display", "break_end_display", "prayer_start_display", "prayer_end_display", "clock_in", "clock_out"].includes(key)) {
+        const aDate = new Date(aVal);
+        const bDate = new Date(bVal);
+        return dir === "asc" ? aDate.getTime() - bDate.getTime() : bDate.getTime() - aDate.getTime();
+      }
+      // Duration sort (hh:mm:ss)
+      if (["total_break_time", "total_prayer_time", "total_hours"].includes(key)) {
+        const parseDuration = (val: string) => {
+          const match = val.match(/(\d+)h\s(\d+)m\s(\d+)s/);
+          if (!match) return 0;
+          return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+        };
+        aVal = parseDuration(aVal);
+        bVal = parseDuration(bVal);
+        return dir === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      // String sort (default)
+      return dir === "asc" ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+    });
+  };
+
+  // Sorted rows
+  const sortedBreakRows = sortRows(breakRows, breakSortKey, breakSortDir);
+  const sortedPrayerRows = sortRows(prayerRows, prayerSortKey, prayerSortDir);
+  const sortedAttendanceRows = sortRows(filteredAttendance, attSortKey, attSortDir);
+
   return (
     <LayoutDashboard>
       <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px' }}>
+        <div style={{ width: '100%', margin: 0, padding: 0 }}>
           <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
           <div style={{ ...tabStyles, borderBottom: 'none', color: '#fff' }}>
             <button style={{ ...tabButtonStyles(activeTab === "break"), color: '#fff' }} onClick={() => setActiveTab("break")}>Break Summary</button>
@@ -485,24 +557,24 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper}>
+            <div className={styles.breakSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
               <table className={styles.breakSummaryTable}>
                 <thead>
-                  <tr>
-                    <th>Id</th>
-                    <th>Full Name</th>
-                    <th>P.Name</th>
-                    <th>Department</th>
-                    <th>Date</th>
-                    <th>Break Start</th>
-                    <th>Break End</th>
-                    <th>Total Break Time</th>
-                    <th>Total Break</th>
-                    <th>Exceed</th>
+                  <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
+                    <th>{renderHeaderCell("Id", "employee_id", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Full Name", "employee_name", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("P.Name", "pseudonym", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Department", "department_name", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Date", "date_display", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Break Start", "break_start_display", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Break End", "break_end_display", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Total Break Time", "total_break_time", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Total Break", "total_break_time_today", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
+                    <th>{renderHeaderCell("Exceed", "exceed_today", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {breakRows.length === 0 ? (
+                  {sortedBreakRows.length === 0 ? (
                     <tr>
                       <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                     </tr>
@@ -510,11 +582,11 @@ export default function TimePage() {
                     (() => {
                       // Find last break index for each employee per attendance session
                       const lastIndexMap = new Map();
-                      breakRows.forEach((row, idx) => {
+                      sortedBreakRows.forEach((row, idx) => {
                         const key = getSessionGroupingKey(row, "break_start");
                         lastIndexMap.set(key, idx);
                       });
-                      return breakRows.map((b, idx) => {
+                      return sortedBreakRows.map((b, idx) => {
                         const key = getSessionGroupingKey(b, "break_start");
                         const isLast = lastIndexMap.get(key) === idx;
                         return (
@@ -559,24 +631,24 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper}>
+            <div className={styles.breakSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
               <table className={styles.breakSummaryTable}>
                 <thead>
-                  <tr>
-                    <th>Id</th>
-                    <th>Full Name</th>
-                    <th>P.Name</th>
-                    <th>Department</th>
-                    <th>Date</th>
-                    <th>Prayer Start</th>
-                    <th>Prayer End</th>
-                    <th>Total Prayer Time</th>
-                    <th>Total Prayer</th>
-                    <th>Exceed</th>
+                  <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
+                    <th>{renderHeaderCell("Id", "employee_id", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Full Name", "employee_name", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("P.Name", "pseudonym", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Department", "department_name", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Date", "date_display", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Prayer Start", "prayer_start_display", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Prayer End", "prayer_end_display", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Total Prayer Time", "total_prayer_time", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Total Prayer", "total_prayer_time_today", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
+                    <th>{renderHeaderCell("Exceed", "exceed_today", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {prayerRows.length === 0 ? (
+                  {sortedPrayerRows.length === 0 ? (
                     <tr>
                       <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                     </tr>
@@ -584,11 +656,11 @@ export default function TimePage() {
                     (() => {
                       // Find last prayer break index for each employee per attendance session
                       const lastIndexMap = new Map();
-                      prayerRows.forEach((row, idx) => {
+                      sortedPrayerRows.forEach((row, idx) => {
                         const key = getSessionGroupingKey(row, "prayer_break_start");
                         lastIndexMap.set(key, idx);
                       });
-                      return prayerRows.map((p, idx) => {
+                      return sortedPrayerRows.map((p, idx) => {
                         const key = getSessionGroupingKey(p, "prayer_break_start");
                         const isLast = lastIndexMap.get(key) === idx;
                         return (
@@ -633,28 +705,28 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={attStyles.attendanceSummaryTableWrapper}>
+            <div className={attStyles.attendanceSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
               <table className={attStyles.attendanceSummaryTable}>
                 <thead>
-                    <tr>
-                    <th>Id</th>
-                    <th>Full Name</th>
-                    <th>P.Name</th>
-                    <th>Department</th>
-                    <th>Date</th>
-                    <th>Clock In</th>
-                    <th>Clock Out</th>
-                    <th>Total Hours</th>
-                    <th>Late</th>
+                  <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
+                    <th>{renderHeaderCell("Id", "employee_id", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Full Name", "employee_name", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("P.Name", "pseudonym", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Department", "department_name", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Date", "date", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Clock In", "clock_in", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Clock Out", "clock_out", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Total Hours", "total_hours", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
+                    <th>{renderHeaderCell("Late", "late", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAttendance.length === 0 ? (
+                  {sortedAttendanceRows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
                     </tr>
                   ) : (
-                    filteredAttendance.map((a, idx) => (
+                    sortedAttendanceRows.map((a, idx) => (
                       <tr key={a.id || idx}>
                         <td>{a.employee_id}</td>
                         <td>{a.employee_name || ""}</td>

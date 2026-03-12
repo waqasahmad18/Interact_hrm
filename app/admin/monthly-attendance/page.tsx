@@ -82,7 +82,9 @@ export default function MonthlyAttendancePage() {
   function calculateOvertime(totalSeconds: number, assignedShiftSeconds: number | null): number | null {
     if (!assignedShiftSeconds || assignedShiftSeconds <= 0) return null;
     const overtime = totalSeconds - assignedShiftSeconds;
-    return overtime > 0 ? overtime : 0;
+    // Only count/show overtime if >= 45 minutes (2700 seconds)
+    if (overtime >= 2700) return overtime;
+    return null;
   }
 
   function formatDurationHM(seconds: number | null) {
@@ -818,7 +820,8 @@ export default function MonthlyAttendancePage() {
     let totalSeconds = 0;
     Object.values(emp.byDate).forEach((records) => {
       (records as any[]).forEach((record) => {
-        if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
+        // Only add overtime if >= 45 min (2700 sec)
+        if (record.overtime && typeof record.overtime === 'number' && record.overtime >= 2700) {
           totalSeconds += record.overtime;
         }
       });

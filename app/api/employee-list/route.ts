@@ -20,19 +20,21 @@ export async function GET(req: NextRequest) {
     let params: any[] = [];
     if (departmentId) {
       query = `
-        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, e.pseudonym, d.name AS department_name
+        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, e.pseudonym, d.name AS department_name, ec.phone_mobile, ec.email_other, ec.email_work
         FROM hrm_employees e
         LEFT JOIN employee_jobs j ON e.id = j.employee_id
         LEFT JOIN departments d ON j.department_id = d.id
+        LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
         WHERE j.department_id = ?
       `;
       params.push(departmentId);
     } else {
       query = `
-        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, e.pseudonym, d.name AS department_name
+        SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, e.pseudonym, d.name AS department_name, ec.phone_mobile, ec.email_other, ec.email_work
         FROM hrm_employees e
         LEFT JOIN employee_jobs j ON e.id = j.employee_id
         LEFT JOIN departments d ON j.department_id = d.id
+        LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
         ORDER BY e.id DESC
       `;
     }

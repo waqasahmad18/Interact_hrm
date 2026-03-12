@@ -16,7 +16,7 @@
   overflow-x: auto;
 }
 .attendanceSummaryTable {
-  min-width: 900px;
+  min-width: 1400px;
   width: 100%;
 }
 
@@ -116,7 +116,6 @@
 .attendanceSummaryTableWrapper {
   overflow-x: auto;
   border-radius: 10px;
-  overflow: hidden;
   box-shadow: 0 2px 12px rgba(0,82,204,0.08);
 }
 

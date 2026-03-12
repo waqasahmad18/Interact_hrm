@@ -88,62 +88,38 @@ export default function ManageAttendancePage() {
       .catch(err => console.error('Error fetching departments:', err));
   }, []);
 
-  // Fetch attendance records
+  // Fetch attendance records from /api/attendance (like /time page)
   const fetchAttendance = () => {
     setLoading(true);
     let url = "/api/attendance";
     const params = new URLSearchParams();
-    
     if (fromDate) params.append("fromDate", fromDate);
     if (toDate) params.append("toDate", toDate);
-    
     if (params.toString()) url += `?${params.toString()}`;
-    
     fetch(url)
       .then(res => res.json())
-      .then(async data => {
+      .then(data => {
         if (data.success) {
           let records = data.attendance || [];
-          
           // Filter by name if search is active
           if (searchName) {
             records = records.filter((r: AttendanceRecord) =>
               r.employee_name?.toLowerCase().includes(searchName.toLowerCase())
             );
           }
-          
           // Filter by department if selected
           if (selectedDepartment) {
             records = records.filter((r: AttendanceRecord) =>
               r.department_name === selectedDepartment
             );
           }
-          
-          // Fetch employee list to enrich with pseudonym and department
-          const empListRes = await fetch("/api/employee-list");
-          const empListData = await empListRes.json();
-          const empMap = new Map();
-          if (empListData.success) {
-            empListData.employees.forEach((emp: any) => {
-              empMap.set(emp.id.toString(), {
-                pseudonym: emp.pseudonym || '-',
-                department_name: emp.department_name || '-'
-              });
-            });
-          }
-          
-          // Enrich records with pseudonym and department
-          const enrichedRecords = records.map((r: AttendanceRecord) => {
-            const empData = empMap.get(r.employee_id);
-            return {
-              ...r,
-              pseudonym: empData?.pseudonym || '-',
-              department_name: empData?.department_name || '-',
-              isEditing: false
-            };
-          });
-          
-          setAttendance(enrichedRecords);
+          // Format date to remove time portion
+          records = records.map((r: AttendanceRecord) => ({
+            ...r,
+            date: r.date ? r.date.split("T")[0] : "",
+            isEditing: false
+          }));
+          setAttendance(records);
         } else {
           setAttendance([]);
         }
@@ -524,7 +500,7 @@ export default function ManageAttendancePage() {
         </div>
 
         {/* Table */}
-        <div className={styles.attendanceSummaryTableWrapper}>
+        <div className={styles.attendanceSummaryTableWrapper} style={{ width: "980px", overflowX: "auto" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
               Loading...
