@@ -41,21 +41,25 @@ export async function POST(req: Request) {
       end_at = null,
       is_all_day = false,
       location = null,
-      status = "published"
+      status = "published",
+      widget_heading
     } = body;
 
     if (!title || !start_at) {
       return NextResponse.json({ success: false, error: "title and start_at are required" }, { status: 400 });
     }
 
-    // Get current widget heading
-    const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
-    const headingArray = headingResult as any[];
-    const currentHeading = headingArray && headingArray.length > 0 ? headingArray[0].widget_heading : "Upcoming Events";
+    // Use widget_heading from request if provided, else get from database
+    let headingToUse = widget_heading;
+    if (!headingToUse) {
+      const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
+      const headingArray = headingResult as any[];
+      headingToUse = headingArray && headingArray.length > 0 ? headingArray[0].widget_heading : "Upcoming Events";
+    }
 
     const result: any = await query(
       "INSERT INTO upcoming_events (title, description, start_at, end_at, is_all_day, location, status, widget_heading) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status, currentHeading]
+      [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status, headingToUse]
     );
 
     const inserted = (await query(

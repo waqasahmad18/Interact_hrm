@@ -1,5 +1,39 @@
 "use client";
 import React from "react";
+// Company Policy widget/modal
+function CompanyPolicyWidget() {
+  const [policies, setPolicies] = React.useState<any[]>([]);
+  const [modalOpen, setModalOpen] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    fetch("/api/company-policies", { cache: "no-store" })
+      .then(res => res.json())
+      .then(data => setPolicies(Array.isArray(data.policies) ? data.policies : []));
+  }, []);
+  if (!policies.length) return null;
+  return (
+    <div style={{ marginTop: 24, marginBottom: 0, padding: 0, width: "100%", textAlign: "left", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+      <div style={{ fontWeight: 700, fontSize: "1.08rem", color: "#3e2b5c", marginBottom: 6 }}>Company Policies</div>
+      {policies.map(policy => (
+        <div key={policy.id} style={{ marginBottom: 18, background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
+          <div style={{ color: "#4a5775", fontSize: "1rem", marginBottom: 2, fontWeight: 600 }}>{policy.heading}</div>
+          <div style={{ color: "#4a5775", fontSize: "0.97rem", minHeight: 32 }}>{policy.description.length > 80 ? policy.description.slice(0, 80) + "..." : policy.description}</div>
+          <div style={{ marginTop: 8 }}>
+            <a href="#" style={{ color: "#1853b3", fontSize: "0.97rem", textDecoration: "underline", fontWeight: 600 }} onClick={e => { e.preventDefault(); setModalOpen(policy.id); }}>Read Full Policy</a>
+          </div>
+          {modalOpen === policy.id && (
+            <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(15,29,64,0.18)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 24px 64px rgba(30,78,170,0.18)", padding: 36, width: 540, height: 420, overflowY: "auto", position: "relative", border: "1px solid #e7e7ff", display: "flex", flexDirection: "column" }}>
+                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: "#1853b3", marginBottom: 16, letterSpacing: 0.5 }}>{policy.heading}</div>
+                <div style={{ color: "#4a5775", fontSize: "1.07rem", lineHeight: 1.7, marginBottom: 28, flex: 1 }}>{policy.description}</div>
+                <button onClick={() => setModalOpen(null)} style={{ position: "absolute", top: 18, right: 18, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40", border: "none", borderRadius: 10, padding: "10px 22px", fontWeight: 700, cursor: "pointer", fontSize: "1rem", boxShadow: "0 4px 16px rgba(30,78,170,0.10)" }}>Close</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
 
 export default function EmployeeDashboardPage() {
@@ -235,11 +269,13 @@ export default function EmployeeDashboardPage() {
                 <div key={ev.id} style={{ background: "#ffffff", borderRadius: 12, padding: 10, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
                   <div style={{ fontWeight: 700, color: "#1a2550", marginBottom: 4 }}>{ev.title}</div>
                   <div style={{ fontSize: "0.95rem", color: "#4a5775" }}>{new Date(ev.start_at).toLocaleString()}</div>
-                  {ev.end_at && <div style={{ fontSize: "0.9rem", color: "#7b86a3", marginTop: 2 }}>Ends: {new Date(ev.end_at).toLocaleString()}</div>}
+                  {/* End date removed as requested */}
                   {ev.location && <div style={{ fontSize: "0.9rem", color: "#7b86a3", marginTop: 2 }}>Location: {ev.location}</div>}
                   {ev.description && <div style={{ fontSize: "0.9rem", color: "#4a5775", marginTop: 4 }}>{ev.description}</div>}
                 </div>
               ))}
+              {/* Company Policy widget at bottom, aligned and styled */}
+              <CompanyPolicyWidget />
             </div>
           </div>
         </div>

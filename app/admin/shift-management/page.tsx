@@ -859,7 +859,7 @@ export default function ShiftManagementPage() {
           <table className={styles.employeeTable}>
             <thead>
               <tr>
-                <th>Employee ID</th>
+                <th>ID</th>
                 <th>Name</th>
                 <th>Pseudonym</th>
                 <th>Department</th>
