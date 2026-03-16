@@ -11,27 +11,36 @@ function CompanyPolicyWidget() {
   }, []);
   if (!policies.length) return null;
   return (
-    <div style={{ marginTop: 24, marginBottom: 0, padding: 18, width: "100%", textAlign: "left", background: "#fff", borderRadius: 12, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
-      <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#3e2b5c", marginBottom: 10 }}>Company Policies</div>
-      {policies.map(policy => (
-        <div key={policy.id} style={{ marginBottom: 18 }}>
-          <div style={{ color: "#4a5775", fontSize: "1rem", marginBottom: 2, fontWeight: 600 }}>{policy.heading}</div>
-          <div style={{ color: "#4a5775", fontSize: "0.97rem", minHeight: 32 }}>{policy.description.length > 80 ? policy.description.slice(0, 80) + "..." : policy.description}</div>
-          <div style={{ marginTop: 8 }}>
-            <a href="#" style={{ color: "#1853b3", fontSize: "0.97rem", textDecoration: "underline", fontWeight: 600 }} onClick={e => { e.preventDefault(); setModalOpen(policy.id); }}>Read Full Policy</a>
-          </div>
-          {modalOpen === policy.id && (
-            <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(15,29,64,0.18)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 24px 64px rgba(30,78,170,0.18)", padding: 36, width: 540, height: 420, overflowY: "auto", position: "relative", border: "1px solid #e7e7ff", display: "flex", flexDirection: "column" }}>
-                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: "#1853b3", marginBottom: 16, letterSpacing: 0.5 }}>{policy.heading}</div>
-                <div style={{ color: "#4a5775", fontSize: "1.07rem", lineHeight: 1.7, marginBottom: 28, flex: 1 }}>{policy.description}</div>
-                <button onClick={() => setModalOpen(null)} style={{ position: "absolute", top: 18, right: 18, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40", border: "none", borderRadius: 10, padding: "10px 22px", fontWeight: 700, cursor: "pointer", fontSize: "1rem", boxShadow: "0 4px 16px rgba(30,78,170,0.10)" }}>Close</button>
+    <>
+      <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#3e2b5c", marginBottom: 10, marginLeft: 2 }}>Company Policies</div>
+      <div style={{ padding: 18, width: "100%", textAlign: "left", background: "#fff", borderRadius: 12, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
+        {policies.map(policy => {
+          const showReadMore = policy.description && policy.description.length > 80;
+          return (
+            <div key={policy.id} style={{ marginBottom: 18 }}>
+              <div style={{ color: "#4a5775", fontSize: "1rem", marginBottom: 2, fontWeight: 600 }}>{policy.heading}</div>
+              <div style={{ color: "#4a5775", fontSize: "0.97rem", minHeight: 32 }}>
+                {showReadMore ? policy.description.slice(0, 80) + "..." : policy.description}
               </div>
+              {showReadMore && (
+                <div style={{ marginTop: 8 }}>
+                  <a href="#" style={{ color: "#1853b3", fontSize: "0.97rem", textDecoration: "underline", fontWeight: 600 }} onClick={e => { e.preventDefault(); setModalOpen(policy.id); }}>Read more...</a>
+                </div>
+              )}
+              {modalOpen === policy.id && (
+                <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(15,29,64,0.18)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 24px 64px rgba(30,78,170,0.18)", padding: 36, width: 540, height: 420, overflowY: "auto", position: "relative", border: "1px solid #e7e7ff", display: "flex", flexDirection: "column" }}>
+                    <div style={{ fontWeight: 700, fontSize: "1.25rem", color: "#1853b3", marginBottom: 16, letterSpacing: 0.5 }}>{policy.heading}</div>
+                    <div style={{ color: "#4a5775", fontSize: "1.07rem", lineHeight: 1.7, marginBottom: 28, flex: 1 }}>{policy.description}</div>
+                    <button onClick={() => setModalOpen(null)} style={{ position: "absolute", top: 18, right: 18, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40", border: "none", borderRadius: 10, padding: "10px 22px", fontWeight: 700, cursor: "pointer", fontSize: "1rem", boxShadow: "0 4px 16px rgba(30,78,170,0.10)" }}>Close</button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ))}
-    </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";

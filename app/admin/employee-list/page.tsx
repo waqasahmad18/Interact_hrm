@@ -301,7 +301,70 @@ export default function EmployeeListStyledPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.breakSummaryContainer}>
+      <div className={styles.breakSummaryContainer} style={{ position: 'relative' }}>
+              {/* Floating beautiful 3 dots icon button for column menu */}
+              <button
+                id="dropdown-menu-dots"
+                style={{
+                  position: 'absolute',
+                  top: 18,
+                  right: 24,
+                  zIndex: 200,
+                  background: 'white',
+                  border: '1.5px solid #e2e8f0',
+                  borderRadius: '50%',
+                  width: 44,
+                  height: 44,
+                  boxShadow: '0 2px 8px rgba(0,82,204,0.10)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'box-shadow 0.2s',
+                }}
+                title="Show/Hide Columns"
+                onClick={() => setDropdownOpen(open => !open)}
+              >
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="7" cy="14" r="2.5" fill="#0052CC" />
+                  <circle cx="14" cy="14" r="2.5" fill="#0052CC" />
+                  <circle cx="21" cy="14" r="2.5" fill="#0052CC" />
+                </svg>
+              </button>
+              {dropdownOpen && (
+                <div id="dropdown-menu-actions" style={{
+                  position: 'absolute',
+                  top: 70,
+                  right: 24,
+                  background: '#f8fafc',
+                  borderRadius: 14,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                  border: '1px solid #e2e8f0',
+                  padding: '12px 18px',
+                  zIndex: 300,
+                  minWidth: 180,
+                  minHeight: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  color: '#222',
+                  fontWeight: 500,
+                  fontSize: '0.92rem',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderRadius: 5, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                    <input type="checkbox" checked={showPhone} onChange={() => setShowPhone(v => !v)} style={{ accentColor: '#0052CC', width: 15, height: 15 }} />
+                    <span style={{ color: '#222', fontSize: '0.92rem' }}>Phone #</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderRadius: 5, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                    <input type="checkbox" checked={showPersonalEmail} onChange={() => setShowPersonalEmail(v => !v)} style={{ accentColor: '#0052CC', width: 15, height: 15 }} />
+                    <span style={{ color: '#222', fontSize: '0.92rem' }}>Personal Email</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderRadius: 5, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                    <input type="checkbox" checked={showProfessionalEmail} onChange={() => setShowProfessionalEmail(v => !v)} style={{ accentColor: '#0052CC', width: 15, height: 15 }} />
+                    <span style={{ color: '#222', fontSize: '0.92rem' }}>Professional Email</span>
+                  </label>
+                </div>
+              )}
         <div className={styles.breakSummaryHeader}>Employee List</div>
 
         <div className={styles.breakSummaryFilters} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -398,69 +461,28 @@ export default function EmployeeListStyledPage() {
                 {showPersonalEmail && <th style={{ maxWidth: 120, width: 120, fontSize: '0.95rem' }}>P.Email</th>}
                 {showProfessionalEmail && <th style={{ maxWidth: 120, width: 120, fontSize: '0.95rem' }}>Prof Email</th>}
                 <th>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, position: "relative" }}>
-                    <span>Actions</span>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-                      style={{
-                        fontSize: "0.72rem",
-                        borderRadius: 4,
-                        border: "1px solid rgba(255,255,255,0.45)",
-                        background: "rgba(255,255,255,0.18)",
-                        color: "#fff",
-                        padding: "2px 4px",
-                      }}
-                      title="Filter by status"
-                    >
-                      <option value="all" style={{ color: "#0f1d40" }}>All</option>
-                      <option value="active" style={{ color: "#0f1d40" }}>Active</option>
-                      <option value="inactive" style={{ color: "#0f1d40" }}>Inactive</option>
-                    </select>
-                    {/* Three-dot menu icon */}
-                    <div id="dropdown-menu-dots" style={{ marginLeft: 8, cursor: "pointer", display: "flex", alignItems: "center" }} title="More actions" onClick={() => setDropdownOpen(open => !open)}>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="5" cy="12" r="2" fill="#fff" />
-                        <circle cx="12" cy="12" r="2" fill="#fff" />
-                        <circle cx="19" cy="12" r="2" fill="#fff" />
-                      </svg>
-                    </div>
-                    {dropdownOpen && (
-                      <div id="dropdown-menu-actions" style={{
-                        position: "absolute",
-                        top: 28,
-                        right: 0,
-                        background: "#f8fafc",
-                        borderRadius: 12,
-                        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                        border: "1px solid #e2e8f0",
-                        padding: "18px 28px",
-                        zIndex: 100,
-                        minWidth: 220,
-                        minHeight: 40,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 16,
-                        color: "#222",
-                        fontWeight: 500,
-                        fontSize: "1.05rem"
-                      }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 12, padding: '6px 0', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                          <input type="checkbox" checked={showPhone} onChange={() => setShowPhone(v => !v)} style={{ accentColor: '#0052CC', width: 18, height: 18 }} />
-                          <span style={{ color: '#222', fontSize: '1rem' }}>Phone #</span>
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 12, padding: '6px 0', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                          <input type="checkbox" checked={showPersonalEmail} onChange={() => setShowPersonalEmail(v => !v)} style={{ accentColor: '#0052CC', width: 18, height: 18 }} />
-                          <span style={{ color: '#222', fontSize: '1rem' }}>Personal Email</span>
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 12, padding: '6px 0', borderRadius: 6, cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#e9ecef'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                          <input type="checkbox" checked={showProfessionalEmail} onChange={() => setShowProfessionalEmail(v => !v)} style={{ accentColor: '#0052CC', width: 18, height: 18 }} />
-                          <span style={{ color: '#222', fontSize: '1rem' }}>Proffessional Email</span>
-                        </label>
-                      </div>
-                    )}
-                  </div>
+                  <span>Actions</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+                    style={{
+                      fontSize: "0.72rem",
+                      borderRadius: 4,
+                      border: "1px solid rgba(255,255,255,0.45)",
+                      background: "rgba(255,255,255,0.18)",
+                      color: "#fff",
+                      padding: "2px 4px",
+                      marginLeft: 10,
+                    }}
+                    title="Filter by status"
+                  >
+                    <option value="all" style={{ color: "#0f1d40" }}>All</option>
+                    <option value="active" style={{ color: "#0f1d40" }}>Active</option>
+                    <option value="inactive" style={{ color: "#0f1d40" }}>Inactive</option>
+                  </select>
                 </th>
+                    {/* Floating 3 dots menu at top right of card */}
+                    {/* Removed duplicate dropdown menu and trigger from inside the table */}
               </tr>
             </thead>
             <tbody>

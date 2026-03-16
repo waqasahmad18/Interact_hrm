@@ -25,6 +25,7 @@ const sidebarLinks = [
 					{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
 					{ name: "Manage Leave", path: "/admin/manage-leaves", icon: <FaEdit /> },
 					{ name: "Calendar", path: "/admin/calendar", icon: <FaCalendarAlt /> },
+					{ name: "Leave Summary", path: "/admin/monthly-leave-summary", icon: <FaClipboardList /> },
 				]
 			},
 			{
@@ -279,7 +280,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: ptoDropdownOpen ? 120 : 0,
+														maxHeight: ptoDropdownOpen ? 200 : 0,
 														opacity: ptoDropdownOpen ? 1 : 0,
 														marginBottom: ptoDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
