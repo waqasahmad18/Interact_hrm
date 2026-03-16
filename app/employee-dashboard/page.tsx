@@ -11,10 +11,10 @@ function CompanyPolicyWidget() {
   }, []);
   if (!policies.length) return null;
   return (
-    <div style={{ marginTop: 24, marginBottom: 0, padding: 0, width: "100%", textAlign: "left", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-      <div style={{ fontWeight: 700, fontSize: "1.08rem", color: "#3e2b5c", marginBottom: 6 }}>Company Policies</div>
+    <div style={{ marginTop: 24, marginBottom: 0, padding: 18, width: "100%", textAlign: "left", background: "#fff", borderRadius: 12, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
+      <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#3e2b5c", marginBottom: 10 }}>Company Policies</div>
       {policies.map(policy => (
-        <div key={policy.id} style={{ marginBottom: 18, background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
+        <div key={policy.id} style={{ marginBottom: 18 }}>
           <div style={{ color: "#4a5775", fontSize: "1rem", marginBottom: 2, fontWeight: 600 }}>{policy.heading}</div>
           <div style={{ color: "#4a5775", fontSize: "0.97rem", minHeight: 32 }}>{policy.description.length > 80 ? policy.description.slice(0, 80) + "..." : policy.description}</div>
           <div style={{ marginTop: 8 }}>
