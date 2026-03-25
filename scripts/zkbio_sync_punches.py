@@ -500,8 +500,24 @@ def main() -> int:
         "password": os.environ.get("DB_PASSWORD", ""),
         "database": os.environ.get("DB_NAME", "interact_hrm"),
     }
+    socket_path = os.environ.get("DB_SOCKET_PATH", "").strip()
+    if socket_path:
+        # Ubuntu root often uses auth_socket/unix_socket; connect through local socket.
+        db_cfg["unix_socket"] = socket_path
+        db_cfg.pop("host", None)
+        db_cfg.pop("port", None)
 
-    conn = mysql.connector.connect(**db_cfg)
+    try:
+        conn = mysql.connector.connect(**db_cfg)
+    except mysql.connector.Error as e:
+        if getattr(e, "errno", None) == 1698:
+            print(
+                "MySQL auth failed (1698): root@localhost is likely socket-auth on Ubuntu.\n"
+                "Set DB_SOCKET_PATH=/var/run/mysqld/mysqld.sock in scripts/zkbio-sync.local.env\n"
+                "and run the script with sudo, or use a dedicated DB user/password.",
+                file=sys.stderr,
+            )
+        raise
     cur = conn.cursor()
 
     start_str, end_str, window_mode = resolve_sync_window(cur, args, sync_since)
