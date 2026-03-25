@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { fetchAdvanceSalary } from "./advanceSalaryUtils";
+import { fetchLoanSalary } from "./loanSalaryUtils";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
@@ -691,6 +693,14 @@ export default function MonthlyAttendancePage() {
   // New logic: Always show all employees from DB, merge attendance if present
   const [allEmployees, setAllEmployees] = React.useState<any[]>([]);
   const [salaryMap, setSalaryMap] = React.useState<Record<string, number>>({});
+  const [advanceSalaryMap, setAdvanceSalaryMap] = React.useState<Record<string, number>>({});
+  const [loanSalaryMap, setLoanSalaryMap] = React.useState<Record<string, number>>({});
+  // Fetch advance salary for selected month
+  React.useEffect(() => {
+    if (!selectedMonth) return;
+    fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
+    fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
+  }, [selectedMonth]);
 
   // Fetch all employees and their salary (amount, any component)
   React.useEffect(() => {
@@ -856,6 +866,15 @@ export default function MonthlyAttendancePage() {
     return value.toFixed(2).replace(/\.00$/, "");
   }
 
+  // Display helper: add thousand separators (e.g. 1,000 / 10,000)
+  function formatWithCommas(value: any) {
+    if (value === null || value === undefined || value === "--" || value === "") return "--";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value);
+    if (Number.isInteger(n)) return n.toLocaleString("en-US");
+    return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+
   function getCommissionAmount(employeeId: string | number, field: CommissionAmountField): number | null {
     const commissionData = commissionsMap[String(employeeId)];
     if (!commissionData) return null;
@@ -905,6 +924,30 @@ export default function MonthlyAttendancePage() {
       (floorIncentive ?? 0);
 
     return formatAmountValue(grossSalary);
+  }
+
+  // Calculate Unpaid Days Salary for an employee
+  // Developer (P.Name = 'Developer') ki shift 5 hours ki hai, baqi sab ki 9 hours ki hai.
+  function getUnpaidDaysSalary(employee: any) {
+    const basicSalary = Number(employee.basicSalary ?? 0);
+    const totalWorkingDays = Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : 0;
+    // Unpaid days = totalDeduction / 100
+    const unpaidDays = Object.keys(employee.byDate).length > 0 ? (calculateTotalDeduction(employee) / 100) : 0;
+    // Working hours per day logic:
+    // Agar employee ka pseudonym (P.Name) 'Developer' hai to shift 5 hours ki hai.
+    // Baqi sab employees ki shift 9 hours ki hai.
+    let workingHoursPerDay = 9;
+    if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
+      workingHoursPerDay = 5;
+    }
+    // Formula: Daily Salary = Basic Salary / Total Working Days
+    // Unpaid Days Salary = Daily Salary * Unpaid Days
+    if (basicSalary > 0 && totalWorkingDays > 0 && unpaidDays > 0) {
+      const dailySalary = basicSalary / totalWorkingDays;
+      const unpaidDaysSalary = dailySalary * unpaidDays;
+      return Math.round(unpaidDaysSalary).toString();
+    }
+    return '--';
   }
 
   // Filter attendanceByEmployee for table and export
@@ -1009,9 +1052,9 @@ export default function MonthlyAttendancePage() {
 
         <div style={{ marginTop: 40, position: 'relative', width: '100%', maxWidth: '100%', minWidth: 0 }}>
           <h3 style={{ color: '#22223B', marginBottom: 10 }}>{monthInfo.label && `Payroll for ${monthInfo.label}`}</h3>
-          <div style={{ overflowX: 'auto', overflowY: 'visible', border: '1px solid #e2e8f0', borderRadius: 8, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-          <table style={{ width: '1900px', tableLayout: 'auto', borderRadius: 8, background: 'linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)', color: '#fff', borderCollapse: 'collapse' }}>
-            <thead style={{ position: 'sticky', top: 0 }}>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh', border: '1px solid #e2e8f0', borderRadius: 8, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+          <table className={styles.payrollStickyHeaderTable} style={{ width: '1900px', tableLayout: 'auto', borderRadius: 8, background: '#fff', color: '#fff', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 12 }}>
               <tr>
                 <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '50px' }}>ID</th>
                 <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '140px' }}>Employee Name</th>
@@ -1030,35 +1073,65 @@ export default function MonthlyAttendancePage() {
                 <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Trainer Incentive</th>
                 <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Floor Incentive</th>
                 <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Gross Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Unpaid Days Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Break Exceed Ded.</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>KPIs Ded.</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Other Ded (fine,etc.)</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Loan/Advance</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Total Deductions</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '140px' }}>Net. Salary before Tax</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>Tax</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Net Salary</th>
+                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Final Salary</th>
               </tr>
             </thead>
             <tbody style={{ background: '#fff', color: '#22223B' }}>
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
+                  const advSalary = advanceSalaryMap[employee.employeeId];
+                  const loanSalary = loanSalaryMap[employee.employeeId];
+                  const adv = Number(advSalary ?? 0);
+                  const loan = Number(loanSalary ?? 0);
+                  const hasAdv = advSalary !== undefined && Number.isFinite(adv);
+                  const hasLoan = loanSalary !== undefined && Number.isFinite(loan);
+                  const loanAdvanceValue =
+                    hasAdv || hasLoan
+                      ? (hasAdv ? adv : 0) + (hasLoan ? loan : 0)
+                      : "--";
                   return (
                     <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
                       <td style={{ padding: '10px 8px', width: '50px' }}>{employee.employeeId}</td>
                       <td style={{ padding: '10px 8px', width: '140px' }}>{employee.employeeName}</td>
                       <td style={{ padding: '10px 8px', width: '100px' }}>{employee.pseudonym}</td>
                       <td style={{ padding: '10px 8px', width: '110px' }}>{employee.departmentName}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{employee.basicSalary !== undefined ? employee.basicSalary : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{employee.basicSalary !== undefined ? formatWithCommas(employee.basicSalary) : '--'}</td>
                       <td style={{ padding: '10px 8px', width: '80px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '90px' }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '90px' }}>{getEmployeeOTSalary(employee)}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{getCommissionDisplay(employee.employeeId, "train_6h_amt")}</td>
-                      <td style={{ padding: '10px 8px', width: '90px' }}>{getCommissionDisplay(employee.employeeId, "arrears")}</td>
-                      <td style={{ padding: '10px 8px', width: '80px' }}>{getCommissionDisplay(employee.employeeId, "kpi_add")}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{getCommissionDisplay(employee.employeeId, "commission")}</td>
-                      <td style={{ padding: '10px 8px', width: '160px' }}>{getCommissionDisplay(employee.employeeId, "existing_client_incentive")}</td>
-                      <td style={{ padding: '10px 8px', width: '120px' }}>{getCommissionDisplay(employee.employeeId, "trainer_incentive")}</td>
-                      <td style={{ padding: '10px 8px', width: '110px' }}>{getCommissionDisplay(employee.employeeId, "floor_incentive")}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{getEmployeeGrossSalary(employee)}</td>
+                      <td style={{ padding: '10px 8px', width: '100px', color: '#FF1F1F', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
+                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getEmployeeOTSalary(employee))}</td>
+                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "train_6h_amt"))}</td>
+                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "arrears"))}</td>
+                      <td style={{ padding: '10px 8px', width: '80px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "kpi_add"))}</td>
+                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "commission"))}</td>
+                      <td style={{ padding: '10px 8px', width: '160px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "existing_client_incentive"))}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "trainer_incentive"))}</td>
+                      <td style={{ padding: '10px 8px', width: '110px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "floor_incentive"))}</td>
+                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getEmployeeGrossSalary(employee))}</td>
+                      <td style={{ padding: '10px 8px', width: '110px', color: '#FF1F1F', fontWeight: 600 }}>{formatWithCommas(getUnpaidDaysSalary(employee))}</td>
+                      <td style={{ padding: '10px 8px', width: '110px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '90px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{formatWithCommas(loanAdvanceValue)}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '140px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '80px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{'--'}</td>
                     </tr>
                   );
                 })
               ) : (
-                <tr><td colSpan={17} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
+                <tr><td colSpan={27} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
               )}
             </tbody>
           </table>
@@ -1068,3 +1141,4 @@ export default function MonthlyAttendancePage() {
     </LayoutDashboard>
   );
 }
+

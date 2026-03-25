@@ -201,7 +201,8 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 0;
+  padding: 0 0 32px 0;
+  box-sizing: border-box;
 }
 
     .navItem {
@@ -327,3 +328,19 @@
       box-shadow: 0 2px 8px rgba(44,62,80,0.10);
     }
   }
+
+.contentAreaTimePage {
+  background: linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%) !important;
+}
+
+.mainTimePage {
+  background: linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%) !important;
+}
+
+.contentAreaEmployeeCredentialsPage {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.mainEmployeeCredentialsPage {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}

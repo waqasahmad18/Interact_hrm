@@ -291,9 +291,9 @@ export default function ManageLeavesPage() {
           </p>
         </div>
 
-        <div className={styles.tableContainer}>
+        <div className={styles.tableContainer} style={{ overflowY: "auto", maxHeight: "74vh" }}>
           <table className={styles.table}>
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
               <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
                 <th style={thStyle}>{renderSortableHeader("Id", "id")}</th>
                 <th style={thStyle}>{renderSortableHeader("Full Name", "full_name")}</th>

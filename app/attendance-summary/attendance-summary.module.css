@@ -171,6 +171,83 @@
   border-bottom: none !important;
 }
 
+.payrollStickyHeaderTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: #0052CC !important;
+}
+
+.payrollStickyHeaderTable th {
+  position: sticky;
+  top: 0;
+  z-index: 13;
+  background: #0052CC !important;
+  color: #fff !important;
+}
+
+.manageBreaksStickyTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: linear-gradient(135deg, #0052CC 0%, #00B8A9 100%) !important;
+}
+
+.manageBreaksStickyTable {
+  min-width: 100% !important;
+  width: 100% !important;
+}
+
+.manageBreaksStickyTable th {
+  position: static;
+  background: transparent !important;
+}
+
+.manageBreaksTableWrapper {
+  max-height: 74vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+.manageAttendanceTableWrapper {
+  max-height: 74vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+.manageAttendanceStickyTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: linear-gradient(135deg, #0052CC 0%, #00B8A9 100%) !important;
+}
+
+.manageAttendanceStickyTable th {
+  position: static;
+  background: transparent !important;
+}
+
+.timeAttendanceTableWrapper {
+  max-height: 74vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+.timeAttendanceStickyTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: linear-gradient(135deg, #0052CC 0%, #00B8A9 100%) !important;
+}
+
+.timeAttendanceStickyTable th {
+  position: static;
+  background: transparent !important;
+}
+
 .attendanceSummaryNoRecords {
   text-align: center;
   color: var(--color-text-secondary);

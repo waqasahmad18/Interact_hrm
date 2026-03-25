@@ -583,13 +583,13 @@ export default function ManageBreaksPage() {
         </div>
 
         {/* Table */}
-        <div className={styles.attendanceSummaryTableWrapper}>
+        <div className={`${styles.attendanceSummaryTableWrapper} ${styles.manageBreaksTableWrapper}`}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
               Loading...
             </div>
           ) : (
-            <table className={styles.attendanceSummaryTable}>
+            <table className={`${styles.attendanceSummaryTable} ${styles.manageBreaksStickyTable}`}>
               <thead>
                 <tr>
                   <th>Id</th>

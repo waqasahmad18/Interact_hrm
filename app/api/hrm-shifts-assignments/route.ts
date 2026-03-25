@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
 
     if (employeeId) {
       // Get specific employee's shift assignment
-      const result = (await query(
+      const [result] = (await query(
         `SELECT 
           sa.id,
           sa.employee_id,
@@ -28,12 +28,14 @@ export async function GET(req: NextRequest) {
         ORDER BY sa.assigned_date DESC
         LIMIT 1`,
         [employeeId]
-      )) as any[];
+      )) as any;
       return NextResponse.json({ success: true, assignment: result[0] || null });
     }
 
-    // Get all employees with their shift assignments
-    const employees = (await query(
+    // Get all employees with their latest valid shift assignment.
+    // Prefer rows that actually have shift timing/name. This avoids
+    // overtime-only rows (NULL shift fields) masking real assigned shifts.
+    const [employees] = (await query(
       `SELECT 
         e.id,
         e.first_name,
@@ -52,12 +54,20 @@ export async function GET(req: NextRequest) {
           SELECT s2.id
           FROM shift_assignments s2
           WHERE s2.employee_id = e.id
-          ORDER BY s2.assigned_date DESC, s2.id DESC
+          ORDER BY
+            CASE
+              WHEN s2.shift_name IS NOT NULL
+               AND s2.start_time IS NOT NULL
+               AND s2.end_time IS NOT NULL THEN 0
+              ELSE 1
+            END ASC,
+            s2.assigned_date DESC,
+            s2.id DESC
           LIMIT 1
         )
-      WHERE e.status IN ('enabled', 'active')
+      WHERE e.status IS NOT NULL
       ORDER BY e.id ASC`
-    )) as any[];
+    )) as any;
 
     return NextResponse.json({ success: true, employees });
   } catch (error: any) {
@@ -95,11 +105,11 @@ export async function POST(req: NextRequest) {
 
     // Helper to upsert one employee
     const upsertOne = async (empId: number, allowOT: boolean = true) => {
-      const existing = (await query(
+      const [existing] = (await query(
         `SELECT id FROM shift_assignments 
          WHERE employee_id = ? AND assigned_date = ?`,
         [empId, assignDate]
-      )) as any[];
+      )) as any;
 
       if (existing.length > 0) {
         await query(
@@ -120,12 +130,14 @@ export async function POST(req: NextRequest) {
 
     // Assign to all active employees
     if (assign_all) {
-      const allEmployees = (await query(
+      const [allEmployees] = (await query(
         `SELECT id FROM hrm_employees WHERE status IN ('enabled', 'active')`
-      )) as any[];
+      )) as any;
 
       const allowOT = allow_overtime !== false;
-      await Promise.all(allEmployees.map((row) => upsertOne(row.id, allowOT)));
+      await Promise.all(
+        allEmployees.map((row: { id: number }) => upsertOne(row.id, allowOT)),
+      );
 
       return NextResponse.json({ success: true, message: "Shift assigned to all employees" });
     }
@@ -133,17 +145,18 @@ export async function POST(req: NextRequest) {
     // Assign to a department
     if (department_id) {
       // First try employee_jobs table
-      let deptEmployees = (await query(
+      let [deptEmployees] = (await query(
         `SELECT DISTINCT employee_id FROM employee_jobs WHERE department_id = ?`,
         [department_id]
-      )) as any[];
+      )) as any;
 
       // If no employees found, try hrm_employees table directly
       if (deptEmployees.length === 0) {
-        deptEmployees = (await query(
+        const [deptEmployeesFallback] = (await query(
           `SELECT id as employee_id FROM hrm_employees WHERE department_id = ? AND status IN ('enabled', 'active')`,
           [department_id]
-        )) as any[];
+        )) as any;
+        deptEmployees = deptEmployeesFallback;
       }
 
       if (deptEmployees.length === 0) {
@@ -154,7 +167,9 @@ export async function POST(req: NextRequest) {
       }
 
       const allowOT = allow_overtime !== false;
-      await Promise.all(deptEmployees.map((row) => upsertOne(row.employee_id, allowOT)));
+      await Promise.all(
+        deptEmployees.map((row: { employee_id: number }) => upsertOne(row.employee_id, allowOT)),
+      );
 
       return NextResponse.json({ 
         success: true, 
@@ -226,10 +241,10 @@ export async function PATCH(req: NextRequest) {
       const assignDate = new Date().toISOString().split("T")[0];
 
       for (const empId of targetEmployeeIds) {
-        const latestAssignment = (await query(
+        const [latestAssignment] = (await query(
           `SELECT id FROM shift_assignments WHERE employee_id = ? ORDER BY assigned_date DESC, id DESC LIMIT 1`,
           [empId]
-        )) as any[];
+        )) as any;
 
         if (latestAssignment.length > 0) {
           await query(
@@ -258,13 +273,13 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const existingAssignmentRows = (await query(
+    const [existingAssignmentRows] = (await query(
       `SELECT id, employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime
        FROM shift_assignments
        WHERE id = ?
        LIMIT 1`,
       [id]
-    )) as any[];
+    )) as any;
 
     if (existingAssignmentRows.length === 0) {
       return NextResponse.json(
@@ -289,14 +304,14 @@ export async function PATCH(req: NextRequest) {
     const shouldCreateEffectiveDatedAssignment = currentAssignedDate < effectiveDate;
 
     if (shouldCreateEffectiveDatedAssignment) {
-      const sameDayAssignmentRows = (await query(
+      const [sameDayAssignmentRows] = (await query(
         `SELECT id
          FROM shift_assignments
          WHERE employee_id = ? AND assigned_date = ?
          ORDER BY id DESC
          LIMIT 1`,
         [existingAssignment.employee_id, effectiveDate]
-      )) as any[];
+      )) as any;
 
       if (sameDayAssignmentRows.length > 0) {
         await query(

@@ -67,7 +67,8 @@ export async function GET(req: NextRequest) {
     }
 
     sql += ' ORDER BY requested_at DESC';
-    const leaves = await query(sql, params);
+    const [rows] = (await query(sql, params)) as any;
+    const leaves = Array.isArray(rows) ? rows : [];
     return NextResponse.json({ success: true, leaves });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) });

@@ -97,42 +97,73 @@ export default function ShiftManagementPage() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
+      setError("");
       const res = await fetch("/api/hrm-shifts-assignments");
       const data = await res.json();
-      if (data.success) {
-        // Fetch employee list for department
+      if (!data.success || !Array.isArray(data.employees)) {
+        setError(data.error || "Failed to fetch employees");
+        return;
+      }
+
+      // Start with base shift-management API data first so table always shows.
+      const baseEmployees: Employee[] = data.employees.map((emp: any) => ({
+        ...emp,
+        first_name: emp.first_name || "",
+        last_name: emp.last_name || "",
+      }));
+
+      // Fetch employee list for department (best effort).
+      const deptMap = new Map<number, string>();
+      const employeeInfoMap = new Map<number, { first_name?: string; last_name?: string; status?: string; pseudonym?: string }>();
+      try {
         const empListRes = await fetch("/api/employee-list");
         const empListData = await empListRes.json();
-        const deptMap = new Map();
-        if (empListData.success) {
+        if (empListData.success && Array.isArray(empListData.employees)) {
           empListData.employees.forEach((emp: any) => {
-            deptMap.set(emp.id, emp.department_name || '-');
+            deptMap.set(Number(emp.id), emp.department_name || "-");
+            employeeInfoMap.set(Number(emp.id), {
+              first_name: emp.first_name || "",
+              last_name: emp.last_name || "",
+              status: emp.status || "",
+              pseudonym: emp.pseudonym || "-",
+            });
           });
         }
-        
-        // Fetch attendance data to get pseudonym
+      } catch {
+        // keep defaults if enrichment fails
+      }
+
+      // Fetch attendance data to get pseudonym (best effort).
+      const pseudonymMap = new Map<number, string>();
+      try {
         const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
         const attendanceData = await attendanceRes.json();
-        const pseudonymMap = new Map();
         if (attendanceData.success && Array.isArray(attendanceData.attendance)) {
           attendanceData.attendance.forEach((att: any) => {
-            const empId = parseInt(att.employee_id);
+            const empId = Number(att.employee_id);
             if (!pseudonymMap.has(empId)) {
-              pseudonymMap.set(empId, att.pseudonym || '-');
+              pseudonymMap.set(empId, att.pseudonym || "-");
             }
           });
         }
-        
-        // Merge data into employees
-        const enrichedEmployees = data.employees.map((emp: Employee) => ({
-          ...emp,
-          department_name: deptMap.get(emp.id) || '-',
-          pseudonym: pseudonymMap.get(emp.id) || '-'
-        }));
-        setEmployees(enrichedEmployees);
-      } else {
-        setError(data.error || "Failed to fetch employees");
+      } catch {
+        // keep defaults if enrichment fails
       }
+
+      // Merge enrichment maps
+      const enrichedEmployees = baseEmployees.map((emp: Employee) => ({
+        ...emp,
+        first_name: emp.first_name || employeeInfoMap.get(Number(emp.id))?.first_name || "",
+        last_name: emp.last_name || employeeInfoMap.get(Number(emp.id))?.last_name || "",
+        status: emp.status || employeeInfoMap.get(Number(emp.id))?.status || "",
+        department_name: deptMap.get(Number(emp.id)) || emp.department_name || "-",
+        pseudonym:
+          pseudonymMap.get(Number(emp.id)) ||
+          emp.pseudonym ||
+          employeeInfoMap.get(Number(emp.id))?.pseudonym ||
+          "-",
+      }));
+      setEmployees(enrichedEmployees);
     } catch (err) {
       setError("Failed to fetch employees");
     } finally {
@@ -584,11 +615,11 @@ export default function ShiftManagementPage() {
                     </div>
                     
                     {departments.length > 0 && (
-                      <>
+                      <React.Fragment key="target-departments-group">
                         <div className={styles.dropdownGroup}>Departments</div>
-                        {departments.map((d) => (
+                        {departments.map((d, idx) => (
                           <div
-                            key={d.id}
+                            key={`target-dept-${d.id}-${idx}`}
                             className={`${styles.dropdownOption} ${selectedScope === `dept-${d.id}` ? styles.dropdownOptionSelected : ""}`}
                             onClick={() => {
                               setSelectedScope(`dept-${d.id}`);
@@ -608,7 +639,7 @@ export default function ShiftManagementPage() {
                             </div>
                           </div>
                         ))}
-                      </>
+                      </React.Fragment>
                     )}
 
                     <div className={styles.dropdownGroup}>Employees</div>
@@ -618,9 +649,9 @@ export default function ShiftManagementPage() {
                         emp.last_name?.toLowerCase().includes(targetSearch) ||
                         emp.id?.toString().includes(targetSearch)
                       )
-                      .map((emp) => (
+                      .map((emp, idx) => (
                         <div
-                          key={emp.id}
+                          key={`target-emp-${emp.id}-${idx}`}
                           className={`${styles.dropdownOption} ${selectedAll || selectedEmployeeIds.includes(emp.id) ? styles.dropdownOptionSelected : ""}`}
                           onClick={() => {
                             toggleEmployeeSelection(emp.id);
@@ -655,8 +686,8 @@ export default function ShiftManagementPage() {
               className={styles.controlInput}
             >
               <option value="">-- Select from Shift Scheduler --</option>
-              {masterShifts.map((shift) => (
-                <option key={shift.id} value={shift.id}>
+              {masterShifts.map((shift, idx) => (
+                <option key={`master-shift-${shift.id}-${idx}`} value={shift.id}>
                   {shift.name} ({shift.shift_in} - {shift.shift_out})
                 </option>
               ))}
@@ -764,11 +795,11 @@ export default function ShiftManagementPage() {
                       </div>
 
                       {departments.length > 0 && (
-                        <>
+                        <React.Fragment key="overtime-departments-group">
                           <div className={styles.dropdownGroup}>Departments</div>
-                          {departments.map((d) => (
+                          {departments.map((d, idx) => (
                             <div
-                              key={d.id}
+                              key={`ot-dept-${d.id}-${idx}`}
                               className={`${styles.dropdownOption} ${overtimeScope === `dept-${d.id}` ? styles.dropdownOptionSelected : ""}`}
                               onClick={() => {
                                 setOvertimeScope(`dept-${d.id}`);
@@ -787,7 +818,7 @@ export default function ShiftManagementPage() {
                               </div>
                             </div>
                           ))}
-                        </>
+                        </React.Fragment>
                       )}
 
                       <div className={styles.dropdownGroup}>Employees</div>
@@ -797,9 +828,9 @@ export default function ShiftManagementPage() {
                           emp.last_name?.toLowerCase().includes(overtimeTargetSearch) ||
                           emp.id?.toString().includes(overtimeTargetSearch)
                         )
-                        .map((emp) => (
+                        .map((emp, idx) => (
                           <div
-                            key={emp.id}
+                            key={`ot-emp-${emp.id}-${idx}`}
                             className={`${styles.dropdownOption} ${overtimeSelectedEmployeeIds.includes(emp.id) ? styles.dropdownOptionSelected : ""}`}
                             onClick={() => toggleOvertimeEmployeeSelection(emp.id)}
                             style={{ padding: "8px 10px", fontSize: "13px" }}
@@ -855,9 +886,9 @@ export default function ShiftManagementPage() {
           </div>
         </div>
 
-        <div className={styles.tableContainer} style={{ marginTop: "20px" }}>
+        <div className={styles.tableContainer} style={{ marginTop: "20px", overflowY: "auto", maxHeight: "74vh" }}>
           <table className={styles.employeeTable}>
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
               <tr>
                 <th>ID</th>
                 <th>Name</th>
@@ -878,8 +909,8 @@ export default function ShiftManagementPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredEmployees.map((emp) => (
-                    <tr key={emp.id}>
+                  filteredEmployees.map((emp, idx) => (
+                    <tr key={`row-emp-${emp.id}-${idx}`}>
                       <td className={styles.employeeCode}>
                         {emp.id}
                       </td>

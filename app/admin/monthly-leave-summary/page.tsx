@@ -172,9 +172,9 @@ export default function MonthlyLeaveSummaryPage() {
                 ))}
               </select>
         </div>
-        <div className={styles.breakSummaryTableWrapper}>
+        <div className={styles.breakSummaryTableWrapper} style={{ overflowY: "auto", maxHeight: "74vh" }}>
           <table className={styles.breakSummaryTable} style={{ minWidth: 900 }}>
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
               <tr>
                 <th>{renderSortableHeader("ID", "id")}</th>
                 <th>{renderSortableHeader("Employee", "employeeName")}</th>

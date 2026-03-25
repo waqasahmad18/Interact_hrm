@@ -170,9 +170,9 @@ export default function EmployeeCredentialsPage() {
         {error && <div className={styles.error}>{error}</div>}
 
         {!loading && !error && (
-          <div className={styles.tableContainer}>
+          <div className={styles.tableContainer} style={{ overflowY: "auto", maxHeight: "74vh" }}>
             <table className={styles.table}>
-              <thead>
+              <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
                 <tr>
                   <th>Id</th>
                   <th>Full Name</th>

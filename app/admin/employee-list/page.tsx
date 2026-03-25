@@ -434,6 +434,8 @@ export default function EmployeeListStyledPage() {
           style={{
             width: '100%',
             overflowX: extraColsVisible ? 'auto' : 'unset',
+            overflowY: 'auto',
+            maxHeight: '74vh',
             borderBottom: extraColsVisible ? '1px solid #e2e8f0' : 'none',
             paddingBottom: extraColsVisible ? 2 : 0,
             minHeight: 0,
@@ -448,7 +450,7 @@ export default function EmployeeListStyledPage() {
               tableLayout: 'auto',
             }}
           >
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
               <tr>
                 <th>{renderSortableHeader("Id", "id")}</th>
                 <th>{renderSortableHeader("Full Name", "fullName")}</th>

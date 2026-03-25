@@ -11,6 +11,7 @@ const modules = [
   "Time",
   "Manage Attendance",
   "Monthly Attendance",
+  "Tungsten IN/OUT",
   "Manage Breaks",
   "Recruitment",
   "Add Employee",

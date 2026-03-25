@@ -530,7 +530,17 @@ export default function TimePage() {
 
   return (
     <LayoutDashboard>
-      <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
+      <div
+        style={{
+          width: '100%',
+          minHeight: 'calc(100vh - 20px)',
+          background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)',
+          padding: '0 0 24px 0',
+          margin: 0,
+          boxSizing: 'border-box',
+          display: 'flow-root',
+        }}
+      >
         <div style={{ width: '100%', margin: 0, padding: 0 }}>
           <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
           <div style={{ ...tabStyles, borderBottom: 'none', color: '#fff' }}>
@@ -557,8 +567,8 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
-              <table className={styles.breakSummaryTable}>
+            <div className={`${styles.breakSummaryTableWrapper} ${styles.timeSummaryTableWrapper}`} style={{ width: '100%', overflowX: 'auto' }}>
+              <table className={`${styles.breakSummaryTable} ${styles.timeSummaryStickyTable}`}>
                 <thead>
                   <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
                     <th>{renderHeaderCell("Id", "employee_id", breakSortKey, breakSortDir, setBreakSortKey, setBreakSortDir)}</th>
@@ -631,8 +641,8 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
-              <table className={styles.breakSummaryTable}>
+            <div className={`${styles.breakSummaryTableWrapper} ${styles.timeSummaryTableWrapper}`} style={{ width: '100%', overflowX: 'auto' }}>
+              <table className={`${styles.breakSummaryTable} ${styles.timeSummaryStickyTable}`}>
                 <thead>
                   <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
                     <th>{renderHeaderCell("Id", "employee_id", prayerSortKey, prayerSortDir, setPrayerSortKey, setPrayerSortDir)}</th>
@@ -705,8 +715,8 @@ export default function TimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={attStyles.attendanceSummaryTableWrapper} style={{ width: '100%', overflowX: 'auto' }}>
-              <table className={attStyles.attendanceSummaryTable}>
+            <div className={`${attStyles.attendanceSummaryTableWrapper} ${attStyles.timeAttendanceTableWrapper}`} style={{ width: '100%', overflowX: 'auto' }}>
+              <table className={`${attStyles.attendanceSummaryTable} ${attStyles.timeAttendanceStickyTable}`}>
                 <thead>
                   <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
                     <th>{renderHeaderCell("Id", "employee_id", attSortKey, attSortDir, setAttSortKey, setAttSortDir)}</th>

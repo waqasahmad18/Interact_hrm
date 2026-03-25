@@ -33,11 +33,32 @@ export default function LeavePage() {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:3000/api/ws");
-    ws.onmessage = (event) => {
-      fetchLeaves();
+    if (process.env.NEXT_PUBLIC_ENABLE_WS !== "true") return;
+
+    let ws: WebSocket | null = null;
+    let cancelled = false;
+
+    const setupRealtime = async () => {
+      try {
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
+        ws.onmessage = () => {
+          fetchLeaves();
+        };
+        ws.onerror = () => {
+          // Keep silent; realtime is optional and HTTP fetch remains the source of truth.
+        };
+      } catch {
+        // Realtime is optional.
+      }
     };
-    return () => ws.close();
+
+    setupRealtime();
+
+    return () => {
+      cancelled = true;
+      ws?.close();
+    };
   }, []);
 
   // Fetch all leave requests
@@ -50,19 +71,30 @@ export default function LeavePage() {
       if (data.success) {
         const empRes = await fetch("/api/employee-list");
         const empData = await empRes.json();
-        const empMap = new Map<number, { pseudonym: string; department_name: string }>();
+        const empMap = new Map<string, { employee_name: string; pseudonym: string; department_name: string }>();
         if (empData.success && Array.isArray(empData.employees)) {
           empData.employees.forEach((emp: any) => {
-            empMap.set(emp.id, {
+            const fullName = `${emp?.first_name || ""} ${emp?.last_name || ""}`.trim();
+            const profile = {
+              employee_name: fullName || "-",
               pseudonym: emp.pseudonym || "-",
               department_name: emp.department_name || "-",
-            });
+            };
+            // Map by numeric id and employee_code for resilient lookup.
+            if (emp?.id !== undefined && emp?.id !== null) {
+              empMap.set(String(emp.id).trim(), profile);
+            }
+            if (emp?.employee_code) {
+              empMap.set(String(emp.employee_code).trim(), profile);
+            }
           });
         }
         const enrichedLeaves = (data.leaves || []).map((l: any) => {
-          const emp = empMap.get(Number(l.employee_id));
+          const employeeKey = String(l?.employee_id ?? "").trim();
+          const emp = empMap.get(employeeKey);
           return {
             ...l,
+            employee_name: l?.employee_name || emp?.employee_name || "-",
             pseudonym: emp?.pseudonym || "-",
             department_name: emp?.department_name || "-",
           };
@@ -245,9 +277,9 @@ export default function LeavePage() {
         ) : error ? (
           <div style={{ color: "#e74c3c" }}>{error}</div>
         ) : (
-          <div className="leave-table-wrapper" style={{ overflowX: "auto", overflowY: "hidden", width: "100%", maxWidth: "100%", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", boxShadow: "0 2px 8px #e2e8f0", paddingBottom: 6, scrollbarWidth: "thin" as const, WebkitOverflowScrolling: "touch" }}>
+          <div className="leave-table-wrapper" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "74vh", width: "100%", maxWidth: "100%", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", boxShadow: "0 2px 8px #e2e8f0", paddingBottom: 6, scrollbarWidth: "thin" as const, WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse" }}>
-            <thead>
+            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
               <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
                 <th style={thStyle}>{renderSortableHeader("Id", "employee_id")}</th>
                 <th style={thStyle}>{renderSortableHeader("Full Name", "employee_name")}</th>
@@ -265,8 +297,15 @@ export default function LeavePage() {
               {sortedLeaves.length === 0 && (
                 <tr><td colSpan={10} style={{ textAlign: "center", color: "#888", padding: 16 }}>No leave requests yet.</td></tr>
               )}
-              {sortedLeaves.map(l => (
-                <tr key={l.id}>
+              {sortedLeaves.map((l, idx) => (
+                <tr key={l?.id ?? `${l?.employee_id || "emp"}-${l?.start_date || "start"}-${l?.end_date || "end"}-${idx}`}>
+                  {(() => {
+                    const status = String(l?.status || "pending").toLowerCase();
+                    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+                    const statusColor =
+                      status === "approved" ? "#27ae60" : status === "rejected" ? "#e74c3c" : "#e67e22";
+                    return (
+                      <>
                   <td style={tdAlignedStyle}>{l.employee_id}</td>
                   <td style={tdAlignedStyle}>{l.employee_name || ""}</td>
                   <td style={tdAlignedStyle}>{l.pseudonym || "-"}</td>
@@ -274,12 +313,12 @@ export default function LeavePage() {
                   <td style={tdAlignedStyle}>{l.leave_category}</td>
                     <td style={tdAlignedStyle}>{formatDate(l.start_date)} - {formatDate(l.end_date)}</td>
                   <td style={tdAlignedStyle}>{l.total_days}</td>
-                  <td style={{ ...tdAlignedStyle, color: l.status === "approved" ? "#27ae60" : l.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{l.status.charAt(0).toUpperCase() + l.status.slice(1)}</td>
+                  <td style={{ ...tdAlignedStyle, color: statusColor, fontWeight: 600 }}>{statusLabel}</td>
                   <td style={tdAlignedStyle}>{l.requested_at ? formatDateTime(l.requested_at) : ""}</td>
                   <td style={tdActionsStyle}>
                     <div style={actionButtonsRowStyle}>
                       <button onClick={() => openModal(l)} style={btnView}>View</button>
-                      {l.status === "pending" && (
+                      {status === "pending" && (
                         <>
                           <button onClick={() => handleAction(l.id, "approved")} style={btnApprove}>Approve</button>
                           <button onClick={() => handleAction(l.id, "rejected")} style={btnReject}>Reject</button>
@@ -287,6 +326,9 @@ export default function LeavePage() {
                       )}
                     </div>
                   </td>
+                      </>
+                    );
+                  })()}
                 </tr>
               ))}
             </tbody>
@@ -302,7 +344,25 @@ export default function LeavePage() {
               <div><b>Employee ID:</b> {selectedLeave.employee_id}</div>
               <div><b>Category:</b> {selectedLeave.leave_category}</div>
                 <div><b>Dates:</b> {formatDate(selectedLeave.start_date)} - {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)</div>
-              <div><b>Status:</b> <span style={{ color: selectedLeave.status === "approved" ? "#27ae60" : selectedLeave.status === "rejected" ? "#e74c3c" : "#e67e22", fontWeight: 600 }}>{selectedLeave.status.charAt(0).toUpperCase() + selectedLeave.status.slice(1)}</span></div>
+              <div>
+                <b>Status:</b>{" "}
+                <span
+                  style={{
+                    color:
+                      String(selectedLeave?.status || "pending").toLowerCase() === "approved"
+                        ? "#27ae60"
+                        : String(selectedLeave?.status || "pending").toLowerCase() === "rejected"
+                          ? "#e74c3c"
+                          : "#e67e22",
+                    fontWeight: 600,
+                  }}
+                >
+                  {(() => {
+                    const status = String(selectedLeave?.status || "pending").toLowerCase();
+                    return status.charAt(0).toUpperCase() + status.slice(1);
+                  })()}
+                </span>
+              </div>
               <div><b>Reason (Employee):</b> <span style={{ color: "#333" }}>{selectedLeave.reason}</span></div>
               {selectedLeave.admin_remark && (
                 <div><b>Admin Remarks:</b> <span style={{ color: "#333" }}>{selectedLeave.admin_remark}</span></div>
@@ -316,7 +376,7 @@ export default function LeavePage() {
               )}
               <div><b>Documents:</b> {(() => { const docs = typeof selectedLeave.document_paths === 'string' ? JSON.parse(selectedLeave.document_paths || '[]') : selectedLeave.document_paths; return Array.isArray(docs) && docs.length > 0 ? docs.map((d: string) => <span key={d} style={{marginRight: 8}}><button style={{background: '#3478f6', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer'}} onClick={() => handleDocumentDownload(d)}>📄 {d}</button></span>) : <span style={{color: '#999'}}>No documents</span>; })()}</div>
               <div><b>Requested At:</b> {selectedLeave.requested_at ? formatDateTime(selectedLeave.requested_at) : ""}</div>
-              {selectedLeave.status === "pending" && (
+              {String(selectedLeave?.status || "pending").toLowerCase() === "pending" && (
                 <div style={{ marginTop: 18 }}>
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontWeight: 600 }}>Admin Remarks (for rejection)</label>

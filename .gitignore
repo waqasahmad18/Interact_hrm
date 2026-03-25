@@ -36,6 +36,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# ZKBio punch sync secrets (copy scripts/zkbio-sync.env.example → zkbio-sync.local.env)
+scripts/zkbio-sync.local.env
+
 # vercel
 .vercel
 

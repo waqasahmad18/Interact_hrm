@@ -18,7 +18,7 @@ export async function GET() {
       ORDER BY e.id
     `;
     
-    const employees = await query(sql);
+    const [employees] = await query(sql) as any;
     return NextResponse.json({ success: true, employees });
   } catch (error: any) {
     console.error("Error fetching employee credentials:", error);
@@ -60,10 +60,10 @@ export async function PATCH(req: NextRequest) {
     // Update email in employee_contacts table
     if (email !== undefined) {
       // Check if contact record exists
-      const contactCheck = await query(
+      const [contactCheck] = await query(
         `SELECT id FROM employee_contacts WHERE employee_id = ?`,
         [id]
-      ) as any[];
+      ) as any;
 
       if (contactCheck.length > 0) {
         // Update existing record - update email_work

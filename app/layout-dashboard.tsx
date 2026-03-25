@@ -4,8 +4,13 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+
+/** Sub-menu row ~44–48px; avoids clipping last link when dropdown grows */
+function sidebarDropdownMaxHeightPx(itemCount: number) {
+	return Math.min(960, Math.max(100, itemCount * 50 + 16));
+}
 
 const sidebarLinks = [
 	{
@@ -36,6 +41,7 @@ const sidebarLinks = [
 					{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
 					{ name: "Manage Breaks", path: "/admin/manage-breaks", icon: <FaCoffee /> },
 					{ name: "Monthly Attendance", path: "/admin/monthly-attendance", icon: <FaFileAlt /> },
+					{ name: "Tungsten IN/OUT", path: "/admin/tungsten-in-out", icon: <FaExchangeAlt /> },
 				]
 			},
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
@@ -59,10 +65,12 @@ const sidebarLinks = [
 			{
 				name: "Payroll",
 				icon: <FaDollarSign />,
-				dropdown: [
-					{ name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
-					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
-				]
+				   dropdown: [
+					   { name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
+					   { name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
+					   { name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
+					   { name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
+				   ]
 			},
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
@@ -88,6 +96,8 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const menuRef = React.useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
+	const isTimePage = pathname === "/time";
+	const isEmployeeCredentialsPage = pathname === "/admin/employee-credentials";
 
 	// Attendance dropdown should stay open if any of its links is active
 	React.useEffect(() => {
@@ -174,7 +184,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 									if (link.name === "Payroll" && link.dropdown) {
 										const isPayrollSelected = payrollDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path);
 										return (
-											<>
+											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
 														className={styles.navItem}
@@ -200,7 +210,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: payrollDropdownOpen ? 120 : 0,
+														maxHeight: payrollDropdownOpen ? sidebarDropdownMaxHeightPx(link.dropdown.length) : 0,
 														opacity: payrollDropdownOpen ? 1 : 0,
 														marginBottom: payrollDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
@@ -247,14 +257,14 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 														})}
 													</div>
 												</div>
-											</>
+											</React.Fragment>
 										);
 									}
 									// PTO dropdown logic
 									if (link.name === "PTO" && link.dropdown) {
 										const isPtoSelected = ptoDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path);
 										return (
-											<>
+											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
 														className={styles.navItem}
@@ -280,7 +290,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: ptoDropdownOpen ? 200 : 0,
+														maxHeight: ptoDropdownOpen ? sidebarDropdownMaxHeightPx(link.dropdown.length) : 0,
 														opacity: ptoDropdownOpen ? 1 : 0,
 														marginBottom: ptoDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
@@ -323,14 +333,14 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 														})}
 													</div>
 												</div>
-											</>
+											</React.Fragment>
 										);
 									}
 									// Shifts dropdown logic
 									if (link.name === "Shifts" && link.dropdown) {
 										const isShiftsSelected = shiftsDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path);
 										return (
-											<>
+											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
 														className={styles.navItem}
@@ -356,7 +366,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: shiftsDropdownOpen ? 120 : 0,
+														maxHeight: shiftsDropdownOpen ? sidebarDropdownMaxHeightPx(link.dropdown.length) : 0,
 														opacity: shiftsDropdownOpen ? 1 : 0,
 														marginBottom: shiftsDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
@@ -399,7 +409,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 														})}
 													</div>
 												</div>
-											</>
+											</React.Fragment>
 										);
 									}
 									// Attendance dropdown logic
@@ -407,7 +417,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 										// Attendance is selected if dropdown is open or any sublink is active
 										const isAttendanceSelected = attendanceDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path);
 										return (
-											<>
+											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
 														className={styles.navItem}
@@ -433,7 +443,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: attendanceDropdownOpen ? 160 : 0,
+														maxHeight: attendanceDropdownOpen ? sidebarDropdownMaxHeightPx(link.dropdown.length) : 0,
 														opacity: attendanceDropdownOpen ? 1 : 0,
 														marginBottom: attendanceDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
@@ -476,14 +486,14 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 														})}
 													</div>
 												</div>
-											</>
+											</React.Fragment>
 										);
 									}
 									// Onboard dropdown logic
 									if (link.name === "Onboard" && link.dropdown) {
 										const isOnboardSelected = onboardDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path);
 										return (
-											<>
+											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
 														className={styles.navItem}
@@ -509,7 +519,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 												<div
 													style={{
 														overflow: "hidden",
-														maxHeight: onboardDropdownOpen ? 120 : 0,
+														maxHeight: onboardDropdownOpen ? sidebarDropdownMaxHeightPx(link.dropdown.length) : 0,
 														opacity: onboardDropdownOpen ? 1 : 0,
 														marginBottom: onboardDropdownOpen ? 2 : 0,
 														transition: "max-height 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, margin 0.3s",
@@ -552,7 +562,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 														})}
 													</div>
 												</div>
-											</>
+											</React.Fragment>
 										);
 									}
 									// Normal links
@@ -572,8 +582,14 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						))}
 					</nav>
 				</aside>
-				<div className={styles.contentArea}>
-					<main className={styles.main}>{children}</main>
+				<div
+					className={`${styles.contentArea} ${isTimePage ? styles.contentAreaTimePage : ""} ${isEmployeeCredentialsPage ? styles.contentAreaEmployeeCredentialsPage : ""}`}
+				>
+					<main
+						className={`${styles.main} ${isTimePage ? styles.mainTimePage : ""} ${isEmployeeCredentialsPage ? styles.mainEmployeeCredentialsPage : ""}`}
+					>
+						{children}
+					</main>
 				</div>
 			</div>
 		</>

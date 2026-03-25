@@ -500,13 +500,13 @@ export default function ManageAttendancePage() {
         </div>
 
         {/* Table */}
-        <div className={styles.attendanceSummaryTableWrapper} style={{ width: "980px", overflowX: "auto" }}>
+        <div className={`${styles.attendanceSummaryTableWrapper} ${styles.manageAttendanceTableWrapper}`} style={{ width: "980px", overflowX: "auto" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
               Loading...
             </div>
           ) : (
-            <table className={styles.attendanceSummaryTable}>
+            <table className={`${styles.attendanceSummaryTable} ${styles.manageAttendanceStickyTable}`}>
               <thead>
                 <tr>
                   <th>Id</th>

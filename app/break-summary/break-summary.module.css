@@ -166,3 +166,22 @@
   padding: 24px !important;
   font-style: italic;
 }
+
+.timeSummaryTableWrapper {
+  max-height: 74vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+.timeSummaryStickyTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: linear-gradient(135deg, #0052CC 0%, #00B8A9 100%) !important;
+}
+
+.timeSummaryStickyTable th {
+  position: static;
+  background: transparent !important;
+}
