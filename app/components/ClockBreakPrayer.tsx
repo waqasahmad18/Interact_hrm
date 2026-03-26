@@ -427,7 +427,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
               <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
             </div>
           )}
-          <BreakSummary employeeId={employeeId} />
+          <BreakSummary employeeId={employeeId} isOnBreak={isOnBreak} />
         </div>
       )}
 
@@ -448,7 +448,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
 }
 
 // Today's break totals for quick glance
-function BreakSummary({ employeeId }: { employeeId: string }) {
+function BreakSummary({ employeeId, isOnBreak }: { employeeId: string; isOnBreak: boolean }) {
   const [totalBreakSeconds, setTotalBreakSeconds] = React.useState(0);
   const [exceedSeconds, setExceedSeconds] = React.useState(0);
   // Removed prayer totals from BreakSummary; shown in Prayer widget instead
@@ -458,102 +458,55 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
       try {
         if (!employeeId) return;
         const today = getDateStringInTimeZone(new Date());
-        const [breakRes, attendanceRes] = await Promise.all([
-          fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`),
-          fetch(`/api/attendance?employeeId=${employeeId}`),
-        ]);
-
-        const [breakData, attendanceData] = await Promise.all([
-          breakRes.json(),
-          attendanceRes.json(),
-        ]);
+        const cacheBust = Date.now();
+        // Avoid backend `date=` filtering because DB timestamps can be timezone-shifted.
+        // We'll filter by "today" on client using `getDateStringInTimeZone`.
+        const breakRes = await fetch(
+          `/api/breaks?employeeId=${employeeId}&_=${cacheBust}`,
+          { cache: "no-store" }
+        );
+        const breakData = await breakRes.json();
 
         const breakRows =
           breakData.success && Array.isArray(breakData.breaks)
             ? breakData.breaks
             : [];
-        const attendanceRows = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
-          : [];
-
-        const sortedAttendance = attendanceRows
-          .filter((a: any) => a.clock_in)
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
-          );
-
-        const activeOrLatestAttendance =
-          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
-          sortedAttendance[0] ||
-          null;
-
-        const activeAttendanceId =
-          activeOrLatestAttendance?.id !== undefined &&
-          activeOrLatestAttendance?.id !== null
-            ? Number(activeOrLatestAttendance.id)
-            : null;
-
-        const sessionStartMs = activeOrLatestAttendance?.clock_in
-          ? new Date(activeOrLatestAttendance.clock_in).getTime()
-          : null;
-        const sessionEndMs = activeOrLatestAttendance?.clock_out
-          ? new Date(activeOrLatestAttendance.clock_out).getTime()
-          : null;
-
-        const belongsToCurrentSession = (row: any) => {
-          if (!activeOrLatestAttendance) return true;
-
-          const rowSessionId = row.attendance_session_id;
-          if (
-            activeAttendanceId !== null &&
-            rowSessionId !== undefined &&
-            rowSessionId !== null &&
-            rowSessionId !== ""
-          ) {
-            return Number(rowSessionId) === activeAttendanceId;
+        const now = Date.now();
+        const todayBreaks = breakRows.filter((b: any) => {
+          const dayVal = b.date ?? b.break_start;
+          if (!dayVal) return false;
+          // If API provides YYYY-MM-DD in `date`, use it directly (avoid timezone-shift issues on break_start)
+          if (typeof dayVal === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dayVal)) {
+            return dayVal === today;
           }
+          return getDateStringInTimeZone(dayVal) === today;
+        });
 
-          if (!row.break_start || sessionStartMs === null) return false;
-          const breakStartMs = new Date(row.break_start).getTime();
-          if (Number.isNaN(breakStartMs) || Number.isNaN(sessionStartMs)) {
-            return false;
+        let total = 0;
+        for (const b of todayBreaks) {
+          if (!b.break_start) continue;
+          const startMs = new Date(b.break_start).getTime();
+          if (Number.isNaN(startMs)) continue;
+
+          if (b.break_end) {
+            const endMs = new Date(b.break_end).getTime();
+            if (Number.isNaN(endMs)) continue;
+            total += Math.max(0, Math.floor((endMs - startMs) / 1000));
+          } else if (isOnBreak) {
+            // Running break
+            total += Math.max(0, Math.floor((now - startMs) / 1000));
           }
-
-          if (breakStartMs < sessionStartMs) return false;
-          if (
-            sessionEndMs !== null &&
-            !Number.isNaN(sessionEndMs) &&
-            breakStartMs > sessionEndMs
-          ) {
-            return false;
-          }
-
-          return true;
-        };
-
-        if (breakRows.length > 0) {
-          let total = 0;
-          breakRows.forEach((b: any) => {
-            if (b.break_start && b.break_end && belongsToCurrentSession(b)) {
-              const start = new Date(b.break_start);
-              const end = new Date(b.break_end);
-              total += Math.floor((end.getTime() - start.getTime()) / 1000);
-            }
-          });
-          setTotalBreakSeconds(total);
-          setExceedSeconds(total > 3600 ? total - 3600 : 0);
-        } else {
-          setTotalBreakSeconds(0);
-          setExceedSeconds(0);
         }
+
+        setTotalBreakSeconds(total);
+        setExceedSeconds(total > 3600 ? total - 3600 : 0);
       } catch (error) {
         setTotalBreakSeconds(0);
         setExceedSeconds(0);
       }
     };
     fetchBreaks();
-  }, [employeeId]);
+  }, [employeeId, isOnBreak]);
 
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
