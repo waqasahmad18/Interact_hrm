@@ -100,23 +100,16 @@ export default function TimePage() {
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
-  const DEFAULT_TIME_RANGE_DAYS = 120; // ~4 months back; keeps API responses bounded
   const [breakSearch, setBreakSearch] = useState("");
-  const [breakFromDate, setBreakFromDate] = useState(() =>
-    getLocalDateString(new Date(Date.now() - DEFAULT_TIME_RANGE_DAYS * 24 * 60 * 60 * 1000))
-  );
+  const [breakFromDate, setBreakFromDate] = useState("");
   const [breakToDate, setBreakToDate] = useState(getLocalDateString());
   const [breakDepartment, setBreakDepartment] = useState("");
   const [prayerSearch, setPrayerSearch] = useState("");
-  const [prayerFromDate, setPrayerFromDate] = useState(() =>
-    getLocalDateString(new Date(Date.now() - DEFAULT_TIME_RANGE_DAYS * 24 * 60 * 60 * 1000))
-  );
+  const [prayerFromDate, setPrayerFromDate] = useState("");
   const [prayerToDate, setPrayerToDate] = useState(getLocalDateString());
   const [prayerDepartment, setPrayerDepartment] = useState("");
   const [attSearch, setAttSearch] = useState("");
-  const [attFromDate, setAttFromDate] = useState(() =>
-    getLocalDateString(new Date(Date.now() - DEFAULT_TIME_RANGE_DAYS * 24 * 60 * 60 * 1000))
-  );
+  const [attFromDate, setAttFromDate] = useState("");
   const [attToDate, setAttToDate] = useState(getLocalDateString());
   const [attDepartment, setAttDepartment] = useState("");
   // For live timer

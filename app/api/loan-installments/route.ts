@@ -12,6 +12,69 @@ function nextMonth(ym: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function getContiguousBlock(allRows: any[], month: string) {
+  const months = allRows.map((r: any) => r.month);
+  const idx = months.indexOf(month);
+  if (idx < 0) return null;
+  let start = idx;
+  let end = idx;
+  while (start > 0 && months[start - 1] === prevMonth(months[start])) start--;
+  while (end < months.length - 1 && months[end + 1] === nextMonth(months[end])) end++;
+  const block = allRows.slice(start, end + 1);
+  return { block, idxInBlock: idx - start };
+}
+
+async function redistributeFromCurrent(conn: any, employee_id: number, month: string) {
+  const [allRows]: any = await conn.query(
+    `SELECT month, original_amount, paid_amount, status,
+            COALESCE(payable_this_month, original_amount) AS payable_this_month
+     FROM loan_installments
+     WHERE employee_id = ?
+     ORDER BY month ASC`,
+    [employee_id]
+  );
+  if (!Array.isArray(allRows) || allRows.length === 0) return;
+
+  const blockInfo = getContiguousBlock(allRows, month);
+  if (!blockInfo) return;
+  const { block, idxInBlock } = blockInfo;
+  const totalLoan = block.reduce((s: number, r: any) => s + Number(r.original_amount ?? 0), 0);
+
+  // Allocated = months <= current (paid rows use paid_amount, current/future use payable)
+  let allocated = 0;
+  for (let i = 0; i <= idxInBlock; i++) {
+    const r = block[i];
+    const isPaid = String(r.status || "").toLowerCase() === "paid";
+    const amt = isPaid
+      ? Number(r.paid_amount ?? 0)
+      : Number(r.payable_this_month ?? r.original_amount ?? 0);
+    allocated += amt;
+  }
+  const remaining = round2(Math.max(0, totalLoan - allocated));
+  const futureRows = block.filter((_: any, i: number) => i > idxInBlock && String(block[i].status || "").toLowerCase() === "pending");
+  const count = futureRows.length;
+  if (count <= 0) return;
+
+  const perMonth = round2(remaining / count);
+  let applied = 0;
+  for (let i = 0; i < futureRows.length; i++) {
+    const r = futureRows[i];
+    const val = i === futureRows.length - 1 ? round2(remaining - applied) : perMonth;
+    applied = round2(applied + val);
+    const amount = Math.max(0, val);
+    await conn.query(
+      `UPDATE loan_installments
+       SET payable_this_month = ?, updated_at = NOW()
+       WHERE employee_id = ? AND month = ?`,
+      [amount, employee_id, r.month]
+    );
+  }
+}
+
 // GET: Fetch all loan installments (includes payable_this_month)
 export async function GET(req: NextRequest) {
   try {
@@ -79,7 +142,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { employee_id, month, payable_this_month, status, adjust_remaining } = body;
+    const { employee_id, month, payable_this_month, status, adjust_remaining, extend_months } = body;
     if (!employee_id || !month) {
       return NextResponse.json(
         { success: false, error: "employee_id and month required" },
@@ -134,74 +197,61 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
-      if (updates.length === 0) {
+      const extendMonths = extend_months != null ? parseInt(extend_months, 10) : 0;
+      if (extend_months != null && (isNaN(extendMonths) || extendMonths < 0)) {
         await conn.rollback();
         return NextResponse.json(
-          { success: false, error: "payable_this_month or status required" },
+          { success: false, error: "extend_months must be a non-negative number" },
           { status: 400 }
         );
       }
 
-      params.push(employee_id, month);
-      await conn.query(
-        `UPDATE loan_installments SET ${updates.join(", ")}, updated_at = NOW() WHERE employee_id = ? AND month = ?`,
-        params
-      );
+      if (updates.length === 0 && extendMonths === 0) {
+        await conn.rollback();
+        return NextResponse.json(
+          { success: false, error: "payable_this_month, status, or extend_months required" },
+          { status: 400 }
+        );
+      }
 
-      // Auto-adjust remaining months: total loan must stay constant.
-      // Example: 500 total, 2 installments (250 each). Month1=150 → Month2=350.
-      if (adjust_remaining && newPayable != null) {
-        const [allRows]: any = await conn.query(
-          `SELECT month, original_amount, paid_amount, status,
-                  COALESCE(payable_this_month, original_amount) AS payable_this_month
+      if (updates.length > 0) {
+        params.push(employee_id, month);
+        await conn.query(
+          `UPDATE loan_installments SET ${updates.join(", ")}, updated_at = NOW() WHERE employee_id = ? AND month = ?`,
+          params
+        );
+      }
+
+      // Extend schedule by creating additional pending months at the end of contiguous block.
+      if (extendMonths > 0) {
+        const [allRowsAfterUpdate]: any = await conn.query(
+          `SELECT month, original_amount
            FROM loan_installments
            WHERE employee_id = ?
            ORDER BY month ASC`,
           [employee_id]
         );
-        if (Array.isArray(allRows) && allRows.length > 0) {
-          // Find consecutive block containing current month (same loan)
-          const months = allRows.map((r: any) => r.month);
-          const idx = months.indexOf(month);
-          if (idx >= 0) {
-            let start = idx;
-            let end = idx;
-            while (start > 0 && months[start - 1] === prevMonth(months[start])) start--;
-            while (end < months.length - 1 && months[end + 1] === nextMonth(months[end])) end++;
-            const block = allRows.slice(start, end + 1);
-            const totalLoan = block.reduce((s: number, r: any) => s + Number(r.original_amount ?? 0), 0);
-            const round2 = (n: number) => Math.round(n * 100) / 100;
-
-            // Allocated = months <= current (current gets new value, others: paid use paid_amount else payable)
-            let allocated = 0;
-            for (let i = 0; i <= idx; i++) {
-              const r = block[i];
-              const amt = i === idx
-                ? newPayable
-                : (String(r.status || "").toLowerCase() === "paid"
-                  ? Number(r.paid_amount ?? 0)
-                  : Number(r.payable_this_month ?? r.original_amount ?? 0));
-              allocated += amt;
-            }
-            const remaining = round2(Math.max(0, totalLoan - allocated));
-            const futureRows = block.filter((_: any, i: number) => i > idx && String(block[i].status || "").toLowerCase() === "pending");
-            const count = futureRows.length;
-
-            if (count > 0 && remaining >= 0) {
-              const perMonth = round2(remaining / count);
-              let applied = 0;
-              for (let i = 0; i < futureRows.length; i++) {
-                const r = futureRows[i];
-                const val = i === futureRows.length - 1 ? round2(remaining - applied) : perMonth;
-                applied = round2(applied + val);
-                await conn.query(
-                  `UPDATE loan_installments SET payable_this_month = ?, updated_at = NOW() WHERE employee_id = ? AND month = ?`,
-                  [Math.max(0, val), employee_id, r.month]
-                );
-              }
+        if (Array.isArray(allRowsAfterUpdate) && allRowsAfterUpdate.length > 0) {
+          const blockInfo = getContiguousBlock(allRowsAfterUpdate, month);
+          if (blockInfo) {
+            const lastMonth = blockInfo.block[blockInfo.block.length - 1].month;
+            let m = lastMonth;
+            for (let i = 0; i < extendMonths; i++) {
+              m = nextMonth(m);
+              await conn.query(
+                `INSERT INTO loan_installments
+                 (employee_id, month, original_amount, paid_amount, payable_this_month, status, created_at, updated_at)
+                 VALUES (?, ?, 0, 0, 0, 'pending', NOW(), NOW())`,
+                [employee_id, m]
+              );
             }
           }
         }
+      }
+
+      // Recalculate remaining pending months when payable changes and/or installments extended.
+      if ((adjust_remaining && newPayable != null) || extendMonths > 0) {
+        await redistributeFromCurrent(conn, Number(employee_id), month);
       }
 
       await conn.commit();
