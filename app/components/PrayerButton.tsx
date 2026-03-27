@@ -167,19 +167,13 @@ export function PrayerButton({
           <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(currentPrayerDuration)}</div>
         </div>
       )}
-      <PrayerTotals employeeId={employeeId} isPrayerOn={isPrayerOn} />
+      <PrayerTotals employeeId={employeeId} />
     </div>
   );
 }
 
 // Today's total prayer time summary
-function PrayerTotals({
-  employeeId,
-  isPrayerOn,
-}: {
-  employeeId: string;
-  isPrayerOn: boolean;
-}) {
+function PrayerTotals({ employeeId }: { employeeId: string }) {
   const [totalSeconds, setTotalSeconds] = React.useState(0);
   const [exceedSeconds, setExceedSeconds] = React.useState(0);
 
@@ -188,54 +182,106 @@ function PrayerTotals({
       try {
         if (!employeeId) return;
         const today = getDateStringInTimeZone(new Date());
-        const cacheBust = Date.now();
-        // Avoid backend `date=` filtering; filter by "today" on client for timezone safety.
-        const prayerRes = await fetch(
-          `/api/prayer_breaks?employeeId=${employeeId}&_=${cacheBust}`,
-          { cache: "no-store" }
-        );
-        const prayerData = await prayerRes.json();
+        const [prayerRes, attendanceRes] = await Promise.all([
+          fetch(`/api/prayer_breaks?employeeId=${employeeId}&date=${today}`),
+          fetch(`/api/attendance?employeeId=${employeeId}`),
+        ]);
+
+        const [prayerData, attendanceData] = await Promise.all([
+          prayerRes.json(),
+          attendanceRes.json(),
+        ]);
 
         const prayerRows =
           prayerData.success && Array.isArray(prayerData.prayer_breaks)
             ? prayerData.prayer_breaks
             : [];
-        const now = Date.now();
-        const todayPrayer = prayerRows.filter((p: any) => {
-          const dayVal = p.date ?? p.prayer_break_start;
-          if (!dayVal) return false;
-          // If API provides YYYY-MM-DD in `date`, use it directly.
-          if (typeof dayVal === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dayVal)) {
-            return dayVal === today;
-          }
-          return getDateStringInTimeZone(dayVal) === today;
-        });
+        const attendanceRows = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
 
-        let total = 0;
-        for (const p of todayPrayer) {
-          if (!p.prayer_break_start) continue;
-          const startMs = new Date(p.prayer_break_start).getTime();
-          if (Number.isNaN(startMs)) continue;
+        const sortedAttendance = attendanceRows
+          .filter((a: any) => a.clock_in)
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+          );
 
-          if (p.prayer_break_end) {
-            const endMs = new Date(p.prayer_break_end).getTime();
-            if (Number.isNaN(endMs)) continue;
-            total += Math.max(0, Math.floor((endMs - startMs) / 1000));
-          } else if (isPrayerOn) {
-            // Running prayer break
-            total += Math.max(0, Math.floor((now - startMs) / 1000));
+        const activeOrLatestAttendance =
+          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+          sortedAttendance[0] ||
+          null;
+
+        const activeAttendanceId =
+          activeOrLatestAttendance?.id !== undefined &&
+          activeOrLatestAttendance?.id !== null
+            ? Number(activeOrLatestAttendance.id)
+            : null;
+
+        const sessionStartMs = activeOrLatestAttendance?.clock_in
+          ? new Date(activeOrLatestAttendance.clock_in).getTime()
+          : null;
+        const sessionEndMs = activeOrLatestAttendance?.clock_out
+          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+          : null;
+
+        const belongsToCurrentSession = (row: any) => {
+          if (!activeOrLatestAttendance) return true;
+
+          const rowSessionId = row.attendance_session_id;
+          if (
+            activeAttendanceId !== null &&
+            rowSessionId !== undefined &&
+            rowSessionId !== null &&
+            rowSessionId !== ""
+          ) {
+            return Number(rowSessionId) === activeAttendanceId;
           }
+
+          if (!row.prayer_break_start || sessionStartMs === null) return false;
+          const prayerStartMs = new Date(row.prayer_break_start).getTime();
+          if (Number.isNaN(prayerStartMs) || Number.isNaN(sessionStartMs)) {
+            return false;
+          }
+
+          if (prayerStartMs < sessionStartMs) return false;
+          if (
+            sessionEndMs !== null &&
+            !Number.isNaN(sessionEndMs) &&
+            prayerStartMs > sessionEndMs
+          ) {
+            return false;
+          }
+
+          return true;
+        };
+
+        if (prayerRows.length > 0) {
+          let total = 0;
+          prayerRows.forEach((p: any) => {
+            if (
+              p.prayer_break_start &&
+              p.prayer_break_end &&
+              belongsToCurrentSession(p)
+            ) {
+              const s = new Date(p.prayer_break_start).getTime();
+              const e = new Date(p.prayer_break_end).getTime();
+              total += Math.floor((e - s) / 1000);
+            }
+          });
+          setTotalSeconds(total);
+          setExceedSeconds(total > 1800 ? total - 1800 : 0);
+        } else {
+          setTotalSeconds(0);
+          setExceedSeconds(0);
         }
-
-        setTotalSeconds(total);
-        setExceedSeconds(total > 1800 ? total - 1800 : 0);
       } catch {
         setTotalSeconds(0);
         setExceedSeconds(0);
       }
     };
     fetchTotals();
-  }, [employeeId, isPrayerOn]);
+  }, [employeeId]);
 
   const formatDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
