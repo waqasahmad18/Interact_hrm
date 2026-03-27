@@ -459,18 +459,40 @@ function BreakSummary({ employeeId, isOnBreak }: { employeeId: string; isOnBreak
         if (!employeeId) return;
         const today = getDateStringInTimeZone(new Date());
         const cacheBust = Date.now();
-        // Avoid backend `date=` filtering because DB timestamps can be timezone-shifted.
-        // We'll filter by "today" on client using `getDateStringInTimeZone`.
-        const breakRes = await fetch(
-          `/api/breaks?employeeId=${employeeId}&_=${cacheBust}`,
-          { cache: "no-store" }
-        );
-        const breakData = await breakRes.json();
+        const [breakRes, attendanceRes] = await Promise.all([
+          fetch(`/api/breaks?employeeId=${employeeId}&_=${cacheBust}`, { cache: "no-store" }),
+          fetch(`/api/attendance?employeeId=${employeeId}&_=${cacheBust}`, { cache: "no-store" }),
+        ]);
+
+        const [breakData, attendanceData] = await Promise.all([
+          breakRes.json(),
+          attendanceRes.json(),
+        ]);
 
         const breakRows =
           breakData.success && Array.isArray(breakData.breaks)
             ? breakData.breaks
             : [];
+        const attendanceRows = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
+
+        const sortedAttendance = attendanceRows
+          .filter((a: any) => a.clock_in)
+          .sort((a: any, b: any) => new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime());
+
+        const activeOrLatestAttendance =
+          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+          sortedAttendance[0] ||
+          null;
+
+        const sessionStartMs = activeOrLatestAttendance?.clock_in
+          ? new Date(activeOrLatestAttendance.clock_in).getTime()
+          : null;
+        const sessionEndMs = activeOrLatestAttendance?.clock_out
+          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+          : null;
+
         const now = Date.now();
         const todayBreaks = breakRows.filter((b: any) => {
           const dayVal = b.date ?? b.break_start;
@@ -487,6 +509,8 @@ function BreakSummary({ employeeId, isOnBreak }: { employeeId: string; isOnBreak
           if (!b.break_start) continue;
           const startMs = new Date(b.break_start).getTime();
           if (Number.isNaN(startMs)) continue;
+          if (sessionStartMs !== null && !Number.isNaN(sessionStartMs) && startMs < sessionStartMs) continue;
+          if (sessionEndMs !== null && !Number.isNaN(sessionEndMs) && startMs > sessionEndMs) continue;
 
           if (b.break_end) {
             const endMs = new Date(b.break_end).getTime();
