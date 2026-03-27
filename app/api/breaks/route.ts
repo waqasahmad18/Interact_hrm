@@ -28,9 +28,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
-    const date = searchParams.get("date"); // YYYY-MM-DD (optional legacy)
-    const fromDate = searchParams.get("fromDate"); // YYYY-MM-DD from frontend
-    const toDate = searchParams.get("toDate"); // YYYY-MM-DD from frontend
+    const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
     conn = await pool.getConnection();
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
@@ -61,19 +59,9 @@ export async function GET(req: NextRequest) {
       query += " AND b.employee_id = ?";
       params.push(Number(employeeId));
     }
-    // Date filtering (supports both legacy `date` and the UI's `fromDate/toDate`)
     if (date) {
       query += " AND DATE(b.break_start) = ?";
       params.push(date);
-    } else if (fromDate && toDate) {
-      query += " AND DATE(b.break_start) BETWEEN ? AND ?";
-      params.push(fromDate, toDate);
-    } else if (fromDate) {
-      query += " AND DATE(b.break_start) >= ?";
-      params.push(fromDate);
-    } else if (toDate) {
-      query += " AND DATE(b.break_start) <= ?";
-      params.push(toDate);
     }
     query += " ORDER BY b.break_start DESC";
     [rows] = await conn.execute(query, params);
