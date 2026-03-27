@@ -3,8 +3,6 @@ import { pool } from "../../../lib/db";
 import {
   getDateStringInTimeZone,
   getTimeInMinutesInTimeZone,
-  formatMysqlDateTimeInTimeZone,
-  parseMysqlNaiveDateTimeKarachi,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
 
@@ -122,32 +120,20 @@ export async function GET(req: NextRequest) {
       let formattedClockIn = null;
       let clockInDate: Date | null = null;
       
-      const pickInstantForDbDateTime = (raw: string | null | undefined, rowDate: unknown) => {
-        if (!raw) return null;
-        const s = String(raw).trim();
-        const asKarachi = parseMysqlNaiveDateTimeKarachi(s);
-        const asUtcNaive = new Date(s.replace(" ", "T") + "Z");
-        const rowDateStr = rowDate ? String(rowDate).slice(0, 10) : "";
-        if (asKarachi && rowDateStr) {
-          const karachiDay = getDateStringInTimeZone(asKarachi, SERVER_TIMEZONE);
-          if (karachiDay === rowDateStr) return asKarachi;
-        }
-        if (!Number.isNaN(asUtcNaive.getTime())) return asUtcNaive;
-        return asKarachi;
-      };
-
       if (row.clock_in) {
-        clockInDate = pickInstantForDbDateTime(String(row.clock_in), row.date);
-        if (clockInDate && !isNaN(clockInDate.getTime())) {
-          formattedClockIn = clockInDate.toISOString();
+        // Add 'Z' to assume UTC and ensure proper parsing by new Date()
+        clockInDate = new Date(String(row.clock_in) + 'Z');
+        if (!isNaN(clockInDate.getTime())) {
+            formattedClockIn = clockInDate.toISOString();
         }
       }
 
       let formattedClockOut = null;
       if (row.clock_out) {
-        const clockOutDate = pickInstantForDbDateTime(String(row.clock_out), row.date);
-        if (clockOutDate && !isNaN(clockOutDate.getTime())) {
-          formattedClockOut = clockOutDate.toISOString();
+        // Add 'Z' to assume UTC and ensure proper parsing by new Date()
+        const clockOutDate = new Date(String(row.clock_out) + 'Z');
+        if (!isNaN(clockOutDate.getTime())) {
+            formattedClockOut = clockOutDate.toISOString();
         }
       }
 
@@ -259,11 +245,10 @@ export async function POST(req: NextRequest) {
     if (clock_in !== undefined && clock_in !== null) {
       // Clock In: Always INSERT a new row
       console.log("Inserting new clock-in record:", { employee_id, employee_name, formattedDate, clock_in });
-      const clockInMysql = formatMysqlDateTimeInTimeZone(new Date(clock_in), SERVER_TIMEZONE);
       await conn.execute(
         `INSERT INTO ${ATTENDANCE_TABLE} (employee_id, employee_name, date, clock_in, clock_out, total_hours)
          VALUES (?, ?, ?, ?, NULL, NULL)`,
-        [employee_id, employee_name || '', formattedDate, clockInMysql]
+        [employee_id, employee_name || '', formattedDate, new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ')]
       );
       console.log("Clock-in record inserted successfully");
     } else if (clock_out !== undefined && clock_out !== null) {
@@ -290,7 +275,7 @@ export async function POST(req: NextRequest) {
       );
       const pending = (pendingRows as any[])[0];
       if (pending) {
-        const formattedClockOut = formatMysqlDateTimeInTimeZone(new Date(clock_out), SERVER_TIMEZONE);
+        const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
         await conn.execute(
           `UPDATE ${ATTENDANCE_TABLE} SET clock_out = ?, total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)), employee_name = ? WHERE id = ?`,
           [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
@@ -311,22 +296,34 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT: Update existing attendance record (Admin manual edit only — no auto clock-out)
+// PUT: Update existing attendance record (Admin manual edit) or auto-close old open records
 export async function PUT(req: NextRequest) {
   let conn;
   try {
     const data = await req.json();
-    const { id, employee_id, employee_name, date, clock_in, clock_out } = data || {};
+    const { id, employee_id, employee_name, date, clock_in, clock_out, autoCloseOldRecords } = data || {};
 
     conn = await pool.getConnection();
     await ensureAttendanceTable(conn);
+
+    // If autoCloseOldRecords flag is set, close any old open records for this employee
+    if (autoCloseOldRecords && employee_id) {
+      await conn.execute(
+        `UPDATE ${ATTENDANCE_TABLE}
+         SET clock_out = DATE_ADD(clock_in, INTERVAL 8 HOUR),
+             total_hours = 8.00
+         WHERE employee_id = ? AND clock_out IS NULL AND DATE(clock_in) < CURDATE()`,
+        [employee_id]
+      );
+      return NextResponse.json({ success: true, message: 'Old open records closed' });
+    }
 
     if (!id || !employee_id || !date) {
       return NextResponse.json({ success: false, error: "Missing required fields: id, employee_id or date" }, { status: 400 });
     }
 
-    const formattedClockIn = clock_in ? formatMysqlDateTimeInTimeZone(new Date(clock_in), SERVER_TIMEZONE) : null;
-    const formattedClockOut = clock_out ? formatMysqlDateTimeInTimeZone(new Date(clock_out), SERVER_TIMEZONE) : null;
+    const formattedClockIn = clock_in ? new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ') : null;
+    const formattedClockOut = clock_out ? new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ') : null;
     const formattedDate = date
       ? /^\d{4}-\d{2}-\d{2}$/.test(String(date))
         ? String(date)

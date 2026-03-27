@@ -48,11 +48,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   // Fade-in on mount and force backend-only sync for clock state
   React.useEffect(() => {
     setFadeIn(true);
-    if (!employeeId) {
-      setLoadingAttendance(false);
-      return;
-    }
-
+    if (!employeeId) return;
+    
     // Sync clock state from backend
     forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
     
@@ -90,9 +87,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   }, [employeeId, breakTimer]);
 
   const handleClockIn = async () => {
-    const id = String(employeeId || "").trim();
-    if (!id) {
-      alert("Employee ID missing. Please refresh the page or log in again.");
+    if (!employeeId || !employeeName) {
+      alert("Missing employee info");
       return;
     }
     const now = new Date();
@@ -101,19 +97,18 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          employee_id: id,
-          employee_name: String(employeeName || "").trim() || "Employee",
+          employee_id: employeeId,
+          employee_name: employeeName,
           date: getDateStringInTimeZone(now),
           clock_in: now.toISOString(),
         }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
       if (data.success) {
         // Force sync from backend instead of manual state management
-        forceSyncClockState(id, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
       } else {
-        const msg = data.error || `Clock in failed (${res.status}). Please try again.`;
-        alert(msg);
+        alert(data.error || "Failed to clock in. Please try again.");
       }
     } catch (error) {
       alert("Error while clocking in. Please try again.");
