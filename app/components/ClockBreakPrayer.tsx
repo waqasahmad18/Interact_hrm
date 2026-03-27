@@ -9,10 +9,9 @@ import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBrea
 import { getDateStringInTimeZone } from "../../lib/timezone";
 
 function formatDuration(seconds: number) {
-  const sec = Math.max(0, Math.floor(Number(seconds) || 0));
-  const h = Math.floor(sec / 3600).toString().padStart(2, "0");
-  const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
-  const s = (sec % 60).toString().padStart(2, "0");
+  const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
+  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
   return `${h}h ${m}m ${s}s`;
 }
 
@@ -236,10 +235,9 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   };
 
   const formatTime = (seconds: number) => {
-    const sec = Math.max(0, Math.floor(Number(seconds) || 0));
-    const h = Math.floor(sec / 3600).toString().padStart(2, "0");
-    const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
-    const s = (sec % 60).toString().padStart(2, "0");
+    const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
+    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
     return `${h}h ${m}m ${s}s`;
   };
 
