@@ -82,23 +82,23 @@ export async function GET(req: NextRequest) {
       } else {
         // Return all records for this employee, regardless of date, so UI can check for any open record
         [rows] = await conn.execute(
-          `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.date DESC`,
+          `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.clock_in DESC`,
           [employeeId]
         );
       }
     } else if (fromDate && toDate) {
       [rows] = await conn.execute(
-        `${baseQuery} WHERE DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.date DESC`,
+        `${baseQuery} WHERE DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.clock_in DESC`,
         [fromDate, toDate]
       );
     } else if (date) {
       [rows] = await conn.execute(
-        `${baseQuery} WHERE DATE(ea.date) = ? ORDER BY ea.date DESC`,
+        `${baseQuery} WHERE DATE(ea.date) = ? ORDER BY ea.clock_in DESC`,
         [date]
       );
     } else {
       [rows] = await conn.execute(
-        `${baseQuery} ORDER BY ea.date DESC LIMIT 1000`
+        `${baseQuery} ORDER BY ea.clock_in DESC LIMIT 1000`
       );
     }
 

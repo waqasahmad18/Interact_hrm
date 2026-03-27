@@ -6,7 +6,7 @@ function toDate(value: DateInput) {
   return value instanceof Date ? value : new Date(value);
 }
 
-function getParts(value: DateInput, timeZone: string = SERVER_TIMEZONE) {
+export function getParts(value: DateInput, timeZone: string = SERVER_TIMEZONE) {
   const date = toDate(value);
   if (Number.isNaN(date.getTime())) return null;
 

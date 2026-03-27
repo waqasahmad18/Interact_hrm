@@ -10,7 +10,9 @@ import {
   getDateStringInTimeZone,
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
+  getParts
 } from "../../../lib/timezone";
+import { compareAttendanceRows } from "../../../lib/attendance-sort";
 
 
 // Helper to format duration in hh:mm:ss
@@ -24,12 +26,22 @@ function formatDuration(seconds: number) {
 // Helper to format total hours
 function formatTotalHours(clockIn: string, clockOut: string) {
   if (!clockIn) return "00h 00m 00s";
-  const start = new Date(clockIn).getTime();
+  // Always use server timezone for both clockIn and now
+  const clockInParts = getParts(clockIn, "Asia/Karachi");
+  if (!clockInParts) return "00h 00m 00s";
+  const start = new Date(Date.UTC(clockInParts.year, clockInParts.month - 1, clockInParts.day, clockInParts.hour, clockInParts.minute, clockInParts.second)).getTime();
   let end: number;
   if (clockOut) {
-    end = new Date(clockOut).getTime();
+    const clockOutParts = getParts(clockOut, "Asia/Karachi");
+    if (!clockOutParts) return "00h 00m 00s";
+    end = new Date(Date.UTC(clockOutParts.year, clockOutParts.month - 1, clockOutParts.day, clockOutParts.hour, clockOutParts.minute, clockOutParts.second)).getTime();
   } else {
-    end = Date.now();
+    const nowParts = getParts(new Date(), "Asia/Karachi");
+    if (!nowParts) {
+      end = Date.now();
+    } else {
+      end = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day, nowParts.hour, nowParts.minute, nowParts.second)).getTime();
+    }
   }
   const totalSeconds = Math.floor((end - start) / 1000);
   const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
@@ -188,7 +200,11 @@ export default function EmployeeTimePage() {
           const filtered = (data.attendance || []).filter((a: any) =>
             isInRange(a.clock_in || a.date, attFromDate, attToDate)
           );
-          setAttendance(filtered);
+          // Separate valid and invalid clock_in records
+          const valid = filtered.filter((a: { clock_in?: string }) => a.clock_in && !isNaN(new Date(a.clock_in).getTime()));
+          const invalid = filtered.filter((a: { clock_in?: string }) => !a.clock_in || isNaN(new Date(a.clock_in).getTime()));
+          valid.sort(compareAttendanceRows);
+          setAttendance([...valid, ...invalid]);
         }
         else setAttendance([]);
       });
@@ -312,7 +328,7 @@ export default function EmployeeTimePage() {
   };
 
   const downloadAttendanceCSV = () => {
-    const data = attendance.map(row => {
+    const data = [...attendance].sort(compareAttendanceRows).map(row => {
       const date = row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "";
       const clockIn = row.clock_in ? getTimeStringInTimeZone(row.clock_in, SERVER_TIMEZONE) : "";
       const clockOut = row.clock_out ? getTimeStringInTimeZone(row.clock_out, SERVER_TIMEZONE) : "";
@@ -629,13 +645,6 @@ export default function EmployeeTimePage() {
                   </tr>
                 ) : (
                   attendance
-                    .sort((a, b) => {
-                      // Sort by clock_in descending (latest first)
-                      if (!a.clock_in && !b.clock_in) return 0;
-                      if (!a.clock_in) return 1;
-                      if (!b.clock_in) return -1;
-                      return new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime();
-                    })
                     .map((a, idx) => (
                       <tr key={a.id || idx}>
                         <td>{a.employee_id || employeeId}</td>

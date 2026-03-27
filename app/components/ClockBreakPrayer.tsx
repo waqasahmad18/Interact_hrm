@@ -4,6 +4,7 @@ import React from "react";
 import './ClockBreakPrayerFade.css';
 import { PrayerButton } from "./PrayerButton";
 import { forceSyncClockState } from "../../lib/ui-sync/forceSyncClockState";
+import { getParts } from "../../lib/timezone";
 import { forceSyncBreakState } from "../../lib/ui-sync/forceSyncBreakState";
 import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBreakState";
 import { getDateStringInTimeZone } from "../../lib/timezone";
@@ -25,6 +26,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [currentBreakDuration, setCurrentBreakDuration] = React.useState(0);
   const [isClockedIn, setIsClockedIn] = React.useState(false);
   const [timer, setTimer] = React.useState(0);
+  // getParts is now exported and can be imported if needed
   const [loadingAttendance, setLoadingAttendance] = React.useState(true);
   const [intervalId, setIntervalId] = React.useState<NodeJS.Timeout | null>(null);
   
@@ -51,7 +53,35 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     if (!employeeId) return;
     
     // Sync clock state from backend
-    forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+    // Custom sync to always use server timezone for timer
+    forceSyncClockState(
+      employeeId,
+      setIsClockedIn,
+      (elapsedSecondsOrClockIn: number | string) => {
+        // If value is a number, use as is (legacy)
+        if (typeof elapsedSecondsOrClockIn === "number") {
+          setTimer(elapsedSecondsOrClockIn);
+        } else if (typeof elapsedSecondsOrClockIn === "string") {
+          // Parse clock-in as server time zone
+          const clockInParts = getParts(elapsedSecondsOrClockIn, "Asia/Karachi");
+          if (clockInParts) {
+            const clockInDate = new Date(Date.UTC(clockInParts.year, clockInParts.month - 1, clockInParts.day, clockInParts.hour, clockInParts.minute, clockInParts.second));
+            const nowParts = getParts(new Date(), "Asia/Karachi");
+            if (nowParts) {
+              const nowDate = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day, nowParts.hour, nowParts.minute, nowParts.second));
+              const elapsed = Math.floor((nowDate.getTime() - clockInDate.getTime()) / 1000);
+              setTimer(elapsed);
+            } else {
+              setTimer(0);
+            }
+          } else {
+            setTimer(0);
+          }
+        }
+      },
+      setLoadingAttendance,
+      setIntervalId
+    );
     
     // Sync break state from backend
     forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);

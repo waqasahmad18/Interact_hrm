@@ -11,6 +11,7 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
+import { compareAttendanceRows } from "../../../lib/attendance-sort";
 
 // Helper to format duration
 function formatDuration(seconds: number) {
@@ -135,12 +136,7 @@ export default function ManageAttendancePage() {
     fetchAttendance();
   }, [fromDate, toDate, searchName, selectedDepartment]);
 
-  // Sort all records by latest clock_in/clock_out/date descending
-  const sortedAttendance = [...attendance].sort((a, b) => {
-    const aTime = new Date(a.clock_out || a.clock_in || a.date).getTime();
-    const bTime = new Date(b.clock_out || b.clock_in || b.date).getTime();
-    return bTime - aTime;
-  });
+  const sortedAttendance = [...attendance].sort(compareAttendanceRows);
   
   let filteredAttendance = sortedAttendance;
   

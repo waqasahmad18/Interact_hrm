@@ -9,6 +9,7 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../lib/timezone";
+import { compareAttendanceRows } from "../../lib/attendance-sort";
 
 // Helper to format duration in hh:mm:ss
 function formatDuration(seconds: number) {
@@ -219,19 +220,14 @@ export default function TimePage() {
     return true;
   });
 
-  // Filter and sort attendance (latest clock-in/out at top)
+  // Filter and sort attendance (running sessions first, then latest activity)
   const filteredAttendance = attendance
     .filter(a => {
       if (attSearch && !(a.employee_name || "").toLowerCase().includes(attSearch.toLowerCase())) return false;
       if (attDepartment && a.department_name !== attDepartment) return false;
       return true;
     })
-    .sort((a, b) => {
-      // Use clock_out if available, otherwise clock_in
-      const aTime = new Date(a.clock_out || a.clock_in || 0).getTime();
-      const bTime = new Date(b.clock_out || b.clock_in || 0).getTime();
-      return bTime - aTime; // Descending order (latest first)
-    });
+    .sort(compareAttendanceRows);
 
   // Aggregate all breaks per employee per attendance session (fallback to shift assignment)
   const dailyBreakTotals = (() => {
