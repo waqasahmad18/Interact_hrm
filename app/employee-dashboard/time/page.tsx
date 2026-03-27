@@ -59,6 +59,12 @@ function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
 }
 
+function getCurrentMonthStartDateString(date: Date = new Date()) {
+  const todayInTz = getDateStringInTimeZone(date, SERVER_TIMEZONE);
+  if (!todayInTz) return "";
+  return `${todayInTz.slice(0, 7)}-01`;
+}
+
 function getSessionGroupingKey(
   record: any,
   startField: "break_start" | "prayer_break_start"
@@ -90,11 +96,11 @@ export default function EmployeeTimePage() {
   const [breaks, setBreaks] = useState<any[]>([]);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
-  const [breakFromDate, setBreakFromDate] = useState("");
+  const [breakFromDate, setBreakFromDate] = useState(() => getCurrentMonthStartDateString());
   const [breakToDate, setBreakToDate] = useState(getLocalDateString());
-  const [prayerFromDate, setPrayerFromDate] = useState("");
+  const [prayerFromDate, setPrayerFromDate] = useState(() => getCurrentMonthStartDateString());
   const [prayerToDate, setPrayerToDate] = useState(getLocalDateString());
-  const [attFromDate, setAttFromDate] = useState("");
+  const [attFromDate, setAttFromDate] = useState(() => getCurrentMonthStartDateString());
   const [attToDate, setAttToDate] = useState(getLocalDateString());
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
