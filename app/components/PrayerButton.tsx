@@ -189,40 +189,17 @@ function PrayerTotals({
         if (!employeeId) return;
         const today = getDateStringInTimeZone(new Date());
         const cacheBust = Date.now();
-        const [prayerRes, attendanceRes] = await Promise.all([
-          fetch(`/api/prayer_breaks?employeeId=${employeeId}&_=${cacheBust}`, { cache: "no-store" }),
-          fetch(`/api/attendance?employeeId=${employeeId}&_=${cacheBust}`, { cache: "no-store" }),
-        ]);
-
-        const [prayerData, attendanceData] = await Promise.all([
-          prayerRes.json(),
-          attendanceRes.json(),
-        ]);
+        // Avoid backend `date=` filtering; filter by "today" on client for timezone safety.
+        const prayerRes = await fetch(
+          `/api/prayer_breaks?employeeId=${employeeId}&_=${cacheBust}`,
+          { cache: "no-store" }
+        );
+        const prayerData = await prayerRes.json();
 
         const prayerRows =
           prayerData.success && Array.isArray(prayerData.prayer_breaks)
             ? prayerData.prayer_breaks
             : [];
-        const attendanceRows = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
-          : [];
-
-        const sortedAttendance = attendanceRows
-          .filter((a: any) => a.clock_in)
-          .sort((a: any, b: any) => new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime());
-
-        const activeOrLatestAttendance =
-          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
-          sortedAttendance[0] ||
-          null;
-
-        const sessionStartMs = activeOrLatestAttendance?.clock_in
-          ? new Date(activeOrLatestAttendance.clock_in).getTime()
-          : null;
-        const sessionEndMs = activeOrLatestAttendance?.clock_out
-          ? new Date(activeOrLatestAttendance.clock_out).getTime()
-          : null;
-
         const now = Date.now();
         const todayPrayer = prayerRows.filter((p: any) => {
           const dayVal = p.date ?? p.prayer_break_start;
@@ -239,8 +216,6 @@ function PrayerTotals({
           if (!p.prayer_break_start) continue;
           const startMs = new Date(p.prayer_break_start).getTime();
           if (Number.isNaN(startMs)) continue;
-          if (sessionStartMs !== null && !Number.isNaN(sessionStartMs) && startMs < sessionStartMs) continue;
-          if (sessionEndMs !== null && !Number.isNaN(sessionEndMs) && startMs > sessionEndMs) continue;
 
           if (p.prayer_break_end) {
             const endMs = new Date(p.prayer_break_end).getTime();

@@ -37,9 +37,7 @@ const sidebarLinks = [
 				name: "Attendance",
 				icon: <FaClipboardList />,
 				dropdown: [
-					{ name: "Attendance Summary", path: "/time/attendance-summary", icon: <FaClock /> },
-					{ name: "Break Summary", path: "/time/break-summary", icon: <FaCoffee /> },
-					{ name: "Prayer Break Summary", path: "/time/prayer-break-summary", icon: <FaPray /> },
+					{ name: "Time", path: "/time", icon: <FaClock /> },
 					{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
 					{ name: "Manage Breaks", path: "/admin/manage-breaks", icon: <FaCoffee /> },
 					{ name: "Monthly Attendance", path: "/admin/monthly-attendance", icon: <FaFileAlt /> },
@@ -98,7 +96,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const menuRef = React.useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
-	const isTimePage = pathname === "/time" || !!pathname?.startsWith("/time/");
+	const isTimePage = pathname === "/time";
 	const isEmployeeCredentialsPage = pathname === "/admin/employee-credentials";
 
 	// Attendance dropdown should stay open if any of its links is active
