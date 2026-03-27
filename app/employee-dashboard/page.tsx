@@ -143,9 +143,16 @@ export default function EmployeeDashboardPage() {
 
   const fetchReminders = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/reminders", { cache: "no-store" });
+      const res = await fetch(`/api/reminders?_=${Date.now()}`, { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setReminders(data.reminders || []);
+      if (data?.success) {
+        const cleaned = Array.isArray(data.reminders)
+          ? data.reminders.filter((r: any) => r && Number(r.id) > 0 && String(r.message ?? "").trim() !== "")
+          : [];
+        setReminders(cleaned);
+      } else {
+        console.error("reminders fetch failed", data?.error || "Unknown error");
+      }
     } catch (err) {
       console.error("reminders fetch", err);
     }
@@ -166,8 +173,22 @@ export default function EmployeeDashboardPage() {
         // ignore
       }
     };
-    return () => ws.close();
+    const pollInterval = window.setInterval(() => {
+      fetchReminders();
+      fetchEvents();
+    }, 30000);
+    return () => {
+      ws.close();
+      window.clearInterval(pollInterval);
+    };
   }, [fetchEvents, fetchReminders]);
+
+  const formatEventDateTime = React.useCallback((value: string | null | undefined) => {
+    if (!value) return "Date not set";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "Date not set";
+    return parsed.toLocaleString();
+  }, []);
 
   return (
     <div style={{
@@ -277,7 +298,7 @@ export default function EmployeeDashboardPage() {
               {events.map(ev => (
                 <div key={ev.id} style={{ background: "#ffffff", borderRadius: 12, padding: 10, border: "1px solid #e6e8f2", boxShadow: "0 6px 14px rgba(10,31,68,0.06)" }}>
                   <div style={{ fontWeight: 700, color: "#1a2550", marginBottom: 4 }}>{ev.title}</div>
-                  <div style={{ fontSize: "0.95rem", color: "#4a5775" }}>{new Date(ev.start_at).toLocaleString()}</div>
+                  <div style={{ fontSize: "0.95rem", color: "#4a5775" }}>{formatEventDateTime(ev.start_at)}</div>
                   {/* End date removed as requested */}
                   {ev.location && <div style={{ fontSize: "0.9rem", color: "#7b86a3", marginTop: 2 }}>Location: {ev.location}</div>}
                   {ev.description && <div style={{ fontSize: "0.9rem", color: "#4a5775", marginTop: 4 }}>{ev.description}</div>}

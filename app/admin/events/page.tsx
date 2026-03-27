@@ -36,6 +36,13 @@ const initialForm = {
   status: "published",
 };
 
+function formatEventDateTime(value?: string | null) {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleString();
+}
+
 export default function AdminEventsPage() {
   const [form, setForm] = React.useState(initialForm);
   const [events, setEvents] = React.useState<EventItem[]>([]);
@@ -68,9 +75,16 @@ export default function AdminEventsPage() {
 
   const fetchReminders = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/reminders", { cache: "no-store" });
+      const res = await fetch(`/api/reminders?_=${Date.now()}`, { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setReminders(data.reminders || []);
+      if (data?.success) {
+        const cleaned = Array.isArray(data.reminders)
+          ? data.reminders.filter((r: any) => r && Number(r.id) > 0 && String(r.message ?? "").trim() !== "")
+          : [];
+        setReminders(cleaned);
+      } else {
+        console.error("fetch reminders failed", data?.error || "Unknown error");
+      }
     } catch (e) {
       console.error("fetch reminders", e);
     }
@@ -166,6 +180,8 @@ export default function AdminEventsPage() {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "reminders_updated" }));
         }
+      } else {
+        alert(data?.error || "Failed to add reminder");
       }
     } catch (err) {
       console.error("add reminder", err);
@@ -186,6 +202,8 @@ export default function AdminEventsPage() {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "reminders_updated" }));
         }
+      } else {
+        alert(data?.error || "Failed to delete reminder");
       }
     } catch (err) {
       console.error("delete reminder", err);
@@ -206,6 +224,8 @@ export default function AdminEventsPage() {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "events_updated" }));
         }
+      } else {
+        alert(data?.error || "Failed to delete event");
       }
     } catch (err) {
       console.error("delete event", err);
@@ -283,7 +303,8 @@ export default function AdminEventsPage() {
                   </div>
                   {ev.description && <div style={{ color: "#4a5775", fontSize: "1.05rem", marginTop: 2 }}>{ev.description}</div>}
                   <div style={{ color: "#6b7b9b", fontSize: "1.01rem", marginTop: 2 }}>
-                    {new Date(ev.start_at).toLocaleString()} {ev.end_at ? ` - ${new Date(ev.end_at).toLocaleString()}` : ""}
+                    {formatEventDateTime(ev.start_at) || "Invalid start date"}
+                    {ev.end_at ? ` - ${formatEventDateTime(ev.end_at) || "Invalid end date"}` : ""}
                   </div>
                   {ev.location && <div style={{ color: "#7b86a3", fontSize: "0.98rem", marginTop: 2 }}>Location: {ev.location}</div>}
                   <div style={{ color: "#4a8b2c", fontSize: "0.95rem", marginTop: 2 }}>{ev.is_all_day ? "All day" : "Timed"} • {ev.status}</div>

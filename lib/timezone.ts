@@ -47,6 +47,31 @@ export function getDateStringInTimeZone(
   return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
+/** MySQL DATETIME string in the given zone (wall clock), not UTC — keeps DATE(clock_in) aligned with business day (e.g. Asia/Karachi). */
+export function formatMysqlDateTimeInTimeZone(
+  value: DateInput,
+  timeZone: string = SERVER_TIMEZONE
+): string {
+  const parts = getParts(value, timeZone);
+  if (!parts) return "";
+  const { year, month, day, hour, minute, second } = parts;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`;
+}
+
+/** Parse MySQL DATETIME stored as Asia/Karachi wall time (naive) into a correct Date for APIs/UI. */
+export function parseMysqlNaiveDateTimeKarachi(value: string | null | undefined): Date | null {
+  if (value == null || String(value).trim() === "") return null;
+  const s = String(value).trim();
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$/.exec(s);
+  if (m) {
+    const sec = m[3] || "00";
+    const d = new Date(`${m[1]}T${m[2]}:${sec}+05:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function getTimeStringInTimeZone(
   value: DateInput,
   timeZone: string = SERVER_TIMEZONE

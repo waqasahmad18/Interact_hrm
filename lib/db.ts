@@ -32,5 +32,6 @@ export const pool = mysql.createPool(connectionConfig);
 
 // Generic query function
 export async function query(sql: string, params?: any[]) {
-	return await pool.query(sql, params);
+	const [rows] = await pool.query(sql, params);
+	return rows;
 }

@@ -273,9 +273,11 @@ export default function DashboardPage() {
       setAnnouncements(events);
 
       // Fetch reminders
-      const remindersRes = await fetch("/api/reminders", { cache: "no-store" });
+      const remindersRes = await fetch(`/api/reminders?_=${Date.now()}`, { cache: "no-store" });
       const remindersData = await remindersRes.json();
-      const remindersArray = remindersData.success && remindersData.reminders ? remindersData.reminders : [];
+      const remindersArray = remindersData.success && Array.isArray(remindersData.reminders)
+        ? remindersData.reminders.filter((r: any) => r && Number(r.id) > 0 && String(r.message ?? "").trim() !== "")
+        : [];
       setReminders(remindersArray);
     } catch (err) {
       console.error("announcements and reminders fetch", err);
