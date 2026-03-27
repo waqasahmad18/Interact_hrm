@@ -35,23 +35,7 @@ function getParts(value: DateInput, timeZone: string = SERVER_TIMEZONE) {
     return null;
   }
 
-  // Intl (en-US, hour12: false) can emit hour 24 (e.g. "2026-03-28 24:44:46"); MySQL DATETIME only allows 00–23.
-  let y = year;
-  let mo = month;
-  let d = day;
-  let h = hour;
-  const mi = minute;
-  const s = second;
-  while (h >= 24) {
-    const daysToAdd = Math.floor(h / 24);
-    h = h % 24;
-    const rolled = new Date(Date.UTC(y, mo - 1, d + daysToAdd));
-    y = rolled.getUTCFullYear();
-    mo = rolled.getUTCMonth() + 1;
-    d = rolled.getUTCDate();
-  }
-
-  return { year: y, month: mo, day: d, hour: h, minute: mi, second: s };
+  return { year, month, day, hour, minute, second };
 }
 
 export function getDateStringInTimeZone(
