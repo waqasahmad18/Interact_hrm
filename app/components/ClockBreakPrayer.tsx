@@ -5,8 +5,14 @@ import './ClockBreakPrayerFade.css';
 import { PrayerButton } from "./PrayerButton";
 import { forceSyncClockState } from "../../lib/ui-sync/forceSyncClockState";
 import { getParts } from "../../lib/timezone";
-import { forceSyncBreakState } from "../../lib/ui-sync/forceSyncBreakState";
-import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBreakState";
+import {
+  forceSyncBreakState,
+  clearBreakSyncInterval,
+} from "../../lib/ui-sync/forceSyncBreakState";
+import {
+  forceSyncPrayerBreakState,
+  clearPrayerBreakSyncInterval,
+} from "../../lib/ui-sync/forceSyncPrayerBreakState";
 import { getDateStringInTimeZone } from "../../lib/timezone";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
@@ -41,9 +47,6 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [isPrayerOn, setIsPrayerOn] = React.useState(false);
   const [prayerStart, setPrayerStart] = React.useState<Date | null>(null);
   const [isOnBreak, setIsOnBreak] = React.useState(false);
-  const [breakStart, setBreakStart] = React.useState<Date | null>(null);
-  const breakTimerRef = React.useRef<NodeJS.Timeout | null>(null);
-  const [currentBreakDuration, setCurrentBreakDuration] = React.useState(0);
   const [isClockedIn, setIsClockedIn] = React.useState(false);
   const [timer, setTimer] = React.useState(0);
   // getParts is now exported and can be imported if needed
@@ -107,14 +110,28 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
     
     // Sync prayer break state from backend
-    forceSyncPrayerBreakState(employeeId, setIsPrayerOn, setPrayerBreakTimer, setLoadingPrayerBreak, setPrayerBreakIntervalId);
+    forceSyncPrayerBreakState(
+      employeeId,
+      setIsPrayerOn,
+      setPrayerBreakTimer,
+      setLoadingPrayerBreak,
+      setPrayerBreakIntervalId,
+      setPrayerStart
+    );
     
     // Re-sync when tab is visible
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
-        forceSyncPrayerBreakState(employeeId, setIsPrayerOn, setPrayerBreakTimer, setLoadingPrayerBreak, setPrayerBreakIntervalId);
+        forceSyncPrayerBreakState(
+          employeeId,
+          setIsPrayerOn,
+          setPrayerBreakTimer,
+          setLoadingPrayerBreak,
+          setPrayerBreakIntervalId,
+          setPrayerStart
+        );
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -124,17 +141,10 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       if (intervalId) clearInterval(intervalId);
       if (breakIntervalId) clearInterval(breakIntervalId);
       if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
+      clearBreakSyncInterval(employeeId);
+      clearPrayerBreakSyncInterval(employeeId);
     };
   }, [employeeId]);
-
-  // Restore ongoing break status
-  React.useEffect(() => {
-    if (!employeeId) return;
-    // Use forceSyncBreakState to sync break from backend
-    forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
-    // Update current break duration based on break timer (which is synced with DB)
-    setCurrentBreakDuration(breakTimer);
-  }, [employeeId, breakTimer]);
 
   const handleClockIn = async () => {
     if (!employeeId || !employeeName) {
@@ -491,6 +501,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           prayerStart={prayerStart}
           setPrayerStart={setPrayerStart}
           disabled={isOnBreak}
+          onClearServerPrayerInterval={() => clearPrayerBreakSyncInterval(employeeId)}
         />
       )}
     </div>
@@ -512,8 +523,8 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
         const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
           ? attendanceData.attendance
           : [];
-        const breakUrl = buildBreaksListUrl(employeeId, attendanceRowsPre);
-        const breakRes = await fetch(breakUrl);
+        // Fetch ALL breaks for this employee (no date filter)
+        const breakRes = await fetch(`/api/breaks?employeeId=${employeeId}`);
         const breakData = await breakRes.json();
 
         const breakRows =

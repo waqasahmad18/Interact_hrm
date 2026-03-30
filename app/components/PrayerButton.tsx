@@ -30,6 +30,8 @@ interface PrayerButtonProps {
   prayerStart: Date | null;
   setPrayerStart: React.Dispatch<React.SetStateAction<Date | null>>;
   disabled?: boolean;
+  /** Stop server-sync interval after ending prayer (parent refresh uses Map-based intervals). */
+  onClearServerPrayerInterval?: () => void;
 }
 
 export function PrayerButton({
@@ -40,41 +42,12 @@ export function PrayerButton({
   prayerStart,
   setPrayerStart,
   disabled = false,
+  onClearServerPrayerInterval,
 }: PrayerButtonProps) {
   const [currentPrayerDuration, setCurrentPrayerDuration] = React.useState(0);
   const prayerTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Restore ongoing prayer break session from DB (simplified logic)
-  React.useEffect(() => {
-    const fetchOngoingPrayerBreak = async () => {
-      if (!employeeId) return;
-      try {
-        const attRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
-        const attData = await attRes.json();
-        const attendanceRows = Array.isArray(attData?.attendance)
-          ? attData.attendance
-          : [];
-        const url = buildPrayerBreaksListUrl(employeeId, attendanceRows);
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.success && Array.isArray(data.prayer_breaks)) {
-          const ongoing = data.prayer_breaks.find((pb: any) => pb.prayer_break_start && !pb.prayer_break_end);
-          if (ongoing) {
-            setIsPrayerOn(true);
-            setPrayerStart(new Date(ongoing.prayer_break_start));
-          } else {
-            setIsPrayerOn(false);
-            setPrayerStart(null);
-          }
-        }
-      } catch (err) {
-        setIsPrayerOn(false);
-        setPrayerStart(null);
-      }
-    };
-
-    fetchOngoingPrayerBreak();
-  }, [employeeId]);
+  // Ongoing prayer is restored in parent via forceSyncPrayerBreakState (single source of truth; avoids race with filtered API).
 
   // When prayerStart changes, set up timer to always calculate elapsed time
   React.useEffect(() => {
@@ -144,6 +117,7 @@ export function PrayerButton({
         setPrayerStart(null);
         setCurrentPrayerDuration(0);
         if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
+        onClearServerPrayerInterval?.();
       } else {
         alert(data.error || "Failed to end prayer break");
       }
@@ -211,8 +185,8 @@ function PrayerTotals({ employeeId }: { employeeId: string }) {
         const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
           ? attendanceData.attendance
           : [];
-        const prayerUrl = buildPrayerBreaksListUrl(employeeId, attendanceRowsPre);
-        const prayerRes = await fetch(prayerUrl);
+        // Fetch ALL prayer breaks for this employee (no date filter)
+        const prayerRes = await fetch(`/api/prayer_breaks?employeeId=${employeeId}`);
         const prayerData = await prayerRes.json();
 
         const prayerRows =
