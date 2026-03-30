@@ -9,6 +9,26 @@ import { forceSyncBreakState } from "../../lib/ui-sync/forceSyncBreakState";
 import { forceSyncPrayerBreakState } from "../../lib/ui-sync/forceSyncPrayerBreakState";
 import { getDateStringInTimeZone } from "../../lib/timezone";
 
+/** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
+function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
+  const today = getDateStringInTimeZone(new Date());
+  const sorted = attendanceRows
+    .filter((a: any) => a.clock_in)
+    .sort(
+      (a: any, b: any) =>
+        new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+    );
+  const activeOpen = sorted.find((a: any) => a.clock_in && !a.clock_out) || null;
+  let url = `/api/breaks?employeeId=${encodeURIComponent(employeeId)}`;
+  if (activeOpen?.clock_in) {
+    const from = getDateStringInTimeZone(activeOpen.clock_in);
+    url += `&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(today)}`;
+  } else {
+    url += `&date=${encodeURIComponent(today)}`;
+  }
+  return url;
+}
+
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
   const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
@@ -487,24 +507,20 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
     const fetchBreaks = async () => {
       try {
         if (!employeeId) return;
-        const today = getDateStringInTimeZone(new Date());
-        const [breakRes, attendanceRes] = await Promise.all([
-          fetch(`/api/breaks?employeeId=${employeeId}&date=${today}`),
-          fetch(`/api/attendance?employeeId=${employeeId}`),
-        ]);
-
-        const [breakData, attendanceData] = await Promise.all([
-          breakRes.json(),
-          attendanceRes.json(),
-        ]);
+        const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
+        const attendanceData = await attendanceRes.json();
+        const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
+        const breakUrl = buildBreaksListUrl(employeeId, attendanceRowsPre);
+        const breakRes = await fetch(breakUrl);
+        const breakData = await breakRes.json();
 
         const breakRows =
           breakData.success && Array.isArray(breakData.breaks)
             ? breakData.breaks
             : [];
-        const attendanceRows = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
-          : [];
+        const attendanceRows = attendanceRowsPre;
 
         const sortedAttendance = attendanceRows
           .filter((a: any) => a.clock_in)

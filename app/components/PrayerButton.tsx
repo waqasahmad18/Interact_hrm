@@ -2,6 +2,26 @@
 import React from "react";
 import { getDateStringInTimeZone } from "../../lib/timezone";
 
+/** When clocked in across midnight, breaks/prayers fall on multiple calendar days; use session range, not date=today only. */
+function buildPrayerBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
+  const today = getDateStringInTimeZone(new Date());
+  const sorted = attendanceRows
+    .filter((a: any) => a.clock_in)
+    .sort(
+      (a: any, b: any) =>
+        new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+    );
+  const activeOpen = sorted.find((a: any) => a.clock_in && !a.clock_out) || null;
+  let url = `/api/prayer_breaks?employeeId=${encodeURIComponent(employeeId)}`;
+  if (activeOpen?.clock_in) {
+    const from = getDateStringInTimeZone(activeOpen.clock_in);
+    url += `&fromDate=${encodeURIComponent(from)}&toDate=${encodeURIComponent(today)}`;
+  } else {
+    url += `&date=${encodeURIComponent(today)}`;
+  }
+  return url;
+}
+
 interface PrayerButtonProps {
   employeeId: string;
   employeeName: string;
@@ -28,9 +48,14 @@ export function PrayerButton({
   React.useEffect(() => {
     const fetchOngoingPrayerBreak = async () => {
       if (!employeeId) return;
-      const today = new Date().toISOString().slice(0, 10);
       try {
-        const res = await fetch(`/api/prayer_breaks?employeeId=${employeeId}&date=${today}`);
+        const attRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
+        const attData = await attRes.json();
+        const attendanceRows = Array.isArray(attData?.attendance)
+          ? attData.attendance
+          : [];
+        const url = buildPrayerBreaksListUrl(employeeId, attendanceRows);
+        const res = await fetch(url);
         const data = await res.json();
         if (data.success && Array.isArray(data.prayer_breaks)) {
           const ongoing = data.prayer_breaks.find((pb: any) => pb.prayer_break_start && !pb.prayer_break_end);
@@ -181,24 +206,20 @@ function PrayerTotals({ employeeId }: { employeeId: string }) {
     const fetchTotals = async () => {
       try {
         if (!employeeId) return;
-        const today = getDateStringInTimeZone(new Date());
-        const [prayerRes, attendanceRes] = await Promise.all([
-          fetch(`/api/prayer_breaks?employeeId=${employeeId}&date=${today}`),
-          fetch(`/api/attendance?employeeId=${employeeId}`),
-        ]);
-
-        const [prayerData, attendanceData] = await Promise.all([
-          prayerRes.json(),
-          attendanceRes.json(),
-        ]);
+        const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
+        const attendanceData = await attendanceRes.json();
+        const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
+          ? attendanceData.attendance
+          : [];
+        const prayerUrl = buildPrayerBreaksListUrl(employeeId, attendanceRowsPre);
+        const prayerRes = await fetch(prayerUrl);
+        const prayerData = await prayerRes.json();
 
         const prayerRows =
           prayerData.success && Array.isArray(prayerData.prayer_breaks)
             ? prayerData.prayer_breaks
             : [];
-        const attendanceRows = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
-          : [];
+        const attendanceRows = attendanceRowsPre;
 
         const sortedAttendance = attendanceRows
           .filter((a: any) => a.clock_in)
