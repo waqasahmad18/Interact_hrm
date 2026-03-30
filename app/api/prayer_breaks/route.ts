@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
     const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
+    const fromDate = searchParams.get("fromDate");
+    const toDate = searchParams.get("toDate");
     conn = await pool.getConnection();
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
@@ -60,6 +62,16 @@ export async function GET(req: NextRequest) {
     if (date) {
       query += " AND DATE(pb.prayer_break_start) = ?";
       params.push(date);
+    }
+    if (fromDate && toDate) {
+      query += " AND DATE(pb.prayer_break_start) BETWEEN ? AND ?";
+      params.push(fromDate, toDate);
+    } else if (fromDate) {
+      query += " AND DATE(pb.prayer_break_start) >= ?";
+      params.push(fromDate);
+    } else if (toDate) {
+      query += " AND DATE(pb.prayer_break_start) <= ?";
+      params.push(toDate);
     }
     query += " ORDER BY pb.prayer_break_start DESC";
     const [rows] = await conn.execute(query, params);

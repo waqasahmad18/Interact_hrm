@@ -28,9 +28,8 @@ function getSessionGroupingKey(record: any) {
   if (attendanceSessionId !== undefined && attendanceSessionId !== null && attendanceSessionId !== "") {
     return `${employeeKey}|attendance:${attendanceSessionId}`;
   }
-  if (record.shift_assignment_id !== undefined && record.shift_assignment_id !== null && record.shift_assignment_id !== "") {
-    return `${employeeKey}|shift:${record.shift_assignment_id}`;
-  }
+  // Important: do NOT fallback to shift_assignment_id for totals.
+  // A reused shift assignment can merge separate shifts (night-shift cross-date cases).
   return `${employeeKey}|fallback:${record.id ?? record.prayer_break_start ?? "unknown"}`;
 }
 

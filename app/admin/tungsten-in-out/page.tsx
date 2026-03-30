@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
-import { SERVER_TIMEZONE } from "@/lib/timezone";
+import { getDateStringInTimeZone, SERVER_TIMEZONE } from "@/lib/timezone";
 
 type Row = Record<string, unknown>;
 
@@ -14,12 +14,15 @@ type AppliedFilters = {
   dateTo: string;
 };
 
-const emptyFilters: AppliedFilters = {
-  name: "",
-  dept: "",
-  dateFrom: "",
-  dateTo: "",
-};
+function getDefaultFilters(): AppliedFilters {
+  const today = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+  return {
+    name: "",
+    dept: "",
+    dateFrom: `${today.slice(0, 7)}-01`,
+    dateTo: today,
+  };
+}
 
 function parseDbDate(v: unknown): Date | null {
   if (v === null || v === undefined) return null;
@@ -78,6 +81,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function TungstenInOutPage() {
   const fixedPageSize = 100;
+  const defaultFilters = getDefaultFilters();
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
@@ -86,8 +90,8 @@ export default function TungstenInOutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
-  const [applied, setApplied] = useState<AppliedFilters>(emptyFilters);
-  const [draft, setDraft] = useState<AppliedFilters>(emptyFilters);
+  const [applied, setApplied] = useState<AppliedFilters>(defaultFilters);
+  const [draft, setDraft] = useState<AppliedFilters>(defaultFilters);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -139,8 +143,9 @@ export default function TungstenInOutPage() {
   };
 
   const clearFilters = () => {
-    setDraft(emptyFilters);
-    setApplied(emptyFilters);
+    const resetFilters = getDefaultFilters();
+    setDraft(resetFilters);
+    setApplied(resetFilters);
     setPage(1);
   };
 
