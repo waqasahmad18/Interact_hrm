@@ -37,7 +37,9 @@ const sidebarLinks = [
 				name: "Attendance",
 				icon: <FaClipboardList />,
 				dropdown: [
-					{ name: "Time", path: "/time", icon: <FaClock /> },
+					{ name: "Attendance Summary", path: "/attendance-summary", icon: <FaClipboardList /> },
+					{ name: "Break Summary", path: "/break-summary", icon: <FaCoffee /> },
+					{ name: "Prayer Break Summary", path: "/prayer-summary", icon: <FaPray /> },
 					{ name: "Manage Attendance", path: "/admin/manage-attendance", icon: <FaClipboardList /> },
 					{ name: "Manage Breaks", path: "/admin/manage-breaks", icon: <FaCoffee /> },
 					{ name: "Monthly Attendance", path: "/admin/monthly-attendance", icon: <FaFileAlt /> },
@@ -45,15 +47,15 @@ const sidebarLinks = [
 				]
 			},
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
-			   {
-				   name: "Onboard",
-				   icon: <FaUserPlus />,
-				   dropdown: [
-					   { name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
-					   { name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
-					   { name: "Employee Credentials", path: "/admin/employee-credentials", icon: <FaKey /> },
-				   ]
-			   },
+			{
+				name: "Onboard",
+				icon: <FaUserPlus />,
+				dropdown: [
+					{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
+					{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
+					{ name: "Employee Credentials", path: "/admin/employee-credentials", icon: <FaKey /> },
+				]
+			},
 			{
 				name: "Shifts",
 				icon: <FaCalendarCheck />,
@@ -65,12 +67,12 @@ const sidebarLinks = [
 			{
 				name: "Payroll",
 				icon: <FaDollarSign />,
-				   dropdown: [
-					   { name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
-					   { name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
-					   { name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
-					   { name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
-				   ]
+				dropdown: [
+					{ name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
+					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
+					{ name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
+					{ name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
+				]
 			},
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
