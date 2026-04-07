@@ -87,11 +87,69 @@ async function main() {
     process.exit(1);
   }
 
+  // First, connect WITHOUT database to check what exists
+  const baseCfg = {
+    host: process.env.DB_HOST || "localhost",
+    user: process.env.DB_USER || "root",
+    password: process.env.DB_PASSWORD || "",
+  };
+
+  if (process.platform === "linux") {
+    baseCfg.socketPath = "/var/run/mysqld/mysqld.sock";
+    delete baseCfg.host;
+  }
+
+  console.log("Connecting to MySQL with user: " + baseCfg.user);
+  
+  let baseConn;
+  try {
+    baseConn = await mysql.createConnection(baseCfg);
+  } catch (err) {
+    console.error("❌ Failed to connect to MySQL:", err.message);
+    console.error("\nTroubleshooting:");
+    console.error("  1. Check DB_USER environment variable: " + (process.env.DB_USER || "NOT SET (using default 'root')"));
+    console.error("  2. Check DB_PASSWORD environment variable: " + (process.env.DB_PASSWORD ? "SET" : "NOT SET"));
+    console.error("  3. Verify MySQL is running");
+    process.exit(1);
+  }
+
+  try {
+    // List available databases
+    const [dbs] = await baseConn.execute("SHOW DATABASES;");
+    const dbNames = dbs.map((d) => d.Database);
+    console.log("Available databases:", dbNames.join(", "));
+    console.log("");
+
+    // Try to find the right database name
+    let dbName = process.env.DB_NAME || "hrm2";
+    if (!dbNames.includes(dbName)) {
+      console.warn(`⚠️  Database '${dbName}' not found!`);
+      
+      // Try common alternatives
+      const alternatives = ["hrm2", "hrm", "interact_hrm", "interact-hrm"];
+      const found = alternatives.find((alt) => dbNames.includes(alt));
+      if (found) {
+        dbName = found;
+        console.log(`✓ Using database: ${dbName}\n`);
+      } else {
+        console.error("❌ Could not find HRM database. Tried:", alternatives.join(", "));
+        process.exit(1);
+      }
+    }
+
+    await baseConn.end();
+  } catch (err) {
+    console.error("Error checking databases:", err.message);
+    await baseConn.end();
+    process.exit(1);
+  }
+
+  // Now connect WITH the correct database
   const dbConfig = {
     host: process.env.DB_HOST || "localhost",
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "hrm2",
+    database: dbName,
   };
 
   if (process.platform === "linux") {
@@ -112,12 +170,12 @@ async function main() {
     );
 
     if (empRows.length === 0) {
-      console.log(`Employee ${employeeId} not found`);
+      console.log(`❌ Employee ${employeeId} not found`);
       process.exit(1);
     }
 
     const emp = empRows[0];
-    console.log(`Employee: ${emp.employee_code} (ID: ${emp.id})`);
+    console.log(`✓ Employee: ${emp.employee_code} (ID: ${emp.id})`);
 
     const [jobRows] = await conn.execute(
       "SELECT joined_date, employment_status FROM employee_jobs WHERE employee_id = ?",
@@ -125,7 +183,7 @@ async function main() {
     );
 
     if (jobRows.length === 0) {
-      console.log(`No job record for employee ${employeeId}`);
+      console.log(`❌ No job record for employee ${employeeId}`);
       process.exit(1);
     }
 
@@ -179,10 +237,22 @@ async function main() {
     console.log(`  Bereavement Used: ${bereavementUsed} days (Balance: ${3 - bereavementUsed}/3)`);
 
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("\n❌ Error:", error.message);
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      console.error("Table doesn't exist:", error.sqlMessage);
+      console.error("\nFix: Run migrations or verify database schema");
+    } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+      console.error("Database user denied access");
+      console.error("Fix: Check DB_USER and DB_PASSWORD environment variables");
+    } else if (error.code === 'ECONNREFUSED') {
+      console.error("Could not connect to MySQL");
+      console.error("Fix: Verify MySQL is running and socketPath is correct");
+    } else {
+      console.error("Full error:", error);
+    }
     process.exit(1);
   } finally {
-    await conn.end();
+    if (conn) await conn.end();
   }
 }
 
