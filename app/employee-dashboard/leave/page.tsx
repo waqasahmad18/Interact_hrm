@@ -124,7 +124,10 @@ function formatDateTime(dateTimeString: string) {
       console.log("Fetching leaves for employee:", employeeId);
 
       // Fetch all leaves
-      const res = await fetch("/api/leaves");
+      const res = await fetch(`/api/leaves?ts=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (data.success) {
         // Filter only this employee's leaves
@@ -135,7 +138,10 @@ function formatDateTime(dateTimeString: string) {
 
       // Fetch dynamic leave balance from new endpoint
       console.log(`Calling /api/leave-balance?employee_id=${employeeId}`);
-      const balanceRes = await fetch(`/api/leave-balance?employee_id=${employeeId}`);
+      const balanceRes = await fetch(`/api/leave-balance?employee_id=${employeeId}&ts=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const balanceData = await balanceRes.json();
       console.log("Raw balance response:", balanceData);
       
@@ -172,7 +178,8 @@ function formatDateTime(dateTimeString: string) {
     if (!employeeId) return;
     
     try {
-      const ws = new window.WebSocket("ws://localhost:3000/api/ws");
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new window.WebSocket(`${protocol}://${window.location.host}/api/ws`);
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
