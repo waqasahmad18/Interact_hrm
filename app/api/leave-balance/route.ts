@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import { getLeaveCycleStartYmd } from "../../../lib/leave-cycle";
+
+function toYmd(value: any): string | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+    if (m) return m[1];
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 const dbConfig = {
   host: "localhost",
@@ -19,22 +34,18 @@ export async function GET(req: NextRequest) {
 
     const conn = await mysql.createConnection(dbConfig);
 
-    // Fetch employment status from hrm_employees and employee_jobs (manual control only)
-    const [empResult, jobResult]: any = await Promise.all([
-      conn.execute(
-        "SELECT id, employee_code, employment_status FROM hrm_employees WHERE employee_code = ? OR CAST(id AS CHAR) = ? OR username = ?",
-        [employee_id, employee_id, employee_id]
-      ),
-      conn.execute(
-        "SELECT employment_status FROM employee_jobs WHERE employee_id = ?",
-        [employee_id]
-      )
-    ]);
-
-    const empRows = (empResult && empResult[0]) || [];
-    const jobRows = (jobResult && jobResult[0]) || [];
-
+    // Resolve employee first (input can be numeric id, employee_code, or username).
+    const [empRows]: any = await conn.execute(
+      "SELECT id, employee_code, employment_status FROM hrm_employees WHERE employee_code = ? OR CAST(id AS CHAR) = ? OR username = ?",
+      [employee_id, employee_id, employee_id]
+    );
     const emp = empRows.length > 0 ? empRows[0] : null;
+    const resolvedEmployeeId = emp?.id ? Number(emp.id) : null;
+
+    const [jobRows]: any = await conn.execute(
+      "SELECT employment_status, joined_date FROM employee_jobs WHERE employee_id = ?",
+      [resolvedEmployeeId]
+    );
     const job = jobRows.length > 0 ? jobRows[0] : null;
 
     const empStatusRaw: string = emp?.employment_status || job?.employment_status || "";
@@ -45,7 +56,7 @@ export async function GET(req: NextRequest) {
     // Fetch custom leave allowance and adjustments from database using correct employee_id
     const [allowanceResult]: any = await conn.execute(
       "SELECT * FROM employee_leave_allowances WHERE employee_id = ?",
-      [emp?.id]
+      [resolvedEmployeeId]
     );
     
     const allowanceRows = (allowanceResult && allowanceResult.length > 0) ? allowanceResult : [];
@@ -55,15 +66,29 @@ export async function GET(req: NextRequest) {
     let annualAllowance = effectiveStatus === "Probation" ? 3 : 20;
     let bereavementAllowance = 3;
     
-    // Get balance adjustments (manual overrides by admin)
-    const annualBalanceAdjustment = customAllowance?.annual_balance_adjustment ?? 0;
-    const bereavementBalanceAdjustment = customAllowance?.bereavement_balance_adjustment ?? 0;
+    const leaveCycleStart = getLeaveCycleStartYmd(job?.joined_date || null);
+
+    // Apply manual adjustments only if they were set in the current leave cycle.
+    const adjustmentUpdatedAt = toYmd(customAllowance?.updated_at);
+    const isCurrentCycleAdjustment =
+      !leaveCycleStart || (adjustmentUpdatedAt !== null && adjustmentUpdatedAt >= leaveCycleStart);
+    const annualBalanceAdjustment = isCurrentCycleAdjustment
+      ? (customAllowance?.annual_balance_adjustment ?? 0)
+      : 0;
+    const bereavementBalanceAdjustment = isCurrentCycleAdjustment
+      ? (customAllowance?.bereavement_balance_adjustment ?? 0)
+      : 0;
 
     // Fetch all approved leaves for this employee (handle both numeric and string IDs)
-    const [leaves]: any = await conn.execute(
-      "SELECT leave_category, total_days FROM employee_leaves WHERE (employee_id = ? OR CAST(employee_id AS CHAR) = ?) AND status = 'approved'",
-      [employee_id, String(employee_id)]
-    );
+    let leavesQuery =
+      "SELECT leave_category, total_days, start_date FROM employee_leaves WHERE (employee_id = ? OR CAST(employee_id AS CHAR) = ?) AND status = 'approved'";
+    const leaveId = resolvedEmployeeId ?? employee_id;
+    const leaveParams: any[] = [leaveId, String(leaveId)];
+    if (leaveCycleStart) {
+      leavesQuery += " AND start_date >= ?";
+      leaveParams.push(leaveCycleStart);
+    }
+    const [leaves]: any = await conn.execute(leavesQuery, leaveParams);
 
     await conn.end();
 
@@ -105,6 +130,7 @@ export async function GET(req: NextRequest) {
       employee_id,
       employment_status: effectiveStatus,
       probationEndsOn: null,
+      leaveCycleStart,
       leavesFound: leaves.length,
       leaves: leaves,
       usedLeave,

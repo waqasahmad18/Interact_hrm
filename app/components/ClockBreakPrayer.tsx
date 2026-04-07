@@ -75,6 +75,11 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     setFadeIn(true);
     if (!employeeId) return;
     
+    // Clear old intervals before starting new syncs
+    if (intervalId) clearInterval(intervalId);
+    if (breakIntervalId) clearInterval(breakIntervalId);
+    if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
+    
     // Sync clock state from backend
     // Custom sync to always use server timezone for timer
     forceSyncClockState(
@@ -108,7 +113,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     
     // Sync break state from backend
     forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
-    
+
     // Sync prayer break state from backend
     forceSyncPrayerBreakState(
       employeeId,
@@ -119,7 +124,6 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       setPrayerStart
     );
     
-    // Re-sync when tab is visible
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
@@ -251,7 +255,10 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        // Force sync with backend instead of local state
+        clearBreakSyncInterval(employeeId);
+        setIsOnBreak(true);
+        setBreakTimer(0);
+        setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
       } else {
         alert(data.error || "Failed to start break.");
@@ -279,7 +286,10 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        // Force sync with backend instead of local state
+        clearBreakSyncInterval(employeeId);
+        setIsOnBreak(false);
+        setBreakTimer(0);
+        setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
       } else {
         alert(data.error || "Failed to end break.");
