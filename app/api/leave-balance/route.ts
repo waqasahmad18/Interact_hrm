@@ -79,17 +79,21 @@ export async function GET(req: NextRequest) {
       ? (customAllowance?.bereavement_balance_adjustment ?? 0)
       : 0;
 
-    // Fetch approved leaves only up to today in current cycle (exclude future-approved leaves)
+    // Fetch approved leaves in current cycle by approval/update date.
+    // This ensures:
+    // - Approve hote hi balance minus ho
+    // - Rejected leaves count na hon
+    // - Previous-cycle pre-approved future leaves anniversary reset ke baad carry na hon
     let leavesQuery =
-      "SELECT leave_category, total_days, start_date FROM employee_leaves WHERE (employee_id = ? OR CAST(employee_id AS CHAR) = ?) AND status = 'approved'";
+      "SELECT leave_category, total_days, start_date, updated_at FROM employee_leaves WHERE (employee_id = ? OR CAST(employee_id AS CHAR) = ?) AND status = 'approved'";
     const leaveId = resolvedEmployeeId ?? employee_id;
     const leaveParams: any[] = [leaveId, String(leaveId)];
     const todayYmd = getDateStringInTimeZone(new Date());
     if (leaveCycleStart) {
-      leavesQuery += " AND start_date >= ?";
+      leavesQuery += " AND DATE(COALESCE(updated_at, start_date)) >= ?";
       leaveParams.push(leaveCycleStart);
     }
-    leavesQuery += " AND start_date <= ?";
+    leavesQuery += " AND DATE(COALESCE(updated_at, start_date)) <= ?";
     leaveParams.push(todayYmd);
     const [leaves]: any = await conn.execute(leavesQuery, leaveParams);
 
