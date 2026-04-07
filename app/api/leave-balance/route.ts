@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { pool } from "../../../lib/db";
 import { getLeaveCycleStartYmd } from "../../../lib/leave-cycle";
 
 function toYmd(value: any): string | null {
@@ -16,14 +16,8 @@ function toYmd(value: any): string | null {
   return `${y}-${m}-${day}`;
 }
 
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "interact_hrm"
-};
-
 export async function GET(req: NextRequest) {
+  let conn: any;
   try {
     const { searchParams } = new URL(req.url);
     const employee_id = searchParams.get("employee_id");
@@ -32,7 +26,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "employee_id is required" });
     }
 
-    const conn = await mysql.createConnection(dbConfig);
+    conn = await pool.getConnection();
 
     // Resolve employee first (input can be numeric id, employee_code, or username).
     const [empRows]: any = await conn.execute(
@@ -90,8 +84,6 @@ export async function GET(req: NextRequest) {
     }
     const [leaves]: any = await conn.execute(leavesQuery, leaveParams);
 
-    await conn.end();
-
     // Define default allowances for each category
     const categoryAllowances: { [key: string]: number } = {
       annual: annualAllowance,
@@ -148,6 +140,8 @@ export async function GET(req: NextRequest) {
       success: false,
       error: error instanceof Error ? error.message : String(error)
     });
+  } finally {
+    if (conn) conn.release();
   }
 }
 
