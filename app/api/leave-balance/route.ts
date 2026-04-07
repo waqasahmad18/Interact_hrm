@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
 import { getLeaveCycleStartYmd } from "../../../lib/leave-cycle";
+import { getDateStringInTimeZone } from "../../../lib/timezone";
 
 function toYmd(value: any): string | null {
   if (!value) return null;
@@ -78,18 +79,21 @@ export async function GET(req: NextRequest) {
       ? (customAllowance?.bereavement_balance_adjustment ?? 0)
       : 0;
 
-    // Fetch all approved leaves for this employee (handle both numeric and string IDs)
+    // Fetch approved leaves only up to today in current cycle (exclude future-approved leaves)
     let leavesQuery =
       "SELECT leave_category, total_days, start_date FROM employee_leaves WHERE (employee_id = ? OR CAST(employee_id AS CHAR) = ?) AND status = 'approved'";
     const leaveId = resolvedEmployeeId ?? employee_id;
     const leaveParams: any[] = [leaveId, String(leaveId)];
+    const todayYmd = getDateStringInTimeZone(new Date());
     if (leaveCycleStart) {
       leavesQuery += " AND start_date >= ?";
       leaveParams.push(leaveCycleStart);
     }
+    leavesQuery += " AND start_date <= ?";
+    leaveParams.push(todayYmd);
     const [leaves]: any = await conn.execute(leavesQuery, leaveParams);
 
-    console.log(`[LEAVE-BALANCE] Found ${leaves.length} approved leaves for cycle starting ${leaveCycleStart}`);
+    console.log(`[LEAVE-BALANCE] Found ${leaves.length} approved leaves for cycle starting ${leaveCycleStart} up to ${todayYmd}`);
     leaves.forEach((leave: any, idx: number) => {
       console.log(`  [${idx}] ${leave.leave_category}: ${leave.total_days} days on ${leave.start_date}`);
     });
