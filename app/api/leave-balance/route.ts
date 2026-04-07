@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "employee_id is required" });
     }
 
+    const requestTime = new Date().toISOString();
+    console.log(`[LEAVE-BALANCE] Request at ${requestTime} for employee_id=${employee_id}`);
+
     conn = await pool.getConnection();
 
     // Resolve employee first (input can be numeric id, employee_code, or username).
@@ -61,6 +64,8 @@ export async function GET(req: NextRequest) {
     let bereavementAllowance = 3;
     
     const leaveCycleStart = getLeaveCycleStartYmd(job?.joined_date || null);
+    
+    console.log(`[LEAVE-BALANCE] Employee ${resolvedEmployeeId}: joined_date=${job?.joined_date}, cycleStart=${leaveCycleStart}`);
 
     // Apply manual adjustments only if they were set in the current leave cycle.
     const adjustmentUpdatedAt = toYmd(customAllowance?.updated_at);
@@ -83,6 +88,11 @@ export async function GET(req: NextRequest) {
       leaveParams.push(leaveCycleStart);
     }
     const [leaves]: any = await conn.execute(leavesQuery, leaveParams);
+
+    console.log(`[LEAVE-BALANCE] Found ${leaves.length} approved leaves for cycle starting ${leaveCycleStart}`);
+    leaves.forEach((leave: any, idx: number) => {
+      console.log(`  [${idx}] ${leave.leave_category}: ${leave.total_days} days on ${leave.start_date}`);
+    });
 
     // Define default allowances for each category
     const categoryAllowances: { [key: string]: number } = {
@@ -116,6 +126,8 @@ export async function GET(req: NextRequest) {
     const totalApprovedDaysUsed = totalUsedDays - bereavementUsedDays;
     const annualBalance = totalAnnualAllowance - totalApprovedDaysUsed + annualBalanceAdjustment;
     const bereavementBalance = bereavementAllowance - bereavementUsedDays + bereavementBalanceAdjustment;
+
+    console.log(`[LEAVE-BALANCE] Result: annual=${annualBalance}/${annualAllowance}, bereavement=${bereavementBalance}/${bereavementAllowance}`);
 
     return NextResponse.json({
       success: true,

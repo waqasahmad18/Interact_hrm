@@ -1,7 +1,8 @@
-function toYmdLocal(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
+// Use UTC consistently to avoid timezone issues
+function toYmdUTC(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -17,21 +18,24 @@ function parseYmd(input: string | Date | null | undefined): { year: number; mont
         day: Number(m[3]),
       };
     }
+    // Try to parse as ISO string (which is UTC)
     const parsed = new Date(input);
     if (Number.isNaN(parsed.getTime())) return null;
+    // Always use UTC for consistency
     return {
-      year: parsed.getFullYear(),
-      month: parsed.getMonth() + 1,
-      day: parsed.getDate(),
+      year: parsed.getUTCFullYear(),
+      month: parsed.getUTCMonth() + 1,
+      day: parsed.getUTCDate(),
     };
   }
 
   if (input instanceof Date) {
     if (Number.isNaN(input.getTime())) return null;
+    // Always use UTC for consistency
     return {
-      year: input.getFullYear(),
-      month: input.getMonth() + 1,
-      day: input.getDate(),
+      year: input.getUTCFullYear(),
+      month: input.getUTCMonth() + 1,
+      day: input.getUTCDate(),
     };
   }
 
@@ -63,8 +67,8 @@ export function getLeaveCycleStartYmd(
   const joined = parseYmd(joinedDate);
   if (!joined) return null;
 
-  const todayYmd = toYmdLocal(now);
-  const thisYear = now.getFullYear();
+  const todayYmd = toYmdUTC(now);
+  const thisYear = now.getUTCFullYear();
 
   const thisYearDay = normalizeAnniversaryDay(thisYear, joined.month, joined.day);
   const annivThisYear = buildYmd(thisYear, joined.month, thisYearDay);
