@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const resolvedEmployeeId = emp?.id ? Number(emp.id) : null;
 
     const [jobRows]: any = await conn.execute(
-      "SELECT employment_status, joined_date FROM employee_jobs WHERE employee_id = ?",
+      "SELECT employment_status, DATE_FORMAT(joined_date, '%Y-%m-%d') AS joined_date FROM employee_jobs WHERE employee_id = ?",
       [resolvedEmployeeId]
     );
     const job = jobRows.length > 0 ? jobRows[0] : null;

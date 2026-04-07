@@ -1,10 +1,4 @@
-// Use UTC consistently to avoid timezone issues
-function toYmdUTC(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+import { getDateStringInTimeZone, getParts, SERVER_TIMEZONE } from "./timezone";
 
 function parseYmd(input: string | Date | null | undefined): { year: number; month: number; day: number } | null {
   if (!input) return null;
@@ -18,24 +12,28 @@ function parseYmd(input: string | Date | null | undefined): { year: number; mont
         day: Number(m[3]),
       };
     }
-    // Try to parse as ISO string (which is UTC)
+    // Try to parse as generic date string.
     const parsed = new Date(input);
     if (Number.isNaN(parsed.getTime())) return null;
-    // Always use UTC for consistency
+    // Use server timezone calendar parts to avoid Ubuntu/local date shifts.
+    const parts = getParts(parsed, SERVER_TIMEZONE);
+    if (!parts) return null;
     return {
-      year: parsed.getUTCFullYear(),
-      month: parsed.getUTCMonth() + 1,
-      day: parsed.getUTCDate(),
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
     };
   }
 
   if (input instanceof Date) {
     if (Number.isNaN(input.getTime())) return null;
-    // Always use UTC for consistency
+    // Use server timezone calendar parts to avoid Ubuntu/local date shifts.
+    const parts = getParts(input, SERVER_TIMEZONE);
+    if (!parts) return null;
     return {
-      year: input.getUTCFullYear(),
-      month: input.getUTCMonth() + 1,
-      day: input.getUTCDate(),
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
     };
   }
 
@@ -67,8 +65,10 @@ export function getLeaveCycleStartYmd(
   const joined = parseYmd(joinedDate);
   if (!joined) return null;
 
-  const todayYmd = toYmdUTC(now);
-  const thisYear = now.getUTCFullYear();
+  const todayYmd = getDateStringInTimeZone(now, SERVER_TIMEZONE);
+  const nowParts = getParts(now, SERVER_TIMEZONE);
+  if (!nowParts) return null;
+  const thisYear = nowParts.year;
 
   const thisYearDay = normalizeAnniversaryDay(thisYear, joined.month, joined.day);
   const annivThisYear = buildYmd(thisYear, joined.month, thisYearDay);
