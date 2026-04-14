@@ -13,6 +13,24 @@ import {
 } from "../../../lib/timezone";
 import { compareAttendanceRows } from "../../../lib/attendance-sort";
 
+function getLocalDateString(date: Date = new Date()) {
+  return getDateStringInTimeZone(date, SERVER_TIMEZONE);
+}
+
+function getMonthStartDateString(date: Date = new Date()) {
+  const d = getDateStringInTimeZone(date, SERVER_TIMEZONE);
+  return `${d.slice(0, 7)}-01`;
+}
+
+function formatDateOnly(dateValue: string | null | undefined) {
+  if (!dateValue) return "";
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateValue);
+  if (dateOnlyMatch) return dateValue;
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return dateValue;
+  return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
+}
+
 // Helper to format duration
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -54,13 +72,13 @@ export default function ManageAttendancePage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(getDateStringInTimeZone(new Date())); // Default to today
+  const [fromDate, setFromDate] = useState(getMonthStartDateString());
+  const [toDate, setToDate] = useState(getLocalDateString()); // Default to today
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRecord, setNewRecord] = useState<Partial<AttendanceRecord>>({
     employee_id: "",
-    date: getDateStringInTimeZone(new Date()),
+    date: getLocalDateString(),
     clock_in: null,
     clock_out: null
   });
@@ -94,7 +112,8 @@ export default function ManageAttendancePage() {
     setLoading(true);
     let url = "/api/attendance";
     const params = new URLSearchParams();
-    if (fromDate) params.append("fromDate", fromDate);
+    const effectiveFromDate = fromDate || toDate;
+    if (effectiveFromDate) params.append("fromDate", effectiveFromDate);
     if (toDate) params.append("toDate", toDate);
     if (params.toString()) url += `?${params.toString()}`;
     fetch(url)
@@ -117,7 +136,7 @@ export default function ManageAttendancePage() {
           // Format date to remove time portion
           records = records.map((r: AttendanceRecord) => ({
             ...r,
-            date: r.date ? r.date.split("T")[0] : "",
+            date: formatDateOnly(r.clock_in || r.clock_out || r.date),
             isEditing: false
           }));
           setAttendance(records);
@@ -222,7 +241,7 @@ export default function ManageAttendancePage() {
         setShowAddForm(false);
         setNewRecord({
           employee_id: "",
-          date: getDateStringInTimeZone(new Date()),
+          date: getLocalDateString(),
           clock_in: null,
           clock_out: null
         });
@@ -280,7 +299,7 @@ export default function ManageAttendancePage() {
         "Full Name": a.employee_name,
         "P.Name": a.pseudonym || '-',
         "Department": a.department_name || '-',
-        "Date": a.date || "",
+        "Date": formatDateOnly(a.clock_in || a.clock_out || a.date),
         "Clock In": a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : "",
         "Clock Out": a.clock_out ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE) : "",
         "Total Hours": totalHours,
@@ -299,7 +318,7 @@ export default function ManageAttendancePage() {
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-    XLSX.writeFile(wb, `Attendance_${getDateStringInTimeZone(new Date())}.xlsx`);
+    XLSX.writeFile(wb, `Attendance_${getLocalDateString()}.xlsx`);
   };
 
   return (
