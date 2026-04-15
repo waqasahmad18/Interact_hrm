@@ -3,7 +3,7 @@ import { query } from "@/lib/db";
 
 // GET: Fetch all company policies
 export async function GET() {
-  const rows = await query("SELECT * FROM company_policies ORDER BY id ASC");
+  const [rows] = (await query("SELECT * FROM company_policies ORDER BY id ASC")) as any;
   return NextResponse.json({ success: true, policies: rows });
 }
 

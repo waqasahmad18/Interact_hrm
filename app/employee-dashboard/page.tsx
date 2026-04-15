@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { getParts, SERVER_TIMEZONE } from "../../lib/timezone";
 // Company Policy widget/modal
 function CompanyPolicyWidget() {
   const [policies, setPolicies] = React.useState<any[]>([]);
@@ -48,7 +49,21 @@ import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
 export default function EmployeeDashboardPage() {
   const [employeeId, setEmployeeId] = React.useState<string>("");
   const [employeeName, setEmployeeName] = React.useState("");
-  const [today] = React.useState(new Date());
+
+  const todayParts = React.useMemo(() => {
+    const parts = getParts(new Date(), SERVER_TIMEZONE);
+    if (parts) return parts;
+
+    const fallback = new Date();
+    return {
+      year: fallback.getFullYear(),
+      month: fallback.getMonth() + 1,
+      day: fallback.getDate(),
+      hour: fallback.getHours(),
+      minute: fallback.getMinutes(),
+      second: fallback.getSeconds(),
+    };
+  }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,14 +128,19 @@ export default function EmployeeDashboardPage() {
     gap: 8
   };
 
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthName = monthStart.toLocaleString(undefined, { month: "long" });
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const leadingBlanks = monthStart.getDay();
+  const calendarYear = todayParts.year;
+  const calendarMonthIndex = todayParts.month - 1;
+  const monthStartUtc = new Date(Date.UTC(calendarYear, calendarMonthIndex, 1));
+  const monthName = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    timeZone: SERVER_TIMEZONE,
+  }).format(new Date(Date.UTC(calendarYear, calendarMonthIndex, 1, 12, 0, 0)));
+  const daysInMonth = new Date(Date.UTC(calendarYear, calendarMonthIndex + 1, 0)).getUTCDate();
+  const leadingBlanks = monthStartUtc.getUTCDay();
   const calendarSlots = Array.from({ length: leadingBlanks + daysInMonth }, (_, idx) => {
     if (idx < leadingBlanks) return null;
     const day = idx - leadingBlanks + 1;
-    const isToday = day === today.getDate();
+    const isToday = day === todayParts.day;
     return { day, isToday };
   });
 
@@ -237,7 +257,7 @@ export default function EmployeeDashboardPage() {
         <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
           <div style={{ background: "#ffffff", borderRadius: 14, padding: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", border: "1px solid #e8ecf5" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#0f1d40" }}>{monthName} {today.getFullYear()}</div>
+              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "#0f1d40" }}>{monthName} {calendarYear}</div>
               <div style={{ color: "#6b7b9b", fontSize: "0.9rem" }}>Calendar</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, textAlign: "center", color: "#6b7b9b", fontWeight: 700, fontSize: "0.85rem", marginBottom: 8 }}>

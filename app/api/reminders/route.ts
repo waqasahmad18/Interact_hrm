@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const rows = await query(
+    const [rows] = (await query(
       "SELECT id, message, is_active, display_order, created_at, updated_at FROM reminders WHERE is_active = 1 ORDER BY display_order ASC"
-    );
+    )) as any;
     return NextResponse.json({ success: true, reminders: rows });
   } catch (error) {
     console.error("/api/reminders GET error", error);
@@ -25,15 +25,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "message is required" }, { status: 400 });
     }
 
-    const result: any = await query(
+    const [result]: any = await query(
       "INSERT INTO reminders (message, is_active, display_order) VALUES (?, ?, ?)",
       [message, is_active ? 1 : 0, display_order]
     );
 
-    const inserted = (await query(
+    const [inserted] = (await query(
       "SELECT id, message, is_active, display_order, created_at, updated_at FROM reminders WHERE id = ?",
       [result.insertId]
-    )) as any[];
+    )) as any;
 
     return NextResponse.json({ success: true, reminder: inserted[0] });
   } catch (error) {
@@ -74,10 +74,10 @@ export async function PUT(req: Request) {
     values.push(id);
     await query(`UPDATE reminders SET ${updates.join(", ")} WHERE id = ?`, values);
 
-    const updated = (await query(
+    const [updated] = (await query(
       "SELECT id, message, is_active, display_order, created_at, updated_at FROM reminders WHERE id = ?",
       [id]
-    )) as any[];
+    )) as any;
 
     return NextResponse.json({ success: true, reminder: updated[0] });
   } catch (error) {

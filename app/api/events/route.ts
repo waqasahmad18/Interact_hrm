@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const rows = await query(
+    const [rows] = (await query(
       "SELECT id, title, description, start_at, end_at, is_all_day, location, status, widget_heading, created_at, updated_at FROM upcoming_events WHERE status = 'published' ORDER BY start_at ASC"
-    );
+    )) as any;
     // Get the widget heading from first event, or use default
     let widgetHeading = "Upcoming Events";
     const rowsArray = rows as any[];
@@ -18,7 +18,7 @@ export async function GET() {
       widgetHeading = rowsArray[0].widget_heading;
     } else {
       // If no events, get heading from database anyway
-      const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
+      const [headingResult] = (await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1")) as any;
       const headingArray = headingResult as any[];
       if (headingArray && headingArray.length > 0 && headingArray[0]?.widget_heading) {
         widgetHeading = headingArray[0].widget_heading;
@@ -52,20 +52,20 @@ export async function POST(req: Request) {
     // Use widget_heading from request if provided, else get from database
     let headingToUse = widget_heading;
     if (!headingToUse) {
-      const headingResult = await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1");
+      const [headingResult] = (await query("SELECT widget_heading FROM upcoming_events WHERE status = 'published' LIMIT 1")) as any;
       const headingArray = headingResult as any[];
       headingToUse = headingArray && headingArray.length > 0 ? headingArray[0].widget_heading : "Upcoming Events";
     }
 
-    const result: any = await query(
+    const [result]: any = await query(
       "INSERT INTO upcoming_events (title, description, start_at, end_at, is_all_day, location, status, widget_heading) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status, headingToUse]
     );
 
-    const inserted = (await query(
+    const [inserted] = (await query(
       "SELECT id, title, description, start_at, end_at, is_all_day, location, status, widget_heading, created_at, updated_at FROM upcoming_events WHERE id = ?",
       [result.insertId]
-    )) as any[];
+    )) as any;
 
     return NextResponse.json({ success: true, event: inserted[0] });
   } catch (error) {

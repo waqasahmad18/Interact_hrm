@@ -38,9 +38,12 @@ export default function CompanyPolicyPage() {
     setLoading(true);
     const res = await fetch("/api/company-policies", { cache: "no-store" });
     const data = await res.json();
-    setPolicy(data.policy || null);
-    setHeading(data.policy?.heading || "");
-    setDescription(data.policy?.description || "");
+    const policyItem = Array.isArray(data.policies)
+      ? data.policies[0] || null
+      : (data.policy || null);
+    setPolicy(policyItem);
+    setHeading(policyItem?.heading || "");
+    setDescription(policyItem?.description || "");
     setLoading(false);
   }
 
