@@ -74,7 +74,12 @@ export default function PrayerBreakSummaryPage() {
 
   const filteredPrayerBreaks = useMemo(() => {
     return prayerBreaks.filter((p) => {
-      if (search && !(p.employee_name || "").toLowerCase().includes(search.toLowerCase())) return false;
+      const term = search.trim().toLowerCase();
+      if (term) {
+        const employeeName = (p.employee_name || "").toLowerCase();
+        const pseudonym = (p.pseudonym || "").toLowerCase();
+        if (!employeeName.includes(term) && !pseudonym.includes(term)) return false;
+      }
       if (department && p.department_name !== department) return false;
       return true;
     });

@@ -94,7 +94,12 @@ export default function BreakSummaryPage() {
 
   const filteredBreaks = useMemo(() => {
     return breaks.filter((b) => {
-      if (search && !(b.employee_name || "").toLowerCase().includes(search.toLowerCase())) return false;
+      const term = search.trim().toLowerCase();
+      if (term) {
+        const employeeName = (b.employee_name || "").toLowerCase();
+        const pseudonym = (b.pseudonym || "").toLowerCase();
+        if (!employeeName.includes(term) && !pseudonym.includes(term)) return false;
+      }
       if (department && b.department_name !== department) return false;
       return true;
     });

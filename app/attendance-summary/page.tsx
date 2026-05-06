@@ -123,7 +123,12 @@ export default function AttendanceSummaryPage() {
   const rows = useMemo(() => {
     return attendance
       .filter((a) => {
-        if (search && !(a.employee_name || "").toLowerCase().includes(search.toLowerCase())) return false;
+        const term = search.trim().toLowerCase();
+        if (term) {
+          const employeeName = (a.employee_name || "").toLowerCase();
+          const pseudonym = (a.pseudonym || "").toLowerCase();
+          if (!employeeName.includes(term) && !pseudonym.includes(term)) return false;
+        }
         if (department && a.department_name !== department) return false;
         return true;
       })
