@@ -99,6 +99,7 @@ export async function GET(req: NextRequest) {
 // POST: Add or update break record
 export async function POST(req: NextRequest) {
   let conn;
+  let lockName: string | null = null;
   try {
     const data = await req.json();
     const { employee_id, employee_name, date, break_start, break_end } = data || {};
@@ -118,16 +119,30 @@ export async function POST(req: NextRequest) {
 
     // Lunch break logic only
     if (break_start) {
+      lockName = `break_start_emp_${Number(employee_id)}`;
+      const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
+      const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
+      if (gotLock !== 1) {
+        return NextResponse.json(
+          { success: false, error: "Could not acquire break lock. Please try again." },
+          { status: 409 }
+        );
+      }
+
       // Get active shift assignment for this employee at break start time
       const shiftAssignmentId = await getActiveShiftAssignment(employee_id, break_start);
-      
-      // Starting a new lunch break - check for ongoing breaks in the SAME SHIFT
+
+      // Prevent duplicate starts regardless of shift assignment.
+      // This also protects when shift_assignment_id is NULL.
       const [ongoingBreaks] = await conn.execute(
-        "SELECT id FROM breaks WHERE employee_id = ? AND break_end IS NULL AND shift_assignment_id = ?",
-        [Number(employee_id), shiftAssignmentId]
+        "SELECT id FROM breaks WHERE employee_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
+        [Number(employee_id)]
       );
       if ((ongoingBreaks as any[]).length > 0) {
-        return NextResponse.json({ success: false, error: "An ongoing lunch break already exists for this employee in this shift." }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "An ongoing lunch break already exists for this employee." },
+          { status: 400 }
+        );
       }
       await conn.execute(
         "INSERT INTO breaks (employee_id, employee_name, shift_assignment_id, date, break_start, break_end, break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
@@ -160,6 +175,13 @@ export async function POST(req: NextRequest) {
     console.error('POST breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   } finally {
+    if (conn && lockName) {
+      try {
+        await conn.execute("SELECT RELEASE_LOCK(?)", [lockName]);
+      } catch (_) {
+        // ignore lock release errors
+      }
+    }
     if (conn) conn.release();
   }
 }

@@ -8,6 +8,7 @@ import {
   dateTimeLocalToIsoInTimeZone,
   getDateStringInTimeZone,
   getDateTimeLocalInTimeZone,
+  getParts,
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
@@ -50,6 +51,20 @@ function formatLateTime(minutes: number) {
 function formatDateTimeLocal(dateTimeString: string | null): string {
   if (!dateTimeString) return "";
   return getDateTimeLocalInTimeZone(dateTimeString, SERVER_TIMEZONE);
+}
+
+function toKarachiEpochMs(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = getParts(value, SERVER_TIMEZONE);
+  if (!parts) return null;
+  return Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
 }
 
 interface AttendanceRecord {
@@ -285,10 +300,12 @@ export default function ManageAttendancePage() {
     const data = filteredAttendance.map(a => {
       let totalHours = "";
       if (a.clock_in && a.clock_out) {
-        const start = new Date(a.clock_in).getTime();
-        const end = new Date(a.clock_out).getTime();
-        const totalSeconds = Math.floor((end - start) / 1000);
-        totalHours = formatDuration(totalSeconds);
+        const start = toKarachiEpochMs(a.clock_in);
+        const end = toKarachiEpochMs(a.clock_out);
+        if (start !== null && end !== null) {
+          const totalSeconds = Math.floor((end - start) / 1000);
+          totalHours = formatDuration(Math.max(0, totalSeconds));
+        }
       }
       let lateText = "On Time";
       if (a.is_late) {
@@ -616,10 +633,11 @@ export default function ManageAttendancePage() {
                       <td>
                         {a.clock_in && a.clock_out ? 
                           (() => {
-                            const start = new Date(a.clock_in).getTime();
-                            const end = new Date(a.clock_out).getTime();
+                            const start = toKarachiEpochMs(a.clock_in);
+                            const end = toKarachiEpochMs(a.clock_out);
+                            if (start === null || end === null) return "";
                             const totalSeconds = Math.floor((end - start) / 1000);
-                            return formatDuration(totalSeconds);
+                            return formatDuration(Math.max(0, totalSeconds));
                           })() : ""
                         }
                       </td>

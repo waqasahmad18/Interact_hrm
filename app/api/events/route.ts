@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
+/** Empty string is not a valid MySQL DATETIME/TIMESTAMP under strict mode; use NULL for optional end times. */
+function optionalDatetimeForDb(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
 // Force Node runtime (mysql2 is not supported on the Edge runtime)
 export const runtime = "nodejs";
 // Always serve fresh data
@@ -57,9 +65,11 @@ export async function POST(req: Request) {
       headingToUse = headingArray && headingArray.length > 0 ? headingArray[0].widget_heading : "Upcoming Events";
     }
 
+    const endAtDb = optionalDatetimeForDb(end_at);
+
     const [result]: any = await query(
       "INSERT INTO upcoming_events (title, description, start_at, end_at, is_all_day, location, status, widget_heading) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [title, description, start_at, end_at, is_all_day ? 1 : 0, location, status, headingToUse]
+      [title, description, start_at, endAtDb, is_all_day ? 1 : 0, location, status, headingToUse]
     );
 
     const [inserted] = (await query(

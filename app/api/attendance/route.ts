@@ -221,6 +221,7 @@ async function checkActiveBreaks(conn: any, employee_id: string) {
 // POST: Add or update attendance record
 export async function POST(req: NextRequest) {
   let conn;
+  let lockName: string | null = null;
   try {
     const data = await req.json();
     const { employee_id, employee_name, date, clock_in, clock_out } = data || {};
@@ -243,6 +244,28 @@ export async function POST(req: NextRequest) {
     await ensureAttendanceTable(conn);
 
     if (clock_in !== undefined && clock_in !== null) {
+      lockName = `attendance_clock_in_emp_${String(employee_id).trim()}`;
+      const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
+      const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
+      if (gotLock !== 1) {
+        return NextResponse.json(
+          { success: false, error: "Could not acquire clock-in lock. Please try again." },
+          { status: 409 }
+        );
+      }
+
+      // Prevent duplicate clock-ins when multiple taps/concurrent requests happen.
+      const [openRows] = await conn.execute(
+        `SELECT id FROM ${ATTENDANCE_TABLE} WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,
+        [employee_id]
+      );
+      if ((openRows as any[]).length > 0) {
+        return NextResponse.json(
+          { success: false, error: "You are already clocked in. Please clock out first." },
+          { status: 400 }
+        );
+      }
+
       // Clock In: Always INSERT a new row
       console.log("Inserting new clock-in record:", { employee_id, employee_name, formattedDate, clock_in });
       await conn.execute(
@@ -292,6 +315,13 @@ export async function POST(req: NextRequest) {
     console.error('POST attendance error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   } finally {
+    if (conn && lockName) {
+      try {
+        await conn.execute("SELECT RELEASE_LOCK(?)", [lockName]);
+      } catch (_) {
+        // ignore lock release errors
+      }
+    }
     if (conn) conn.release();
   }
 }

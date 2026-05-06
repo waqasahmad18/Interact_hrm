@@ -7,6 +7,7 @@ import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
 import {
   getDateStringInTimeZone,
+  getParts,
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
@@ -31,6 +32,25 @@ interface CalendarDayOverride {
   date: string;
   status: "off" | "working";
   note?: string | null;
+}
+
+function normalizeToDateKey(value: string) {
+  if (!value) return "";
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(value);
+  if (dateOnlyMatch) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.split("T")[0] || "";
+  return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
+}
+
+function addDaysToDateKey(dateKey: string, daysToAdd: number) {
+  const [yearStr, monthStr, dayStr] = dateKey.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!year || !month || !day) return dateKey;
+  const utc = new Date(Date.UTC(year, month - 1, day + daysToAdd));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
 }
 
 export default function MonthlyAttendancePage() {
@@ -228,17 +248,14 @@ export default function MonthlyAttendancePage() {
             }
 
             // Parse dates and mark all dates within the range
-            const startDate = new Date(leave.start_date);
-            const endDate = new Date(leave.end_date);
-            let currentDate = new Date(startDate);
+            const startDateKey = normalizeToDateKey(String(leave.start_date || ""));
+            const endDateKey = normalizeToDateKey(String(leave.end_date || ""));
+            if (!startDateKey || !endDateKey) return;
 
-            while (currentDate <= endDate) {
-              // Use local date string (not UTC) for correct mapping
-              const dateKey = currentDate.getFullYear() + '-' +
-                String(currentDate.getMonth() + 1).padStart(2, '0') + '-' +
-                String(currentDate.getDate()).padStart(2, '0');
-              leavesMap[empId][dateKey] = true;
-              currentDate.setDate(currentDate.getDate() + 1);
+            let currentDateKey = startDateKey;
+            while (currentDateKey <= endDateKey) {
+              leavesMap[empId][currentDateKey] = true;
+              currentDateKey = addDaysToDateKey(currentDateKey, 1);
             }
           }
         });
@@ -287,11 +304,29 @@ export default function MonthlyAttendancePage() {
 
   function calculateTotalSeconds(clockIn: string | null, clockOut: string | null): number {
     if (!clockIn || !clockOut) return 0;
-    
-    const inTime = new Date(clockIn);
-    const outTime = new Date(clockOut);
-    
-    const diffMilliseconds = outTime.getTime() - inTime.getTime();
+
+    const inParts = getParts(clockIn, SERVER_TIMEZONE);
+    const outParts = getParts(clockOut, SERVER_TIMEZONE);
+    if (!inParts || !outParts) return 0;
+
+    const inTimeMs = Date.UTC(
+      inParts.year,
+      inParts.month - 1,
+      inParts.day,
+      inParts.hour,
+      inParts.minute,
+      inParts.second
+    );
+    const outTimeMs = Date.UTC(
+      outParts.year,
+      outParts.month - 1,
+      outParts.day,
+      outParts.hour,
+      outParts.minute,
+      outParts.second
+    );
+
+    const diffMilliseconds = outTimeMs - inTimeMs;
     if (diffMilliseconds < 0) return 0;
     
     return Math.floor(diffMilliseconds / 1000);
@@ -310,12 +345,11 @@ export default function MonthlyAttendancePage() {
   }
 
   function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: '2-digit', 
-      day: '2-digit', 
-      year: 'numeric' 
-    });
+    const dateKey = normalizeToDateKey(dateString);
+    if (!dateKey) return "-";
+    const [year, month, day] = dateKey.split("-");
+    if (!year || !month || !day) return dateString;
+    return `${month}/${day}/${year}`;
   }
 
   function formatDateKey(dateKey: string) {
@@ -333,12 +367,7 @@ export default function MonthlyAttendancePage() {
   }
 
   function getDateKey(dateValue: string) {
-    if (!dateValue) return "";
-    const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(dateValue);
-    if (dateOnlyMatch) return dateValue;
-    const parsed = new Date(dateValue);
-    if (Number.isNaN(parsed.getTime())) return dateValue.split("T")[0] || "";
-    return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
+    return normalizeToDateKey(dateValue);
   }
 
   function getRecordDateKey(record: any) {
@@ -386,8 +415,8 @@ export default function MonthlyAttendancePage() {
     const monthIndex = Number(monthStr) - 1;
     const day = Number(dayStr);
     if (!year || monthIndex < 0 || !day) return false;
-    const date = new Date(year, monthIndex, day);
-    const weekday = date.getDay();
+    const date = new Date(Date.UTC(year, monthIndex, day));
+    const weekday = date.getUTCDay();
     return weekday !== 0 && weekday !== 6;
   }
 
@@ -736,15 +765,19 @@ export default function MonthlyAttendancePage() {
     const year = Number(yearStr);
     const monthIndex = Number(monthStr) - 1;
     if (!year || monthIndex < 0) return { label: "", days: [] };
-    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-    const label = new Date(year, monthIndex, 1).toLocaleDateString("en-US", {
+    const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+    const label = new Intl.DateTimeFormat("en-US", {
       month: "long",
       year: "numeric",
-    });
+      timeZone: SERVER_TIMEZONE,
+    }).format(new Date(Date.UTC(year, monthIndex, 1, 12, 0, 0)));
     const days = Array.from({ length: daysInMonth }, (_, index) => {
       const day = index + 1;
       const dateKey = `${yearStr}-${monthStr}-${String(day).padStart(2, "0")}`;
-      const weekday = new Date(year, monthIndex, day).toLocaleDateString("en-US", { weekday: "short" });
+      const weekday = new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        timeZone: SERVER_TIMEZONE,
+      }).format(new Date(Date.UTC(year, monthIndex, day, 12, 0, 0)));
       return { day, dateKey, weekday };
     });
     return { label, days };

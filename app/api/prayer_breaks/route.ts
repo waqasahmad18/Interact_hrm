@@ -97,6 +97,7 @@ export async function GET(req: NextRequest) {
 // POST: Add or update prayer break record
 export async function POST(req: NextRequest) {
   let conn;
+  let lockName: string | null = null;
   try {
     const data = await req.json();
     const { employee_id, employee_name, date, prayer_break_start, prayer_break_end } = data || {};
@@ -113,16 +114,30 @@ export async function POST(req: NextRequest) {
     }
     conn = await pool.getConnection();
     if (prayer_break_start) {
+      lockName = `prayer_break_start_emp_${Number(employee_id)}`;
+      const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
+      const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
+      if (gotLock !== 1) {
+        return NextResponse.json(
+          { success: false, error: "Could not acquire prayer break lock. Please try again." },
+          { status: 409 }
+        );
+      }
+
       // Get active shift assignment for this employee at prayer break start time
       const shiftAssignmentId = await getActiveShiftAssignment(employee_id, prayer_break_start);
       
-      // Starting a new prayer break - check for ongoing prayer breaks in the SAME SHIFT
+      // Prevent duplicate starts regardless of shift assignment.
+      // This also protects when shift_assignment_id is NULL.
       const [ongoingPrayerBreaks] = await conn.execute(
-        "SELECT id FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL AND shift_assignment_id = ?",
-        [Number(employee_id), shiftAssignmentId]
+        "SELECT id FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
+        [Number(employee_id)]
       );
       if ((ongoingPrayerBreaks as any[]).length > 0) {
-        return NextResponse.json({ success: false, error: "An ongoing prayer break already exists for this employee in this shift." }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "An ongoing prayer break already exists for this employee." },
+          { status: 400 }
+        );
       }
       await conn.execute(
         "INSERT INTO prayer_breaks (employee_id, employee_name, shift_assignment_id, date, prayer_break_start, prayer_break_end, prayer_break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
@@ -154,6 +169,13 @@ export async function POST(req: NextRequest) {
     console.error('POST prayer_breaks error:', error);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   } finally {
+    if (conn && lockName) {
+      try {
+        await conn.execute("SELECT RELEASE_LOCK(?)", [lockName]);
+      } catch (_) {
+        // ignore lock release errors
+      }
+    }
     if (conn) conn.release();
   }
 }

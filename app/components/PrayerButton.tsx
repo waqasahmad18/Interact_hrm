@@ -45,6 +45,7 @@ export function PrayerButton({
   onClearServerPrayerInterval,
 }: PrayerButtonProps) {
   const [currentPrayerDuration, setCurrentPrayerDuration] = React.useState(0);
+  const [prayerActionPending, setPrayerActionPending] = React.useState(false);
   const prayerTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Ongoing prayer is restored in parent via forceSyncPrayerBreakState (single source of truth; avoids race with filtered API).
@@ -66,9 +67,10 @@ export function PrayerButton({
   }, [prayerStart]);
 
   const handlePrayerStart = async () => {
-    if (!employeeId) return;
+    if (!employeeId || prayerActionPending) return;
     const startTime = new Date();
     try {
+      setPrayerActionPending(true);
       const res = await fetch("/api/prayer_breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,12 +97,15 @@ export function PrayerButton({
     } catch (err) {
       console.error(err);
       alert("Error starting prayer break");
+    } finally {
+      setPrayerActionPending(false);
     }
   };
 
   const handlePrayerEnd = async () => {
-    if (!employeeId) return;
+    if (!employeeId || prayerActionPending) return;
     try {
+      setPrayerActionPending(true);
       const endTime = new Date();
       const res = await fetch("/api/prayer_breaks", {
         method: "POST",
@@ -124,6 +129,8 @@ export function PrayerButton({
     } catch (err) {
       console.error(err);
       alert("Error ending prayer break");
+    } finally {
+      setPrayerActionPending(false);
     }
   };
 
@@ -143,7 +150,7 @@ export function PrayerButton({
       <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#8e44ad", marginBottom: 10 }}>Prayer Break</div>
       <button
         onClick={isPrayerOn ? handlePrayerEnd : handlePrayerStart}
-        disabled={disabled}
+        disabled={disabled || prayerActionPending}
         style={{
           background: isPrayerOn ? "#e74c3c" : "#8e44ad",
           color: "#fff",
@@ -152,8 +159,8 @@ export function PrayerButton({
           padding: "8px 18px",
           fontSize: "1rem",
           fontWeight: 600,
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.6 : 1,
+          cursor: disabled || prayerActionPending ? "not-allowed" : "pointer",
+          opacity: disabled || prayerActionPending ? 0.6 : 1,
           boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
           transition: "background 0.2s"
         }}

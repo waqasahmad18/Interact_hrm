@@ -93,6 +93,20 @@ function getSessionGroupingKey(
   return `fallback:${record.id ?? record[startField] ?? "unknown"}`;
 }
 
+function toKarachiEpochMs(value: string | Date | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const parts = getParts(value, SERVER_TIMEZONE);
+  if (!parts) return null;
+  return Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+}
+
 export default function EmployeeTimePage() {
   const [activeTab, setActiveTab] = useState("break");
   const [breaks, setBreaks] = useState<any[]>([]);
@@ -197,9 +211,9 @@ export default function EmployeeTimePage() {
             isInRange(a.clock_in || a.date, attFromDate, attToDate)
           );
           // Separate valid and invalid clock_in records
-          const valid = filtered.filter((a: any) => a.clock_in && !isNaN(new Date(a.clock_in).getTime()));
-          const invalid = filtered.filter((a: any) => !a.clock_in || isNaN(new Date(a.clock_in).getTime()));
-          valid.sort((a: any, b: any) => new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime());
+          const valid = filtered.filter((a: any) => a.clock_in && toKarachiEpochMs(a.clock_in) !== null);
+          const invalid = filtered.filter((a: any) => !a.clock_in || toKarachiEpochMs(a.clock_in) === null);
+          valid.sort((a: any, b: any) => (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0));
           setAttendance([...valid, ...invalid]);
         }
         else setAttendance([]);
@@ -211,9 +225,10 @@ export default function EmployeeTimePage() {
     const map = new Map<string, number>();
     for (const b of breaks) {
       if (!b.break_start) continue;
-      const start = new Date(b.break_start);
-      const end = b.break_end ? new Date(b.break_end) : new Date(now);
-      const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+      const start = toKarachiEpochMs(b.break_start);
+      const end = b.break_end ? toKarachiEpochMs(b.break_end) : toKarachiEpochMs(new Date(now));
+      if (start === null || end === null) continue;
+      const seconds = Math.floor((end - start) / 1000);
       const key = getSessionGroupingKey(b, "break_start");
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
@@ -225,9 +240,11 @@ export default function EmployeeTimePage() {
     let sessionSeconds = 0;
     const isRunning = b.break_start && !b.break_end;
     if (b.break_start) {
-      const start = new Date(b.break_start).getTime();
-      const end = b.break_end ? new Date(b.break_end).getTime() : now;
-      sessionSeconds = Math.floor((end - start) / 1000);
+      const start = toKarachiEpochMs(b.break_start);
+      const end = b.break_end ? toKarachiEpochMs(b.break_end) : toKarachiEpochMs(new Date(now));
+      if (start !== null && end !== null) {
+        sessionSeconds = Math.floor((end - start) / 1000);
+      }
     }
     const sessionExceed = sessionSeconds > 3600 ? sessionSeconds - 3600 : 0;
     const key = getSessionGroupingKey(b, "break_start");
@@ -250,9 +267,10 @@ export default function EmployeeTimePage() {
     const map = new Map<string, number>();
     for (const p of prayerBreaks) {
       if (!p.prayer_break_start) continue;
-      const start = new Date(p.prayer_break_start);
-      const end = p.prayer_break_end ? new Date(p.prayer_break_end) : new Date(now);
-      const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+      const start = toKarachiEpochMs(p.prayer_break_start);
+      const end = p.prayer_break_end ? toKarachiEpochMs(p.prayer_break_end) : toKarachiEpochMs(new Date(now));
+      if (start === null || end === null) continue;
+      const seconds = Math.floor((end - start) / 1000);
       const key = getSessionGroupingKey(p, "prayer_break_start");
       map.set(key, (map.get(key) || 0) + Math.max(0, seconds));
     }
@@ -264,9 +282,11 @@ export default function EmployeeTimePage() {
     let sessionSeconds = 0;
     const isRunning = p.prayer_break_start && !p.prayer_break_end;
     if (p.prayer_break_start) {
-      const start = new Date(p.prayer_break_start).getTime();
-      const end = p.prayer_break_end ? new Date(p.prayer_break_end).getTime() : now;
-      sessionSeconds = Math.floor((end - start) / 1000);
+      const start = toKarachiEpochMs(p.prayer_break_start);
+      const end = p.prayer_break_end ? toKarachiEpochMs(p.prayer_break_end) : toKarachiEpochMs(new Date(now));
+      if (start !== null && end !== null) {
+        sessionSeconds = Math.floor((end - start) / 1000);
+      }
     }
     const sessionExceed = sessionSeconds > 1800 ? sessionSeconds - 1800 : 0;
     const key = getSessionGroupingKey(p, "prayer_break_start");
@@ -291,7 +311,7 @@ export default function EmployeeTimePage() {
     breakRows.forEach(row => {
       const pseudo = row.pseudonym !== undefined ? row.pseudonym : (attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : '');
       // Format date as yyyy-mm-dd for Excel compatibility
-      const excelDate = row.date_display ? new Date(row.date_display).toISOString().replace('T', ' ').substring(0, 19) : '';
+      const excelDate = row.date_display ? `${row.date_display} 00:00:00` : '';
       csv += [row.employee_id, row.employee_name || row.name, pseudo, row.department_name, excelDate, row.break_start_display, row.break_end_display, row.total_break_time, row.total_break_time_today, row.exceed, row.exceed_today].map(val => `"${val}"`).join(',') + '\n';
     });
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -646,7 +666,7 @@ export default function EmployeeTimePage() {
                       if (!a.clock_in && !b.clock_in) return 0;
                       if (!a.clock_in) return 1;
                       if (!b.clock_in) return -1;
-                      return new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime();
+                      return (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0);
                     })
                     .map((a, idx) => (
                       <tr key={a.id || idx}>

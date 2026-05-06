@@ -22,7 +22,7 @@ function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
     .filter((a: any) => a.clock_in)
     .sort(
       (a: any, b: any) =>
-        new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+        (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0)
     );
   const activeOpen = sorted.find((a: any) => a.clock_in && !a.clock_out) || null;
   let url = `/api/breaks?employeeId=${encodeURIComponent(employeeId)}`;
@@ -33,6 +33,20 @@ function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
     url += `&date=${encodeURIComponent(today)}`;
   }
   return url;
+}
+
+function toKarachiEpochMs(value: string | Date | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const parts = getParts(value, "Asia/Karachi");
+  if (!parts) return null;
+  return Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
 }
 
 function formatDuration(seconds: number) {
@@ -51,12 +65,14 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [timer, setTimer] = React.useState(0);
   // getParts is now exported and can be imported if needed
   const [loadingAttendance, setLoadingAttendance] = React.useState(true);
+  const [clockActionPending, setClockActionPending] = React.useState(false);
   const [intervalId, setIntervalId] = React.useState<NodeJS.Timeout | null>(null);
   
   // Break sync states
   const [breakIntervalId, setBreakIntervalId] = React.useState<NodeJS.Timeout | null>(null);
   const [breakTimer, setBreakTimer] = React.useState(0);
   const [loadingBreak, setLoadingBreak] = React.useState(true);
+  const [breakActionPending, setBreakActionPending] = React.useState(false);
   
   // Prayer break sync states
   const [prayerBreakIntervalId, setPrayerBreakIntervalId] = React.useState<NodeJS.Timeout | null>(null);
@@ -151,12 +167,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   }, [employeeId]);
 
   const handleClockIn = async () => {
-    if (!employeeId || !employeeName) {
+    if (!employeeId || !employeeName || clockActionPending) {
       alert("Missing employee info");
       return;
     }
     const now = new Date();
     try {
+      setClockActionPending(true);
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,6 +193,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       }
     } catch (error) {
       alert("Error while clocking in. Please try again.");
+    } finally {
+      setClockActionPending(false);
     }
   };
 
@@ -206,8 +225,10 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const confirmClockOut = async (confirmed: boolean) => {
     setShowClockOutConfirm(false);
     if (!confirmed) return;
+    if (clockActionPending) return;
     const now = new Date();
     try {
+      setClockActionPending(true);
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,16 +254,19 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       setActiveBreakTitle("Clock Out Error");
       setActiveBreakErrorMsg(errorMsg);
       setShowActiveBreakModal(true);
+    } finally {
+      setClockActionPending(false);
     }
   };
 
   const handleBreakStart = async () => {
-    if (!employeeId || !isClockedIn) {
+    if (!employeeId || !isClockedIn || breakActionPending) {
       alert("Clock in first");
       return;
     }
     const startTime = new Date();
     try {
+      setBreakActionPending(true);
       const res = await fetch("/api/breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -265,16 +289,19 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       }
     } catch (error) {
       alert("Error starting break.");
+    } finally {
+      setBreakActionPending(false);
     }
   };
 
   const handleBreakEnd = async () => {
-    if (!employeeId || !isOnBreak) {
+    if (!employeeId || !isOnBreak || breakActionPending) {
       alert("No ongoing break found.");
       return;
     }
     const endTime = new Date();
     try {
+      setBreakActionPending(true);
       const res = await fetch("/api/breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,6 +323,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       }
     } catch (error) {
       alert("Error ending break.");
+    } finally {
+      setBreakActionPending(false);
     }
   };
 
@@ -315,6 +344,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           <>
             <button
               onClick={isClockedIn ? handleClockOut : handleClockIn}
+              disabled={clockActionPending}
               style={{
                 background: isClockedIn ? "#e74c3c" : "#27ae60",
                 color: "#fff",
@@ -323,7 +353,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                 padding: "8px 18px",
                 fontSize: "1rem",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: clockActionPending ? "not-allowed" : "pointer",
+                opacity: clockActionPending ? 0.6 : 1,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                 transition: "background 0.2s"
               }}
@@ -474,7 +505,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
           <button
             onClick={isOnBreak ? handleBreakEnd : handleBreakStart}
-            disabled={isPrayerOn}
+            disabled={isPrayerOn || breakActionPending}
             style={{
               background: isOnBreak ? "#e74c3c" : "#e67e22",
               color: "#fff",
@@ -483,8 +514,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
               padding: "8px 18px",
               fontSize: "1rem",
               fontWeight: 600,
-              cursor: isPrayerOn ? "not-allowed" : "pointer",
-              opacity: isPrayerOn ? 0.6 : 1,
+              cursor: isPrayerOn || breakActionPending ? "not-allowed" : "pointer",
+              opacity: isPrayerOn || breakActionPending ? 0.6 : 1,
               boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
               transition: "background 0.2s"
             }}
@@ -547,7 +578,7 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
           .filter((a: any) => a.clock_in)
           .sort(
             (a: any, b: any) =>
-              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+              (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0)
           );
 
         const activeOrLatestAttendance =
@@ -562,10 +593,10 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
             : null;
 
         const sessionStartMs = activeOrLatestAttendance?.clock_in
-          ? new Date(activeOrLatestAttendance.clock_in).getTime()
+          ? toKarachiEpochMs(activeOrLatestAttendance.clock_in)
           : null;
         const sessionEndMs = activeOrLatestAttendance?.clock_out
-          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+          ? toKarachiEpochMs(activeOrLatestAttendance.clock_out)
           : null;
 
         const belongsToCurrentSession = (row: any) => {
@@ -582,8 +613,8 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
           }
 
           if (!row.break_start || sessionStartMs === null) return false;
-          const breakStartMs = new Date(row.break_start).getTime();
-          if (Number.isNaN(breakStartMs) || Number.isNaN(sessionStartMs)) {
+          const breakStartMs = toKarachiEpochMs(row.break_start);
+          if (breakStartMs === null) {
             return false;
           }
 
@@ -603,9 +634,11 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
           let total = 0;
           breakRows.forEach((b: any) => {
             if (b.break_start && b.break_end && belongsToCurrentSession(b)) {
-              const start = new Date(b.break_start);
-              const end = new Date(b.break_end);
-              total += Math.floor((end.getTime() - start.getTime()) / 1000);
+              const start = toKarachiEpochMs(b.break_start);
+              const end = toKarachiEpochMs(b.break_end);
+              if (start !== null && end !== null) {
+                total += Math.floor((end - start) / 1000);
+              }
             }
           });
           setTotalBreakSeconds(total);

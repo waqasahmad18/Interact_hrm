@@ -5,7 +5,7 @@ import LayoutDashboard from "../layout-dashboard";
 import styles from "./attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import { compareAttendanceRows } from "../../lib/attendance-sort";
-import { getDateStringInTimeZone, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
+import { getDateStringInTimeZone, getParts, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -27,8 +27,47 @@ function formatDateOnly(dateValue: string | null | undefined) {
 
 function formatTotalHours(clockIn: string, clockOut: string, currentTime?: number) {
   if (!clockIn) return "00h 00m 00s";
-  const start = new Date(clockIn).getTime();
-  const end = clockOut ? new Date(clockOut).getTime() : currentTime || Date.now();
+  const clockInParts = getParts(clockIn, SERVER_TIMEZONE);
+  if (!clockInParts) return "00h 00m 00s";
+  const start = new Date(
+    Date.UTC(
+      clockInParts.year,
+      clockInParts.month - 1,
+      clockInParts.day,
+      clockInParts.hour,
+      clockInParts.minute,
+      clockInParts.second
+    )
+  ).getTime();
+
+  let end = currentTime || Date.now();
+  if (clockOut) {
+    const clockOutParts = getParts(clockOut, SERVER_TIMEZONE);
+    if (!clockOutParts) return "00h 00m 00s";
+    end = new Date(
+      Date.UTC(
+        clockOutParts.year,
+        clockOutParts.month - 1,
+        clockOutParts.day,
+        clockOutParts.hour,
+        clockOutParts.minute,
+        clockOutParts.second
+      )
+    ).getTime();
+  } else {
+    const nowParts = getParts(new Date(end), SERVER_TIMEZONE);
+    if (!nowParts) return "00h 00m 00s";
+    end = new Date(
+      Date.UTC(
+        nowParts.year,
+        nowParts.month - 1,
+        nowParts.day,
+        nowParts.hour,
+        nowParts.minute,
+        nowParts.second
+      )
+    ).getTime();
+  }
   const totalSeconds = Math.floor((end - start) / 1000);
   const h = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
   const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
