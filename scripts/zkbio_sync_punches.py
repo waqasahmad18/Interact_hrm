@@ -22,6 +22,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -32,13 +33,25 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, urlparse
 
 
+_ZKBIO_ENV_PATH: Optional[Path] = None
+
+
+def _env_bool(key: str, default: bool = True) -> bool:
+    v = os.environ.get(key, "").strip().lower()
+    if not v:
+        return default
+    return v not in ("0", "false", "no")
+
+
 def _load_zkbio_env_file() -> None:
     """Load scripts/zkbio-sync.local.env into os.environ (only keys not already set)."""
+    global _ZKBIO_ENV_PATH
     here = Path(__file__).resolve().parent
     root = here.parent
     for path in (here / "zkbio-sync.local.env", root / "zkbio-sync.local.env"):
         if not path.is_file():
             continue
+        _ZKBIO_ENV_PATH = path
         try:
             raw = path.read_text(encoding="utf-8-sig")
         except OSError:
@@ -337,21 +350,100 @@ def looks_like_auth_wrapper(data: Dict[str, Any]) -> bool:
     return False
 
 
-def try_login(session_req: Any, base: str, verify_ssl: bool) -> bool:
+def persist_zkbio_session(session_value: str) -> None:
+    """Write refreshed SESSION back to zkbio-sync.local.env (gitignored)."""
+    session_value = (session_value or "").strip()
+    if not session_value:
+        return
+    os.environ["ZKBIO_SESSION"] = session_value
+    if not _env_bool("ZKBIO_PERSIST_SESSION", True):
+        return
+    if _ZKBIO_ENV_PATH is None or not _ZKBIO_ENV_PATH.is_file():
+        return
+    try:
+        lines = _ZKBIO_ENV_PATH.read_text(encoding="utf-8-sig").splitlines(keepends=True)
+    except OSError:
+        return
+    out: List[str] = []
+    found = False
+    for line in lines:
+        if line.strip().startswith("ZKBIO_SESSION="):
+            out.append(f"ZKBIO_SESSION={session_value}\n")
+            found = True
+        else:
+            out.append(line if line.endswith("\n") else line + "\n")
+    if not found:
+        out.append(f"ZKBIO_SESSION={session_value}\n")
+    try:
+        _ZKBIO_ENV_PATH.write_text("".join(out), encoding="utf-8")
+    except OSError as e:
+        print(f"ZKBio: could not save SESSION to {_ZKBIO_ENV_PATH}: {e}", file=sys.stderr)
+
+
+def login_password_candidates() -> List[str]:
+    """Password values to try on login.do (hash from DevTools, else MD5 of plain)."""
+    seen: set[str] = set()
+    out: List[str] = []
+
+    def add(value: str) -> None:
+        v = (value or "").strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+
+    add(os.environ.get("ZKBIO_PASSWORD_HASH", ""))
+    plain = os.environ.get("ZKBIO_PASSWORD", "").strip()
+    if plain and _env_bool("ZKBIO_PASSWORD_MD5", True):
+        add(hashlib.md5(plain.encode("utf-8")).hexdigest())
+    if plain and _env_bool("ZKBIO_PASSWORD_TRY_PLAIN", False):
+        add(plain)
+    return out
+
+
+def session_cookie_value(session_req: Any) -> str:
+    for c in session_req.cookies:
+        if c.name.upper() == "SESSION":
+            return (c.value or "").strip()
+    return ""
+
+
+def ensure_zkbio_session(session_req: Any, base: str, verify_ssl: bool, *, force: bool = False) -> bool:
     """
-    Login via the HTML form action discovered on bioLogin.do:
-      <form action="login.do" method="post">
-        username (text input name=username)
-        password (hidden input name=password; JS copies/encrypts visible password)
-        optional checkCode
-    We attempt plaintext password in 'password'. If the server expects encrypted, this will fail,
-    and the user must supply the correct additional fields or provide a working login POST from DevTools.
+    Auto-login + SESSION refresh. Uses ZKBIO_USERNAME + ZKBIO_PASSWORD(_HASH).
+    On success, persists SESSION to zkbio-sync.local.env so manual copy is not needed each run.
     """
     user = os.environ.get("ZKBIO_USERNAME", "").strip()
-    pwd_hash = os.environ.get("ZKBIO_PASSWORD_HASH", "").strip()
-    pwd_plain = os.environ.get("ZKBIO_PASSWORD", "").strip()
-    # Prefer hashed/encrypted password captured from DevTools payload.
-    pwd_to_send = pwd_hash or pwd_plain
+    candidates = login_password_candidates()
+    if not _env_bool("ZKBIO_AUTO_LOGIN", True) or not user or not candidates:
+        return bool(session_cookie_value(session_req) or os.environ.get("ZKBIO_SESSION", "").strip())
+
+    every_run = _env_bool("ZKBIO_LOGIN_EVERY_RUN", True)
+    if session_cookie_value(session_req) and not force and not every_run:
+        return True
+
+    if os.environ.get("ZKBIO_DEBUG", "").lower() in ("1", "true", "yes"):
+        print("ZKBio debug: auto-login (session refresh)…", file=sys.stderr)
+
+    for pwd in candidates:
+        if try_login(session_req, base, verify_ssl, pwd):
+            sess = session_cookie_value(session_req)
+            if sess:
+                persist_zkbio_session(sess)
+                if os.environ.get("ZKBIO_DEBUG", "").lower() in ("1", "true", "yes"):
+                    print(
+                        f"ZKBio debug: SESSION refreshed ({sess[:8]}…)",
+                        file=sys.stderr,
+                    )
+                return True
+    return bool(session_cookie_value(session_req))
+
+
+def try_login(session_req: Any, base: str, verify_ssl: bool, password: str) -> bool:
+    """
+    Login via login.do. Password is usually MD5(plain) or ZKBIO_PASSWORD_HASH from DevTools.
+    """
+    user = os.environ.get("ZKBIO_USERNAME", "").strip()
+    pwd_to_send = (password or "").strip()
     if not user or not pwd_to_send:
         return False
 
@@ -385,17 +477,43 @@ def try_login(session_req: Any, base: str, verify_ssl: bool) -> bool:
         return False
 
     if r.status_code < 200 or r.status_code >= 300:
+        if os.environ.get("ZKBIO_DEBUG", "").lower() in ("1", "true", "yes"):
+            print(
+                f"ZKBio debug: login.do HTTP {r.status_code} body={(r.text or '')[:300]!r}",
+                file=sys.stderr,
+            )
         return False
 
     data = _parse_json_response(r)
-    # Many systems return JSON {success:true} or similar; some redirect or HTML.
+    has_session = any(c.name.upper() == "SESSION" for c in session_req.cookies)
+    if os.environ.get("ZKBIO_DEBUG", "").lower() in ("1", "true", "yes"):
+        print(
+            f"ZKBio debug: login.do HTTP {r.status_code} SESSION_cookie={has_session} "
+            f"json={(str(data)[:300] if data else (r.text or '')[:300])!r}",
+            file=sys.stderr,
+        )
+
     if isinstance(data, dict):
+        if data.get("success") in (False, "false", 0):
+            msg = data.get("msg") or data.get("message") or data
+            print(f"ZKBio: login failed — {msg}", file=sys.stderr)
+            print(
+                "Use ZKBIO_PASSWORD_HASH from DevTools → login.do → Payload (encrypted password), "
+                "or paste fresh ZKBIO_SESSION after logging in via browser.",
+                file=sys.stderr,
+            )
+            return False
         if data.get("success") in (True, "true", 1):
             return True
         if data.get("status") in (200, "200") and data.get("error") in (None, "", "OK"):
             return True
-    # If cookie jar now has SESSION, assume login may have worked.
-    return True
+        if looks_like_auth_wrapper(data):
+            print(
+                "ZKBio: login failed — set ZKBIO_PASSWORD_HASH or fresh ZKBIO_SESSION.",
+                file=sys.stderr,
+            )
+            return False
+    return has_session
 
 
 def _missing_dedupe_indexes(cur: Any) -> List[str]:
@@ -489,10 +607,12 @@ def main() -> int:
     http_method = os.environ.get("ZKBIO_HTTP_METHOD", "get").strip().lower()
     extra_form = os.environ.get("ZKBIO_EXTRA_FORM", "").strip()
 
-    if not session:
+    user = os.environ.get("ZKBIO_USERNAME", "").strip()
+    creds = login_password_candidates()
+    if not session and not (user and creds):
         print(
-            "Missing ZKBIO_SESSION. Put it in scripts/zkbio-sync.local.env (copy from zkbio-sync.env.example). "
-            "Value = Cookie SESSION=... from DevTools → accTransaction request → Headers.",
+            "Missing ZKBIO_SESSION and no auto-login credentials. Set ZKBIO_USERNAME + ZKBIO_PASSWORD "
+            "(MD5 login) or ZKBIO_PASSWORD_HASH in scripts/zkbio-sync.local.env.",
             file=sys.stderr,
         )
         return 1
@@ -555,6 +675,13 @@ def main() -> int:
     if sess_val:
         session_req.cookies.set("SESSION", sess_val)
 
+    if not ensure_zkbio_session(session_req, base, verify_ssl):
+        print(
+            "ZKBio: auto-login failed. Check ZKBIO_USERNAME / ZKBIO_PASSWORD in zkbio-sync.local.env.",
+            file=sys.stderr,
+        )
+        return 1
+
     insert_sql = """
     INSERT IGNORE INTO zkbio_punch_log
     (log_id, event_time, pin, first_name, last_name, event_name, verify_mode, device_name, reader_name, dept_name, raw_json, imported_at)
@@ -593,14 +720,13 @@ def main() -> int:
         # Auto re-login on expired session wrapper, then retry once.
         if isinstance(data, dict) and looks_like_auth_wrapper(data):
             if os.environ.get("ZKBIO_DEBUG", "").lower() in ("1", "true", "yes"):
-                print(f"ZKBio debug: auth wrapper detected, attempting auto-login…", file=sys.stderr)
-            if try_login(session_req, base, verify_ssl):
+                print("ZKBio debug: auth wrapper detected, refreshing session…", file=sys.stderr)
+            if ensure_zkbio_session(session_req, base, verify_ssl, force=True):
                 data = fetch_grid_json(session_req, list_url, params, http_method, verify_ssl)
-            # If still wrapper, fail with clear message.
             if not isinstance(data, dict) or looks_like_auth_wrapper(data):
                 print(
-                    "ZKBio: session expired/unauthorized. Set ZKBIO_SESSION or configure auto-login via "
-                    "ZKBIO_USERNAME + ZKBIO_PASSWORD (+ optional ZKBIO_CHECKCODE).",
+                    "ZKBio: session expired/unauthorized. Check ZKBIO_USERNAME + ZKBIO_PASSWORD "
+                    "(or ZKBIO_PASSWORD_HASH) in zkbio-sync.local.env.",
                     file=sys.stderr,
                 )
                 cur.close()
