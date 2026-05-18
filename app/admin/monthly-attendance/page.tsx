@@ -11,6 +11,7 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
+import { compareAttendanceRows } from "../../../lib/attendance-sort";
 
 // ...existing code...
 
@@ -816,6 +817,10 @@ export default function MonthlyAttendancePage() {
     });
 
     Object.values(map).forEach((employee) => {
+      Object.keys(employee.byDate).forEach((dateKey) => {
+        employee.byDate[dateKey].sort(compareAttendanceRows);
+      });
+
       const allRecords = Object.values(employee.byDate).flat();
       const sorted = [...allRecords].sort((a, b) => {
         const aKey = getRecordDateKey(a);

@@ -50,15 +50,28 @@ export function registerZkbioCron(): void {
         const ended = ts();
         if (r.code === 0) {
           const out = r.stdout || "";
-          const inserted = out.match(/Inserted\s+(\d+)\s+(?:new\s+)?row/i);
+          const inserted = out.match(/inserted\s+(\d+)\s+new/i);
+          const fetched = out.match(/Fetched\s+(\d+)\s+row/i);
+          const windowLine = out
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.includes("ZKBio sync ("));
           const summary = inserted
-            ? `Inserted ${inserted[1]} row(s)`
+            ? `Fetched ${fetched?.[1] ?? "?"} from API, inserted ${inserted[1]} new`
             : out
                 .split("\n")
                 .map((l) => l.trim())
                 .filter(Boolean)
                 .slice(-1)[0] || "done";
           console.log(`[zkbio-sync] ✓ ${ended} — finished OK — ${summary}`);
+          if (windowLine) console.log(`[zkbio-sync]   ${windowLine}`);
+          if (!inserted || Number(inserted[1]) === 0) {
+            const hints = (r.stderr || "")
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.startsWith("Hint:"));
+            hints.forEach((h) => console.warn(`[zkbio-sync]   ${h}`));
+          }
         } else {
           console.error(
             `[zkbio-sync] ✗ ${ended} — FAILED exit=${r.code}`,

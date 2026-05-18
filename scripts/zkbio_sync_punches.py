@@ -52,7 +52,13 @@ def _load_zkbio_env_file() -> None:
             key, _, val = line.partition("=")
             key = key.strip()
             val = val.strip().strip('"').strip("'")
-            if key and key not in os.environ:
+            if not key:
+                continue
+            existing = os.environ.get(key)
+            # Next.js/PM2 may inject empty ZKBIO_/DB_ vars; local file should still win.
+            if existing is None or (
+                not str(existing).strip() and key.startswith(("ZKBIO_", "DB_"))
+            ):
                 os.environ[key] = val
         break
 
@@ -558,6 +564,7 @@ def main() -> int:
     page = 1
     inserted = 0
     skipped_no_time = 0
+    fetched_rows = 0
 
     while True:
         params: Dict[str, Any] = {}
@@ -648,6 +655,8 @@ def main() -> int:
                 except (TypeError, ValueError):
                     total_pages = None
 
+        fetched_rows += len(rows)
+
         for row in rows:
             log_id = (row.get("logId") or row.get("log_id") or "").strip() or None
             event_time = parse_dt(row.get("eventTime") or row.get("event_time"))
@@ -697,10 +706,23 @@ def main() -> int:
     cur.close()
     conn.close()
 
-    print(
+    summary = (
         f"ZKBio sync ({window_mode}): window {start_str} .. {end_str}. "
-        f"Inserted {inserted} new row(s); duplicates ignored; skipped {skipped_no_time} row(s) without event time."
+        f"Fetched {fetched_rows} row(s) from API; inserted {inserted} new; "
+        f"skipped {skipped_no_time} without event time."
     )
+    print(summary)
+    if inserted == 0 and fetched_rows == 0:
+        print(
+            "Hint: 0 rows from ZKBio — check (1) server can reach ZKBIO_BASE (often 192.168.x.x only on LAN), "
+            "(2) ZKBIO_SESSION not expired, (3) sync window vs MAX(event_time) in DB. Run with ZKBIO_DEBUG=1 for details.",
+            file=sys.stderr,
+        )
+    elif inserted == 0 and fetched_rows > 0:
+        print(
+            "Hint: API returned rows but none were new (already in DB via INSERT IGNORE / unique keys).",
+            file=sys.stderr,
+        )
     return 0
 
 
