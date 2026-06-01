@@ -724,12 +724,10 @@ export default function MonthlyAttendancePage() {
           runningLate += 1;
           statusLabel = "Tardy";
           statusColor = "#E53E3E";
-          if (runningLate === 4) statusLabel = "Half Day";
-          else if (runningLate >= 5) statusLabel = "Full Day";
+          if (runningLate === 4) deduction = "50%";
+          else if (runningLate >= 5) deduction = "100%";
+          else deduction = "0%";
         }
-        if (statusLabel === "Tardy") deduction = "0%";
-        else if (statusLabel === "Half Day") deduction = "50%";
-        else if (statusLabel === "Full Day") deduction = "100%";
         employee.dateMeta[dateKey] = { runningLate, statusLabel, statusColor, deduction };
       });
     });
