@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../attendance-summary/attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
@@ -21,6 +21,52 @@ import {
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
 import { compareAttendanceRows } from "../../../lib/attendance-sort";
+import {
+  normalizeAttendanceStatus,
+  uiStatusTextColor,
+} from "../../../lib/attendance-status";
+import {
+  aggregateDayPunches,
+  classifyDayAttendance,
+  STATUS_FIRST_HALF_DAY,
+  STATUS_SECOND_HALF_DAY,
+} from "../../../lib/monthly-attendance-status";
+import {
+  formatImportedRunningLate,
+  getImportedDayDisplayFields,
+  importedEmployeeUsesFiveHourShift,
+  importedSnapshotToAttendanceEmployees,
+  loadImportedMonthlySnapshot,
+  parseMonthlyAttendanceWorkbook,
+  saveImportedMonthlySnapshot,
+  type ImportedMonthlyDay,
+  type ImportedMonthlySnapshot,
+} from "../../../lib/monthly-attendance-import";
+import {
+  buildEmployeeReportSessions,
+  loadTungstenPunchContext,
+  monthlyDash,
+  type EmployeeReportSession,
+  type TungstenPunchContext,
+} from "../../../lib/tungsten-punch-pairing";
+import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
+import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
+
+type MonthlyAttendanceEmployeeRow = {
+  employeeId: string;
+  employeeName: string;
+  pseudonym: string;
+  departmentName: string;
+  gender: string;
+  byDate: Record<string, any[]>;
+  dateMeta: Record<
+    string,
+    { runningLate: number | string; statusLabel: string; statusColor: string; deduction: string }
+  >;
+  isImported?: boolean;
+  importedDays?: ImportedMonthlyDay[];
+  importedFooter?: { totalDeduction?: string; extraHours?: string; workingDays?: string };
+};
 
 // ...existing code...
 
@@ -124,6 +170,56 @@ export default function MonthlyAttendancePage() {
     return `${h}h ${m}m`;
   }
 
+  /** Use UI display text when already formatted (imported rows), else format seconds. */
+  function formatDurationForExport(value: number | string | null | undefined) {
+    if (value == null || value === "" || value === "---" || value === "-") return "---";
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (!s) return "---";
+      if (/h\s*m/i.test(s)) return s;
+      return s;
+    }
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      const formatted = formatDurationHM(value);
+      return formatted === "-" ? "---" : formatted;
+    }
+    return "---";
+  }
+
+  function excelClockForExport(record: any, kind: "in" | "out") {
+    const imported = record._importedDay;
+    if (imported) {
+      const v = kind === "in" ? imported.clockIn : imported.clockOut;
+      return v && v !== "---" && v !== "-" ? v : "---";
+    }
+    const formatted = formatTime(kind === "in" ? record.clock_in : record.clock_out);
+    return formatted === "-" ? "---" : formatted;
+  }
+
+  function excelTotalHoursForExport(record: any) {
+    if (record._importedDay?.totalWH) {
+      const v = record._importedDay.totalWH;
+      return v && v !== "---" ? v : "---";
+    }
+    return record.total_hours ? formatHoursMins(record.total_hours) : "---";
+  }
+
+  function excelAssignedWHForExport(record: any) {
+    if (record._importedDay?.assignedWH) {
+      const v = record._importedDay.assignedWH;
+      return v && v !== "---" ? v : "---";
+    }
+    if (record.assigned_working_hours) return formatHoursMins(record.assigned_working_hours);
+    return formatDurationForExport(record.assigned_shift_seconds);
+  }
+
+  function excelOvertimeForExport(record: any) {
+    if (record._importedDay?.overtime) {
+      return formatDurationForExport(record._importedDay.overtime);
+    }
+    return formatDurationForExport(record.overtime);
+  }
+
   const [attendance, setAttendance] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
@@ -142,6 +238,26 @@ export default function MonthlyAttendancePage() {
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
+  const [importedSnapshot, setImportedSnapshot] = useState<ImportedMonthlySnapshot | null>(null);
+  const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
+  const [pairingNow, setPairingNow] = useState(() => Date.now());
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const showingImported =
+    Boolean(importedSnapshot?.month && importedSnapshot.month === selectedMonth && importedSnapshot.employees.length);
+
+  // Re-pair T.Punch out as new ZKBio punches sync in after clock-out.
+  useEffect(() => {
+    if (showingImported) return;
+    const refreshPairing = () => {
+      setPairingNow(Date.now());
+      loadTungstenPunchContext(fromDate, toDate, selectedDepartment || undefined)
+        .then(setTungstenCtx)
+        .catch(() => {});
+    };
+    const id = setInterval(refreshPairing, 30_000);
+    return () => clearInterval(id);
+  }, [fromDate, toDate, selectedDepartment, showingImported]);
 
   // Fetch departments
   useEffect(() => {
@@ -155,83 +271,130 @@ export default function MonthlyAttendancePage() {
       .catch(err => console.error('Error fetching departments:', err));
   }, []);
 
-  // Fetch attendance records
-  const fetchAttendance = () => {
+  // Fetch attendance records + Tungsten punch context (Employee Report pairing)
+  const fetchAttendance = async () => {
     setLoading(true);
     let url = "/api/attendance";
     const params = new URLSearchParams();
-    
-    if (fromDate) params.append("fromDate", fromDate);
-    if (toDate) params.append("toDate", toDate);
-    // Department filter: match by department name (not id)
+
+    const attFromDate = fromDate ? addDaysToDateKey(fromDate, -1) : "";
+    const attToDate = toDate ? addDaysToDateKey(toDate, 1) : "";
+    if (attFromDate) params.append("fromDate", attFromDate);
+    if (attToDate) params.append("toDate", attToDate);
     if (selectedDepartment) params.append("departmentName", selectedDepartment);
-    // Name filter: match by employee name (case-insensitive)
     if (searchName) params.append("employeeName", searchName);
-    
+
     if (params.toString()) {
       url += "?" + params.toString();
     }
 
-    fetch(url, { cache: "no-store" })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          // First, build a map of employee_id -> most recent valid shift timings
-          const empShiftMap: Record<string, {start: string, end: string, seconds: number}> = {};
-          (data.attendance || []).forEach((record: any) => {
-            const assignedShiftSeconds = getAssignedShiftSeconds(record.shift_start_time, record.shift_end_time);
-            if (
-              record.employee_id &&
-              record.shift_start_time && record.shift_end_time &&
-              assignedShiftSeconds && assignedShiftSeconds > 0
-            ) {
-              empShiftMap[record.employee_id] = {
-                start: record.shift_start_time,
-                end: record.shift_end_time,
-                seconds: assignedShiftSeconds
-              };
-            }
-          });
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+      if (!data.success) return;
 
-          let records = (data.attendance || []).map((record: any) => {
-            // Calculate total seconds from clock_in and clock_out
-            const totalSeconds = record.total_seconds && record.total_seconds > 0 
-              ? record.total_seconds 
-              : calculateTotalSeconds(record.clock_in, record.clock_out);
-            // Use record's shift timings, or fallback to most recent for this employee
-            let assignedShiftSeconds = getAssignedShiftSeconds(record.shift_start_time, record.shift_end_time);
-            if ((!assignedShiftSeconds || assignedShiftSeconds <= 0) && empShiftMap[record.employee_id]) {
-              assignedShiftSeconds = empShiftMap[record.employee_id].seconds;
-            }
-            // Calculate overtime using assigned shift seconds
-            const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds);
-            return {
-              ...record,
-              total_hours: formatDuration(totalSeconds),
-              assigned_shift_seconds: assignedShiftSeconds,
-              overtime: overtimeSeconds,
-              is_late: record.is_late,
-              late_minutes: record.late_minutes || 0
-            };
-          });
-          // Client-side filter for department and name (in case API doesn't filter)
-          if (selectedDepartment) {
-            records = records.filter((r: any) => (r.department_name || "").toLowerCase() === selectedDepartment.toLowerCase());
-          }
-          if (searchName) {
-            records = records.filter((r: any) => (r.employee_name || "").toLowerCase().includes(searchName.toLowerCase()));
-          }
-          setAttendance(records);
-
-          // Fetch approved leaves for employees in the date range
-          const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
-          if (uniqueEmployees.length > 0) {
-            fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
-          }
+      const empShiftMap: Record<string, { start: string; end: string; seconds: number }> = {};
+      (data.attendance || []).forEach((record: any) => {
+        const assignedShiftSeconds = getAssignedShiftSeconds(
+          record.shift_start_time,
+          record.shift_end_time,
+        );
+        if (
+          record.employee_id &&
+          record.shift_start_time &&
+          record.shift_end_time &&
+          assignedShiftSeconds &&
+          assignedShiftSeconds > 0
+        ) {
+          empShiftMap[record.employee_id] = {
+            start: record.shift_start_time,
+            end: record.shift_end_time,
+            seconds: assignedShiftSeconds,
+          };
         }
-      })
-      .catch(err => console.error("Error fetching attendance:", err))
-      .finally(() => setLoading(false));
+      });
+
+      let records = (data.attendance || []).map((record: any) => {
+        const totalSeconds =
+          record.total_seconds && record.total_seconds > 0
+            ? record.total_seconds
+            : calculateTotalSeconds(record.clock_in, record.clock_out);
+        let assignedShiftSeconds = getAssignedShiftSeconds(
+          record.shift_start_time,
+          record.shift_end_time,
+        );
+        if (
+          (!assignedShiftSeconds || assignedShiftSeconds <= 0) &&
+          empShiftMap[record.employee_id]
+        ) {
+          assignedShiftSeconds = empShiftMap[record.employee_id].seconds;
+        }
+        const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds);
+        return {
+          ...record,
+          total_hours: formatDuration(totalSeconds),
+          assigned_shift_seconds: assignedShiftSeconds,
+          overtime: overtimeSeconds,
+          is_late: record.is_late,
+          late_minutes: record.late_minutes || 0,
+        };
+      });
+      if (selectedDepartment) {
+        records = records.filter(
+          (r: any) =>
+            (r.department_name || "").toLowerCase() === selectedDepartment.toLowerCase(),
+        );
+      }
+      if (searchName) {
+        records = records.filter((r: any) =>
+          (r.employee_name || "").toLowerCase().includes(searchName.toLowerCase()),
+        );
+      }
+      setAttendance(records);
+
+      const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
+      if (uniqueEmployees.length > 0) {
+        fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
+      }
+
+      const ctx = await loadTungstenPunchContext(
+        fromDate,
+        toDate,
+        selectedDepartment || undefined,
+      );
+      setTungstenCtx(ctx);
+    } catch (err) {
+      console.error("Error fetching attendance:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportClick = () => importInputRef.current?.click();
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const snapshot = parseMonthlyAttendanceWorkbook(buffer);
+      if (!snapshot.employees.length) {
+        alert("No employee sheets found. Use monthly attendance export format (one tab per employee).");
+        return;
+      }
+      if (!snapshot.month) {
+        alert("Could not detect month from file dates.");
+        return;
+      }
+      saveImportedMonthlySnapshot(snapshot);
+      setImportedSnapshot(snapshot);
+      setSelectedMonth(snapshot.month);
+      alert(`Loaded ${snapshot.employees.length} employees for ${snapshot.month}. Select that month to view.`);
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      e.target.value = "";
+    }
   };
 
   // Fetch approved leaves for given employees and date range
@@ -279,10 +442,24 @@ export default function MonthlyAttendancePage() {
   };
 
 
-  // Sync filters with page: fetch data whenever any filter changes
   useEffect(() => {
+    const loaded = loadImportedMonthlySnapshot(selectedMonth);
+    if (!loaded) {
+      setImportedSnapshot(null);
+      return;
+    }
+    setImportedSnapshot(loaded);
+  }, [selectedMonth]);
+
+  // Sync filters with page: fetch data whenever any filter changes (skip when showing imported Excel)
+  useEffect(() => {
+    if (showingImported) {
+      setTungstenCtx(null);
+      setLoading(false);
+      return;
+    }
     fetchAttendance();
-  }, [fromDate, toDate, selectedDepartment, searchName]);
+  }, [fromDate, toDate, selectedDepartment, searchName, showingImported]);
 
   useEffect(() => {
     if (!selectedMonth) return;
@@ -354,6 +531,15 @@ export default function MonthlyAttendancePage() {
     return getTimeStringInTimeZone(timeString, SERVER_TIMEZONE);
   }
 
+  function findRecordForSession(dayRecords: any[], session: EmployeeReportSession) {
+    if (!dayRecords.length) return undefined;
+    const matched = dayRecords.find((r) => {
+      if (!r.clock_in || session.hrmClockIn === "-") return false;
+      return getTimeStringInTimeZone(r.clock_in, SERVER_TIMEZONE) === session.hrmClockIn;
+    });
+    return matched ?? dayRecords[0];
+  }
+
   function formatDate(dateString: string) {
     const dateKey = normalizeToDateKey(dateString);
     if (!dateKey) return "-";
@@ -385,6 +571,27 @@ export default function MonthlyAttendancePage() {
   }
 
   function calculateTotalDeduction(employee: any) {
+    if (employee.isImported) {
+      if (employee.importedDays?.length && importedEmployeeUsesFiveHourShift(employee.importedDays)) {
+        let total = 0;
+        (employee.importedDays as ImportedMonthlyDay[]).forEach((day) => {
+          const { deduction } = getImportedDayDisplayFields(day, { fiveHourShift: true });
+          if (deduction) total += parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
+        });
+        return total;
+      }
+      const fromFooter = employee.importedFooter?.totalDeduction;
+      if (fromFooter != null && String(fromFooter).trim() !== "") {
+        return parseInt(String(fromFooter).replace(/%/g, ""), 10) || 0;
+      }
+      let total = 0;
+      (employee.importedDays || []).forEach((day: ImportedMonthlyDay) => {
+        const ded = day.sheetDeduction ?? day.deduction ?? employee.dateMeta?.[day.dateKey]?.deduction;
+        if (ded) total += parseInt(String(ded).replace(/%/g, ""), 10) || 0;
+      });
+      return total;
+    }
+
     let totalDeduction = 0;
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
@@ -434,12 +641,81 @@ export default function MonthlyAttendancePage() {
     const dataRows: MonthlyAttendanceExcelRow[] = [];
     if (!monthInfo.days) return dataRows;
 
+    if (employee.isImported && employee.importedDays?.length) {
+      const days = [...employee.importedDays].sort((a: ImportedMonthlyDay, b: ImportedMonthlyDay) =>
+        a.dateKey.localeCompare(b.dateKey),
+      );
+      const fiveHourShift = importedEmployeeUsesFiveHourShift(days);
+      days.forEach((day: ImportedMonthlyDay) => {
+        const meta = employee.dateMeta?.[day.dateKey];
+        const statusLabel = meta?.statusLabel ?? getImportedDayDisplayFields(day, { fiveHourShift }).status;
+        const deduction = meta?.deduction ?? getImportedDayDisplayFields(day, { fiveHourShift }).deduction;
+        const tardyDisplay = formatImportedRunningLate(meta?.runningLate);
+        dataRows.push({
+          cells: [
+            day.weekday,
+            day.dateDisplay,
+            day.tPunchIn && day.tPunchIn !== "---" ? day.tPunchIn : "---",
+            day.clockIn,
+            day.clockOut,
+            day.tPunchOut && day.tPunchOut !== "---" ? day.tPunchOut : "---",
+            day.totalWH,
+            day.assignedWH,
+            day.overtime,
+            tardyDisplay,
+            statusLabel,
+            deduction,
+          ],
+          status: statusLabel,
+        });
+      });
+      const footer = employee.importedFooter;
+      const totalDeduction =
+        footer?.totalDeduction != null && String(footer.totalDeduction).trim() !== ""
+          ? String(footer.totalDeduction).replace(/%$/, "")
+          : String(calculateTotalDeduction(employee));
+      dataRows.push(
+        {
+          cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", `${totalDeduction}%`],
+          status: "",
+          isSummary: true,
+        },
+        {
+          cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", getEmployeeTotalOvertime(employee)],
+          status: "",
+          isSummary: true,
+        },
+        {
+          cells: [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Total Working Days:",
+            footer?.workingDays ?? `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`,
+          ],
+          status: "",
+          isSummary: true,
+        },
+      );
+      return dataRows;
+    }
+
+    const employeeSessions = sessionsByEmployeeId.get(employee.employeeId) || [];
+
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
       const meta = employee.dateMeta[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
+      const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
 
-      if (dayRecords.length === 0) {
+      if (daySessions.length === 0 && dayRecords.length === 0) {
         let statusLabel = workingDay ? "Absent" : "Off";
         let deduction = workingDay ? "100%" : "";
         if (
@@ -459,52 +735,69 @@ export default function MonthlyAttendancePage() {
             "---",
             "---",
             "---",
+            "---",
+            "---",
             meta?.runningLate ?? "",
             statusLabel,
             deduction,
           ],
           status: statusLabel,
         });
-      } else {
-        dayRecords.forEach((record: any) => {
-          const statusLabel = meta?.statusLabel || "";
-          dataRows.push({
-            cells: [
-              day.weekday,
-              formatDateKey(day.dateKey),
-              formatTime(record.clock_in),
-              formatTime(record.clock_out),
-              record.total_hours ? formatHoursMins(record.total_hours) : "---",
-              record.assigned_working_hours
-                ? formatHoursMins(record.assigned_working_hours)
-                : record.assigned_shift_seconds
-                  ? formatDurationHM(record.assigned_shift_seconds)
-                  : "---",
-              record.overtime ? formatDurationHM(record.overtime) : "---",
-              meta?.runningLate ?? "",
-              statusLabel,
-              meta?.deduction || "",
-            ],
-            status: statusLabel,
-          });
-        });
+        return;
       }
+
+      const sessionsToExport =
+        daySessions.length > 0
+          ? daySessions
+          : [
+              {
+                sessionDate: day.dateKey,
+                tungstenPunchIn: "-",
+                hrmClockIn: "-",
+                hrmClockOut: "-",
+                tungstenPunchOut: "-",
+              },
+            ];
+
+      sessionsToExport.forEach((session) => {
+        const record = findRecordForSession(dayRecords, session);
+        const statusLabel = normalizeAttendanceStatus(meta?.statusLabel || "");
+        dataRows.push({
+          cells: [
+            day.weekday,
+            formatDateKey(day.dateKey),
+            monthlyDash(session.tungstenPunchIn),
+            session.hrmClockIn === "-" ? "---" : session.hrmClockIn,
+            session.hrmClockOut === "-" ? "---" : session.hrmClockOut,
+            monthlyDash(session.tungstenPunchOut),
+            record ? excelTotalHoursForExport(record) : "---",
+            record ? excelAssignedWHForExport(record) : "---",
+            record ? excelOvertimeForExport(record) : "---",
+            meta?.runningLate ?? "",
+            statusLabel,
+            meta?.deduction || "",
+          ],
+          status: statusLabel,
+        });
+      });
     });
 
     const totalDeduction = calculateTotalDeduction(employee);
     dataRows.push(
       {
-        cells: ["", "", "", "", "", "", "", "", "Total Deduction:", `${totalDeduction}%`],
+        cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", `${totalDeduction}%`],
         status: "",
         isSummary: true,
       },
       {
-        cells: ["", "", "", "", "", "", "", "", "Extra Hours:", getEmployeeTotalOvertime(employee)],
+        cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", getEmployeeTotalOvertime(employee)],
         status: "",
         isSummary: true,
       },
       {
         cells: [
+          "",
+          "",
           "",
           "",
           "",
@@ -567,11 +860,43 @@ export default function MonthlyAttendancePage() {
     return formatted === "-" || !formatted ? "--" : formatted;
   }
 
+  function deductionSummaryClock(
+    record: any,
+    employee: any,
+    dateKey: string,
+    kind: "in" | "out",
+  ): string {
+    const imported = record?._importedDay;
+    if (imported) {
+      const v = kind === "in" ? imported.clockIn : imported.clockOut;
+      if (v && v !== "---" && v !== "-" && v !== "--") return v;
+      return "--";
+    }
+    if (employee?.isImported && Array.isArray(employee.importedDays)) {
+      const day = employee.importedDays.find((d: { dateKey: string }) => d.dateKey === dateKey);
+      if (day) {
+        const v = kind === "in" ? day.clockIn : day.clockOut;
+        if (v && v !== "---" && v !== "-" && v !== "--") return v;
+      }
+      return "--";
+    }
+    return formatDeductionSummaryTime(kind === "in" ? record?.clock_in : record?.clock_out);
+  }
+
+  function deductionSummaryTungsten(value: string) {
+    if (!value || value === "-" || value === "---") return "--";
+    return value;
+  }
+
   function buildDeductionSummaryBlock(employee: any): DeductionSummaryEmployeeBlock {
     const rows: DeductionSummaryDayRow[] = [];
     if (!monthInfo.days) {
       return { employeeName: employee.employeeName, rows, totalDeduction: 0 };
     }
+
+    const employeeSessions = employee.isImported
+      ? []
+      : sessionsByEmployeeId.get(employee.employeeId) || [];
 
     monthInfo.days.forEach((day) => {
       const workingDay = isWorkingDay(day.dateKey);
@@ -579,8 +904,10 @@ export default function MonthlyAttendancePage() {
 
       const dayRecords = employee.byDate[day.dateKey] || [];
       const meta = employee.dateMeta[day.dateKey];
+      const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
+      const session = daySessions[0];
 
-      if (dayRecords.length === 0) {
+      if (dayRecords.length === 0 && daySessions.length === 0) {
         let statusLabel = "Absent";
         let deduction = "100%";
         if (
@@ -593,8 +920,10 @@ export default function MonthlyAttendancePage() {
         if (!shouldIncludeInDeductionSummary(statusLabel)) return;
         rows.push({
           date: formatDateKey(day.dateKey),
+          tPunchIn: "--",
           clockIn: "--",
           clockOut: "--",
+          tPunchOut: "--",
           status: formatDeductionSummaryStatus(statusLabel),
           tardyCount: meta?.runningLate ?? "",
           deduction,
@@ -605,12 +934,34 @@ export default function MonthlyAttendancePage() {
       const statusLabel = meta?.statusLabel || "On Time";
       if (!shouldIncludeInDeductionSummary(statusLabel)) return;
 
+      const importedDay = employee.isImported
+        ? (employee.importedDays as ImportedMonthlyDay[] | undefined)?.find(
+            (d) => d.dateKey === day.dateKey,
+          )
+        : undefined;
+
       const record = dayRecords[0];
       rows.push({
         date: formatDateKey(day.dateKey),
-        clockIn: formatDeductionSummaryTime(record.clock_in),
-        clockOut: formatDeductionSummaryTime(record.clock_out),
-        status: formatDeductionSummaryStatus(statusLabel),
+        tPunchIn: importedDay
+          ? deductionSummaryTungsten(importedDay.tPunchIn || "---")
+          : session
+            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchIn))
+            : "--",
+        clockIn:
+          session && session.hrmClockIn !== "-"
+            ? session.hrmClockIn
+            : deductionSummaryClock(record, employee, day.dateKey, "in"),
+        clockOut:
+          session && session.hrmClockOut !== "-"
+            ? session.hrmClockOut
+            : deductionSummaryClock(record, employee, day.dateKey, "out"),
+        tPunchOut: importedDay
+          ? deductionSummaryTungsten(importedDay.tPunchOut || "---")
+          : session
+            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
+            : "--",
+        status: formatDeductionSummaryStatus(normalizeAttendanceStatus(statusLabel)),
         tardyCount: meta?.runningLate ?? "",
         deduction: meta?.deduction || "",
       });
@@ -668,18 +1019,22 @@ export default function MonthlyAttendancePage() {
     return { label, days };
   }, [selectedMonth]);
 
-  const attendanceByEmployee = React.useMemo(() => {
-    const map: Record<
-      string,
-      {
-        employeeId: string;
-        employeeName: string;
-        pseudonym: string;
-        departmentName: string;
-        byDate: Record<string, any[]>;
-        dateMeta: Record<string, { runningLate: number; statusLabel: string; statusColor: string; deduction: string }>;
+  const attendanceByEmployee = React.useMemo((): MonthlyAttendanceEmployeeRow[] => {
+    if (showingImported && importedSnapshot) {
+      let employees = importedSnapshotToAttendanceEmployees(importedSnapshot);
+      if (selectedDepartment) {
+        employees = employees.filter(
+          (e) => (e.departmentName || "").toLowerCase() === selectedDepartment.toLowerCase(),
+        );
       }
-    > = {};
+      if (searchName.trim()) {
+        const term = searchName.trim().toLowerCase();
+        employees = employees.filter((e) => (e.employeeName || "").toLowerCase().includes(term));
+      }
+      return employees;
+    }
+
+    const map: Record<string, MonthlyAttendanceEmployeeRow> = {};
 
     attendance.forEach((record: any) => {
       if (!record.employee_id) return;
@@ -690,9 +1045,13 @@ export default function MonthlyAttendancePage() {
           employeeName: record.employee_name || "-",
           pseudonym: record.pseudonym || "-",
           departmentName: record.department_name || "-",
+          gender: record.gender || "",
           byDate: {},
           dateMeta: {},
         };
+      }
+      if (!map[empId].gender && record.gender) {
+        map[empId].gender = record.gender;
       }
       const dateKey = getRecordDateKey(record);
       if (!dateKey) return;
@@ -705,43 +1064,92 @@ export default function MonthlyAttendancePage() {
         employee.byDate[dateKey].sort(compareAttendanceRows);
       });
 
-      const allRecords = Object.values(employee.byDate).flat();
-      const sorted = [...allRecords].sort((a, b) => {
-        const aKey = getRecordDateKey(a);
-        const bKey = getRecordDateKey(b);
-        return aKey.localeCompare(bKey);
-      });
       let runningLate = 0;
-      const seenDates = new Set<string>();
-      sorted.forEach((record) => {
-        const dateKey = getRecordDateKey(record);
-        if (!dateKey || seenDates.has(dateKey)) return;
-        seenDates.add(dateKey);
-        let statusLabel = "On Time";
-        let statusColor = "#276749";
+      const dateKeys = Object.keys(employee.byDate).sort();
+      dateKeys.forEach((dateKey) => {
+        const dayRecords = employee.byDate[dateKey];
+        const { clockIn, clockOut, record } = aggregateDayPunches(dayRecords);
+        const dayStatus = classifyDayAttendance({
+          dateKey,
+          clockIn,
+          clockOut,
+          shiftStart: record?.shift_start_time ?? null,
+          shiftEnd: record?.shift_end_time ?? null,
+          gender: employee.gender,
+        });
+
+        const statusLabel = normalizeAttendanceStatus(dayStatus.statusLabel);
+        const statusColor = uiStatusTextColor(statusLabel);
         let deduction = "";
-        if (record.is_late) {
+        let tardyDisplay: number | string = "";
+
+        if (statusLabel === "Tardy" && dayStatus.isLate) {
           runningLate += 1;
-          statusLabel = "Tardy";
-          statusColor = "#E53E3E";
+          tardyDisplay = runningLate;
           if (runningLate === 4) deduction = "50%";
           else if (runningLate >= 5) deduction = "100%";
           else deduction = "0%";
+        } else if (statusLabel === "Absent") {
+          deduction = "100%";
+        } else if (statusLabel === STATUS_FIRST_HALF_DAY || statusLabel === STATUS_SECOND_HALF_DAY) {
+          deduction = "50%";
         }
-        employee.dateMeta[dateKey] = { runningLate, statusLabel, statusColor, deduction };
+
+        employee.dateMeta[dateKey] = {
+          runningLate: tardyDisplay,
+          statusLabel,
+          statusColor,
+          deduction,
+        };
       });
     });
 
     return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
-  }, [attendance]);
+  }, [attendance, showingImported, importedSnapshot, selectedDepartment, searchName]);
+
+  const sessionsByEmployeeId = React.useMemo(() => {
+    const out = new Map<string, EmployeeReportSession[]>();
+    if (showingImported) return out;
+    const todayKey = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+    const zkFrom = fromDate ? addDaysToDateKey(fromDate, -1) : "";
+    const zkTo = toDate ? addDaysToDateKey(toDate, 1) : "";
+    const recordsByEmployeeId = new Map<string, { clock_in?: string | null; clock_out?: string | null }[]>();
+    attendance.forEach((record: any) => {
+      const id = String(record.employee_id || "");
+      if (!id) return;
+      const list = recordsByEmployeeId.get(id) || [];
+      list.push(record);
+      recordsByEmployeeId.set(id, list);
+    });
+    attendanceByEmployee.forEach((emp) => {
+      const allRecords = recordsByEmployeeId.get(emp.employeeId) || [];
+      out.set(
+        emp.employeeId,
+        buildEmployeeReportSessions(
+          emp.employeeName,
+          allRecords,
+          tungstenCtx,
+          todayKey,
+          pairingNow,
+          zkFrom,
+          zkTo,
+        ),
+      );
+    });
+    return out;
+  }, [attendance, attendanceByEmployee, tungstenCtx, showingImported, fromDate, toDate, pairingNow]);
 
   // Calculate total overtime (extra hours) for the month for an employee
   function getEmployeeTotalOvertime(emp: any) {
+    if (emp.isImported && emp.importedFooter?.extraHours) {
+      const v = emp.importedFooter.extraHours.trim();
+      return v && v !== "-" ? v : "-";
+    }
     let totalSeconds = 0;
     Object.values(emp.byDate).forEach((records) => {
       (records as any[]).forEach((record) => {
         // Only add overtime if >= 45 min (2700 sec)
-        if (record.overtime && typeof record.overtime === 'number' && record.overtime >= 2700) {
+        if (record.overtime && typeof record.overtime === "number" && record.overtime >= 2700) {
           totalSeconds += record.overtime;
         }
       });
@@ -762,6 +1170,11 @@ export default function MonthlyAttendancePage() {
           <p style={{ color: "#4A5568", fontSize: "0.9rem", marginTop: 4 }}>
             View and manage all employee attendance records
           </p>
+          {showingImported && (
+            <p style={{ color: "#6B46C1", fontSize: "0.85rem", marginTop: 8, fontWeight: 600 }}>
+              Showing imported Excel data for {monthInfo.label} (sheet values as-is)
+            </p>
+          )}
         </div>
 
         <div className={styles.attendanceSummaryFilters}>
@@ -804,6 +1217,20 @@ export default function MonthlyAttendancePage() {
           <button onClick={downloadExcel} className={styles.attendanceSummaryXLSButton}>
             <FaFileExcel /> Export Excel
           </button>
+          <button
+            onClick={handleImportClick}
+            className={styles.attendanceSummaryXLSButton}
+            style={{ background: "linear-gradient(135deg, #6B46C1 0%, #805AD5 100%)" }}
+          >
+            <FaFileExcel /> Import Excel
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleImportFile}
+            style={{ display: "none" }}
+          />
           <button
             onClick={downloadDeductionSummary}
             className={styles.attendanceSummaryXLSButton}
@@ -849,10 +1276,12 @@ export default function MonthlyAttendancePage() {
                         <tr>
                           <th>Day</th>
                           <th>Date</th>
+                          <th>T.Punch in</th>
                           <th>Clock In</th>
                           <th>Clock Out</th>
+                          <th>T.Punch out</th>
                           <th>Total W.H</th>
-                          <th>Assigned W.H</th>
+                          <th className={styles.colAssignedWH}>Assigned W.H</th>
                           <th>OverTime</th>
                           <th>Tardy Count</th>
                           <th>Status</th>
@@ -860,14 +1289,71 @@ export default function MonthlyAttendancePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {monthInfo.days.flatMap((day) => {
+                        {(employee.isImported && employee.importedDays
+                          ? employee.importedDays.map((day: any) => ({
+                              dateKey: day.dateKey,
+                              weekday: day.weekday,
+                              dateDisplay: day.dateDisplay,
+                              imported: day,
+                              meta: employee.dateMeta[day.dateKey],
+                            }))
+                          : monthInfo.days.map((day) => ({
+                              dateKey: day.dateKey,
+                              weekday: day.weekday,
+                              dateDisplay: formatDateKey(day.dateKey),
+                              imported: null,
+                              meta: employee.dateMeta[day.dateKey],
+                              day,
+                            }))
+                        ).flatMap((rowCtx: any) => {
+                          if (rowCtx.imported) {
+                            const day = rowCtx.imported as ImportedMonthlyDay;
+                            const fiveHourShift = importedEmployeeUsesFiveHourShift(
+                              employee.importedDays || [],
+                            );
+                            const meta = employee.dateMeta?.[day.dateKey];
+                            const rowStatus =
+                              meta?.statusLabel ??
+                              getImportedDayDisplayFields(day, { fiveHourShift }).status;
+                            const rowDeduction =
+                              meta?.deduction ??
+                              getImportedDayDisplayFields(day, { fiveHourShift }).deduction;
+                            const tardyDisplay = formatImportedRunningLate(meta?.runningLate);
+                            return (
+                              <tr key={`${employee.employeeId}-${day.dateKey}-import`}>
+                                <td>{day.weekday || rowCtx.weekday}</td>
+                                <td>{day.dateDisplay}</td>
+                                <td>
+                                  {day.tPunchIn && day.tPunchIn !== "---" ? day.tPunchIn : "---"}
+                                </td>
+                                <td>{day.clockIn}</td>
+                                <td>{day.clockOut}</td>
+                                <td>
+                                  {day.tPunchOut && day.tPunchOut !== "---" ? day.tPunchOut : "---"}
+                                </td>
+                                <td>{day.totalWH}</td>
+                                <td className={styles.colAssignedWH}>{day.assignedWH}</td>
+                                <td>{day.overtime}</td>
+                                <td>{tardyDisplay}</td>
+                                <td style={{ color: uiStatusTextColor(rowStatus), fontWeight: 600 }}>
+                                  {rowStatus}
+                                </td>
+                                <td>{rowDeduction}</td>
+                              </tr>
+                            );
+                          }
+
+                          const day = rowCtx.day;
                           const dayRecords = employee.byDate[day.dateKey] || [];
-                          const meta = employee.dateMeta[day.dateKey];
+                          const meta = rowCtx.meta;
                           const workingDay = isWorkingDay(day.dateKey);
-                          if (dayRecords.length === 0) {
-                            // Check for approved leave
+                          const employeeSessions = sessionsByEmployeeId.get(employee.employeeId) || [];
+                          const daySessions = employeeSessions.filter(
+                            (s) => s.sessionDate === day.dateKey,
+                          );
+
+                          if (daySessions.length === 0 && dayRecords.length === 0) {
                             let statusLabel = workingDay ? "Absent" : "Off";
-                            let statusColor = workingDay ? "#E53E3E" : "#4A5568";
                             let deduction = workingDay ? "100%" : "";
                             if (
                               workingDay &&
@@ -875,12 +1361,7 @@ export default function MonthlyAttendancePage() {
                               approvedLeavesMap[employee.employeeId][day.dateKey]
                             ) {
                               statusLabel = "Leave";
-                              statusColor = "#3182CE"; // blue
                               deduction = "0%";
-                            }
-                            // Debug log for mapping
-                            if (workingDay) {
-                              // console.log('employeeId:', employee.employeeId, 'dateKey:', day.dateKey, 'leave:', approvedLeavesMap[employee.employeeId]?.[day.dateKey]);
                             }
                             return (
                               <tr key={`${employee.employeeId}-${day.dateKey}-empty`}>
@@ -891,50 +1372,112 @@ export default function MonthlyAttendancePage() {
                                 <td>---</td>
                                 <td>---</td>
                                 <td>---</td>
+                                <td className={styles.colAssignedWH}>---</td>
+                                <td>---</td>
                                 <td>{meta?.runningLate ? meta.runningLate : ""}</td>
-                                <td style={{ color: statusColor, fontWeight: 600 }}>
-                                  {statusLabel}
+                                <td style={{ color: uiStatusTextColor(statusLabel), fontWeight: 600 }}>
+                                  {normalizeAttendanceStatus(statusLabel)}
                                 </td>
                                 <td>{deduction}</td>
                               </tr>
                             );
                           }
-                          return dayRecords.map((record: any, index: number) => (
-                            <tr key={`${record.id ?? `${employee.employeeId}-${day.dateKey}-${index}`}`}>
-                              <td>{day.weekday}</td>
-                              <td>{formatDateKey(day.dateKey)}</td>
-                              <td>{formatTime(record.clock_in)}</td>
-                              <td>{formatTime(record.clock_out)}</td>
-                              <td>{formatHoursMins(record.total_hours)}</td>
-                              <td>{formatDurationHM(record.assigned_shift_seconds)}</td>
-                              <td>{formatDurationHM(record.overtime)}</td>
-                              <td>{meta?.runningLate ? meta.runningLate : ""}</td>
-                              <td style={{ color: meta?.statusColor || "#4A5568", fontWeight: 600 }}>
-                                {meta?.statusLabel || "-"}
-                              </td>
-                              <td>{meta?.deduction || ""}</td>
-                            </tr>
-                          ));
+
+                          const recordStatus = normalizeAttendanceStatus(meta?.statusLabel || "-");
+                          const sessionsToShow =
+                            daySessions.length > 0
+                              ? daySessions
+                              : [
+                                  {
+                                    sessionDate: day.dateKey,
+                                    tungstenPunchIn: "-",
+                                    hrmClockIn: "-",
+                                    hrmClockOut: "-",
+                                    tungstenPunchOut: "-",
+                                  },
+                                ];
+
+                          return sessionsToShow.map((session, index) => {
+                            const record = findRecordForSession(dayRecords, session);
+                            return (
+                              <tr
+                                key={`${employee.employeeId}-${day.dateKey}-session-${index}`}
+                              >
+                                <td>{day.weekday}</td>
+                                <td>{formatDateKey(day.dateKey)}</td>
+                                <td>{monthlyDash(session.tungstenPunchIn)}</td>
+                                <td>
+                                  {session.hrmClockIn === "-" ? "---" : session.hrmClockIn}
+                                </td>
+                                <td>
+                                  {session.hrmClockOut === "-" ? (
+                                    "---"
+                                  ) : (
+                                    <>
+                                      {session.hrmClockOut}
+                                      {isAutoClockOutRecord(record?.auto_clock_out) ? (
+                                        <AutoClockOutBadge />
+                                      ) : null}
+                                    </>
+                                  )}
+                                </td>
+                                <td>{monthlyDash(session.tungstenPunchOut)}</td>
+                                <td>
+                                  {record ? formatHoursMins(record.total_hours) : "---"}
+                                </td>
+                                <td className={styles.colAssignedWH}>
+                                  {record
+                                    ? formatDurationHM(record.assigned_shift_seconds)
+                                    : "---"}
+                                </td>
+                                <td>
+                                  {record ? formatDurationHM(record.overtime) : "---"}
+                                </td>
+                                <td>{meta?.runningLate ? meta.runningLate : ""}</td>
+                                <td
+                                  style={{
+                                    color: uiStatusTextColor(recordStatus),
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {recordStatus}
+                                </td>
+                                <td>{meta?.deduction || ""}</td>
+                              </tr>
+                            );
+                          });
                         })}
                       </tbody>
                       <tfoot>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC", borderTop: "2px solid #E2E8F0" }}>
-                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
                             Total Deduction:
                           </td>
-                          <td>{calculateTotalDeduction(employee)}%</td>
+                          <td>
+                            {employee.isImported && employee.importedFooter?.totalDeduction != null
+                              ? `${String(employee.importedFooter.totalDeduction).replace(/%$/, "")}%`
+                              : `${calculateTotalDeduction(employee)}%`}
+                          </td>
                         </tr>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
-                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
                             Extra Hours:
                           </td>
-                          <td>{getEmployeeTotalOvertime(employee)}</td>
+                          <td>
+                            {employee.isImported && employee.importedFooter?.extraHours
+                              ? employee.importedFooter.extraHours
+                              : getEmployeeTotalOvertime(employee)}
+                          </td>
                         </tr>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
-                          <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
                             Total Working Days:
                           </td>
-                          <td>{getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}</td>
+                          <td>
+                            {employee.isImported && employee.importedFooter?.workingDays
+                              ? employee.importedFooter.workingDays
+                              : getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}
+                          </td>
                         </tr>
                       </tfoot>
 

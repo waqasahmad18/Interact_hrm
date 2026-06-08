@@ -29,6 +29,10 @@ if (!isWindows) {
 
 export const pool = mysql.createPool(connectionConfig);
 
+// Start DB auto-presence sweep as soon as the server touches MySQL (browser-independent).
+if (typeof window === "undefined") {
+  void import("./register-auto-presence-cron").then((mod) => mod.registerAutoPresenceCron());
+}
 
 // Generic query function
 export async function query(sql: string, params?: any[]) {

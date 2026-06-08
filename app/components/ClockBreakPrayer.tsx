@@ -14,6 +14,7 @@ import {
   clearPrayerBreakSyncInterval,
 } from "../../lib/ui-sync/forceSyncPrayerBreakState";
 import { getDateStringInTimeZone } from "../../lib/timezone";
+import { AutoPresencePrompt } from "./AutoPresencePrompt";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
 function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -89,7 +90,10 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   // Fade-in on mount and force backend-only sync for clock state
   React.useEffect(() => {
     setFadeIn(true);
-    if (!employeeId) return;
+    if (!employeeId) {
+      setLoadingAttendance(false);
+      return;
+    }
     
     // Clear old intervals before starting new syncs
     if (intervalId) clearInterval(intervalId);
@@ -167,10 +171,19 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   }, [employeeId]);
 
   const handleClockIn = async () => {
-    if (!employeeId || !employeeName || clockActionPending) {
-      alert("Missing employee info");
+    const id = String(employeeId || "").trim();
+    if (!id || clockActionPending) {
+      alert(
+        id
+          ? "Please wait, clock action is in progress."
+          : "Employee ID not loaded. Please refresh the page or log in again.",
+      );
       return;
     }
+    const name =
+      employeeName?.trim() ||
+      (typeof window !== "undefined" ? localStorage.getItem("employeeName") : null)?.trim() ||
+      "Employee";
     const now = new Date();
     try {
       setClockActionPending(true);
@@ -178,16 +191,19 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          employee_id: employeeId,
-          employee_name: employeeName,
+          employee_id: id,
+          employee_name: name,
           date: getDateStringInTimeZone(now),
           clock_in: now.toISOString(),
         }),
       });
       const data = await res.json();
       if (data.success) {
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(`auto_presence_prompt_${id}`);
+        }
         // Force sync from backend instead of manual state management
-        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncClockState(id, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
       } else {
         alert(data.error || "Failed to clock in. Please try again.");
       }
@@ -336,6 +352,15 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   };
 
   return (
+    <>
+    <AutoPresencePrompt
+      employeeId={employeeId}
+      employeeName={employeeName}
+      isClockedIn={isClockedIn}
+      onClockedOut={() => {
+        forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+      }}
+    />
     <div className={`cbp-fade-in${fadeIn ? ' cbp-fade-in-active' : ''}`} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
       {/* Clock In Widget */}
       <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -546,6 +571,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         />
       )}
     </div>
+    </>
   );
 }
 

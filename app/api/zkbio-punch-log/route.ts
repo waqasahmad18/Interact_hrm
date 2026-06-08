@@ -32,7 +32,11 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-    const pageSize = Math.min(500, Math.max(10, parseInt(searchParams.get("pageSize") || "100", 10) || 100));
+    const employeeReport = searchParams.get("employeeReport") === "1";
+    const requestedSize = parseInt(searchParams.get("pageSize") || "100", 10) || 100;
+    const pageSize = employeeReport
+      ? Math.min(2000, Math.max(10, requestedSize))
+      : Math.min(500, Math.max(10, requestedSize));
     const offset = (page - 1) * pageSize;
 
     const nameRaw = (searchParams.get("name") || searchParams.get("q") || "").trim();

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sweep:auto-presence": "node scripts/auto-presence-sweep.js"
   },
   "dependencies": {
     "axios": "^1.13.5",

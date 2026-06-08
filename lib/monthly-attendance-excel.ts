@@ -1,10 +1,13 @@
 import ExcelJS from "exceljs";
+import { isAbsentOrHalfDayStatus, isTardyStatus, normalizeAttendanceStatus } from "./attendance-status";
 
 export const MONTHLY_ATTENDANCE_HEADERS = [
   "Day",
   "Date",
+  "T.Punch in",
   "Clock In",
   "Clock Out",
+  "T.Punch out",
   "Total W.H",
   "Assigned W.H",
   "OverTime",
@@ -68,9 +71,9 @@ function uniqueSheetName(base: string, used: Set<string>): string {
 }
 
 export function statusRowFill(status: string): ExcelJS.Fill | undefined {
-  const s = String(status || "").trim();
-  if (s === "Tardy") return YELLOW_FILL;
-  if (s === "Half Day" || s === "Absent") return RED_FILL;
+  const s = normalizeAttendanceStatus(status);
+  if (isTardyStatus(s)) return YELLOW_FILL;
+  if (isAbsentOrHalfDayStatus(s)) return RED_FILL;
   return undefined;
 }
 
@@ -121,7 +124,7 @@ function addEmployeeSheet(
 
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 
-  const widths = [8, 12, 12, 12, 11, 13, 11, 11, 14, 11];
+  const widths = [8, 12, 14, 12, 12, 14, 11, 13, 11, 11, 14, 11];
   widths.forEach((w, i) => {
     sheet.getColumn(i + 1).width = w;
   });

@@ -1,11 +1,20 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "./attendance-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import { compareAttendanceRows } from "../../lib/attendance-sort";
+import {
+  filterImportedRows,
+  loadImportedAttendanceSummarySnapshot,
+  parseAttendanceSummaryWorkbook,
+  saveImportedAttendanceSummarySnapshot,
+  type ImportedAttendanceSummarySnapshot,
+} from "../../lib/attendance-summary-import";
 import { getDateStringInTimeZone, getParts, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
+import { AutoClockOutBadge } from "../components/AutoClockOutBadge";
+import { isAutoClockOutRecord } from "../../lib/attendance-auto-clock-out";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -89,6 +98,15 @@ export default function AttendanceSummaryPage() {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [now, setNow] = useState(Date.now());
+  const [importedSnapshot, setImportedSnapshot] = useState<ImportedAttendanceSummarySnapshot | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const filterMonth = fromDate.slice(0, 7);
+  const showingImported = Boolean(
+    importedSnapshot?.month === filterMonth &&
+      importedSnapshot.month === toDate.slice(0, 7) &&
+      importedSnapshot.rows.length,
+  );
 
   useEffect(() => {
     fetch("/api/departments")
@@ -100,6 +118,11 @@ export default function AttendanceSummaryPage() {
   }, []);
 
   useEffect(() => {
+    setImportedSnapshot(loadImportedAttendanceSummarySnapshot(filterMonth));
+  }, [filterMonth]);
+
+  useEffect(() => {
+    if (showingImported) return;
     const params = new URLSearchParams();
     if (fromDate) params.append("fromDate", fromDate);
     if (toDate) params.append("toDate", toDate);
@@ -111,7 +134,7 @@ export default function AttendanceSummaryPage() {
         if (data.success) setAttendance(data.attendance || []);
         else setAttendance([]);
       });
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, showingImported]);
 
   useEffect(() => {
     const hasOpen = attendance.some((a) => a.clock_in && !a.clock_out);
@@ -121,6 +144,9 @@ export default function AttendanceSummaryPage() {
   }, [attendance]);
 
   const rows = useMemo(() => {
+    if (showingImported && importedSnapshot) {
+      return filterImportedRows(importedSnapshot, fromDate, toDate, search, department);
+    }
     return attendance
       .filter((a) => {
         const term = search.trim().toLowerCase();
@@ -133,12 +159,28 @@ export default function AttendanceSummaryPage() {
         return true;
       })
       .sort(compareAttendanceRows);
-  }, [attendance, search, department]);
+  }, [attendance, search, department, showingImported, importedSnapshot, fromDate, toDate]);
 
   const downloadAttendanceCSV = () => {
     const headers = ["Id", "Full Name", "P.Name", "Department", "Date", "Clock In", "Clock Out", "Total Hours", "Late"];
     let csv = headers.join(",") + "\n";
-    rows.forEach((row) => {
+    rows.forEach((row: any) => {
+      if (showingImported) {
+        csv += [
+          row.employeeId,
+          row.employeeName,
+          row.pseudonym,
+          row.departmentName,
+          row.dateDisplay,
+          row.clockIn,
+          row.clockOut,
+          row.totalHours,
+          row.late,
+        ]
+          .map((v) => `"${v}"`)
+          .join(",") + "\n";
+        return;
+      }
       const date = row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "";
       const clockIn = row.clock_in ? getTimeStringInTimeZone(row.clock_in, SERVER_TIMEZONE) : "";
       const clockOut = row.clock_out ? getTimeStringInTimeZone(row.clock_out, SERVER_TIMEZONE) : "";
@@ -169,10 +211,45 @@ export default function AttendanceSummaryPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const snapshot = parseAttendanceSummaryWorkbook(buffer);
+      if (!snapshot.rows.length) {
+        alert("No rows found. Use attendance summary format (Id, Full Name, Date, Clock In, Clock Out, etc.).");
+        return;
+      }
+      if (!snapshot.month) {
+        alert("Could not detect month from file dates.");
+        return;
+      }
+      saveImportedAttendanceSummarySnapshot(snapshot);
+      setImportedSnapshot(snapshot);
+      setFromDate(snapshot.fromDate);
+      setToDate(snapshot.toDate);
+      alert(`Loaded ${snapshot.rows.length} rows for ${snapshot.month}. Date filter set to imported range.`);
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      e.target.value = "";
+    }
+  };
+
   return (
     <LayoutDashboard>
       <div className={styles.attendanceSummaryContainer}>
         <h1 style={{ marginBottom: 16 }}>Attendance Summary</h1>
+        {showingImported && (
+          <p style={{ color: "#6B46C1", fontSize: "0.85rem", marginBottom: 12, fontWeight: 600 }}>
+            Showing imported Excel data for {filterMonth} (sheet values as-is)
+          </p>
+        )}
         <div className={styles.attendanceSummaryFilters}>
           <input type="text" placeholder="Search employee..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.attendanceSummaryInput} style={{ width: 220 }} />
           <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.attendanceSummaryDate} style={{ width: 200 }}>
@@ -199,6 +276,17 @@ export default function AttendanceSummaryPage() {
             <FaFileExcel size={20} />
             <span>Export XLS</span>
           </button>
+          <button onClick={handleImportClick} className={styles.attendanceSummaryXLSButton} title="Import XLS">
+            <FaFileExcel size={20} />
+            <span>Import XLS</span>
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleImportFile}
+            style={{ display: "none" }}
+          />
         </div>
 
         <div className={styles.attendanceSummaryTableWrapper}>
@@ -222,19 +310,68 @@ export default function AttendanceSummaryPage() {
                   <td colSpan={9} className={styles.attendanceSummaryNoRecords}>No records found.</td>
                 </tr>
               ) : (
-                rows.map((a, idx) => (
-                  <tr key={a.id || idx}>
-                    <td>{a.employee_id}</td>
-                    <td>{a.employee_name || ""}</td>
-                    <td>{a.pseudonym || "-"}</td>
-                    <td>{a.department_name || "-"}</td>
-                    <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
-                    <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
-                    <td>{a.clock_out ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE) : <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>}</td>
-                    <td>{a.clock_in && !a.clock_out ? formatTotalHours(a.clock_in, "", now) : formatTotalHours(a.clock_in, a.clock_out, now)}</td>
-                    <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: 600 }}>{a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}</td>
-                  </tr>
-                ))
+                rows.map((a: any, idx) => {
+                  if (showingImported) {
+                    const isRunning =
+                      !a.clockOut ||
+                      a.clockOut.toLowerCase() === "running..." ||
+                      a.clockOut.toLowerCase() === "running";
+                    return (
+                      <tr key={a.id || idx}>
+                        <td>{a.employeeId}</td>
+                        <td>{a.employeeName}</td>
+                        <td>{a.pseudonym}</td>
+                        <td>{a.departmentName}</td>
+                        <td>{a.dateDisplay}</td>
+                        <td>{a.clockIn}</td>
+                        <td>
+                          {isRunning ? (
+                            <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                          ) : (
+                            a.clockOut
+                          )}
+                        </td>
+                        <td>{a.totalHours}</td>
+                        <td
+                          style={{
+                            color: a.lateIsNegative ? "#e74c3c" : "#27ae60",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {a.late}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={a.id || idx}>
+                      <td>{a.employee_id}</td>
+                      <td>{a.employee_name || ""}</td>
+                      <td>{a.pseudonym || "-"}</td>
+                      <td>{a.department_name || "-"}</td>
+                      <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
+                      <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
+                      <td>
+                        {a.clock_out ? (
+                          <>
+                            {getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE)}
+                            {isAutoClockOutRecord(a.auto_clock_out) ? <AutoClockOutBadge /> : null}
+                          </>
+                        ) : (
+                          <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                        )}
+                      </td>
+                      <td>
+                        {a.clock_in && !a.clock_out
+                          ? formatTotalHours(a.clock_in, "", now)
+                          : formatTotalHours(a.clock_in, a.clock_out, now)}
+                      </td>
+                      <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: 600 }}>
+                        {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

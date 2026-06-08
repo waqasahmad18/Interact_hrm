@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "../break-summary/break-summary.module.css";
 import { FaFileExcel } from "react-icons/fa";
@@ -41,6 +41,7 @@ export default function PrayerBreakSummaryPage() {
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [now, setNow] = useState(Date.now());
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/departments")
@@ -167,6 +168,35 @@ export default function PrayerBreakSummaryPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleImportClick = () => importInputRef.current?.click();
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const form = new FormData();
+      form.append("target", "prayer_breaks");
+      form.append("file", file);
+      const res = await fetch("/api/import-hrm-excel", { method: "POST", body: form });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Import failed");
+      } else {
+        alert(`Imported ${data.imported} prayer break rows`);
+        const params = new URLSearchParams();
+        if (fromDate) params.append("fromDate", fromDate);
+        if (toDate) params.append("toDate", toDate);
+        const r = await fetch(`/api/prayer_breaks?${params.toString()}`);
+        const refreshed = await r.json();
+        setPrayerBreaks(refreshed.success ? refreshed.prayer_breaks || [] : []);
+      }
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      e.target.value = "";
+    }
+  };
+
   return (
     <LayoutDashboard>
       <div className={styles.breakSummaryContainer}>
@@ -197,6 +227,17 @@ export default function PrayerBreakSummaryPage() {
             <FaFileExcel size={20} />
             <span>Export XLS</span>
           </button>
+          <button onClick={handleImportClick} className={styles.breakSummaryXLSButton} title="Import XLS">
+            <FaFileExcel size={20} />
+            <span>Import XLS</span>
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleImportFile}
+            style={{ display: "none" }}
+          />
         </div>
 
         <div className={styles.breakSummaryTableWrapper}>

@@ -7,4 +7,7 @@ export async function register() {
 
   const { registerZkbioCron } = await import("./lib/register-zkbio-cron");
   registerZkbioCron();
+
+  const { registerAutoPresenceCron } = await import("./lib/register-auto-presence-cron");
+  registerAutoPresenceCron();
 }

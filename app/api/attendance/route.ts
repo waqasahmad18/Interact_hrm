@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { registerAutoPresenceCron } from "@/lib/register-auto-presence-cron";
+
+registerAutoPresenceCron();
 import { pool } from "../../../lib/db";
+import { ATTENDANCE_TABLE, ensureAttendanceTable } from "../../../lib/attendance-table";
 import {
   getDateStringInTimeZone,
   getTimeInMinutesInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
-
-// Use a dedicated table for attendance to avoid legacy conflicts
-const ATTENDANCE_TABLE = "employee_attendance";
-
-async function ensureAttendanceTable(conn: any) {
-  const createSql = `
-    CREATE TABLE IF NOT EXISTS ${ATTENDANCE_TABLE} (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      employee_id VARCHAR(50) NOT NULL,
-      employee_name VARCHAR(150) NULL,
-      date DATE NOT NULL,
-      clock_in DATETIME NULL,
-      clock_out DATETIME NULL,
-      total_hours DECIMAL(5,2) NULL,
-      INDEX (employee_id),
-      INDEX (date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `;
-  await conn.execute(createSql);
-}
 
 // GET: Fetch all attendance records or by employeeId, now with department name
 export async function GET(req: NextRequest) {
@@ -52,8 +36,13 @@ export async function GET(req: NextRequest) {
     const baseQuery = `
       SELECT 
         ea.*,
-        CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+        COALESCE(
+          NULLIF(TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))), ''),
+          NULLIF(TRIM(ea.employee_name), ''),
+          ea.employee_name
+        ) as employee_name,
         e.pseudonym AS pseudonym,
+        e.gender AS gender,
         d.name AS department_name,
         sa.shift_name AS shift_name,
         sa.start_time AS shift_start_time,
@@ -104,8 +93,13 @@ export async function GET(req: NextRequest) {
 
     // Simply return the rows as is; frontend will handle date parsing.
     
-    // Now calculate late status based on shift assignments
-    const GRACE_MINUTES = 10;
+    const graceMinutesForGender = (gender: string | null | undefined) => {
+      const g = String(gender || "").trim().toLowerCase();
+      if (g === "female") return 15;
+      if (g === "male") return 10;
+      return 10;
+    };
+
     const parseTimeToMinutes = (timeStr: string | null | undefined) => {
       if (!timeStr) return null;
       const parts = String(timeStr).split(":");
@@ -141,15 +135,17 @@ export async function GET(req: NextRequest) {
       let is_late = false;
       let late_minutes = 0;
       const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
+      const graceMinutes = graceMinutesForGender(row.gender);
       if (clockInDate && shiftStartMinutes !== null) {
         const clockInMinutes = getTimeInMinutesInTimeZone(
           clockInDate,
           SERVER_TIMEZONE
         );
-        const diffMinutes =
+        let diffMinutes =
           clockInMinutes === null ? 0 : clockInMinutes - shiftStartMinutes;
-        if (diffMinutes > GRACE_MINUTES) {
-          late_minutes = diffMinutes - GRACE_MINUTES;
+        if (diffMinutes < -12 * 60) diffMinutes += 24 * 60;
+        if (diffMinutes > graceMinutes) {
+          late_minutes = diffMinutes - graceMinutes;
           is_late = late_minutes > 0;
         }
       }
@@ -161,6 +157,7 @@ export async function GET(req: NextRequest) {
         is_late,
         late_minutes,
         pseudonym: row.pseudonym || null,
+        gender: row.gender || null,
       };
     });
     
@@ -224,7 +221,7 @@ export async function POST(req: NextRequest) {
   let lockName: string | null = null;
   try {
     const data = await req.json();
-    const { employee_id, employee_name, date, clock_in, clock_out } = data || {};
+    const { employee_id, employee_name, date, clock_in, clock_out, auto_clock_out } = data || {};
     
     console.log("Attendance API POST Data:", { employee_id, employee_name, date, clock_in, clock_out });
     
@@ -260,21 +257,30 @@ export async function POST(req: NextRequest) {
         [employee_id]
       );
       if ((openRows as any[]).length > 0) {
+        const openId = (openRows as any[])[0]?.id;
         return NextResponse.json(
-          { success: false, error: "You are already clocked in. Please clock out first." },
-          { status: 400 }
+          {
+            success: false,
+            error: "You are already clocked in. Please clock out first.",
+            openAttendanceId: openId,
+          },
+          { status: 400 },
         );
       }
 
       // Clock In: Always INSERT a new row
       console.log("Inserting new clock-in record:", { employee_id, employee_name, formattedDate, clock_in });
       await conn.execute(
-        `INSERT INTO ${ATTENDANCE_TABLE} (employee_id, employee_name, date, clock_in, clock_out, total_hours)
-         VALUES (?, ?, ?, ?, NULL, NULL)`,
+        `INSERT INTO ${ATTENDANCE_TABLE}
+           (employee_id, employee_name, date, clock_in, clock_out, total_hours, auto_clock_out, last_presence_ack_at)
+         VALUES (?, ?, ?, ?, NULL, NULL, 0, NULL)`,
         [employee_id, employee_name || '', formattedDate, new Date(clock_in).toISOString().slice(0, 19).replace('T', ' ')]
       );
       console.log("Clock-in record inserted successfully");
     } else if (clock_out !== undefined && clock_out !== null) {
+      const isAutoClockOut = Boolean(auto_clock_out);
+
+      if (!isAutoClockOut) {
       // Check for active breaks before allowing clock out
       const { hasActiveBreak, breakType } = await checkActiveBreaks(conn, employee_id);
       
@@ -290,6 +296,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+      }
 
       // Clock Out: find the most recent row without clock_out for this employee (regardless of date) and UPDATE it
       const [pendingRows] = await conn.execute(
@@ -300,8 +307,14 @@ export async function POST(req: NextRequest) {
       if (pending) {
         const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
         await conn.execute(
-          `UPDATE ${ATTENDANCE_TABLE} SET clock_out = ?, total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)), employee_name = ? WHERE id = ?`,
-          [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
+          `UPDATE ${ATTENDANCE_TABLE}
+           SET clock_out = ?,
+               auto_clock_out = ?,
+               last_presence_ack_at = NULL,
+               total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)),
+               employee_name = ?
+           WHERE id = ?`,
+          [formattedClockOut, isAutoClockOut ? 1 : 0, formattedClockOut, employee_name || null, pending.id]
         );
         console.log("Clock-out record updated successfully");
       } else {

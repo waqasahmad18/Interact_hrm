@@ -1,11 +1,13 @@
 import ExcelJS from "exceljs";
 
 export const EMPLOYEE_REPORT_HEADERS = [
-  "Source",
   "Date",
-  "Time",
+  "Employee Name",
+  "Tungsten Punch In",
+  "HRM Clock In",
+  "HRM Clock Out",
+  "Tungsten Punch Out",
   "Department",
-  "Detail",
 ] as const;
 
 const HEADER_FILL: ExcelJS.Fill = {
@@ -14,16 +16,10 @@ const HEADER_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFB4C6E7" },
 };
 
-const H_ROW_FILL: ExcelJS.Fill = {
+const ROW_FILL: ExcelJS.Fill = {
   type: "pattern",
   pattern: "solid",
-  fgColor: { argb: "FFDBEAFE" },
-};
-
-const T_ROW_FILL: ExcelJS.Fill = {
-  type: "pattern",
-  pattern: "solid",
-  fgColor: { argb: "FFD1FAE5" },
+  fgColor: { argb: "FFF8FAFC" },
 };
 
 const THIN_BORDER: Partial<ExcelJS.Border> = {
@@ -33,7 +29,6 @@ const THIN_BORDER: Partial<ExcelJS.Border> = {
 
 export type EmployeeReportExcelRow = {
   cells: (string | number)[];
-  source: "H" | "T";
 };
 
 function sanitizeSheetName(name: string): string {
@@ -81,9 +76,8 @@ function addEmployeeSheet(
 
   dataRows.forEach((rowData) => {
     const row = sheet.addRow(rowData.cells);
-    const fill = rowData.source === "H" ? H_ROW_FILL : T_ROW_FILL;
     row.eachCell((cell) => {
-      cell.fill = fill;
+      cell.fill = ROW_FILL;
       cell.border = {
         top: THIN_BORDER,
         left: THIN_BORDER,
@@ -95,7 +89,7 @@ function addEmployeeSheet(
   });
 
   sheet.views = [{ state: "frozen", ySplit: 1 }];
-  const widths = [10, 12, 14, 22, 36];
+  const widths = [12, 24, 16, 14, 14, 16, 14];
   widths.forEach((w, i) => {
     sheet.getColumn(i + 1).width = w;
   });

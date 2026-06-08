@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
 import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
+import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
+import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
 import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
 import {
@@ -687,9 +689,14 @@ export default function EmployeeTimePage() {
                         <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
                         <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
                         <td>
-                          {a.clock_out
-                            ? getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE)
-                            : <span style={{color: '#e67e22', fontWeight: 600}}>Running...</span>}
+                          {a.clock_out ? (
+                            <>
+                              {getTimeStringInTimeZone(a.clock_out, SERVER_TIMEZONE)}
+                              {isAutoClockOutRecord(a.auto_clock_out) ? <AutoClockOutBadge /> : null}
+                            </>
+                          ) : (
+                            <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                          )}
                         </td>
                         <td>
                           {a.clock_in && !a.clock_out

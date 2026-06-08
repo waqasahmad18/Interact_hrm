@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import summaryStyles from "../../attendance-summary/attendance-summary.module.css";
 import reportStyles from "./employee-report.module.css";
@@ -25,6 +25,7 @@ import {
   profileMapsFromApi,
   resolveZkIdentity,
 } from "@/lib/zkbio-employee-resolve";
+import { pairTungstenWithSessions } from "@/lib/tungsten-punch-pairing";
 
 type ReportRow = {
   source: "H" | "T";
@@ -34,6 +35,8 @@ type ReportRow = {
   employeeName: string;
   department: string;
   detail: string;
+  shiftStartTime?: string | null;
+  shiftEndTime?: string | null;
 };
 
 type AttendanceRow = {
@@ -42,6 +45,25 @@ type AttendanceRow = {
   clock_in?: string | null;
   clock_out?: string | null;
   date?: string;
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+};
+
+type ReportTableRow = {
+  key: string;
+  date: string;
+  employeeName: string;
+  tungstenPunchIn: string;
+  hrmClockIn: string;
+  hrmClockOut: string;
+  tungstenPunchOut: string;
+  department: string;
+};
+type ShiftAssignmentRow = {
+  employeeName: string;
+  startTime: string | null;
+  endTime: string | null;
+  assignedDate: string;
 };
 
 type FilterMode = "day" | "month";
@@ -94,6 +116,8 @@ function rowFromIso(
   employeeName: string,
   department: string,
   detail: string,
+  shiftStartTime?: string | null,
+  shiftEndTime?: string | null,
 ): ReportRow | null {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
@@ -105,6 +129,8 @@ function rowFromIso(
     employeeName,
     department: department || "-",
     detail,
+    shiftStartTime: shiftStartTime || null,
+    shiftEndTime: shiftEndTime || null,
   };
 }
 
@@ -117,6 +143,104 @@ function rowInAppliedScope(eventDate: string, applied: AppliedFilters) {
   if (!eventDate) return false;
   if (applied.mode === "day") return eventDate === applied.date;
   return isDateInRange(eventDate, applied.fromDate, applied.toDate);
+}
+
+/** Include next/previous calendar day so overnight Tungsten punches pair with HRM sessions. */
+function tungstenEventInScope(eventDate: string, applied: AppliedFilters) {
+  if (!eventDate) return false;
+  if (rowInAppliedScope(eventDate, applied)) return true;
+  if (applied.mode !== "day") return false;
+  return (
+    eventDate === addDaysToDateKey(applied.date, 1) ||
+    eventDate === addDaysToDateKey(applied.date, -1)
+  );
+}
+
+/** Overnight shift: include row if clock-in, clock-out, or record date is in filter. */
+function attendanceRecordInScope(a: AttendanceRow, applied: AppliedFilters): boolean {
+  const recordDate = formatDateOnly(a.date);
+  const cinDate = a.clock_in
+    ? getDateStringInTimeZone(new Date(a.clock_in), SERVER_TIMEZONE)
+    : recordDate;
+  const coutDate = a.clock_out
+    ? getDateStringInTimeZone(new Date(a.clock_out), SERVER_TIMEZONE)
+    : null;
+  if (rowInAppliedScope(recordDate, applied)) return true;
+  if (rowInAppliedScope(cinDate, applied)) return true;
+  if (coutDate && rowInAppliedScope(coutDate, applied)) return true;
+  return false;
+}
+
+/** Match clock-out up to 24h after clock-in (next calendar day after midnight). */
+const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  if (!y || !m || !d) return dateKey;
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function detectTungstenDirection(detail: string): "in" | "out" | null {
+  const d = detail.toLowerCase();
+  if (d.includes("out")) return "out";
+  if (d.includes("in")) return "in";
+  return null;
+}
+
+function parseShiftTimeToHms(value: string | null | undefined) {
+  if (!value) return null;
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!match) return null;
+  return {
+    h: Number(match[1]),
+    m: Number(match[2]),
+    s: Number(match[3] || "0"),
+  };
+}
+
+function karachiDateTimeToEpoch(dateKey: string, timeValue: string) {
+  const [y, mo, d] = dateKey.split("-").map(Number);
+  const hms = parseShiftTimeToHms(timeValue);
+  if (!y || !mo || !d || !hms) return null;
+  // Asia/Karachi is UTC+05 without DST.
+  return Date.UTC(y, mo - 1, d, hms.h - 5, hms.m, hms.s);
+}
+
+function pickNearestByTarget(
+  events: { atMs: number; time: string }[],
+  targetMs: number,
+  maxDiffMs: number,
+) {
+  let best: { atMs: number; time: string } | null = null;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const e of events) {
+    const diff = Math.abs(e.atMs - targetMs);
+    if (diff < bestDiff) {
+      best = e;
+      bestDiff = diff;
+    }
+  }
+  if (!best || bestDiff > maxDiffMs) return null;
+  return best;
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getApplicableShift(
+  employeeName: string,
+  dateKey: string,
+  assignmentsByName: Map<string, ShiftAssignmentRow[]>,
+) {
+  const list = assignmentsByName.get(normalizeName(employeeName)) || [];
+  let best: ShiftAssignmentRow | null = null;
+  for (const a of list) {
+    if (!a.assignedDate || a.assignedDate > dateKey) continue;
+    if (!best || a.assignedDate > best.assignedDate) best = a;
+  }
+  return best;
 }
 
 async function fetchAllZkRows(baseParams: URLSearchParams): Promise<{
@@ -180,32 +304,39 @@ export default function EmployeeReportPage() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shiftAssignments, setShiftAssignments] = useState<ShiftAssignmentRow[]>([]);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const attFromDate =
+        applied.mode === "day" ? addDaysToDateKey(applied.date, -1) : applied.fromDate;
+      const attToDate =
+        applied.mode === "day" ? addDaysToDateKey(applied.date, 1) : applied.toDate;
       const attParams = new URLSearchParams({
-        fromDate: applied.fromDate,
-        toDate: applied.toDate,
+        fromDate: attFromDate,
+        toDate: attToDate,
       });
       const zkParams = new URLSearchParams({
-        dateFrom: applied.mode === "month" ? applied.fromDate : applied.date,
-        dateTo: applied.toDate,
+        dateFrom: applied.mode === "month" ? applied.fromDate : addDaysToDateKey(applied.date, -1),
+        dateTo: addDaysToDateKey(applied.mode === "month" ? applied.toDate : applied.date, 1),
       });
       if (applied.name.trim()) zkParams.set("name", applied.name.trim());
       if (applied.dept) zkParams.set("dept", applied.dept);
 
-      const [attRes, zkResult, pinProfRes, empListRes] = await Promise.all([
+      const [attRes, zkResult, pinProfRes, empListRes, shiftRes] = await Promise.all([
         fetch(`/api/attendance?${attParams}`),
         fetchAllZkRows(zkParams),
         fetch("/api/zkbio-pin-profiles"),
         fetch("/api/employee-list"),
+        fetch("/api/shift-management"),
       ]);
 
       const attData = await attRes.json();
       const pinProfData = await pinProfRes.json();
       const empListData = await empListRes.json();
+      const shiftData = await shiftRes.json();
 
       const batchPinProfiles = buildPinProfilesFromRows(zkResult.rows);
       const dbPinProfiles = pinProfData.success
@@ -215,6 +346,23 @@ export default function EmployeeReportPage() {
         empListData.success && empListData.employees
           ? hrmMapFromEmployees(empListData.employees)
           : new Map();
+      if (shiftData.success && Array.isArray(shiftData.employees)) {
+        const parsed: ShiftAssignmentRow[] = shiftData.employees
+          .map((x: Record<string, unknown>) => {
+            const employeeName = `${String(x.first_name || "").trim()} ${String(x.last_name || "").trim()}`.trim();
+            const assignedDate = formatDateOnly(String(x.assigned_date || ""));
+            return {
+              employeeName,
+              startTime: x.start_time ? String(x.start_time) : null,
+              endTime: x.end_time ? String(x.end_time) : null,
+              assignedDate,
+            };
+          })
+          .filter((x: ShiftAssignmentRow) => x.employeeName && x.assignedDate);
+        setShiftAssignments(parsed);
+      } else {
+        setShiftAssignments([]);
+      }
 
       if (!attData.success && zkResult.rows.length === 0) {
         setError(attData.error || "Request failed");
@@ -229,8 +377,7 @@ export default function EmployeeReportPage() {
 
       const attendance: AttendanceRow[] = attData.success ? attData.attendance || [] : [];
       for (const a of attendance) {
-        const visibleDate = formatDateOnly(a.clock_in || a.clock_out || a.date);
-        if (!rowInAppliedScope(visibleDate, applied)) continue;
+        if (!attendanceRecordInScope(a, applied)) continue;
 
         const employeeName = (a.employee_name || "").trim() || "—";
         const department = a.department_name || "";
@@ -242,12 +389,28 @@ export default function EmployeeReportPage() {
         if (applied.dept && department !== applied.dept) continue;
 
         if (a.clock_in) {
-          const r = rowFromIso("H", a.clock_in, employeeName, department, "Clock In");
-          if (r && rowInAppliedScope(r.date, applied)) merged.push(r);
+          const r = rowFromIso(
+            "H",
+            a.clock_in,
+            employeeName,
+            department,
+            "Clock In",
+            a.shift_start_time,
+            a.shift_end_time,
+          );
+          if (r) merged.push(r);
         }
         if (a.clock_out) {
-          const r = rowFromIso("H", a.clock_out, employeeName, department, "Clock Out");
-          if (r && rowInAppliedScope(r.date, applied)) merged.push(r);
+          const r = rowFromIso(
+            "H",
+            a.clock_out,
+            employeeName,
+            department,
+            "Clock Out",
+            a.shift_start_time,
+            a.shift_end_time,
+          );
+          if (r) merged.push(r);
         }
       }
 
@@ -271,7 +434,7 @@ export default function EmployeeReportPage() {
         if (Number.isNaN(at.getTime())) continue;
         const eventDate = getDateStringInTimeZone(at, SERVER_TIMEZONE);
 
-        if (!rowInAppliedScope(eventDate, applied)) continue;
+        if (!tungstenEventInScope(eventDate, applied)) continue;
 
         const reader = String(z.reader_name || "").trim() || "-";
         const event = String(z.event_name || "").trim() || "Punch";
@@ -361,15 +524,100 @@ export default function EmployeeReportPage() {
       ? `No records for ${formatMonthLabel(applied.month)}`
       : `No records for ${formatReportDate(applied.date)}`;
 
+  const tableRows = useMemo<ReportTableRow[]>(() => {
+    const todayKey = todayStr();
+    const nowMs = Date.now();
+    const assignmentsByName = new Map<string, ShiftAssignmentRow[]>();
+    for (const a of shiftAssignments) {
+      const key = normalizeName(a.employeeName);
+      const list = assignmentsByName.get(key) || [];
+      list.push(a);
+      assignmentsByName.set(key, list);
+    }
+
+    const byEmployee = new Map<
+      string,
+      {
+        employeeName: string;
+        department: string;
+        hrmIns: ReportRow[];
+        hrmOuts: ReportRow[];
+        tungsten: { atMs: number; time: string; date: string }[];
+      }
+    >();
+
+    for (const r of rows) {
+      const key = normalizeName(r.employeeName);
+      const bucket = byEmployee.get(key) || {
+        employeeName: r.employeeName,
+        department: r.department || "-",
+        hrmIns: [],
+        hrmOuts: [],
+        tungsten: [],
+      };
+      if (r.source === "H") {
+        if (r.detail === "Clock In") bucket.hrmIns.push(r);
+        else bucket.hrmOuts.push(r);
+      } else {
+        const atMs = Date.parse(r.sortAt);
+        if (!Number.isNaN(atMs)) bucket.tungsten.push({ atMs, time: r.time, date: r.date });
+      }
+      byEmployee.set(key, bucket);
+    }
+
+    const result: ReportTableRow[] = [];
+    for (const employee of byEmployee.values()) {
+      const sessions = pairTungstenWithSessions(
+        employee.hrmIns,
+        employee.hrmOuts,
+        employee.tungsten,
+        todayKey,
+        nowMs,
+        (sessionDate) => {
+          const fromAssignment = getApplicableShift(
+            employee.employeeName,
+            sessionDate,
+            assignmentsByName,
+          )?.startTime;
+          if (fromAssignment) return fromAssignment;
+          const cinOnDay = employee.hrmIns.find((r) => r.date === sessionDate);
+          return cinOnDay?.shiftStartTime ?? null;
+        },
+      );
+
+      sessions.forEach((session, i) => {
+        if (!rowInAppliedScope(session.sessionDate, applied)) return;
+        result.push({
+          key: `${normalizeName(employee.employeeName)}__${session.sessionDate}__${i + 1}`,
+          date: session.sessionDate,
+          employeeName: employee.employeeName,
+          tungstenPunchIn: session.tungstenPunchIn,
+          hrmClockIn: session.hrmClockIn,
+          hrmClockOut: session.hrmClockOut,
+          tungstenPunchOut: session.tungstenPunchOut,
+          department: employee.department,
+        });
+      });
+    }
+
+    return result.sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      if (d !== 0) return d;
+      const n = a.employeeName.localeCompare(b.employeeName, undefined, { sensitivity: "base" });
+      if (n !== 0) return n;
+      return a.hrmClockIn.localeCompare(b.hrmClockIn);
+    });
+  }, [rows, shiftAssignments, applied]);
+
   async function downloadExcel() {
-    if (rows.length === 0) {
+    if (tableRows.length === 0) {
       alert("No records to export");
       return;
     }
     setExporting(true);
     try {
-      const byEmployee = new Map<string, ReportRow[]>();
-      for (const r of rows) {
+      const byEmployee = new Map<string, ReportTableRow[]>();
+      for (const r of tableRows) {
         const key = r.employeeName;
         if (!byEmployee.has(key)) byEmployee.set(key, []);
         byEmployee.get(key)!.push(r);
@@ -381,8 +629,15 @@ export default function EmployeeReportPage() {
           name,
           rows: empRows.map(
             (r): EmployeeReportExcelRow => ({
-              source: r.source,
-              cells: [r.source, r.date, r.time, r.department, r.detail],
+              cells: [
+                r.date,
+                r.employeeName,
+                r.tungstenPunchIn,
+                r.hrmClockIn,
+                r.hrmClockOut,
+                r.tungstenPunchOut,
+                r.department,
+              ],
             }),
           ),
         }));
@@ -412,7 +667,7 @@ export default function EmployeeReportPage() {
           {showStats && (
             <div className={reportStyles.stats}>
               <div className={reportStyles.statChip}>
-                <strong>{rows.length}</strong>
+                <strong>{tableRows.length}</strong>
                 <span>Total</span>
               </div>
               <div className={`${reportStyles.statChip} ${reportStyles.statH}`}>
@@ -490,7 +745,7 @@ export default function EmployeeReportPage() {
             <button
               type="button"
               onClick={downloadExcel}
-              disabled={loading || exporting || rows.length === 0}
+              disabled={loading || exporting || tableRows.length === 0}
               className={reportStyles.btnExport}
             >
               <FaFileExcel /> {exporting ? "Exporting…" : "Export XLS"}
@@ -510,44 +765,75 @@ export default function EmployeeReportPage() {
           <table className={reportStyles.table}>
             <thead>
               <tr>
-                <th>Source</th>
                 <th>Date</th>
-                <th>Time</th>
-                <th>Employee</th>
+                <th>Employee Name</th>
+                <th>Tungsten Punch In</th>
+                <th>HRM Clock In</th>
+                <th>HRM Clock Out</th>
+                <th>Tungsten Punch Out</th>
                 <th>Department</th>
-                <th>Detail</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className={reportStyles.empty}>
+                  <td colSpan={7} className={reportStyles.empty}>
                     Loading records…
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className={reportStyles.empty}>
+                  <td colSpan={7} className={reportStyles.empty}>
                     {emptyMessage}
                     {applied.name.trim() ? ` matching “${applied.name.trim()}”` : ""}.
                   </td>
                 </tr>
               ) : (
-                rows.map((r, idx) => (
-                  <tr
-                    key={`${r.source}-${r.sortAt}-${idx}`}
-                    className={r.source === "H" ? reportStyles.rowH : reportStyles.rowT}
-                  >
-                    <td>
-                      <span className={r.source === "H" ? reportStyles.badgeH : reportStyles.badgeT}>
-                        {r.source}
-                      </span>
-                    </td>
+                tableRows.map((r) => (
+                  <tr key={r.key}>
                     <td>{r.date}</td>
-                    <td>{r.time}</td>
                     <td className={reportStyles.employeeCell}>{r.employeeName}</td>
+                    <td>
+                      {r.tungstenPunchIn !== "-" ? (
+                        <span className={reportStyles.timeWithBadge}>
+                          <span className={reportStyles.badgeT}>T</span>
+                          {r.tungstenPunchIn}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      {r.hrmClockIn !== "-" ? (
+                        <span className={reportStyles.timeWithBadge}>
+                          <span className={reportStyles.badgeH}>H</span>
+                          {r.hrmClockIn}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      {r.hrmClockOut !== "-" ? (
+                        <span className={reportStyles.timeWithBadge}>
+                          <span className={reportStyles.badgeH}>H</span>
+                          {r.hrmClockOut}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      {r.tungstenPunchOut !== "-" ? (
+                        <span className={reportStyles.timeWithBadge}>
+                          <span className={reportStyles.badgeT}>T</span>
+                          {r.tungstenPunchOut}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td>{r.department}</td>
-                    <td className={reportStyles.detailCell}>{r.detail}</td>
                   </tr>
                 ))
               )}
@@ -555,11 +841,6 @@ export default function EmployeeReportPage() {
           </table>
         </div>
 
-        {!loading && rows.length > 0 && (
-          <p className={reportStyles.footer}>
-            Sorted by employee, date, then time · Export creates one Excel tab per employee
-          </p>
-        )}
       </div>
     </LayoutDashboard>
   );

@@ -1,9 +1,12 @@
 import ExcelJS from "exceljs";
+import { isAbsentOrHalfDayStatus, isTardyStatus, normalizeAttendanceStatus } from "./attendance-status";
 
 export const DEDUCTION_SUMMARY_HEADERS = [
   "Date",
+  "T.Punch in",
   "Clock In",
   "Clock Out",
+  "T.Punch out",
   "Status",
   "Tardy Count",
   "Deduction",
@@ -40,12 +43,20 @@ const RED_BOLD_FONT: Partial<ExcelJS.Font> = {
   size: 11,
 };
 
-const COLUMN_WIDTHS = [14, 14, 14, 18, 12, 12];
+const TARDY_ROW_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFFFFF00" },
+};
+
+const COLUMN_WIDTHS = [14, 14, 14, 14, 14, 18, 12, 12];
 
 export type DeductionSummaryDayRow = {
   date: string;
+  tPunchIn: string;
   clockIn: string;
   clockOut: string;
+  tPunchOut: string;
   status: string;
   tardyCount: number | string;
   deduction: string;
@@ -138,24 +149,38 @@ function addDeductionSummarySheet(
   });
 
   block.rows.forEach((row) => {
+    const status = normalizeAttendanceStatus(row.status);
     const dataRow = sheet.addRow([
       row.date,
+      row.tPunchIn,
       row.clockIn,
       row.clockOut,
-      row.status,
+      row.tPunchOut,
+      status,
       row.tardyCount === 0 || row.tardyCount === "" ? "" : row.tardyCount,
       row.deduction,
     ]);
+    const tardyRow = isTardyStatus(status);
+    const absentOrHalfRow = isAbsentOrHalfDayStatus(status);
     dataRow.eachCell((cell, colNumber) => {
       cell.alignment = { horizontal: "center", vertical: "middle" };
       applyBlackBorder(cell);
+      if (tardyRow) {
+        cell.fill = TARDY_ROW_FILL;
+      } else if (absentOrHalfRow) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFFC7CE" },
+        };
+      }
       if (colNumber === COL_COUNT) {
         cell.font = RED_BOLD_FONT;
       }
     });
   });
 
-  const totalRow = sheet.addRow(["", "", "", "", "Total", `${block.totalDeduction}%`]);
+  const totalRow = sheet.addRow(["", "", "", "", "", "", "Total", `${block.totalDeduction}%`]);
   totalRow.eachCell((cell, colNumber) => {
     cell.alignment = { horizontal: "center", vertical: "middle" };
     applyBlackBorder(cell);

@@ -275,6 +275,13 @@
   color: #065f46;
 }
 
+.timeWithBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .footer {
   margin-top: 14px;
   font-size: 13px;
