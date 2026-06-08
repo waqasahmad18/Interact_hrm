@@ -26,6 +26,7 @@ import {
   resolveZkIdentity,
 } from "@/lib/zkbio-employee-resolve";
 import { pairTungstenWithSessions } from "@/lib/tungsten-punch-pairing";
+import { parseAttendanceDateTimeMs } from "@/lib/shift-timing";
 
 type ReportRow = {
   source: "H" | "T";
@@ -559,8 +560,8 @@ export default function EmployeeReportPage() {
         if (r.detail === "Clock In") bucket.hrmIns.push(r);
         else bucket.hrmOuts.push(r);
       } else {
-        const atMs = Date.parse(r.sortAt);
-        if (!Number.isNaN(atMs)) bucket.tungsten.push({ atMs, time: r.time, date: r.date });
+        const atMs = parseAttendanceDateTimeMs(r.sortAt);
+        if (atMs != null) bucket.tungsten.push({ atMs, time: r.time, date: r.date });
       }
       byEmployee.set(key, bucket);
     }

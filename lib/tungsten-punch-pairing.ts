@@ -212,50 +212,80 @@ function firstArrivalPunchForShiftDay(
   return undefined;
 }
 
+function isExitCandidate(
+  t: TungstenEvent,
+  cinMs: number,
+  usedPunchAt: Set<number>,
+  excludeExitAtMs?: number,
+) {
+  return (
+    t.atMs >= cinMs &&
+    !usedPunchAt.has(t.atMs) &&
+    (excludeExitAtMs == null || t.atMs !== excludeExitAtMs)
+  );
+}
+
 /**
- * T.Punch out: last unused Tungsten within 30 min after clock-out.
- * Fallback order: in-session punch → T.Punch in (arrival) when no exit punch arrives.
+ * T.Punch out: last exit Tungsten for this session.
+ * 1) Last punch in 30 min after clock-out
+ * 2) Else last door punch before clock-out
+ * 3) Else last same-day punch after clock-out (late ZK / just past grace)
  */
 function assignSessionPunchOut(
   tungstenByTime: TungstenEvent[],
+  sessionDate: string,
   cinMs: number,
   outMs: number,
   nowMs: number,
   usedPunchAt: Set<number>,
-  fallbackPunchIn?: string,
+  excludeExitAtMs?: number,
 ): string | undefined {
+  if (Number.isNaN(cinMs) || Number.isNaN(outMs)) return undefined;
+
   const graceEnd = outMs + TUNGSTEN_AFTER_CLOCK_GRACE_MS;
   const searchEnd = Math.min(nowMs, graceEnd);
 
-  const afterOut = tungstenByTime.filter(
-    (t) => t.atMs >= outMs && t.atMs <= searchEnd && !usedPunchAt.has(t.atMs),
+  const afterOutGrace = tungstenByTime.filter(
+    (t) =>
+      isExitCandidate(t, cinMs, usedPunchAt, excludeExitAtMs) &&
+      t.atMs >= outMs &&
+      t.atMs <= searchEnd,
   );
-  if (afterOut.length) {
-    const pick = afterOut[afterOut.length - 1];
+  if (afterOutGrace.length) {
+    const pick = afterOutGrace[afterOutGrace.length - 1];
     usedPunchAt.add(pick.atMs);
     return pick.time;
   }
 
-  const inSession = tungstenByTime.filter(
-    (t) => t.atMs > cinMs && t.atMs < outMs && !usedPunchAt.has(t.atMs),
+  const beforeOut = tungstenByTime.filter(
+    (t) =>
+      isExitCandidate(t, cinMs, usedPunchAt, excludeExitAtMs) &&
+      t.atMs < outMs,
   );
-  if (inSession.length) {
-    const pick = inSession[inSession.length - 1];
+  if (beforeOut.length) {
+    const pick = beforeOut[beforeOut.length - 1];
     usedPunchAt.add(pick.atMs);
     return pick.time;
   }
 
-  // No exit punch within grace — use arrival punch (same as T.Punch in).
-  if (fallbackPunchIn && fallbackPunchIn !== "-") {
-    return fallbackPunchIn;
+  const sameDayLateExit = tungstenByTime.filter(
+    (t) =>
+      t.date === sessionDate &&
+      isExitCandidate(t, cinMs, usedPunchAt, excludeExitAtMs) &&
+      t.atMs > outMs,
+  );
+  if (sameDayLateExit.length) {
+    const pick = sameDayLateExit[sameDayLateExit.length - 1];
+    usedPunchAt.add(pick.atMs);
+    return pick.time;
   }
 
   return undefined;
 }
 
 /**
- * T.Punch in: first arrival thumb for shift day (not calendar midnight first).
- * T.Punch out: last Tungsten within 30 min after clock-out, else same as T.Punch in.
+ * T.Punch in: first Tungsten entry of the shift day.
+ * T.Punch out: last exit punch for the session (never the day-first arrival).
  */
 export function pairTungstenWithSessions(
   hrmIns: HrmEvent[],
@@ -271,7 +301,14 @@ export function pairTungstenWithSessions(
   const hrmInsSorted = [...hrmIns].sort((a, b) => a.sortAt.localeCompare(b.sortAt));
   const usedOutIdx = new Set<number>();
   const usedPunchAt = new Set<number>();
-  const sessions: EmployeeReportSession[] = [];
+
+  type SessionDraft = EmployeeReportSession & {
+    cinMs: number;
+    outMs: number | null;
+    excludeExitAtMs?: number;
+  };
+
+  const drafts: SessionDraft[] = [];
 
   for (let i = 0; i < hrmInsSorted.length; i += 1) {
     const cin = hrmInsSorted[i];
@@ -290,7 +327,6 @@ export function pairTungstenWithSessions(
         break;
       }
     }
-    // Late auto clock-out (session open over a weekend / days) — pair next clock-out anyway.
     if (!hrmOut) {
       let bestIdx = -1;
       let bestOutMs = Number.POSITIVE_INFINITY;
@@ -311,49 +347,58 @@ export function pairTungstenWithSessions(
     if (matchedOutIdx >= 0) usedOutIdx.add(matchedOutIdx);
 
     let punchIn = "-";
-    if (!Number.isNaN(cinMs)) {
-      const allowIn = !(
-        sessionDate === todayKey && nowMs < cinMs + TUNGSTEN_AFTER_CLOCK_GRACE_MS
+    let excludeExitAtMs: number | undefined;
+
+    const shiftStart = resolveShiftStart?.(sessionDate);
+    const cacheKey = `${sessionDate}|${shiftStart ?? ""}`;
+    let arrival = arrivalPunchByShiftDay.get(cacheKey);
+    if (arrival === undefined) {
+      const found = firstArrivalPunchForShiftDay(tungstenByTime, sessionDate, shiftStart);
+      arrival = found ?? "";
+      arrivalPunchByShiftDay.set(cacheKey, arrival);
+    }
+    if (arrival) {
+      punchIn = arrival;
+      const arrivalEvent = tungstenByTime.find(
+        (t) => t.date === sessionDate && t.time === arrival,
       );
-      if (allowIn) {
-        const shiftStart = resolveShiftStart?.(sessionDate);
-        const cacheKey = `${sessionDate}|${shiftStart ?? ""}`;
-        let arrival = arrivalPunchByShiftDay.get(cacheKey);
-        if (arrival === undefined) {
-          const found = firstArrivalPunchForShiftDay(tungstenByTime, sessionDate, shiftStart);
-          arrival = found ?? "";
-          arrivalPunchByShiftDay.set(cacheKey, arrival);
-        }
-        if (arrival) punchIn = arrival;
-      }
+      if (arrivalEvent) excludeExitAtMs = arrivalEvent.atMs;
     }
 
-    let punchOut = "-";
-    if (hrmOut) {
-      const outMs = parseAttendanceDateTimeMs(hrmOut.sortAt) ?? Number.NaN;
-      if (!Number.isNaN(outMs)) {
-        const last = assignSessionPunchOut(
-          tungstenByTime,
-          cinMs,
-          outMs,
-          nowMs,
-          usedPunchAt,
-          punchIn,
-        );
-        if (last) punchOut = last;
-      }
-    }
+    const outMs =
+      hrmOut != null ? parseAttendanceDateTimeMs(hrmOut.sortAt) ?? null : null;
 
-    sessions.push({
+    drafts.push({
       sessionDate,
       tungstenPunchIn: punchIn,
       hrmClockIn: cin.time,
       hrmClockOut: hrmOut ? hrmOut.time : "-",
-      tungstenPunchOut: punchOut,
+      tungstenPunchOut: "-",
+      cinMs,
+      outMs: outMs != null && !Number.isNaN(outMs) ? outMs : null,
+      excludeExitAtMs,
     });
   }
 
-  return sessions;
+  // Newest session picks exit punches first (avoids long session stealing evening punches).
+  const exitOrder = [...drafts]
+    .filter((d) => d.outMs != null)
+    .sort((a, b) => b.cinMs - a.cinMs);
+
+  for (const draft of exitOrder) {
+    const last = assignSessionPunchOut(
+      tungstenByTime,
+      draft.sessionDate,
+      draft.cinMs,
+      draft.outMs as number,
+      nowMs,
+      usedPunchAt,
+      draft.excludeExitAtMs,
+    );
+    if (last) draft.tungstenPunchOut = last;
+  }
+
+  return drafts.map(({ cinMs: _c, outMs: _o, excludeExitAtMs: _e, ...session }) => session);
 }
 
 export function buildEmployeeReportSessions(
