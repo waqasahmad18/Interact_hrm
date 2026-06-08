@@ -16,8 +16,15 @@ export type OpenAttendanceRow = {
   last_presence_ack_at: string | null;
 };
 
+export type DbExecuteConn = {
+  execute: (
+    sql: string,
+    params?: unknown[],
+  ) => Promise<[unknown[], unknown]>;
+};
+
 export async function fetchShiftForEmployee(
-  conn: { execute: (sql: string, params?: unknown[]) => Promise<unknown> },
+  conn: DbExecuteConn,
   employeeId: string,
   onOrBeforeDate: string,
 ): Promise<ShiftAssignmentTiming | null> {

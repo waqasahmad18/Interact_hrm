@@ -149,8 +149,9 @@ function appendTungstenRows(
     const rowName = (hrmMatch?.employeeName || zkName).trim().toLowerCase().replace(/\s+/g, " ");
     if (rowName !== key) continue;
 
-    const raw = z.event_time || z.imported_at;
-    if (!raw) continue;
+    const rawVal = z.event_time ?? z.imported_at;
+    if (rawVal == null || rawVal === "") continue;
+    const raw = String(rawVal);
     const punchMs = parseAttendanceDateTimeMs(raw);
     if (punchMs == null) continue;
     const eventDate = getDateStringInTimeZone(punchMs, SERVER_TIMEZONE);

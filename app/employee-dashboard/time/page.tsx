@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ATTENDANCE_DATA_CHANGED,
+  BREAK_DATA_CHANGED,
+  PRAYER_DATA_CHANGED,
+} from "../../../lib/ui-sync/breakPrayerDataRefresh";
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
 import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
@@ -155,8 +160,7 @@ export default function EmployeeTimePage() {
     }
   }, []);
 
-  // Fetch breaks for current employee
-  useEffect(() => {
+  const fetchBreaks = useCallback(() => {
     if (!employeeId) return;
     let url = `/api/breaks?employeeId=${employeeId}`;
     const params = new URLSearchParams();
@@ -176,8 +180,7 @@ export default function EmployeeTimePage() {
       });
   }, [employeeId, breakFromDate, breakToDate]);
 
-  // Fetch prayer breaks for current employee
-  useEffect(() => {
+  const fetchPrayerBreaks = useCallback(() => {
     if (!employeeId) return;
     let url = `/api/prayer_breaks?employeeId=${employeeId}`;
     const params = new URLSearchParams();
@@ -197,8 +200,7 @@ export default function EmployeeTimePage() {
       });
   }, [employeeId, prayerFromDate, prayerToDate]);
 
-  // Fetch attendance for current employee
-  useEffect(() => {
+  const fetchAttendance = useCallback(() => {
     if (!employeeId) return;
     let url = `/api/attendance?employeeId=${employeeId}`;
     const params = new URLSearchParams();
@@ -212,7 +214,6 @@ export default function EmployeeTimePage() {
           const filtered = (data.attendance || []).filter((a: any) =>
             isInRange(a.clock_in || a.date, attFromDate, attToDate)
           );
-          // Separate valid and invalid clock_in records
           const valid = filtered.filter((a: any) => a.clock_in && toKarachiEpochMs(a.clock_in) !== null);
           const invalid = filtered.filter((a: any) => !a.clock_in || toKarachiEpochMs(a.clock_in) === null);
           valid.sort((a: any, b: any) => (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0));
@@ -221,6 +222,32 @@ export default function EmployeeTimePage() {
         else setAttendance([]);
       });
   }, [employeeId, attFromDate, attToDate]);
+
+  useEffect(() => {
+    fetchBreaks();
+  }, [fetchBreaks]);
+
+  useEffect(() => {
+    fetchPrayerBreaks();
+  }, [fetchPrayerBreaks]);
+
+  useEffect(() => {
+    fetchAttendance();
+  }, [fetchAttendance]);
+
+  useEffect(() => {
+    const onBreakChanged = () => fetchBreaks();
+    const onPrayerChanged = () => fetchPrayerBreaks();
+    const onAttendanceChanged = () => fetchAttendance();
+    window.addEventListener(BREAK_DATA_CHANGED, onBreakChanged);
+    window.addEventListener(PRAYER_DATA_CHANGED, onPrayerChanged);
+    window.addEventListener(ATTENDANCE_DATA_CHANGED, onAttendanceChanged);
+    return () => {
+      window.removeEventListener(BREAK_DATA_CHANGED, onBreakChanged);
+      window.removeEventListener(PRAYER_DATA_CHANGED, onPrayerChanged);
+      window.removeEventListener(ATTENDANCE_DATA_CHANGED, onAttendanceChanged);
+    };
+  }, [fetchBreaks, fetchPrayerBreaks, fetchAttendance]);
 
   // Aggregate all breaks per attendance session for this employee
   const dailyBreakTotals = (() => {

@@ -81,7 +81,9 @@ export function workedSecondsBetween(
 }
 
 /** Parse "05h 30m" / "03:01:00" / "3:01" / Excel duration serial from imported cells. */
-export function parseHmDurationToSeconds(text: string | null | undefined): number {
+export function parseHmDurationToSeconds(
+  text: string | number | null | undefined | unknown,
+): number {
   if (text == null) return 0;
   if (typeof text === "number" && Number.isFinite(text)) {
     const fraction = text >= 1 ? text % 1 : text;

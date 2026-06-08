@@ -5,6 +5,7 @@ import { ATTENDANCE_TABLE, ensureAttendanceTable } from "./attendance-table";
 import {
   evaluatePresencePrompt,
   fetchShiftForEmployee,
+  type DbExecuteConn,
   type OpenAttendanceRow,
 } from "./attendance-presence";
 import { performAutoClockOut, shouldServerAutoClockOut } from "./auto-clock-out";
@@ -21,7 +22,7 @@ type OpenRow = OpenAttendanceRow & {
 };
 
 async function processOpenSession(
-  conn: { execute: (sql: string, params?: unknown[]) => Promise<unknown> },
+  conn: DbExecuteConn,
   open: OpenRow,
 ): Promise<number | null> {
   const cinDate = clockInDateKey(open.clock_in);

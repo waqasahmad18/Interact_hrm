@@ -3,7 +3,10 @@
 import React from "react";
 import './ClockBreakPrayerFade.css';
 import { PrayerButton } from "./PrayerButton";
-import { forceSyncClockState } from "../../lib/ui-sync/forceSyncClockState";
+import {
+  clearClockSyncInterval,
+  forceSyncClockState,
+} from "../../lib/ui-sync/forceSyncClockState";
 import { getParts } from "../../lib/timezone";
 import {
   forceSyncBreakState,
@@ -15,6 +18,12 @@ import {
 } from "../../lib/ui-sync/forceSyncPrayerBreakState";
 import { getDateStringInTimeZone } from "../../lib/timezone";
 import { AutoPresencePrompt } from "./AutoPresencePrompt";
+import {
+  ATTENDANCE_DATA_CHANGED,
+  BREAK_DATA_CHANGED,
+  notifyAttendanceDataChanged,
+  notifyBreakDataChanged,
+} from "../../lib/ui-sync/breakPrayerDataRefresh";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
 function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -162,7 +171,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      if (intervalId) clearInterval(intervalId);
+      clearClockSyncInterval(employeeId);
       if (breakIntervalId) clearInterval(breakIntervalId);
       if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
       clearBreakSyncInterval(employeeId);
@@ -202,8 +211,20 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         if (typeof window !== "undefined") {
           sessionStorage.removeItem(`auto_presence_prompt_${id}`);
         }
-        // Force sync from backend instead of manual state management
+        clearClockSyncInterval(id);
+        setIsClockedIn(true);
+        setTimer(0);
         forceSyncClockState(id, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncBreakState(id, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        forceSyncPrayerBreakState(
+          id,
+          setIsPrayerOn,
+          setPrayerBreakTimer,
+          setLoadingPrayerBreak,
+          setPrayerBreakIntervalId,
+          setPrayerStart
+        );
+        notifyAttendanceDataChanged();
       } else {
         alert(data.error || "Failed to clock in. Please try again.");
       }
@@ -256,8 +277,27 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       });
       const data = await res.json();
       if (data.success) {
-        // Force sync from backend instead of manual state management
+        clearClockSyncInterval(employeeId);
+        setIsClockedIn(false);
+        setTimer(0);
+        clearBreakSyncInterval(employeeId);
+        setIsOnBreak(false);
+        setBreakTimer(0);
+        clearPrayerBreakSyncInterval(employeeId);
+        setIsPrayerOn(false);
+        setPrayerBreakTimer(0);
+        setPrayerStart(null);
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        forceSyncPrayerBreakState(
+          employeeId,
+          setIsPrayerOn,
+          setPrayerBreakTimer,
+          setLoadingPrayerBreak,
+          setPrayerBreakIntervalId,
+          setPrayerStart
+        );
+        notifyAttendanceDataChanged();
       } else {
         // Show error modal for API errors
         const errorMsg = data.error || "Failed to clock out. Please try again.";
@@ -300,6 +340,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         setBreakTimer(0);
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        notifyBreakDataChanged();
       } else {
         alert(data.error || "Failed to start break.");
       }
@@ -334,6 +375,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         setBreakTimer(0);
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        notifyBreakDataChanged();
       } else {
         alert(data.error || "Failed to end break.");
       }
@@ -358,7 +400,11 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       employeeName={employeeName}
       isClockedIn={isClockedIn}
       onClockedOut={() => {
+        clearClockSyncInterval(employeeId);
+        setIsClockedIn(false);
+        setTimer(0);
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        notifyAttendanceDataChanged();
       }}
     />
     <div className={`cbp-fade-in${fadeIn ? ' cbp-fade-in-active' : ''}`} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
@@ -581,105 +627,117 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
   const [exceedSeconds, setExceedSeconds] = React.useState(0);
   // Removed prayer totals from BreakSummary; shown in Prayer widget instead
 
-  React.useEffect(() => {
-    const fetchBreaks = async () => {
-      try {
-        if (!employeeId) return;
-        const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
-        const attendanceData = await attendanceRes.json();
-        const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
+  const refreshTotals = React.useCallback(async () => {
+    try {
+      if (!employeeId) return;
+      const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
+      const attendanceData = await attendanceRes.json();
+      const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
+        ? attendanceData.attendance
+        : [];
+      const breakRes = await fetch(`/api/breaks?employeeId=${employeeId}`);
+      const breakData = await breakRes.json();
+
+      const breakRows =
+        breakData.success && Array.isArray(breakData.breaks)
+          ? breakData.breaks
           : [];
-        // Fetch ALL breaks for this employee (no date filter)
-        const breakRes = await fetch(`/api/breaks?employeeId=${employeeId}`);
-        const breakData = await breakRes.json();
+      const attendanceRows = attendanceRowsPre;
 
-        const breakRows =
-          breakData.success && Array.isArray(breakData.breaks)
-            ? breakData.breaks
-            : [];
-        const attendanceRows = attendanceRowsPre;
+      const sortedAttendance = attendanceRows
+        .filter((a: any) => a.clock_in)
+        .sort(
+          (a: any, b: any) =>
+            (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0)
+        );
 
-        const sortedAttendance = attendanceRows
-          .filter((a: any) => a.clock_in)
-          .sort(
-            (a: any, b: any) =>
-              (toKarachiEpochMs(b.clock_in) || 0) - (toKarachiEpochMs(a.clock_in) || 0)
-          );
+      const activeOrLatestAttendance =
+        sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+        sortedAttendance[0] ||
+        null;
 
-        const activeOrLatestAttendance =
-          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
-          sortedAttendance[0] ||
-          null;
-
-        const activeAttendanceId =
-          activeOrLatestAttendance?.id !== undefined &&
-          activeOrLatestAttendance?.id !== null
-            ? Number(activeOrLatestAttendance.id)
-            : null;
-
-        const sessionStartMs = activeOrLatestAttendance?.clock_in
-          ? toKarachiEpochMs(activeOrLatestAttendance.clock_in)
-          : null;
-        const sessionEndMs = activeOrLatestAttendance?.clock_out
-          ? toKarachiEpochMs(activeOrLatestAttendance.clock_out)
+      const activeAttendanceId =
+        activeOrLatestAttendance?.id !== undefined &&
+        activeOrLatestAttendance?.id !== null
+          ? Number(activeOrLatestAttendance.id)
           : null;
 
-        const belongsToCurrentSession = (row: any) => {
-          if (!activeOrLatestAttendance) return true;
+      const sessionStartMs = activeOrLatestAttendance?.clock_in
+        ? toKarachiEpochMs(activeOrLatestAttendance.clock_in)
+        : null;
+      const sessionEndMs = activeOrLatestAttendance?.clock_out
+        ? toKarachiEpochMs(activeOrLatestAttendance.clock_out)
+        : null;
 
-          const rowSessionId = row.attendance_session_id;
-          if (
-            activeAttendanceId !== null &&
-            rowSessionId !== undefined &&
-            rowSessionId !== null &&
-            rowSessionId !== ""
-          ) {
-            return Number(rowSessionId) === activeAttendanceId;
-          }
+      const belongsToCurrentSession = (row: any) => {
+        if (!activeOrLatestAttendance) return true;
 
-          if (!row.break_start || sessionStartMs === null) return false;
-          const breakStartMs = toKarachiEpochMs(row.break_start);
-          if (breakStartMs === null) {
-            return false;
-          }
-
-          if (breakStartMs < sessionStartMs) return false;
-          if (
-            sessionEndMs !== null &&
-            !Number.isNaN(sessionEndMs) &&
-            breakStartMs > sessionEndMs
-          ) {
-            return false;
-          }
-
-          return true;
-        };
-
-        if (breakRows.length > 0) {
-          let total = 0;
-          breakRows.forEach((b: any) => {
-            if (b.break_start && b.break_end && belongsToCurrentSession(b)) {
-              const start = toKarachiEpochMs(b.break_start);
-              const end = toKarachiEpochMs(b.break_end);
-              if (start !== null && end !== null) {
-                total += Math.floor((end - start) / 1000);
-              }
-            }
-          });
-          setTotalBreakSeconds(total);
-          setExceedSeconds(total > 3600 ? total - 3600 : 0);
-        } else {
-          setTotalBreakSeconds(0);
-          setExceedSeconds(0);
+        const rowSessionId = row.attendance_session_id;
+        if (
+          activeAttendanceId !== null &&
+          rowSessionId !== undefined &&
+          rowSessionId !== null &&
+          rowSessionId !== ""
+        ) {
+          return Number(rowSessionId) === activeAttendanceId;
         }
-      } catch (error) {
+
+        if (!row.break_start || sessionStartMs === null) return false;
+        const breakStartMs = toKarachiEpochMs(row.break_start);
+        if (breakStartMs === null) {
+          return false;
+        }
+
+        if (breakStartMs < sessionStartMs) return false;
+        if (
+          sessionEndMs !== null &&
+          !Number.isNaN(sessionEndMs) &&
+          breakStartMs > sessionEndMs
+        ) {
+          return false;
+        }
+
+        return true;
+      };
+
+      if (breakRows.length > 0) {
+        let total = 0;
+        breakRows.forEach((b: any) => {
+          if (b.break_start && b.break_end && belongsToCurrentSession(b)) {
+            const start = toKarachiEpochMs(b.break_start);
+            const end = toKarachiEpochMs(b.break_end);
+            if (start !== null && end !== null) {
+              total += Math.floor((end - start) / 1000);
+            }
+          }
+        });
+        setTotalBreakSeconds(total);
+        setExceedSeconds(total > 3600 ? total - 3600 : 0);
+      } else {
         setTotalBreakSeconds(0);
         setExceedSeconds(0);
       }
-    };
-    fetchBreaks();
+    } catch (error) {
+      setTotalBreakSeconds(0);
+      setExceedSeconds(0);
+    }
   }, [employeeId]);
+
+  React.useEffect(() => {
+    refreshTotals();
+  }, [refreshTotals]);
+
+  React.useEffect(() => {
+    const onRefresh = () => {
+      refreshTotals();
+    };
+    window.addEventListener(BREAK_DATA_CHANGED, onRefresh);
+    window.addEventListener(ATTENDANCE_DATA_CHANGED, onRefresh);
+    return () => {
+      window.removeEventListener(BREAK_DATA_CHANGED, onRefresh);
+      window.removeEventListener(ATTENDANCE_DATA_CHANGED, onRefresh);
+    };
+  }, [refreshTotals]);
 
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>

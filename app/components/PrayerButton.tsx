@@ -1,6 +1,11 @@
 "use client";
 import React from "react";
 import { getDateStringInTimeZone } from "../../lib/timezone";
+import {
+  ATTENDANCE_DATA_CHANGED,
+  PRAYER_DATA_CHANGED,
+  notifyPrayerDataChanged,
+} from "../../lib/ui-sync/breakPrayerDataRefresh";
 
 /** When clocked in across midnight, breaks/prayers fall on multiple calendar days; use session range, not date=today only. */
 function buildPrayerBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -91,6 +96,7 @@ export function PrayerButton({
           const now = new Date();
           setCurrentPrayerDuration(Math.floor((now.getTime() - startTime.getTime()) / 1000));
         }, 1000);
+        notifyPrayerDataChanged();
       } else {
         alert(data.error || "Failed to start prayer break");
       }
@@ -123,6 +129,7 @@ export function PrayerButton({
         setCurrentPrayerDuration(0);
         if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
         onClearServerPrayerInterval?.();
+        notifyPrayerDataChanged();
       } else {
         alert(data.error || "Failed to end prayer break");
       }
@@ -183,107 +190,119 @@ function PrayerTotals({ employeeId }: { employeeId: string }) {
   const [totalSeconds, setTotalSeconds] = React.useState(0);
   const [exceedSeconds, setExceedSeconds] = React.useState(0);
 
-  React.useEffect(() => {
-    const fetchTotals = async () => {
-      try {
-        if (!employeeId) return;
-        const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
-        const attendanceData = await attendanceRes.json();
-        const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
-          ? attendanceData.attendance
+  const refreshTotals = React.useCallback(async () => {
+    try {
+      if (!employeeId) return;
+      const attendanceRes = await fetch(`/api/attendance?employeeId=${employeeId}`);
+      const attendanceData = await attendanceRes.json();
+      const attendanceRowsPre = Array.isArray(attendanceData?.attendance)
+        ? attendanceData.attendance
+        : [];
+      const prayerRes = await fetch(`/api/prayer_breaks?employeeId=${employeeId}`);
+      const prayerData = await prayerRes.json();
+
+      const prayerRows =
+        prayerData.success && Array.isArray(prayerData.prayer_breaks)
+          ? prayerData.prayer_breaks
           : [];
-        // Fetch ALL prayer breaks for this employee (no date filter)
-        const prayerRes = await fetch(`/api/prayer_breaks?employeeId=${employeeId}`);
-        const prayerData = await prayerRes.json();
+      const attendanceRows = attendanceRowsPre;
 
-        const prayerRows =
-          prayerData.success && Array.isArray(prayerData.prayer_breaks)
-            ? prayerData.prayer_breaks
-            : [];
-        const attendanceRows = attendanceRowsPre;
+      const sortedAttendance = attendanceRows
+        .filter((a: any) => a.clock_in)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
+        );
 
-        const sortedAttendance = attendanceRows
-          .filter((a: any) => a.clock_in)
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
-          );
+      const activeOrLatestAttendance =
+        sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
+        sortedAttendance[0] ||
+        null;
 
-        const activeOrLatestAttendance =
-          sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
-          sortedAttendance[0] ||
-          null;
-
-        const activeAttendanceId =
-          activeOrLatestAttendance?.id !== undefined &&
-          activeOrLatestAttendance?.id !== null
-            ? Number(activeOrLatestAttendance.id)
-            : null;
-
-        const sessionStartMs = activeOrLatestAttendance?.clock_in
-          ? new Date(activeOrLatestAttendance.clock_in).getTime()
-          : null;
-        const sessionEndMs = activeOrLatestAttendance?.clock_out
-          ? new Date(activeOrLatestAttendance.clock_out).getTime()
+      const activeAttendanceId =
+        activeOrLatestAttendance?.id !== undefined &&
+        activeOrLatestAttendance?.id !== null
+          ? Number(activeOrLatestAttendance.id)
           : null;
 
-        const belongsToCurrentSession = (row: any) => {
-          if (!activeOrLatestAttendance) return true;
+      const sessionStartMs = activeOrLatestAttendance?.clock_in
+        ? new Date(activeOrLatestAttendance.clock_in).getTime()
+        : null;
+      const sessionEndMs = activeOrLatestAttendance?.clock_out
+        ? new Date(activeOrLatestAttendance.clock_out).getTime()
+        : null;
 
-          const rowSessionId = row.attendance_session_id;
-          if (
-            activeAttendanceId !== null &&
-            rowSessionId !== undefined &&
-            rowSessionId !== null &&
-            rowSessionId !== ""
-          ) {
-            return Number(rowSessionId) === activeAttendanceId;
-          }
+      const belongsToCurrentSession = (row: any) => {
+        if (!activeOrLatestAttendance) return true;
 
-          if (!row.prayer_break_start || sessionStartMs === null) return false;
-          const prayerStartMs = new Date(row.prayer_break_start).getTime();
-          if (Number.isNaN(prayerStartMs) || Number.isNaN(sessionStartMs)) {
-            return false;
-          }
-
-          if (prayerStartMs < sessionStartMs) return false;
-          if (
-            sessionEndMs !== null &&
-            !Number.isNaN(sessionEndMs) &&
-            prayerStartMs > sessionEndMs
-          ) {
-            return false;
-          }
-
-          return true;
-        };
-
-        if (prayerRows.length > 0) {
-          let total = 0;
-          prayerRows.forEach((p: any) => {
-            if (
-              p.prayer_break_start &&
-              p.prayer_break_end &&
-              belongsToCurrentSession(p)
-            ) {
-              const s = new Date(p.prayer_break_start).getTime();
-              const e = new Date(p.prayer_break_end).getTime();
-              total += Math.floor((e - s) / 1000);
-            }
-          });
-          setTotalSeconds(total);
-          setExceedSeconds(total > 1800 ? total - 1800 : 0);
-        } else {
-          setTotalSeconds(0);
-          setExceedSeconds(0);
+        const rowSessionId = row.attendance_session_id;
+        if (
+          activeAttendanceId !== null &&
+          rowSessionId !== undefined &&
+          rowSessionId !== null &&
+          rowSessionId !== ""
+        ) {
+          return Number(rowSessionId) === activeAttendanceId;
         }
-      } catch {
+
+        if (!row.prayer_break_start || sessionStartMs === null) return false;
+        const prayerStartMs = new Date(row.prayer_break_start).getTime();
+        if (Number.isNaN(prayerStartMs) || Number.isNaN(sessionStartMs)) {
+          return false;
+        }
+
+        if (prayerStartMs < sessionStartMs) return false;
+        if (
+          sessionEndMs !== null &&
+          !Number.isNaN(sessionEndMs) &&
+          prayerStartMs > sessionEndMs
+        ) {
+          return false;
+        }
+
+        return true;
+      };
+
+      if (prayerRows.length > 0) {
+        let total = 0;
+        prayerRows.forEach((p: any) => {
+          if (
+            p.prayer_break_start &&
+            p.prayer_break_end &&
+            belongsToCurrentSession(p)
+          ) {
+            const s = new Date(p.prayer_break_start).getTime();
+            const e = new Date(p.prayer_break_end).getTime();
+            total += Math.floor((e - s) / 1000);
+          }
+        });
+        setTotalSeconds(total);
+        setExceedSeconds(total > 1800 ? total - 1800 : 0);
+      } else {
         setTotalSeconds(0);
         setExceedSeconds(0);
       }
-    };
-    fetchTotals();
+    } catch {
+      setTotalSeconds(0);
+      setExceedSeconds(0);
+    }
   }, [employeeId]);
+
+  React.useEffect(() => {
+    refreshTotals();
+  }, [refreshTotals]);
+
+  React.useEffect(() => {
+    const onRefresh = () => {
+      refreshTotals();
+    };
+    window.addEventListener(PRAYER_DATA_CHANGED, onRefresh);
+    window.addEventListener(ATTENDANCE_DATA_CHANGED, onRefresh);
+    return () => {
+      window.removeEventListener(PRAYER_DATA_CHANGED, onRefresh);
+      window.removeEventListener(ATTENDANCE_DATA_CHANGED, onRefresh);
+    };
+  }, [refreshTotals]);
 
   const formatDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
