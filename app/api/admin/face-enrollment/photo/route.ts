@@ -5,7 +5,7 @@ import {
   deleteEnrollmentRowById,
   getEnrollmentRowById,
 } from "@/lib/face-enrollment-table";
-import { resolveEnrollmentPhotoDiskPath } from "@/lib/enrollment-photo-path";
+import { resolveEnrollmentPhotoDiskPath } from "@/lib/enrollment-photo-disk";
 
 function contentTypeForPath(diskPath: string): string {
   const ext = path.extname(diskPath).toLowerCase();

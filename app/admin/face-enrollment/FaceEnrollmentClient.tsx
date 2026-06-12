@@ -9,7 +9,7 @@ import {
   scanBlob,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
-import { enrollmentPhotoApiUrl } from "@/lib/enrollment-photo-path";
+import { enrollmentPhotoApiUrl } from "@/lib/enrollment-photo-url";
 import { FaToggleOff, FaToggleOn } from "react-icons/fa";
 
 type EmployeeOption = {
