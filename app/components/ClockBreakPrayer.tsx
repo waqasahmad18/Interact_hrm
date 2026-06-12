@@ -23,7 +23,10 @@ import {
   BREAK_DATA_CHANGED,
   notifyAttendanceDataChanged,
   notifyBreakDataChanged,
+  notifyPrayerDataChanged,
 } from "../../lib/ui-sync/breakPrayerDataRefresh";
+import { useBiometricGate, type VerifyModalCloseReason } from "../../lib/useBiometricGate";
+import type { BiometricAction } from "@/lib/face-types";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
 function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -95,6 +98,245 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const [showActiveBreakModal, setShowActiveBreakModal] = React.useState(false);
   const [activeBreakTitle, setActiveBreakTitle] = React.useState("Active Break");
   const [activeBreakErrorMsg, setActiveBreakErrorMsg] = React.useState<string | null>(null);
+  const [breakTimerPaused, setBreakTimerPaused] = React.useState(false);
+  const breakTimerPausedRef = React.useRef(false);
+  const prayerTimerPausedRef = React.useRef(false);
+
+  const breakEndAtRef = React.useRef<Date | null>(null);
+  const breakStartMsRef = React.useRef<number | null>(null);
+  const breakPausedMsRef = React.useRef(0);
+  const breakPauseStartedAtRef = React.useRef<number | null>(null);
+  const breakPauseTickRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const [prayerTimerPaused, setPrayerTimerPaused] = React.useState(false);
+  const prayerEndAtRef = React.useRef<Date | null>(null);
+  const prayerStartMsRef = React.useRef<number | null>(null);
+  const prayerPausedMsRef = React.useRef(0);
+  const prayerPauseStartedAtRef = React.useRef<number | null>(null);
+  const prayerPauseTickRef = React.useRef<NodeJS.Timeout | null>(null);
+  const graceExpiredForClockOutRef = React.useRef(false);
+
+  const clearBreakPauseTick = React.useCallback(() => {
+    if (breakPauseTickRef.current) {
+      clearInterval(breakPauseTickRef.current);
+      breakPauseTickRef.current = null;
+    }
+  }, []);
+
+  const syncBreakStartAnchor = React.useCallback((elapsedSeconds: number) => {
+    if (!isOnBreak) {
+      breakStartMsRef.current = null;
+      return;
+    }
+    if (breakStartMsRef.current === null && elapsedSeconds >= 0) {
+      breakStartMsRef.current = Date.now() - elapsedSeconds * 1000;
+    }
+  }, [isOnBreak]);
+
+  const pauseBreakTimerForVerify = React.useCallback(() => {
+    syncBreakStartAnchor(breakTimer);
+    clearBreakSyncInterval(employeeId);
+    if (breakIntervalId) clearInterval(breakIntervalId);
+    breakPauseStartedAtRef.current = Date.now();
+    setBreakTimerPaused(true);
+    clearBreakPauseTick();
+
+    breakPauseTickRef.current = setInterval(() => {
+      if (!breakStartMsRef.current) return;
+      let pausedTotal = breakPausedMsRef.current;
+      if (breakPauseStartedAtRef.current) {
+        pausedTotal += Date.now() - breakPauseStartedAtRef.current;
+      }
+      const elapsed = Math.floor((Date.now() - breakStartMsRef.current - pausedTotal) / 1000);
+      setBreakTimer(Math.max(0, elapsed));
+    }, 1000);
+  }, [
+    breakIntervalId,
+    breakTimer,
+    clearBreakPauseTick,
+    employeeId,
+    syncBreakStartAnchor,
+  ]);
+
+  const resumeBreakTimerAfterVerify = React.useCallback(() => {
+    if (breakPauseStartedAtRef.current) {
+      breakPausedMsRef.current += Date.now() - breakPauseStartedAtRef.current;
+      breakPauseStartedAtRef.current = null;
+    }
+    setBreakTimerPaused(false);
+    clearBreakPauseTick();
+    clearBreakSyncInterval(employeeId);
+
+    breakPauseTickRef.current = setInterval(() => {
+      if (!breakStartMsRef.current) return;
+      const elapsed = Math.floor(
+        (Date.now() - breakStartMsRef.current - breakPausedMsRef.current) / 1000
+      );
+      setBreakTimer(Math.max(0, elapsed));
+    }, 1000);
+  }, [clearBreakPauseTick, employeeId]);
+
+  const resetBreakPauseState = React.useCallback(() => {
+    breakEndAtRef.current = null;
+    breakStartMsRef.current = null;
+    breakPausedMsRef.current = 0;
+    breakPauseStartedAtRef.current = null;
+    setBreakTimerPaused(false);
+    clearBreakPauseTick();
+  }, [clearBreakPauseTick]);
+
+  const clearPrayerPauseTick = React.useCallback(() => {
+    if (prayerPauseTickRef.current) {
+      clearInterval(prayerPauseTickRef.current);
+      prayerPauseTickRef.current = null;
+    }
+  }, []);
+
+  const syncPrayerStartAnchor = React.useCallback((elapsedSeconds: number) => {
+    if (!isPrayerOn) {
+      prayerStartMsRef.current = null;
+      return;
+    }
+    if (prayerStartMsRef.current === null && elapsedSeconds >= 0) {
+      prayerStartMsRef.current = Date.now() - elapsedSeconds * 1000;
+    }
+  }, [isPrayerOn]);
+
+  const pausePrayerTimerForVerify = React.useCallback(() => {
+    syncPrayerStartAnchor(prayerBreakTimer);
+    clearPrayerBreakSyncInterval(employeeId);
+    if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
+    prayerPauseStartedAtRef.current = Date.now();
+    setPrayerTimerPaused(true);
+    clearPrayerPauseTick();
+
+    prayerPauseTickRef.current = setInterval(() => {
+      if (!prayerStartMsRef.current) return;
+      let pausedTotal = prayerPausedMsRef.current;
+      if (prayerPauseStartedAtRef.current) {
+        pausedTotal += Date.now() - prayerPauseStartedAtRef.current;
+      }
+      const elapsed = Math.floor(
+        (Date.now() - prayerStartMsRef.current - pausedTotal) / 1000
+      );
+      setPrayerBreakTimer(Math.max(0, elapsed));
+    }, 1000);
+  }, [
+    clearPrayerPauseTick,
+    employeeId,
+    prayerBreakIntervalId,
+    prayerBreakTimer,
+    syncPrayerStartAnchor,
+  ]);
+
+  const resumePrayerTimerAfterVerify = React.useCallback(() => {
+    if (prayerPauseStartedAtRef.current) {
+      prayerPausedMsRef.current += Date.now() - prayerPauseStartedAtRef.current;
+      prayerPauseStartedAtRef.current = null;
+    }
+    setPrayerTimerPaused(false);
+    clearPrayerPauseTick();
+    clearPrayerBreakSyncInterval(employeeId);
+
+    prayerPauseTickRef.current = setInterval(() => {
+      if (!prayerStartMsRef.current) return;
+      const elapsed = Math.floor(
+        (Date.now() - prayerStartMsRef.current - prayerPausedMsRef.current) / 1000
+      );
+      setPrayerBreakTimer(Math.max(0, elapsed));
+    }, 1000);
+  }, [clearPrayerPauseTick, employeeId]);
+
+  const resetPrayerPauseState = React.useCallback(() => {
+    prayerEndAtRef.current = null;
+    prayerStartMsRef.current = null;
+    prayerPausedMsRef.current = 0;
+    prayerPauseStartedAtRef.current = null;
+    setPrayerTimerPaused(false);
+    clearPrayerPauseTick();
+  }, [clearPrayerPauseTick]);
+
+  React.useEffect(() => {
+    breakTimerPausedRef.current = breakTimerPaused;
+  }, [breakTimerPaused]);
+
+  React.useEffect(() => {
+    prayerTimerPausedRef.current = prayerTimerPaused;
+  }, [prayerTimerPaused]);
+
+  const syncPrayerBreakFromServer = React.useCallback(() => {
+    if (prayerTimerPaused) return;
+    void forceSyncPrayerBreakState(
+      employeeId,
+      setIsPrayerOn,
+      setPrayerBreakTimer,
+      setLoadingPrayerBreak,
+      setPrayerBreakIntervalId,
+      setPrayerStart
+    );
+  }, [employeeId, prayerTimerPaused]);
+
+  const handleVerifyOpen = React.useCallback(
+    (action: BiometricAction) => {
+      if (action === "break_end") {
+        breakEndAtRef.current = new Date();
+        pauseBreakTimerForVerify();
+        return;
+      }
+      if (action === "prayer_end") {
+        prayerEndAtRef.current = new Date();
+        pausePrayerTimerForVerify();
+      }
+    },
+    [pauseBreakTimerForVerify, pausePrayerTimerForVerify]
+  );
+
+  const handleVerifyClose = React.useCallback(
+    (action: BiometricAction | null, reason: VerifyModalCloseReason) => {
+      if (action === "break_end") {
+        if (reason === "cancel") {
+          breakEndAtRef.current = null;
+          resumeBreakTimerAfterVerify();
+          return;
+        }
+        clearBreakPauseTick();
+        setBreakTimerPaused(false);
+        return;
+      }
+      if (action === "prayer_end") {
+        if (reason === "cancel") {
+          prayerEndAtRef.current = null;
+          resumePrayerTimerAfterVerify();
+          return;
+        }
+        clearPrayerPauseTick();
+        setPrayerTimerPaused(false);
+      }
+    },
+    [
+      clearBreakPauseTick,
+      clearPrayerPauseTick,
+      resumeBreakTimerAfterVerify,
+      resumePrayerTimerAfterVerify,
+    ]
+  );
+
+  const biometricGateOptions = React.useMemo(
+    () => ({
+      onVerifyOpen: handleVerifyOpen,
+      onVerifyClose: handleVerifyClose,
+    }),
+    [handleVerifyOpen, handleVerifyClose]
+  );
+
+  const { runWithVerify, gateModal, bioStatusLoading } = useBiometricGate(
+    employeeId,
+    employeeName,
+    biometricGateOptions
+  );
+
+  const isBiometricGateError = (error: unknown) =>
+    String(error || "").toLowerCase().includes("face verification");
 
   // Fade-in on mount and force backend-only sync for clock state
   React.useEffect(() => {
@@ -156,15 +398,19 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
-        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
-        forceSyncPrayerBreakState(
-          employeeId,
-          setIsPrayerOn,
-          setPrayerBreakTimer,
-          setLoadingPrayerBreak,
-          setPrayerBreakIntervalId,
-          setPrayerStart
-        );
+        if (!breakTimerPausedRef.current) {
+          forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        }
+        if (!prayerTimerPausedRef.current) {
+          forceSyncPrayerBreakState(
+            employeeId,
+            setIsPrayerOn,
+            setPrayerBreakTimer,
+            setLoadingPrayerBreak,
+            setPrayerBreakIntervalId,
+            setPrayerStart
+          );
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -176,10 +422,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
       clearBreakSyncInterval(employeeId);
       clearPrayerBreakSyncInterval(employeeId);
+      if (breakPauseTickRef.current) clearInterval(breakPauseTickRef.current);
+      if (prayerPauseTickRef.current) clearInterval(prayerPauseTickRef.current);
     };
   }, [employeeId]);
 
-  const handleClockIn = async () => {
+  const handleClockIn = async (biometricToken: string | null = null) => {
     const id = String(employeeId || "").trim();
     if (!id || clockActionPending) {
       alert(
@@ -204,6 +452,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           employee_name: name,
           date: getDateStringInTimeZone(now),
           clock_in: now.toISOString(),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
@@ -225,6 +474,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           setPrayerStart
         );
         notifyAttendanceDataChanged();
+      } else if (res.status === 403 && isBiometricGateError(data.error)) {
+        runWithVerify("clock_in", (token) => handleClockIn(token));
       } else {
         alert(data.error || "Failed to clock in. Please try again.");
       }
@@ -259,11 +510,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     setShowClockOutConfirm(true);
   };
 
-  const confirmClockOut = async (confirmed: boolean) => {
-    setShowClockOutConfirm(false);
-    if (!confirmed) return;
+  const performClockOut = async (
+    biometricToken: string | null = null,
+    options?: { autoClockOut?: boolean }
+  ) => {
     if (clockActionPending) return;
     const now = new Date();
+    const useAutoClockOut = Boolean(options?.autoClockOut || graceExpiredForClockOutRef.current);
     try {
       setClockActionPending(true);
       const res = await fetch("/api/attendance", {
@@ -273,6 +526,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           employee_id: employeeId,
           date: getDateStringInTimeZone(now),
           clock_out: now.toISOString(),
+          ...(useAutoClockOut ? { auto_clock_out: true } : {}),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
@@ -298,8 +553,9 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           setPrayerStart
         );
         notifyAttendanceDataChanged();
+      } else if (res.status === 403 && isBiometricGateError(data.error)) {
+        runWithVerify("clock_out", (token) => performClockOut(token));
       } else {
-        // Show error modal for API errors
         const errorMsg = data.error || "Failed to clock out. Please try again.";
         setActiveBreakTitle("Clock Out Error");
         setActiveBreakErrorMsg(errorMsg);
@@ -315,7 +571,17 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     }
   };
 
-  const handleBreakStart = async () => {
+  const confirmClockOut = (confirmed: boolean) => {
+    setShowClockOutConfirm(false);
+    if (!confirmed) return;
+    if (graceExpiredForClockOutRef.current) {
+      void performClockOut(null, { autoClockOut: true });
+      return;
+    }
+    runWithVerify("clock_out", (token) => performClockOut(token));
+  };
+
+  const handleBreakStart = async (biometricToken: string | null = null) => {
     if (!employeeId || !isClockedIn || breakActionPending) {
       alert("Clock in first");
       return;
@@ -331,16 +597,21 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           employee_name: employeeName,
           date: startTime.toISOString(),
           break_start: startTime.toISOString(),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
       if (data.success) {
+        resetBreakPauseState();
         clearBreakSyncInterval(employeeId);
         setIsOnBreak(true);
         setBreakTimer(0);
+        breakStartMsRef.current = startTime.getTime();
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
         notifyBreakDataChanged();
+      } else if (res.status === 403 && isBiometricGateError(data.error)) {
+        runWithVerify("break_start", (token) => handleBreakStart(token));
       } else {
         alert(data.error || "Failed to start break.");
       }
@@ -351,12 +622,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     }
   };
 
-  const handleBreakEnd = async () => {
+  const handleBreakEnd = async (biometricToken: string | null = null) => {
     if (!employeeId || !isOnBreak || breakActionPending) {
       alert("No ongoing break found.");
       return;
     }
-    const endTime = new Date();
+    const endTime = breakEndAtRef.current ?? new Date();
     try {
       setBreakActionPending(true);
       const res = await fetch("/api/breaks", {
@@ -366,16 +637,22 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           employee_id: employeeId,
           date: endTime.toISOString(),
           break_end: endTime.toISOString(),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
       if (data.success) {
+        resetBreakPauseState();
         clearBreakSyncInterval(employeeId);
         setIsOnBreak(false);
         setBreakTimer(0);
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
         notifyBreakDataChanged();
+      } else if (res.status === 403 && isBiometricGateError(data.error)) {
+        if (!breakEndAtRef.current) breakEndAtRef.current = new Date();
+        pauseBreakTimerForVerify();
+        runWithVerify("break_end", (token) => handleBreakEnd(token));
       } else {
         alert(data.error || "Failed to end break.");
       }
@@ -395,16 +672,41 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
 
   return (
     <>
+    {gateModal}
     <AutoPresencePrompt
       employeeId={employeeId}
       employeeName={employeeName}
       isClockedIn={isClockedIn}
+      onGraceExpiredChange={(graceExpired) => {
+        graceExpiredForClockOutRef.current = graceExpired;
+      }}
       onClockedOut={() => {
+        graceExpiredForClockOutRef.current = false;
         clearClockSyncInterval(employeeId);
         setIsClockedIn(false);
         setTimer(0);
+        clearBreakSyncInterval(employeeId);
+        setIsOnBreak(false);
+        setBreakTimer(0);
+        resetBreakPauseState();
+        clearPrayerBreakSyncInterval(employeeId);
+        setIsPrayerOn(false);
+        setPrayerBreakTimer(0);
+        setPrayerStart(null);
+        resetPrayerPauseState();
         forceSyncClockState(employeeId, setIsClockedIn, setTimer, setLoadingAttendance, setIntervalId);
+        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        forceSyncPrayerBreakState(
+          employeeId,
+          setIsPrayerOn,
+          setPrayerBreakTimer,
+          setLoadingPrayerBreak,
+          setPrayerBreakIntervalId,
+          setPrayerStart
+        );
         notifyAttendanceDataChanged();
+        notifyBreakDataChanged();
+        notifyPrayerDataChanged();
       }}
     />
     <div className={`cbp-fade-in${fadeIn ? ' cbp-fade-in-active' : ''}`} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
@@ -414,8 +716,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         {!loadingAttendance && (
           <>
             <button
-              onClick={isClockedIn ? handleClockOut : handleClockIn}
-              disabled={clockActionPending}
+              onClick={
+                isClockedIn
+                  ? handleClockOut
+                  : () => runWithVerify("clock_in", (token) => handleClockIn(token))
+              }
+              disabled={clockActionPending || bioStatusLoading}
               style={{
                 background: isClockedIn ? "#e74c3c" : "#27ae60",
                 color: "#fff",
@@ -575,8 +881,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
           <button
-            onClick={isOnBreak ? handleBreakEnd : handleBreakStart}
-            disabled={isPrayerOn || breakActionPending}
+            onClick={
+              isOnBreak
+                ? () => runWithVerify("break_end", (token) => handleBreakEnd(token))
+                : () => runWithVerify("break_start", (token) => handleBreakStart(token))
+            }
+            disabled={isPrayerOn || breakActionPending || bioStatusLoading}
             style={{
               background: isOnBreak ? "#e74c3c" : "#e67e22",
               color: "#fff",
@@ -595,7 +905,9 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           </button>
           {isOnBreak && (
             <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
-              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>🔴 Break Running</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>
+                {breakTimerPaused ? "⏸ Verifying…" : "🔴 Break Running"}
+              </div>
               <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
             </div>
           )}
@@ -610,9 +922,16 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           employeeName={employeeName}
           isPrayerOn={isPrayerOn}
           setIsPrayerOn={setIsPrayerOn}
-          prayerStart={prayerStart}
           setPrayerStart={setPrayerStart}
+          prayerTimer={prayerBreakTimer}
+          prayerTimerPaused={prayerTimerPaused}
+          prayerEndAtRef={prayerEndAtRef}
+          pausePrayerTimerForVerify={pausePrayerTimerForVerify}
+          resetPrayerPauseState={resetPrayerPauseState}
+          onPrayerStateChanged={syncPrayerBreakFromServer}
           disabled={isOnBreak}
+          runWithVerify={runWithVerify}
+          bioStatusLoading={bioStatusLoading}
           onClearServerPrayerInterval={() => clearPrayerBreakSyncInterval(employeeId)}
         />
       )}

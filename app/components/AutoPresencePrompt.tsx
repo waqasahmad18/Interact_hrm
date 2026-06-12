@@ -12,9 +12,17 @@ type Props = {
   employeeName: string;
   isClockedIn: boolean;
   onClockedOut: () => void;
+  /** True after shift/session 3h grace — clock-out must not require face verify. */
+  onGraceExpiredChange?: (graceExpired: boolean) => void;
 };
 
-export function AutoPresencePrompt({ employeeId, employeeName, isClockedIn, onClockedOut }: Props) {
+export function AutoPresencePrompt({
+  employeeId,
+  employeeName,
+  isClockedIn,
+  onClockedOut,
+  onGraceExpiredChange,
+}: Props) {
   const [visible, setVisible] = React.useState(false);
   const [secondsLeft, setSecondsLeft] = React.useState(300);
   const [busy, setBusy] = React.useState(false);
@@ -25,9 +33,11 @@ export function AutoPresencePrompt({ employeeId, employeeName, isClockedIn, onCl
   const ackSnoozeUntilRef = React.useRef(0);
   const busyRef = React.useRef(false);
   const onClockedOutRef = React.useRef(onClockedOut);
+  const onGraceExpiredChangeRef = React.useRef(onGraceExpiredChange);
 
   busyRef.current = busy;
   onClockedOutRef.current = onClockedOut;
+  onGraceExpiredChangeRef.current = onGraceExpiredChange;
 
   const clearPopupState = React.useCallback((attendanceId?: number | null) => {
     deadlineRef.current = null;
@@ -91,10 +101,13 @@ export function AutoPresencePrompt({ employeeId, employeeName, isClockedIn, onCl
       );
       const data = await res.json();
       if (!data.success || !data.clockedIn) {
+        onGraceExpiredChangeRef.current?.(false);
         clearPopupState(attendanceIdRef.current);
         attendanceIdRef.current = null;
         return;
       }
+
+      onGraceExpiredChangeRef.current?.(Boolean(data.shouldPrompt));
 
       const attendanceId = Number(data.attendanceId);
       if (!Number.isFinite(attendanceId)) return;

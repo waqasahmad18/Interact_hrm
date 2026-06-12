@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceBiometricOrRespond } from "@/lib/require-biometric";
 import { pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
 import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
+import { ensureLegacyEmployeeRow } from "@/lib/ensure-legacy-employee-row";
 
 const ATTENDANCE_TABLE = "employee_attendance";
 
@@ -111,7 +113,14 @@ export async function POST(req: NextRequest) {
   let lockName: string | null = null;
   try {
     const data = await req.json();
-    const { employee_id, employee_name, date, prayer_break_start, prayer_break_end } = data || {};
+    const {
+      employee_id,
+      employee_name,
+      date,
+      prayer_break_start,
+      prayer_break_end,
+      biometric_token,
+    } = data || {};
     if (!employee_id) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
@@ -124,8 +133,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
     conn = await pool.getConnection();
+    const canonicalEmployeeId = await ensureLegacyEmployeeRow(
+      conn,
+      String(employee_id),
+      employee_name
+    );
+
     if (prayer_break_start) {
-      lockName = `prayer_break_start_emp_${Number(employee_id)}`;
+      const bioBlock = await enforceBiometricOrRespond(
+        biometric_token,
+        String(employee_id),
+        "prayer_start",
+        employee_name
+      );
+      if (bioBlock) return bioBlock;
+
+      lockName = `prayer_break_start_emp_${canonicalEmployeeId}`;
       const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
       const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
       if (gotLock !== 1) {
@@ -142,7 +165,7 @@ export async function POST(req: NextRequest) {
       // This also protects when shift_assignment_id is NULL.
       const [ongoingPrayerBreaks] = await conn.execute(
         "SELECT id FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
-        [Number(employee_id)]
+        [canonicalEmployeeId]
       );
       if ((ongoingPrayerBreaks as any[]).length > 0) {
         return NextResponse.json(
@@ -152,13 +175,21 @@ export async function POST(req: NextRequest) {
       }
       await conn.execute(
         "INSERT INTO prayer_breaks (employee_id, employee_name, shift_assignment_id, date, prayer_break_start, prayer_break_end, prayer_break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
-        [Number(employee_id), employee_name || "", shiftAssignmentId, formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        [canonicalEmployeeId, employee_name || "", shiftAssignmentId, formattedDate, new Date(prayer_break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (prayer_break_end) {
+      const bioBlock = await enforceBiometricOrRespond(
+        biometric_token,
+        String(employee_id),
+        "prayer_end",
+        employee_name
+      );
+      if (bioBlock) return bioBlock;
+
       // Ending an existing prayer break - find ANY open prayer break (not just today)
       const [latestPrayerBreakRows] = await conn.execute(
         "SELECT id, prayer_break_start FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
-        [Number(employee_id)]
+        [canonicalEmployeeId]
       );
       const latestPrayerBreak = (latestPrayerBreakRows as any[])[0];
       if (!latestPrayerBreak) {

@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import type { BiometricAction } from "@/lib/face-types";
 import { getDateStringInTimeZone } from "../../lib/timezone";
 import {
   ATTENDANCE_DATA_CHANGED,
@@ -32,9 +33,20 @@ interface PrayerButtonProps {
   employeeName: string;
   isPrayerOn: boolean;
   setIsPrayerOn: React.Dispatch<React.SetStateAction<boolean>>;
-  prayerStart: Date | null;
   setPrayerStart: React.Dispatch<React.SetStateAction<Date | null>>;
+  /** Parent-owned timer (same pattern as lunch breakTimer in ClockBreakPrayer). */
+  prayerTimer: number;
+  prayerTimerPaused: boolean;
+  prayerEndAtRef: React.MutableRefObject<Date | null>;
+  pausePrayerTimerForVerify: () => void;
+  resetPrayerPauseState: () => void;
+  onPrayerStateChanged: () => void;
   disabled?: boolean;
+  runWithVerify?: (
+    action: BiometricAction,
+    callback: (biometricToken: string | null) => void | Promise<void>
+  ) => void;
+  bioStatusLoading?: boolean;
   /** Stop server-sync interval after ending prayer (parent refresh uses Map-based intervals). */
   onClearServerPrayerInterval?: () => void;
 }
@@ -44,34 +56,21 @@ export function PrayerButton({
   employeeName,
   isPrayerOn,
   setIsPrayerOn,
-  prayerStart,
   setPrayerStart,
+  prayerTimer,
+  prayerTimerPaused,
+  prayerEndAtRef,
+  pausePrayerTimerForVerify,
+  resetPrayerPauseState,
+  onPrayerStateChanged,
   disabled = false,
+  runWithVerify,
+  bioStatusLoading = false,
   onClearServerPrayerInterval,
 }: PrayerButtonProps) {
-  const [currentPrayerDuration, setCurrentPrayerDuration] = React.useState(0);
   const [prayerActionPending, setPrayerActionPending] = React.useState(false);
-  const prayerTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Ongoing prayer is restored in parent via forceSyncPrayerBreakState (single source of truth; avoids race with filtered API).
-
-  // When prayerStart changes, set up timer to always calculate elapsed time
-  React.useEffect(() => {
-    if (!prayerStart) return;
-    const startTime = new Date(prayerStart);
-    const updateDuration = () => {
-      const now = new Date();
-      setCurrentPrayerDuration(Math.floor((now.getTime() - startTime.getTime()) / 1000));
-    };
-    updateDuration(); // Set immediately
-    if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
-    prayerTimerRef.current = setInterval(updateDuration, 1000);
-    return () => {
-      if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
-    };
-  }, [prayerStart]);
-
-  const handlePrayerStart = async () => {
+  const handlePrayerStart = async (biometricToken: string | null = null) => {
     if (!employeeId || prayerActionPending) return;
     const startTime = new Date();
     try {
@@ -84,19 +83,21 @@ export function PrayerButton({
           employee_name: employeeName,
           date: startTime.toISOString(),
           prayer_break_start: startTime.toISOString(),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
       if (data.success) {
         setIsPrayerOn(true);
         setPrayerStart(startTime);
-        setCurrentPrayerDuration(0);
-        if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
-        prayerTimerRef.current = setInterval(() => {
-          const now = new Date();
-          setCurrentPrayerDuration(Math.floor((now.getTime() - startTime.getTime()) / 1000));
-        }, 1000);
         notifyPrayerDataChanged();
+        onPrayerStateChanged();
+      } else if (
+        res.status === 403 &&
+        String(data.error || "").toLowerCase().includes("face verification") &&
+        runWithVerify
+      ) {
+        runWithVerify("prayer_start", (token) => handlePrayerStart(token));
       } else {
         alert(data.error || "Failed to start prayer break");
       }
@@ -108,11 +109,11 @@ export function PrayerButton({
     }
   };
 
-  const handlePrayerEnd = async () => {
+  const handlePrayerEnd = async (biometricToken: string | null = null) => {
     if (!employeeId || prayerActionPending) return;
+    const endTime = prayerEndAtRef.current ?? new Date();
     try {
       setPrayerActionPending(true);
-      const endTime = new Date();
       const res = await fetch("/api/prayer_breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,16 +121,25 @@ export function PrayerButton({
           employee_id: employeeId,
           date: endTime.toISOString(),
           prayer_break_end: endTime.toISOString(),
+          ...(biometricToken ? { biometric_token: biometricToken } : {}),
         }),
       });
       const data = await res.json();
       if (data.success) {
+        resetPrayerPauseState();
         setIsPrayerOn(false);
         setPrayerStart(null);
-        setCurrentPrayerDuration(0);
-        if (prayerTimerRef.current) clearInterval(prayerTimerRef.current);
         onClearServerPrayerInterval?.();
         notifyPrayerDataChanged();
+        onPrayerStateChanged();
+      } else if (
+        res.status === 403 &&
+        String(data.error || "").toLowerCase().includes("face verification") &&
+        runWithVerify
+      ) {
+        if (!prayerEndAtRef.current) prayerEndAtRef.current = new Date();
+        pausePrayerTimerForVerify();
+        runWithVerify("prayer_end", (token) => handlePrayerEnd(token));
       } else {
         alert(data.error || "Failed to end prayer break");
       }
@@ -156,8 +166,18 @@ export function PrayerButton({
     <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#8e44ad", marginBottom: 10 }}>Prayer Break</div>
       <button
-        onClick={isPrayerOn ? handlePrayerEnd : handlePrayerStart}
-        disabled={disabled || prayerActionPending}
+        onClick={
+          isPrayerOn
+            ? () =>
+                runWithVerify
+                  ? runWithVerify("prayer_end", (token) => handlePrayerEnd(token))
+                  : handlePrayerEnd()
+            : () =>
+                runWithVerify
+                  ? runWithVerify("prayer_start", (token) => handlePrayerStart(token))
+                  : handlePrayerStart()
+        }
+        disabled={disabled || prayerActionPending || bioStatusLoading}
         style={{
           background: isPrayerOn ? "#e74c3c" : "#8e44ad",
           color: "#fff",
@@ -176,8 +196,10 @@ export function PrayerButton({
       </button>
       {isPrayerOn && (
         <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>
-          <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>Prayer Time</div>
-          <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(currentPrayerDuration)}</div>
+          <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>
+            {prayerTimerPaused ? "⏸ Verifying…" : "🔴 Prayer Running"}
+          </div>
+          <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(prayerTimer)}</div>
         </div>
       )}
       <PrayerTotals employeeId={employeeId} />

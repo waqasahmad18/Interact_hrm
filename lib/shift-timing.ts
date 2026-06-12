@@ -55,6 +55,15 @@ function timeToMinutes(timeValue: string) {
  * Uses sessionDateKey (clock-in day in Karachi) so effective-dated assignments
  * (e.g. assigned_date 4 Jun, still active on 5 Jun) end on the session day.
  */
+export function computeShiftStartEpochMs(
+  shift: ShiftAssignmentTiming,
+  sessionDateKey?: string,
+): number | null {
+  const baseDate = sessionDateKey ?? normalizeDateKey(shift.assigned_date);
+  if (!baseDate) return null;
+  return wallClockToEpochMs(baseDate, shift.start_time);
+}
+
 export function computeShiftEndEpochMs(
   shift: ShiftAssignmentTiming,
   sessionDateKey?: string,
@@ -70,6 +79,60 @@ export function computeShiftEndEpochMs(
     endMin <= startMin ? addDaysToDateKey(baseDate, 1) : baseDate;
 
   return wallClockToEpochMs(endDateKey, shift.end_time);
+}
+
+/** Within 2h of shift start = early arrival for tonight's shift (not post-shift OT). */
+const EARLY_ARRIVAL_BEFORE_SHIFT_MS = 2 * 60 * 60 * 1000;
+
+export type PresencePromptMode = "shift_grace" | "post_shift_session";
+
+export function resolvePresencePromptAtMs(
+  shift: ShiftAssignmentTiming,
+  sessionDateKey: string,
+  clockInMs: number,
+  lastPresenceAckMs: number | null,
+): { promptAtMs: number; mode: PresencePromptMode; shiftGraceEndMs: number } | null {
+  const shiftEndMs = computeShiftEndEpochMs(shift, sessionDateKey);
+  if (shiftEndMs == null) return null;
+
+  const shiftStartMs = computeShiftStartEpochMs(shift, sessionDateKey);
+
+  // Clocked in after today's shift already ended → fresh 3h from clock-in.
+  if (clockInMs >= shiftEndMs) {
+    const promptAtMs = computeSessionGracePromptAtMs(clockInMs, lastPresenceAckMs);
+    return {
+      promptAtMs,
+      mode: "post_shift_session",
+      shiftGraceEndMs: clockInMs + AUTO_PRESENCE_GRACE_MS,
+    };
+  }
+
+  // Clocked in after yesterday's shift ended but before today's shift (e.g. 1 AM OT).
+  const prevDateKey = addDaysToDateKey(sessionDateKey, -1);
+  const prevShiftEndMs = prevDateKey
+    ? computeShiftEndEpochMs(shift, prevDateKey)
+    : null;
+  if (
+    prevShiftEndMs != null &&
+    shiftStartMs != null &&
+    clockInMs >= prevShiftEndMs &&
+    clockInMs < shiftStartMs &&
+    shiftStartMs - clockInMs > EARLY_ARRIVAL_BEFORE_SHIFT_MS
+  ) {
+    const promptAtMs = computeSessionGracePromptAtMs(clockInMs, lastPresenceAckMs);
+    return {
+      promptAtMs,
+      mode: "post_shift_session",
+      shiftGraceEndMs: clockInMs + AUTO_PRESENCE_GRACE_MS,
+    };
+  }
+
+  const promptAtMs = computePresencePromptAtMs(shiftEndMs, lastPresenceAckMs);
+  return {
+    promptAtMs,
+    mode: "shift_grace",
+    shiftGraceEndMs: shiftEndMs + AUTO_PRESENCE_GRACE_MS,
+  };
 }
 
 /**

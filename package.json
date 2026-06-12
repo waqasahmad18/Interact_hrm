@@ -7,9 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sweep:auto-presence": "node scripts/auto-presence-sweep.js"
+    "sweep:auto-presence": "node scripts/auto-presence-sweep.js",
+    "face:setup": "node scripts/copy-face-models.mjs"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@types/ws": "^8.18.1",
+    "@vladmandic/face-api": "^1.7.15",
     "axios": "^1.13.5",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
@@ -26,7 +30,6 @@
     "server-only": "^0.0.1",
     "uuid": "^13.0.0",
     "ws": "^8.18.3",
-    "@types/ws": "^8.18.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

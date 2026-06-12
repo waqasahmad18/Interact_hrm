@@ -1,11 +1,10 @@
+import { ATTENDANCE_TABLE } from "./attendance-table";
 import {
-  AUTO_PRESENCE_GRACE_MS,
   clockInDateKey,
-  computePresencePromptAtMs,
-  computeSessionGracePromptAtMs,
   computeShiftEndEpochMs,
   normalizeDateKey,
   parseAttendanceDateTimeMs,
+  resolvePresencePromptAtMs,
   type ShiftAssignmentTiming,
 } from "./shift-timing";
 
@@ -91,16 +90,22 @@ export function evaluatePresencePrompt(
     ? parseAttendanceDateTimeMs(open.last_presence_ack_at)
     : null;
 
-  const shiftGraceEndMs = shiftEndMs + AUTO_PRESENCE_GRACE_MS;
-  // After shift+3h grace: new clock-in = fresh 3h session (shift already finished today).
-  const isPostShiftGraceClockIn = clockInMs >= shiftGraceEndMs;
-  const promptAtMs = isPostShiftGraceClockIn
-    ? computeSessionGracePromptAtMs(clockInMs, ackParsed)
-    : computePresencePromptAtMs(shiftEndMs, ackParsed);
+  const resolved = resolvePresencePromptAtMs(shift, sessionDateKey, clockInMs, ackParsed);
+  if (!resolved) {
+    return {
+      clockedIn: true,
+      shouldPrompt: false,
+      reason: "invalid_shift",
+      shiftEndMs,
+      promptAtMs: null,
+    };
+  }
+
+  const { promptAtMs, mode, shiftGraceEndMs } = resolved;
   const shouldPrompt = nowMs >= promptAtMs;
   const reason = shouldPrompt
     ? "due"
-    : isPostShiftGraceClockIn
+    : mode === "post_shift_session"
       ? "waiting_post_shift_session_grace"
       : "waiting_shift_grace";
 
@@ -113,5 +118,32 @@ export function evaluatePresencePrompt(
     promptAtMs,
     clockInMs,
     lastPresenceAckMs: ackParsed,
+    presenceMode: mode,
   };
+}
+
+/** True when shift/session 3h grace has ended — auto clock-out must not require face verify. */
+export async function isGraceExpiredForEmployee(
+  conn: DbExecuteConn,
+  employeeId: string,
+  nowMs: number = Date.now(),
+): Promise<boolean> {
+  const eid = String(employeeId ?? "").trim();
+  if (!eid) return false;
+
+  const [openRows] = await conn.execute(
+    `SELECT id, employee_id,
+            DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in,
+            DATE_FORMAT(last_presence_ack_at, '%Y-%m-%dT%H:%i:%s') AS last_presence_ack_at
+     FROM ${ATTENDANCE_TABLE}
+     WHERE employee_id = ? AND clock_out IS NULL
+     ORDER BY clock_in DESC
+     LIMIT 1`,
+    [eid],
+  );
+  const open = (openRows as OpenAttendanceRow[])[0];
+  if (!open?.clock_in) return false;
+
+  const shift = await fetchShiftForEmployee(conn, eid, clockInDateKey(open.clock_in));
+  return evaluatePresencePrompt(open, shift, nowMs).shouldPrompt;
 }

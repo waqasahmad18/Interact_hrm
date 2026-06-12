@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
         conn,
         open.id,
         body?.employee_name || open.employee_name,
+        undefined,
+        employeeId,
       );
 
       return NextResponse.json({

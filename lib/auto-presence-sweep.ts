@@ -44,7 +44,13 @@ async function processOpenSession(
   }
 
   const scheduledClockOutMs = evalResult.promptAtMs + AUTO_PRESENCE_POPUP_MS;
-  await performAutoClockOut(conn, open.id, open.employee_name, scheduledClockOutMs);
+  await performAutoClockOut(
+    conn,
+    open.id,
+    open.employee_name,
+    scheduledClockOutMs,
+    open.employee_id,
+  );
   return open.id;
 }
 

@@ -18,15 +18,75 @@ export function shouldServerAutoClockOut(
   return true;
 }
 
+/** End open lunch/prayer breaks when system clocks the employee out. */
+export async function closeActiveBreaksForEmployee(
+  conn: Conn,
+  employeeId: string,
+  endTimeFormatted: string,
+  endTimeIso: string,
+): Promise<void> {
+  const eid = String(employeeId ?? "").trim();
+  if (!eid) return;
+
+  const endMs = new Date(endTimeIso).getTime();
+
+  const [breakRows] = (await conn.execute(
+    "SELECT id, break_start FROM breaks WHERE employee_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
+    [Number(eid)],
+  )) as [{ id: number; break_start: string }[], unknown];
+
+  const openBreak = breakRows[0];
+  if (openBreak?.break_start) {
+    const startMs = new Date(`${openBreak.break_start}Z`).getTime();
+    const duration =
+      Number.isFinite(startMs) && Number.isFinite(endMs)
+        ? Math.max(0, (endMs - startMs) / 1000)
+        : 0;
+    await conn.execute("UPDATE breaks SET break_end = ?, break_duration = ? WHERE id = ?", [
+      endTimeFormatted,
+      duration,
+      openBreak.id,
+    ]);
+  }
+
+  const [prayerRows] = (await conn.execute(
+    "SELECT id, prayer_break_start FROM prayer_breaks WHERE employee_id = ? AND prayer_break_end IS NULL ORDER BY prayer_break_start DESC LIMIT 1",
+    [Number(eid)],
+  )) as [{ id: number; prayer_break_start: string }[], unknown];
+
+  const openPrayer = prayerRows[0];
+  if (openPrayer?.prayer_break_start) {
+    const startMs = new Date(`${openPrayer.prayer_break_start}Z`).getTime();
+    const duration =
+      Number.isFinite(startMs) && Number.isFinite(endMs)
+        ? Math.max(0, (endMs - startMs) / 1000)
+        : 0;
+    await conn.execute(
+      "UPDATE prayer_breaks SET prayer_break_end = ?, prayer_break_duration = ? WHERE id = ?",
+      [endTimeFormatted, duration, openPrayer.id],
+    );
+  }
+}
+
 export async function performAutoClockOut(
   conn: Conn,
   attendanceId: number,
   employeeName?: string | null,
   /** When server sweep runs late, use scheduled deadline — not Date.now(). */
   clockOutAtMs?: number,
+  employeeId?: string | null,
 ) {
   const outDate = new Date(clockOutAtMs ?? Date.now());
   const formattedClockOut = outDate.toISOString().slice(0, 19).replace("T", " ");
+
+  if (employeeId) {
+    await closeActiveBreaksForEmployee(
+      conn,
+      employeeId,
+      formattedClockOut,
+      outDate.toISOString(),
+    );
+  }
 
   await conn.execute(
     `UPDATE ${ATTENDANCE_TABLE}

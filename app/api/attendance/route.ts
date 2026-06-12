@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerAutoPresenceCron } from "@/lib/register-auto-presence-cron";
+import { enforceBiometricOrRespond } from "@/lib/require-biometric";
+import { isGraceExpiredForEmployee } from "@/lib/attendance-presence";
+import { closeActiveBreaksForEmployee } from "@/lib/auto-clock-out";
 
 registerAutoPresenceCron();
 import { pool } from "../../../lib/db";
@@ -221,7 +224,15 @@ export async function POST(req: NextRequest) {
   let lockName: string | null = null;
   try {
     const data = await req.json();
-    const { employee_id, employee_name, date, clock_in, clock_out, auto_clock_out } = data || {};
+    const {
+      employee_id,
+      employee_name,
+      date,
+      clock_in,
+      clock_out,
+      auto_clock_out,
+      biometric_token,
+    } = data || {};
     
     console.log("Attendance API POST Data:", { employee_id, employee_name, date, clock_in, clock_out });
     
@@ -241,6 +252,14 @@ export async function POST(req: NextRequest) {
     await ensureAttendanceTable(conn);
 
     if (clock_in !== undefined && clock_in !== null) {
+      const bioBlock = await enforceBiometricOrRespond(
+        biometric_token,
+        String(employee_id),
+        "clock_in",
+        employee_name
+      );
+      if (bioBlock) return bioBlock;
+
       lockName = `attendance_clock_in_emp_${String(employee_id).trim()}`;
       const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
       const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
@@ -278,7 +297,24 @@ export async function POST(req: NextRequest) {
       );
       console.log("Clock-in record inserted successfully");
     } else if (clock_out !== undefined && clock_out !== null) {
-      const isAutoClockOut = Boolean(auto_clock_out);
+      let isAutoClockOut = Boolean(auto_clock_out);
+
+      if (!isAutoClockOut) {
+        const graceExpired = await isGraceExpiredForEmployee(conn, String(employee_id));
+        if (graceExpired) {
+          isAutoClockOut = true;
+        }
+      }
+
+      if (!isAutoClockOut) {
+        const bioBlock = await enforceBiometricOrRespond(
+          biometric_token,
+          String(employee_id),
+          "clock_out",
+          employee_name
+        );
+        if (bioBlock) return bioBlock;
+      }
 
       if (!isAutoClockOut) {
       // Check for active breaks before allowing clock out
@@ -306,6 +342,14 @@ export async function POST(req: NextRequest) {
       const pending = (pendingRows as any[])[0];
       if (pending) {
         const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
+        if (isAutoClockOut) {
+          await closeActiveBreaksForEmployee(
+            conn,
+            String(employee_id),
+            formattedClockOut,
+            new Date(clock_out).toISOString(),
+          );
+        }
         await conn.execute(
           `UPDATE ${ATTENDANCE_TABLE}
            SET clock_out = ?,

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceBiometricOrRespond } from "@/lib/require-biometric";
 import { pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
 import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
+import { ensureLegacyEmployeeRow } from "@/lib/ensure-legacy-employee-row";
 
 const ATTENDANCE_TABLE = "employee_attendance";
 
@@ -113,7 +115,8 @@ export async function POST(req: NextRequest) {
   let lockName: string | null = null;
   try {
     const data = await req.json();
-    const { employee_id, employee_name, date, break_start, break_end } = data || {};
+    const { employee_id, employee_name, date, break_start, break_end, biometric_token } =
+      data || {};
     if (!employee_id) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
@@ -127,10 +130,23 @@ export async function POST(req: NextRequest) {
     }
 
     conn = await pool.getConnection();
+    const canonicalEmployeeId = await ensureLegacyEmployeeRow(
+      conn,
+      String(employee_id),
+      employee_name
+    );
 
     // Lunch break logic only
     if (break_start) {
-      lockName = `break_start_emp_${Number(employee_id)}`;
+      const bioBlock = await enforceBiometricOrRespond(
+        biometric_token,
+        String(employee_id),
+        "break_start",
+        employee_name
+      );
+      if (bioBlock) return bioBlock;
+
+      lockName = `break_start_emp_${canonicalEmployeeId}`;
       const [lockRows] = await conn.execute("SELECT GET_LOCK(?, 5) AS got_lock", [lockName]);
       const gotLock = Number((lockRows as any[])[0]?.got_lock || 0);
       if (gotLock !== 1) {
@@ -147,7 +163,7 @@ export async function POST(req: NextRequest) {
       // This also protects when shift_assignment_id is NULL.
       const [ongoingBreaks] = await conn.execute(
         "SELECT id FROM breaks WHERE employee_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
-        [Number(employee_id)]
+        [canonicalEmployeeId]
       );
       if ((ongoingBreaks as any[]).length > 0) {
         return NextResponse.json(
@@ -157,13 +173,21 @@ export async function POST(req: NextRequest) {
       }
       await conn.execute(
         "INSERT INTO breaks (employee_id, employee_name, shift_assignment_id, date, break_start, break_end, break_duration) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
-        [Number(employee_id), employee_name || "", shiftAssignmentId, formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
+        [canonicalEmployeeId, employee_name || "", shiftAssignmentId, formattedDate, new Date(break_start).toISOString().slice(0, 19).replace('T', ' ')]
       );
     } else if (break_end) {
+      const bioBlock = await enforceBiometricOrRespond(
+        biometric_token,
+        String(employee_id),
+        "break_end",
+        employee_name
+      );
+      if (bioBlock) return bioBlock;
+
       // Ending an existing lunch break - find ANY open break (not just today)
       const [latestBreakRows] = await conn.execute(
         "SELECT id, break_start FROM breaks WHERE employee_id = ? AND break_end IS NULL ORDER BY break_start DESC LIMIT 1",
-        [Number(employee_id)]
+        [canonicalEmployeeId]
       );
       const latestBreak = (latestBreakRows as any[])[0];
       if (!latestBreak) {
