@@ -1,9 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
-import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
-import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
+
+const FaceVerifyModal = dynamic(
+  () =>
+    import("@/app/components/FaceVerifyModal").then((mod) => ({
+      default: mod.FaceVerifyModal,
+    })),
+  { ssr: false, loading: () => null }
+);
 
 type PendingAction = {
   action: BiometricAction;
@@ -94,7 +101,7 @@ export function useBiometricGate(
 
   React.useEffect(() => {
     if (!employeeId) return;
-    void ensureFaceModelsLoaded();
+    void import("@/lib/face-client-engine").then((mod) => mod.ensureFaceModelsLoaded());
   }, [employeeId]);
 
   const onVerifyOpenRef = React.useRef(options.onVerifyOpen);
@@ -161,17 +168,18 @@ export function useBiometricGate(
     onVerifyCloseRef.current?.(action, "cancel");
   }, []);
 
-  const gateModal = (
-    <FaceVerifyModal
-      open={modalOpen}
-      action={pending?.action ?? "clock_in"}
-      actionLabel={pending ? ACTION_LABELS[pending.action] : "Verify"}
-      employeeId={employeeId}
-      employeeName={employeeName}
-      onVerified={handleVerified}
-      onClose={handleClose}
-    />
-  );
+  const gateModal =
+    modalOpen && pending ? (
+      <FaceVerifyModal
+        open
+        action={pending.action}
+        actionLabel={ACTION_LABELS[pending.action]}
+        employeeId={employeeId}
+        employeeName={employeeName}
+        onVerified={handleVerified}
+        onClose={handleClose}
+      />
+    ) : null;
 
   return {
     runWithVerify,
