@@ -54,6 +54,7 @@ const sidebarLinks = [
 				dropdown: [
 					{ name: "Add Employee", path: "/add-employee", icon: <FaUserPlus /> },
 					{ name: "Employee List", path: "/admin/employee-list", icon: <FaListAlt /> },
+					{ name: "Face Enrollment", path: "/admin/face-enrollment", icon: <FaUser /> },
 					{ name: "Employee Credentials", path: "/admin/employee-credentials", icon: <FaKey /> },
 				]
 			},
