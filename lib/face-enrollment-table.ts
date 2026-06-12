@@ -180,6 +180,18 @@ export async function updateEnrollmentDescriptor(
   return (result as { affectedRows?: number }).affectedRows === 1;
 }
 
+export async function getEnrollmentRowById(id: number): Promise<FaceEnrollmentRow | null> {
+  await ensureFaceEnrollmentTable();
+  const [rows] = await pool.execute(
+    `SELECT id, employee_id, compreface_subject, compreface_image_id, local_path, face_descriptor,
+            source, enrolled_by,
+            DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
+     FROM ${FACE_ENROLLMENT_TABLE} WHERE id = ?`,
+    [id]
+  );
+  return (rows as FaceEnrollmentRow[])[0] ?? null;
+}
+
 export async function deleteEnrollmentRowById(id: number): Promise<FaceEnrollmentRow | null> {
   await ensureFaceEnrollmentTable();
   const [rows] = await pool.execute(

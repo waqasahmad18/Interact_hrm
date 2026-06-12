@@ -9,6 +9,7 @@ import {
   scanBlob,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
+import { enrollmentPhotoApiUrl } from "@/lib/enrollment-photo-path";
 import { FaToggleOff, FaToggleOn } from "react-icons/fa";
 
 type EmployeeOption = {
@@ -176,7 +177,7 @@ export default function FaceEnrollmentAdminPage() {
       for (const photo of photoList) {
         if (photo.face_descriptor || !photo.local_path) continue;
         try {
-          const imgRes = await fetch(photo.local_path);
+          const imgRes = await fetch(enrollmentPhotoApiUrl(photo.id));
           if (!imgRes.ok) continue;
           const blob = await imgRes.blob();
           const scan = await scanBlob(blob);
@@ -286,9 +287,11 @@ export default function FaceEnrollmentAdminPage() {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Camera access denied";
-      setError(
-        `${msg}. Allow camera permission in browser settings. Use Chrome/Edge on localhost or HTTPS.`
-      );
+      const insecure =
+        typeof window !== "undefined" && !window.isSecureContext
+          ? " This site is not HTTPS — use the Upload tab or add SSL on the server."
+          : " Allow camera in browser site settings (Chrome → lock icon → Camera).";
+      setError(`${msg}.${insecure}`);
     }
   }, [stopCamera]);
 
@@ -662,6 +665,13 @@ export default function FaceEnrollmentAdminPage() {
               </>
             ) : (
               <>
+                {typeof window !== "undefined" && !window.isSecureContext ? (
+                  <p className={styles.blockedNote}>
+                    Camera is blocked on <strong>HTTP</strong> (browser security). Use the{" "}
+                    <strong>Upload</strong> tab here, or enable <strong>HTTPS</strong> on staging
+                    (e.g. nginx + SSL). Code cannot override this.
+                  </p>
+                ) : null}
                 <div className={styles.videoWrap}>
                   <video
                     ref={videoRef}
@@ -717,7 +727,11 @@ export default function FaceEnrollmentAdminPage() {
                 <div key={p.id} className={styles.photoCard}>
                   {p.local_path ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.local_path} alt="Enrolled" className={styles.photoImg} />
+                    <img
+                      src={enrollmentPhotoApiUrl(p.id)}
+                      alt="Enrolled"
+                      className={styles.photoImg}
+                    />
                   ) : (
                     <div className={styles.photoImg} />
                   )}
