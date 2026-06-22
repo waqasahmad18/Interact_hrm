@@ -45,6 +45,7 @@ function CompanyPolicyWidget() {
   );
 }
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
+import { TardyNoteWidget } from "../components/TardyNoteWidget";
 
 export default function EmployeeDashboardPage() {
   const [employeeId, setEmployeeId] = React.useState<string>("");
@@ -239,6 +240,7 @@ export default function EmployeeDashboardPage() {
           </div>
           <div style={{ marginTop: 22, background: "rgba(255,255,255,0.08)", borderRadius: 0, padding: 18, border: "1px solid rgba(255,255,255,0.12)" }}>
             <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
+            {employeeId ? <TardyNoteWidget employeeId={employeeId} /> : null}
           </div>
         </div>
       </div>

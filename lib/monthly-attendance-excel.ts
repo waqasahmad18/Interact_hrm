@@ -13,6 +13,7 @@ export const MONTHLY_ATTENDANCE_HEADERS = [
   "OverTime",
   "Tardy Count",
   "Status",
+  "Tardy Note",
   "Deduction",
 ] as const;
 

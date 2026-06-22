@@ -9,6 +9,13 @@
 .hideAssignedWH .colAssignedWH {
   display: none !important;
 }
+.colTardyNote {
+  white-space: normal !important;
+  min-width: 160px;
+  max-width: 280px;
+  line-height: 1.35;
+  word-break: break-word;
+}
 /* Responsive table wrapper and table width */
 .attendanceSummaryTableWrapper {
   width: 100%;
@@ -257,6 +264,8 @@
 .attendanceCardsGrid {
   display: grid;
   gap: 20px;
+  width: 100%;
+  min-width: 0;
 }
 
 .attendanceEmployeeCard {
@@ -265,6 +274,11 @@
   border: 1px solid var(--color-border);
   box-shadow: 0 2px 12px rgba(0, 82, 204, 0.08);
   padding: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .attendanceEmployeeHeader {
@@ -337,21 +351,51 @@
 
 .attendanceEmployeeTableWrapper {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 74vh;
   border-radius: 10px;
-  overflow: hidden;
+  border: 1px solid var(--color-border);
   box-shadow: 0 2px 12px rgba(0, 82, 204, 0.08);
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.attendanceEmployeeTableWrapper::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.attendanceEmployeeTableWrapper::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.attendanceEmployeeTableWrapper::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
+.attendanceEmployeeTableWrapper::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .attendanceEmployeeTable {
-  min-width: 960px;
-  width: 100%;
+  width: max-content;
+  min-width: 1200px;
   border-collapse: collapse;
   margin-top: 0;
 }
 
 .attendanceEmployeeTable thead {
   background: linear-gradient(135deg, #0052cc 0%, #00b8a9 100%) !important;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .attendanceEmployeeTable th {

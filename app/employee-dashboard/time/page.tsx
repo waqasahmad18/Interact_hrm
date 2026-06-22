@@ -9,6 +9,7 @@ import {
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
 import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
+import { TardyNoteWidget } from "../../components/TardyNoteWidget";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
 import { FaFileExcel } from "react-icons/fa";
@@ -446,6 +447,7 @@ export default function EmployeeTimePage() {
         {/* Shared Clock / Break / Prayer controls at the very top */}
         <div style={{ marginTop: '40px' }}>
           <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
+          {employeeId ? <TardyNoteWidget employeeId={employeeId} /> : null}
         </div>
 
         <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>

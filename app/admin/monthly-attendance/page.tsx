@@ -221,6 +221,8 @@ export default function MonthlyAttendancePage() {
   }
 
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [tardyNotes, setTardyNotes] = useState<Record<string, Record<string, string>>>({});
+  const [tardyNotesByAttendanceId, setTardyNotesByAttendanceId] = useState<Record<string, string>>({});
   const [departments, setDepartments] = useState<any[]>([]);
   const [searchName, setSearchName] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
@@ -351,6 +353,45 @@ export default function MonthlyAttendancePage() {
         );
       }
       setAttendance(records);
+
+      if (fromDate && toDate) {
+        try {
+          const noteRes = await fetch(
+            `/api/tardy-notes?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`,
+            { cache: "no-store" }
+          );
+          const noteData = await noteRes.json();
+          if (noteData.success && Array.isArray(noteData.notes)) {
+            const map: Record<string, Record<string, string>> = {};
+            const byAttendanceId: Record<string, string> = {};
+            noteData.notes.forEach(
+              (n: {
+                employee_id: string;
+                attendance_date: string;
+                attendance_id?: number | null;
+                note_label: string;
+              }) => {
+                const eid = String(n.employee_id);
+                const dk = String(n.attendance_date).slice(0, 10);
+                if (n.attendance_id) {
+                  byAttendanceId[String(n.attendance_id)] = n.note_label;
+                  return;
+                }
+                if (!map[eid]) map[eid] = {};
+                map[eid][dk] = n.note_label;
+              }
+            );
+            setTardyNotes(map);
+            setTardyNotesByAttendanceId(byAttendanceId);
+          } else {
+            setTardyNotes({});
+            setTardyNotesByAttendanceId({});
+          }
+        } catch {
+          setTardyNotes({});
+          setTardyNotesByAttendanceId({});
+        }
+      }
 
       const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
       if (uniqueEmployees.length > 0) {
@@ -623,6 +664,22 @@ export default function MonthlyAttendancePage() {
     return totalDeduction;
   }
 
+  function tardyNoteForCell(
+    employeeId: string,
+    dateKey: string,
+    statusLabel: string,
+    attendanceId?: number | null
+  ): string {
+    if (attendanceId) {
+      const bySession = tardyNotesByAttendanceId[String(attendanceId)];
+      if (bySession) return bySession;
+    }
+    const saved = tardyNotes[employeeId]?.[dateKey];
+    if (saved) return saved;
+    if (normalizeAttendanceStatus(statusLabel) === "Tardy") return "-";
+    return "";
+  }
+
   function isWorkingDay(dateKey: string) {
     if (!dateKey) return false;
     const override = calendarOverrides[dateKey];
@@ -664,6 +721,7 @@ export default function MonthlyAttendancePage() {
             day.overtime,
             tardyDisplay,
             statusLabel,
+            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel),
             deduction,
           ],
           status: statusLabel,
@@ -676,12 +734,12 @@ export default function MonthlyAttendancePage() {
           : String(calculateTotalDeduction(employee));
       dataRows.push(
         {
-          cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", `${totalDeduction}%`],
+          cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", "", `${totalDeduction}%`],
           status: "",
           isSummary: true,
         },
         {
-          cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", getEmployeeTotalOvertime(employee)],
+          cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", "", getEmployeeTotalOvertime(employee)],
           status: "",
           isSummary: true,
         },
@@ -698,6 +756,7 @@ export default function MonthlyAttendancePage() {
             "",
             "",
             "Total Working Days:",
+            "",
             footer?.workingDays ?? `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`,
           ],
           status: "",
@@ -739,6 +798,7 @@ export default function MonthlyAttendancePage() {
             "---",
             meta?.runningLate ?? "",
             statusLabel,
+            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel),
             deduction,
           ],
           status: statusLabel,
@@ -775,6 +835,7 @@ export default function MonthlyAttendancePage() {
             record ? excelOvertimeForExport(record) : "---",
             meta?.runningLate ?? "",
             statusLabel,
+            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel),
             meta?.deduction || "",
           ],
           status: statusLabel,
@@ -785,12 +846,12 @@ export default function MonthlyAttendancePage() {
     const totalDeduction = calculateTotalDeduction(employee);
     dataRows.push(
       {
-        cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", `${totalDeduction}%`],
+        cells: ["", "", "", "", "", "", "", "", "", "", "Total Deduction:", "", `${totalDeduction}%`],
         status: "",
         isSummary: true,
       },
       {
-        cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", getEmployeeTotalOvertime(employee)],
+        cells: ["", "", "", "", "", "", "", "", "", "", "Extra Hours:", "", getEmployeeTotalOvertime(employee)],
         status: "",
         isSummary: true,
       },
@@ -807,6 +868,7 @@ export default function MonthlyAttendancePage() {
           "",
           "",
           "Total Working Days:",
+          "",
           `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`,
         ],
         status: "",
@@ -1285,6 +1347,7 @@ export default function MonthlyAttendancePage() {
                           <th>OverTime</th>
                           <th>Tardy Count</th>
                           <th>Status</th>
+                          <th className={styles.colTardyNote}>Tardy Note</th>
                           <th>Deduction</th>
                         </tr>
                       </thead>
@@ -1338,6 +1401,7 @@ export default function MonthlyAttendancePage() {
                                 <td style={{ color: uiStatusTextColor(rowStatus), fontWeight: 600 }}>
                                   {rowStatus}
                                 </td>
+                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, rowStatus)}</td>
                                 <td>{rowDeduction}</td>
                               </tr>
                             );
@@ -1378,6 +1442,7 @@ export default function MonthlyAttendancePage() {
                                 <td style={{ color: uiStatusTextColor(statusLabel), fontWeight: 600 }}>
                                   {normalizeAttendanceStatus(statusLabel)}
                                 </td>
+                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel)}</td>
                                 <td>{deduction}</td>
                               </tr>
                             );
@@ -1442,6 +1507,14 @@ export default function MonthlyAttendancePage() {
                                 >
                                   {recordStatus}
                                 </td>
+                                <td className={styles.colTardyNote}>
+                                  {tardyNoteForCell(
+                                    employee.employeeId,
+                                    day.dateKey,
+                                    recordStatus,
+                                    record?.id
+                                  )}
+                                </td>
                                 <td>{meta?.deduction || ""}</td>
                               </tr>
                             );
@@ -1450,7 +1523,7 @@ export default function MonthlyAttendancePage() {
                       </tbody>
                       <tfoot>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC", borderTop: "2px solid #E2E8F0" }}>
-                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={12} style={{ textAlign: "right", paddingRight: 16 }}>
                             Total Deduction:
                           </td>
                           <td>
@@ -1460,7 +1533,7 @@ export default function MonthlyAttendancePage() {
                           </td>
                         </tr>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
-                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={12} style={{ textAlign: "right", paddingRight: 16 }}>
                             Extra Hours:
                           </td>
                           <td>
@@ -1470,7 +1543,7 @@ export default function MonthlyAttendancePage() {
                           </td>
                         </tr>
                         <tr style={{ fontWeight: 700, backgroundColor: "#F7FAFC" }}>
-                          <td colSpan={11} style={{ textAlign: "right", paddingRight: 16 }}>
+                          <td colSpan={12} style={{ textAlign: "right", paddingRight: 16 }}>
                             Total Working Days:
                           </td>
                           <td>
