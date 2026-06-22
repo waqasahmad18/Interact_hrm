@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
 import {
-  fetchSavedLoginFromApi,
-  saveSavedLoginToApi,
+  loadSavedLogin,
+  persistSavedLogin,
   type SavedLogin,
 } from "@/lib/saved-login-client";
 import styles from "./login.module.css";
@@ -22,21 +22,21 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const syncSavedFromServer = useCallback(async () => {
-    const saved = await fetchSavedLoginFromApi();
+  const syncSavedLogin = useCallback(async () => {
+    const saved = await loadSavedLogin();
     setSavedLogin(saved);
     if (saved) setRememberMe(true);
     return saved;
   }, []);
 
   useEffect(() => {
-    void syncSavedFromServer();
-  }, [syncSavedFromServer]);
+    void syncSavedLogin();
+  }, [syncSavedLogin]);
 
   const persistCredentials = useCallback(
     async (id: string, pass: string) => {
       if (!rememberMe) return;
-      const ok = await saveSavedLoginToApi(id, pass);
+      const ok = await persistSavedLogin(id, pass);
       if (ok) {
         setSavedLogin({ loginId: id, password: pass });
       }
@@ -106,7 +106,7 @@ export default function LoginPage() {
   };
 
   const openSavedPickerIfNeeded = () => {
-    void syncSavedFromServer().then((saved) => {
+    void syncSavedLogin().then((saved) => {
       if (saved) setShowSavedPicker(true);
     });
   };

@@ -21,6 +21,21 @@ export function readDeviceKey(req: NextRequest): string | null {
   return value || null;
 }
 
+export function readClientDeviceKey(req: NextRequest, bodyDeviceKey?: string): string | null {
+  const fromQuery = req.nextUrl.searchParams.get("deviceKey")?.trim();
+  const fromBody = bodyDeviceKey?.trim();
+  return fromQuery || fromBody || null;
+}
+
+export function resolveDeviceKeys(req: NextRequest, bodyDeviceKey?: string): string[] {
+  const keys: string[] = [];
+  const clientKey = readClientDeviceKey(req, bodyDeviceKey);
+  const cookieKey = readDeviceKey(req);
+  if (clientKey) keys.push(clientKey);
+  if (cookieKey && cookieKey !== clientKey) keys.push(cookieKey);
+  return keys;
+}
+
 export function ensureDeviceKey(req: NextRequest, res: NextResponse): string {
   const existing = readDeviceKey(req);
   if (existing) return existing;

@@ -31,6 +31,18 @@ export async function getSavedLoginForDevice(deviceKey: string): Promise<SavedLo
   }
 }
 
+export async function getSavedLoginForAnyDevice(deviceKeys: string[]): Promise<SavedLoginRow | null> {
+  const seen = new Set<string>();
+  for (const key of deviceKeys) {
+    const trimmed = key?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    const saved = await getSavedLoginForDevice(trimmed);
+    if (saved) return saved;
+  }
+  return null;
+}
+
 export async function upsertSavedLogin(
   deviceKey: string,
   loginId: string,
