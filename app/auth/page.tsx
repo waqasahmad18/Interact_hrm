@@ -5,11 +5,10 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
 import {
-  hasSavedLogin,
-  loadSavedLogin,
-  saveSavedLogin,
+  fetchSavedLoginFromApi,
+  saveSavedLoginToApi,
   type SavedLogin,
-} from "@/lib/saved-login";
+} from "@/lib/saved-login-client";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -23,22 +22,27 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const syncSavedFromStorage = useCallback(() => {
-    const saved = loadSavedLogin();
+  const syncSavedFromServer = useCallback(async () => {
+    const saved = await fetchSavedLoginFromApi();
     setSavedLogin(saved);
+    if (saved) setRememberMe(true);
     return saved;
   }, []);
 
   useEffect(() => {
-    const saved = syncSavedFromStorage();
-    if (saved) setRememberMe(true);
-  }, [syncSavedFromStorage]);
+    void syncSavedFromServer();
+  }, [syncSavedFromServer]);
 
-  const persistCredentials = useCallback((id: string, pass: string) => {
-    if (!rememberMe) return;
-    saveSavedLogin(id, pass);
-    setSavedLogin({ loginId: id, password: pass });
-  }, [rememberMe]);
+  const persistCredentials = useCallback(
+    async (id: string, pass: string) => {
+      if (!rememberMe) return;
+      const ok = await saveSavedLoginToApi(id, pass);
+      if (ok) {
+        setSavedLogin({ loginId: id, password: pass });
+      }
+    },
+    [rememberMe]
+  );
 
   const performLogin = useCallback(
     async (rawLoginId: string, rawPassword: string) => {
@@ -53,7 +57,7 @@ export default function LoginPage() {
         if (typeof window !== "undefined") {
           localStorage.setItem("loginId", rawLoginId);
         }
-        persistCredentials(rawLoginId, rawPassword);
+        await persistCredentials(rawLoginId, rawPassword);
         router.push("/dashboard");
         setLoading(false);
         return;
@@ -69,10 +73,10 @@ export default function LoginPage() {
         if (data.success) {
           if (typeof window !== "undefined") {
             localStorage.setItem("loginId", rawLoginId);
-            localStorage.setItem("userRole", data.role || "Officer");
+            localStorage.setItem("userRole", data.role || data.employee?.role || "Officer");
           }
-          persistCredentials(rawLoginId, rawPassword);
-          const role = data.role || "Officer";
+          await persistCredentials(rawLoginId, rawPassword);
+          const role = data.role || data.employee?.role || "Officer";
           if (role === "BOD/CEO") router.push("/bod-dashboard");
           else if (role === "HOD") router.push("/hod-dashboard");
           else if (role === "Management") router.push("/management-dashboard");
@@ -95,16 +99,16 @@ export default function LoginPage() {
   };
 
   const handleUseSaved = () => {
-    const saved = syncSavedFromStorage();
-    if (!saved) return;
-    setLoginId(saved.loginId);
-    setPassword(saved.password);
+    if (!savedLogin) return;
+    setLoginId(savedLogin.loginId);
+    setPassword(savedLogin.password);
     setShowSavedPicker(false);
   };
 
   const openSavedPickerIfNeeded = () => {
-    const saved = syncSavedFromStorage();
-    if (saved) setShowSavedPicker(true);
+    void syncSavedFromServer().then((saved) => {
+      if (saved) setShowSavedPicker(true);
+    });
   };
 
   const closeSavedPicker = () => {
