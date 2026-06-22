@@ -85,6 +85,12 @@
 
 .usernameFieldWrap {
   position: relative;
+  width: 100%;
+}
+
+.usernameFieldWrap .input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .savedDropdown {
@@ -153,6 +159,7 @@
 .passwordWrapper .input {
   width: 100%;
   padding-right: 44px;
+  box-sizing: border-box;
 }
 
 .togglePasswordBtn {
