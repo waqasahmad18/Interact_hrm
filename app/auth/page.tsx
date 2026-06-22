@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
 import {
-  clearSavedLogin,
   hasSavedLogin,
   loadSavedLogin,
   saveSavedLogin,
+  type SavedLogin,
 } from "@/lib/saved-login";
 import styles from "./login.module.css";
 
@@ -19,30 +19,26 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showSavedPicker, setShowSavedPicker] = useState(false);
-  const [savedAvailable, setSavedAvailable] = useState(false);
+  const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const syncSavedFromStorage = useCallback(() => {
+    const saved = loadSavedLogin();
+    setSavedLogin(saved);
+    return saved;
+  }, []);
+
   useEffect(() => {
-    setSavedAvailable(hasSavedLogin());
-  }, []);
+    const saved = syncSavedFromStorage();
+    if (saved) setRememberMe(true);
+  }, [syncSavedFromStorage]);
 
-  const refreshSavedState = useCallback(() => {
-    setSavedAvailable(hasSavedLogin());
-  }, []);
-
-  const persistCredentials = useCallback(
-    (id: string, pass: string) => {
-      if (rememberMe) {
-        saveSavedLogin(id, pass);
-        setSavedAvailable(true);
-      } else {
-        clearSavedLogin();
-        setSavedAvailable(false);
-      }
-    },
-    [rememberMe]
-  );
+  const persistCredentials = useCallback((id: string, pass: string) => {
+    if (!rememberMe) return;
+    saveSavedLogin(id, pass);
+    setSavedLogin({ loginId: id, password: pass });
+  }, [rememberMe]);
 
   const performLogin = useCallback(
     async (rawLoginId: string, rawPassword: string) => {
@@ -99,22 +95,20 @@ export default function LoginPage() {
   };
 
   const handleUseSaved = () => {
-    const saved = loadSavedLogin();
+    const saved = syncSavedFromStorage();
     if (!saved) return;
     setLoginId(saved.loginId);
     setPassword(saved.password);
     setShowSavedPicker(false);
   };
 
-  const handleRememberChange = (checked: boolean) => {
-    setRememberMe(checked);
+  const openSavedPickerIfNeeded = () => {
+    const saved = syncSavedFromStorage();
+    if (saved) setShowSavedPicker(true);
   };
 
-  const openSavedPickerIfNeeded = () => {
-    if (hasSavedLogin()) {
-      refreshSavedState();
-      setShowSavedPicker(true);
-    }
+  const closeSavedPicker = () => {
+    window.setTimeout(() => setShowSavedPicker(false), 200);
   };
 
   return (
@@ -148,12 +142,11 @@ export default function LoginPage() {
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
                 onFocus={openSavedPickerIfNeeded}
-                onBlur={() => {
-                  window.setTimeout(() => setShowSavedPicker(false), 180);
-                }}
+                onClick={openSavedPickerIfNeeded}
+                onBlur={closeSavedPicker}
                 required
               />
-              {showSavedPicker && savedAvailable && loadSavedLogin() ? (
+              {showSavedPicker && savedLogin ? (
                 <div className={styles.savedDropdown} role="listbox">
                   <button
                     type="button"
@@ -163,7 +156,7 @@ export default function LoginPage() {
                   >
                     <FaUser className={styles.savedAccountIcon} aria-hidden />
                     <span className={styles.savedAccountText}>
-                      <strong>{loadSavedLogin()?.loginId}</strong>
+                      <strong>{savedLogin.loginId}</strong>
                       <span>Saved passwords</span>
                     </span>
                   </button>
@@ -179,6 +172,9 @@ export default function LoginPage() {
                 className={styles.input}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onFocus={openSavedPickerIfNeeded}
+                onClick={openSavedPickerIfNeeded}
+                onBlur={closeSavedPicker}
                 required
               />
               <button
@@ -195,7 +191,7 @@ export default function LoginPage() {
                 <input
                   type="checkbox"
                   checked={rememberMe}
-                  onChange={(e) => handleRememberChange(e.target.checked)}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                 />
                 Remember me
               </label>
