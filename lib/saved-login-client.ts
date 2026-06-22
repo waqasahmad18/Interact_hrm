@@ -19,6 +19,7 @@ async function fetchSavedLoginFromApi(deviceKey: string): Promise<SavedLogin | n
       success?: boolean;
       loginId?: string | null;
       password?: string | null;
+      error?: string;
     };
     if (!data.success || !data.loginId || !data.password) return null;
     return { loginId: data.loginId, password: data.password };
@@ -27,25 +28,22 @@ async function fetchSavedLoginFromApi(deviceKey: string): Promise<SavedLogin | n
   }
 }
 
-/** localStorage first, then DB via stable fingerprint (and cookie fallback on server). */
+/** DB first (survives cache clear), then localStorage fallback. */
 export async function loadSavedLogin(): Promise<SavedLogin | null> {
-  const local = loadSavedLoginLocal();
-  if (local) return local;
-
   const deviceKey = await getStableDeviceFingerprint();
-  if (!deviceKey) return null;
-
-  const fromDb = await fetchSavedLoginFromApi(deviceKey);
-  if (fromDb) {
-    saveSavedLoginLocal(fromDb.loginId, fromDb.password);
-    return fromDb;
+  if (deviceKey) {
+    const fromDb = await fetchSavedLoginFromApi(deviceKey);
+    if (fromDb) {
+      saveSavedLoginLocal(fromDb.loginId, fromDb.password);
+      return fromDb;
+    }
   }
-  return null;
+
+  return loadSavedLoginLocal();
 }
 
-/** Save to localStorage + database (Remember me). */
+/** Save to database + localStorage (Remember me). */
 export async function persistSavedLogin(loginId: string, password: string): Promise<boolean> {
-  saveSavedLoginLocal(loginId, password);
   const deviceKey = await getStableDeviceFingerprint();
   if (!deviceKey) return false;
 
@@ -57,7 +55,11 @@ export async function persistSavedLogin(loginId: string, password: string): Prom
       body: JSON.stringify({ loginId, password, deviceKey }),
     });
     const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
+    if (data.success === true) {
+      saveSavedLoginLocal(loginId, password);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

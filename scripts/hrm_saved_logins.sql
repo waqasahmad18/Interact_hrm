@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS hrm_saved_logins (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  device_key VARCHAR(64) NOT NULL,
+  device_key VARCHAR(128) NOT NULL,
   login_id VARCHAR(255) NOT NULL,
   password_enc TEXT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -12,3 +12,6 @@ CREATE TABLE IF NOT EXISTS hrm_saved_logins (
   UNIQUE KEY uq_device_login (device_key, login_id),
   KEY idx_device_key (device_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- If table already exists with VARCHAR(64), run:
+-- ALTER TABLE hrm_saved_logins MODIFY device_key VARCHAR(128) NOT NULL;

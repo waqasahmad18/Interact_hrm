@@ -33,14 +33,31 @@ export async function getSavedLoginForDevice(deviceKey: string): Promise<SavedLo
 
 export async function getSavedLoginForAnyDevice(deviceKeys: string[]): Promise<SavedLoginRow | null> {
   const seen = new Set<string>();
-  for (const key of deviceKeys) {
-    const trimmed = key?.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    const saved = await getSavedLoginForDevice(trimmed);
-    if (saved) return saved;
+  for (const raw of deviceKeys) {
+    for (const key of expandDeviceKeyVariants(raw)) {
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const saved = await getSavedLoginForDevice(key);
+      if (saved) return saved;
+    }
   }
   return null;
+}
+
+/** Match legacy rows saved before fingerprint length fix (VARCHAR(64) truncation). */
+export function expandDeviceKeyVariants(deviceKey: string): string[] {
+  const trimmed = deviceKey.trim();
+  if (!trimmed) return [];
+
+  const variants = new Set<string>([trimmed]);
+  if (trimmed.length > 64) {
+    variants.add(trimmed.slice(0, 64));
+  }
+  if (trimmed.startsWith("fp_")) {
+    variants.add(trimmed.slice(3, 67));
+    variants.add(trimmed.slice(0, 64));
+  }
+  return Array.from(variants);
 }
 
 export async function upsertSavedLogin(

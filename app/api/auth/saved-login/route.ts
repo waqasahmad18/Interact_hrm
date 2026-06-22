@@ -6,7 +6,6 @@ import {
 } from "@/lib/saved-login-db";
 import {
   ensureDeviceKey,
-  readClientDeviceKey,
   resolveDeviceKeys,
 } from "@/lib/saved-login-device";
 
@@ -38,7 +37,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const loginId = String(body?.loginId || "").trim();
     const password = String(body?.password || "");
-    const clientDeviceKey = readClientDeviceKey(req, String(body?.deviceKey || ""));
 
     if (!loginId || !password) {
       return NextResponse.json(
@@ -48,8 +46,13 @@ export async function POST(req: NextRequest) {
     }
 
     const res = NextResponse.json({ success: true });
-    const deviceKey = clientDeviceKey || ensureDeviceKey(req, res);
-    await upsertSavedLogin(deviceKey, loginId, password);
+    const deviceKeys = resolveDeviceKeys(req, String(body?.deviceKey || ""));
+    if (!deviceKeys.length) {
+      deviceKeys.push(ensureDeviceKey(req, res));
+    }
+    for (const deviceKey of deviceKeys) {
+      await upsertSavedLogin(deviceKey, loginId, password);
+    }
     return res;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to save login";
