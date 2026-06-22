@@ -70,53 +70,73 @@
   gap: 16px;
 }
 
+.formWrapWithSaved {
+  width: min(640px, 96vw);
+}
+
 .logoImage {
   object-fit: cover;
 }
 
 .formTitle { font-size: 1.4rem; font-weight: 800; color: #1A202C; }
 
-.form {
+.formRow {
   width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.usernameFieldWrap {
-  position: relative;
-  width: 100%;
-}
-
-.usernameFieldWrap .input {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.savedDropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 20;
+.savedPanel {
+  flex: 0 0 210px;
+  max-width: 210px;
   background: #ffffff;
   border: 1px solid #dadce0;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(60, 64, 67, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(60, 64, 67, 0.12);
   overflow: hidden;
+}
+
+.savedPanelTitle {
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #5f6368;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.savedPanelList {
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .savedAccountBtn {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border: none;
+  border-bottom: 1px solid #f1f3f4;
   background: #ffffff;
   cursor: pointer;
   text-align: left;
   transition: background 0.12s;
+}
+
+.savedAccountBtn:last-child {
+  border-bottom: none;
 }
 
 .savedAccountBtn:hover {
@@ -125,7 +145,7 @@
 
 .savedAccountIcon {
   flex-shrink: 0;
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: #5f6368;
 }
 
@@ -137,8 +157,8 @@
 }
 
 .savedAccountText strong {
-  font-size: 0.9rem;
-  font-weight: 400;
+  font-size: 0.82rem;
+  font-weight: 500;
   color: #202124;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,7 +166,7 @@
 }
 
 .savedAccountText span {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #5f6368;
 }
 
@@ -160,6 +180,29 @@
   width: 100%;
   padding-right: 44px;
   box-sizing: border-box;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 16px;
+  border-radius: 999px;
+  border: 2px solid #B0BEC5;
+  font-size: 1rem;
+  background: #FFFFFF;
+  color: #000000;
+  font-weight: 600;
+  transition: border 0.2s, box-shadow 0.2s, transform 0.1s;
+}
+.input:focus {
+  border: 2px solid #0052CC;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,82,204,0.15);
+  transform: translateY(-1px);
+}
+.input::placeholder {
+  color: #263238;
+  font-weight: 600;
 }
 
 .togglePasswordBtn {
@@ -183,27 +226,6 @@
 
 .togglePasswordBtn:active {
   color: #00B8A9;
-}
-
-.input {
-  padding: 13px 16px;
-  border-radius: 999px;
-  border: 2px solid #B0BEC5;
-  font-size: 1rem;
-  background: #FFFFFF;
-  color: #000000;
-  font-weight: 600;
-  transition: border 0.2s, box-shadow 0.2s, transform 0.1s;
-}
-.input:focus {
-  border: 2px solid #0052CC;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(0,82,204,0.15);
-  transform: translateY(-1px);
-}
-.input::placeholder {
-  color: #263238;
-  font-weight: 600;
 }
 
 .rowBetween { display: flex; justify-content: space-between; align-items: center; font-size: 0.92rem; }
@@ -240,4 +262,7 @@
   .leftPanel { min-height: 42vh; }
   .leftContent { width: 86%; }
   .formWrap { width: 92%; }
+  .formWrapWithSaved { width: 92%; }
+  .formRow { flex-direction: column; }
+  .savedPanel { flex: 1 1 auto; max-width: 100%; width: 100%; }
 }

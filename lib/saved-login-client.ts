@@ -1,13 +1,13 @@
 import {
-  loadSavedLoginLocal,
-  saveSavedLoginLocal,
+  loadSavedLoginsLocal,
+  upsertSavedLoginLocal,
   type SavedLogin,
 } from "@/lib/saved-login-local";
 import { getStableDeviceFingerprint } from "@/lib/device-fingerprint";
 
 export type { SavedLogin };
 
-async function fetchSavedLoginFromApi(deviceKey: string): Promise<SavedLogin | null> {
+async function fetchSavedLoginsFromApi(deviceKey: string): Promise<SavedLogin[]> {
   try {
     const params = new URLSearchParams({ deviceKey });
     const res = await fetch(`/api/auth/saved-login?${params.toString()}`, {
@@ -17,29 +17,46 @@ async function fetchSavedLoginFromApi(deviceKey: string): Promise<SavedLogin | n
     });
     const data = (await res.json()) as {
       success?: boolean;
+      logins?: { loginId: string; password: string }[];
       loginId?: string | null;
       password?: string | null;
       error?: string;
     };
-    if (!data.success || !data.loginId || !data.password) return null;
-    return { loginId: data.loginId, password: data.password };
+    if (!data.success) return [];
+
+    if (Array.isArray(data.logins) && data.logins.length > 0) {
+      return data.logins.filter((l) => l.loginId && l.password);
+    }
+
+    if (data.loginId && data.password) {
+      return [{ loginId: data.loginId, password: data.password }];
+    }
+    return [];
   } catch {
-    return null;
+    return [];
   }
 }
 
 /** DB first (survives cache clear), then localStorage fallback. */
-export async function loadSavedLogin(): Promise<SavedLogin | null> {
+export async function loadSavedLogins(): Promise<SavedLogin[]> {
   const deviceKey = await getStableDeviceFingerprint();
   if (deviceKey) {
-    const fromDb = await fetchSavedLoginFromApi(deviceKey);
-    if (fromDb) {
-      saveSavedLoginLocal(fromDb.loginId, fromDb.password);
+    const fromDb = await fetchSavedLoginsFromApi(deviceKey);
+    if (fromDb.length > 0) {
+      for (const entry of fromDb) {
+        upsertSavedLoginLocal(entry.loginId, entry.password);
+      }
       return fromDb;
     }
   }
 
-  return loadSavedLoginLocal();
+  return loadSavedLoginsLocal();
+}
+
+/** @deprecated Use loadSavedLogins */
+export async function loadSavedLogin(): Promise<SavedLogin | null> {
+  const list = await loadSavedLogins();
+  return list[0] ?? null;
 }
 
 /** Save to database + localStorage (Remember me). */
@@ -56,7 +73,7 @@ export async function persistSavedLogin(loginId: string, password: string): Prom
     });
     const data = (await res.json()) as { success?: boolean };
     if (data.success === true) {
-      saveSavedLoginLocal(loginId, password);
+      upsertSavedLoginLocal(loginId, password);
       return true;
     }
     return false;

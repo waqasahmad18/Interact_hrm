@@ -10,25 +10,53 @@ export type SavedLoginRow = {
   password: string;
 };
 
-export async function getSavedLoginForDevice(deviceKey: string): Promise<SavedLoginRow | null> {
+export async function listSavedLoginsForDevice(deviceKey: string): Promise<SavedLoginRow[]> {
   const [rows] = await pool.execute(
     `SELECT login_id, password_enc
      FROM ${SAVED_LOGIN_TABLE}
      WHERE device_key = ?
-     ORDER BY updated_at DESC
-     LIMIT 1`,
+     ORDER BY updated_at DESC`,
     [deviceKey]
   );
-  const row = (rows as { login_id: string; password_enc: string }[])[0];
-  if (!row?.login_id || !row.password_enc) return null;
-  try {
-    return {
-      login_id: row.login_id,
-      password: decryptSavedPassword(row.password_enc),
-    };
-  } catch {
-    return null;
+  const out: SavedLoginRow[] = [];
+  for (const row of rows as { login_id: string; password_enc: string }[]) {
+    if (!row?.login_id || !row.password_enc) continue;
+    try {
+      out.push({
+        login_id: row.login_id,
+        password: decryptSavedPassword(row.password_enc),
+      });
+    } catch {
+      /* skip bad row */
+    }
   }
+  return out;
+}
+
+export async function listSavedLoginsForAnyDevice(deviceKeys: string[]): Promise<SavedLoginRow[]> {
+  const seenLogin = new Set<string>();
+  const merged: SavedLoginRow[] = [];
+  const seenDevice = new Set<string>();
+
+  for (const raw of deviceKeys) {
+    for (const key of expandDeviceKeyVariants(raw)) {
+      if (!key || seenDevice.has(key)) continue;
+      seenDevice.add(key);
+      const rows = await listSavedLoginsForDevice(key);
+      for (const row of rows) {
+        const norm = row.login_id.trim().toLowerCase();
+        if (!norm || seenLogin.has(norm)) continue;
+        seenLogin.add(norm);
+        merged.push(row);
+      }
+    }
+  }
+  return merged;
+}
+
+export async function getSavedLoginForDevice(deviceKey: string): Promise<SavedLoginRow | null> {
+  const list = await listSavedLoginsForDevice(deviceKey);
+  return list[0] ?? null;
 }
 
 export async function getSavedLoginForAnyDevice(deviceKeys: string[]): Promise<SavedLoginRow | null> {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteSavedLoginForDevice,
-  getSavedLoginForAnyDevice,
+  listSavedLoginsForAnyDevice,
   upsertSavedLogin,
 } from "@/lib/saved-login-db";
 import {
@@ -13,18 +13,16 @@ export async function GET(req: NextRequest) {
   try {
     const deviceKeys = resolveDeviceKeys(req);
     if (!deviceKeys.length) {
-      return NextResponse.json({ success: true, loginId: null, password: null });
+      return NextResponse.json({ success: true, logins: [] });
     }
 
-    const saved = await getSavedLoginForAnyDevice(deviceKeys);
-    if (!saved) {
-      return NextResponse.json({ success: true, loginId: null, password: null });
-    }
-
+    const saved = await listSavedLoginsForAnyDevice(deviceKeys);
     return NextResponse.json({
       success: true,
-      loginId: saved.login_id,
-      password: saved.password,
+      logins: saved.map((row) => ({
+        loginId: row.login_id,
+        password: row.password,
+      })),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load saved login";

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
 import {
-  loadSavedLogin,
+  loadSavedLogins,
   persistSavedLogin,
   type SavedLogin,
 } from "@/lib/saved-login-client";
@@ -18,27 +18,28 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showSavedPicker, setShowSavedPicker] = useState(false);
-  const [savedLogin, setSavedLogin] = useState<SavedLogin | null>(null);
+  const [savedLogins, setSavedLogins] = useState<SavedLogin[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const syncSavedLogin = useCallback(async () => {
-    const saved = await loadSavedLogin();
-    setSavedLogin(saved);
-    if (saved) setRememberMe(true);
+  const syncSavedLogins = useCallback(async () => {
+    const saved = await loadSavedLogins();
+    setSavedLogins(saved);
+    if (saved.length > 0) setRememberMe(true);
     return saved;
   }, []);
 
   useEffect(() => {
-    void syncSavedLogin();
-  }, [syncSavedLogin]);
+    void syncSavedLogins();
+  }, [syncSavedLogins]);
 
   const persistCredentials = useCallback(
     async (id: string, pass: string) => {
       if (!rememberMe) return;
       const ok = await persistSavedLogin(id, pass);
       if (ok) {
-        setSavedLogin({ loginId: id, password: pass });
+        const updated = await loadSavedLogins();
+        setSavedLogins(updated);
       }
     },
     [rememberMe]
@@ -98,22 +99,23 @@ export default function LoginPage() {
     await performLogin(loginId, password);
   };
 
-  const handleUseSaved = () => {
-    if (!savedLogin) return;
-    setLoginId(savedLogin.loginId);
-    setPassword(savedLogin.password);
+  const handleUseSaved = (saved: SavedLogin) => {
+    setLoginId(saved.loginId);
+    setPassword(saved.password);
     setShowSavedPicker(false);
   };
 
   const openSavedPickerIfNeeded = () => {
-    void syncSavedLogin().then((saved) => {
-      if (saved) setShowSavedPicker(true);
+    void syncSavedLogins().then((saved) => {
+      if (saved.length > 0) setShowSavedPicker(true);
     });
   };
 
   const closeSavedPicker = () => {
-    window.setTimeout(() => setShowSavedPicker(false), 200);
+    window.setTimeout(() => setShowSavedPicker(false), 180);
   };
+
+  const hasSavedPanel = showSavedPicker && savedLogins.length > 0;
 
   return (
     <div className={styles.splitWrap}>
@@ -131,12 +133,12 @@ export default function LoginPage() {
       </section>
 
       <section className={styles.rightPanel}>
-        <div className={styles.formWrap}>
+        <div className={`${styles.formWrap} ${hasSavedPanel ? styles.formWrapWithSaved : ""}`}>
           <Image src="/logo1.png" alt="Interact Logo" width={96} height={96} className={styles.logoImage} />
           <h3 className={styles.formTitle}>Sign in to continue</h3>
 
-          <form className={styles.form} onSubmit={handleSubmit} method="post" autoComplete="on">
-            <div className={styles.usernameFieldWrap}>
+          <div className={styles.formRow}>
+            <form className={styles.form} onSubmit={handleSubmit} method="post" autoComplete="on">
               <input
                 type="text"
                 name="username"
@@ -150,63 +152,73 @@ export default function LoginPage() {
                 onBlur={closeSavedPicker}
                 required
               />
-              {showSavedPicker && savedLogin ? (
-                <div className={styles.savedDropdown} role="listbox">
-                  <button
-                    type="button"
-                    className={styles.savedAccountBtn}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={handleUseSaved}
-                  >
-                    <FaUser className={styles.savedAccountIcon} aria-hidden />
-                    <span className={styles.savedAccountText}>
-                      <strong>{savedLogin.loginId}</strong>
-                      <span>Saved passwords</span>
-                    </span>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div className={styles.passwordWrapper}>
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                autoComplete="current-password"
-                placeholder="Password"
-                className={styles.input}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onFocus={openSavedPickerIfNeeded}
-                onClick={openSavedPickerIfNeeded}
-                onBlur={closeSavedPicker}
-                required
-              />
-              <button
-                type="button"
-                className={styles.togglePasswordBtn}
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label="Toggle password visibility"
-              >
-                {showPassword ? <FaEyeSlash /> : <FaEye />}
-              </button>
-            </div>
-            <div className={styles.rowBetween}>
-              <label className={styles.remember}>
+              <div className={styles.passwordWrapper}>
                 <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  autoComplete="current-password"
+                  placeholder="Password"
+                  className={styles.input}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onFocus={openSavedPickerIfNeeded}
+                  onClick={openSavedPickerIfNeeded}
+                  onBlur={closeSavedPicker}
+                  required
                 />
-                Remember me
-              </label>
-              <a className={styles.linkBtn} onClick={() => router.push("/auth/forgot-password")}>
-                Forgot password?
-              </a>
-            </div>
-            <button type="submit" className={styles.button} disabled={loading}>
-              {loading ? "Logging in..." : "Login"}
-            </button>
-          </form>
+                <button
+                  type="button"
+                  className={styles.togglePasswordBtn}
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label="Toggle password visibility"
+                >
+                  {showPassword ? <FaEyeSlash /> : <FaEye />}
+                </button>
+              </div>
+              <div className={styles.rowBetween}>
+                <label className={styles.remember}>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
+                  Remember me
+                </label>
+                <a className={styles.linkBtn} onClick={() => router.push("/auth/forgot-password")}>
+                  Forgot password?
+                </a>
+              </div>
+              <button type="submit" className={styles.button} disabled={loading}>
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            </form>
+
+            {hasSavedPanel ? (
+              <aside
+                className={styles.savedPanel}
+                onMouseDown={(e) => e.preventDefault()}
+                aria-label="Saved logins on this device"
+              >
+                <div className={styles.savedPanelTitle}>Saved on this device</div>
+                <div className={styles.savedPanelList}>
+                  {savedLogins.map((saved) => (
+                    <button
+                      key={saved.loginId}
+                      type="button"
+                      className={styles.savedAccountBtn}
+                      onClick={() => handleUseSaved(saved)}
+                    >
+                      <FaUser className={styles.savedAccountIcon} aria-hidden />
+                      <span className={styles.savedAccountText}>
+                        <strong>{saved.loginId}</strong>
+                        <span>Saved password</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+            ) : null}
+          </div>
 
           {error && <div className={styles.error}>{error}</div>}
 
