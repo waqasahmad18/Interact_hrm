@@ -80,9 +80,11 @@ export default function LoginPage() {
           <Image src="/logo1.png" alt="Interact Logo" width={96} height={96} className={styles.logoImage} />
           <h3 className={styles.formTitle}>Sign in to continue</h3>
 
-          <form className={styles.form} onSubmit={handleSubmit}>
+          <form className={styles.form} onSubmit={handleSubmit} method="post" autoComplete="on">
             <input
               type="text"
+              name="username"
+              autoComplete="username"
               placeholder="Email or Username"
               className={styles.input}
               value={loginId}
@@ -92,6 +94,8 @@ export default function LoginPage() {
             <div className={styles.passwordWrapper}>
               <input
                 type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete="current-password"
                 placeholder="Password"
                 className={styles.input}
                 value={password}
