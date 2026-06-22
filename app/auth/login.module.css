@@ -83,6 +83,55 @@
   gap: 14px;
 }
 
+.usernameFieldWrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.savedAccountBtn {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 2px solid #0052CC;
+  background: #f0f6ff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.savedAccountBtn:hover:not(:disabled) {
+  background: #e2edff;
+  transform: translateY(-1px);
+}
+
+.savedAccountBtn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.savedAccountLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0052CC;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.savedAccountBtn strong {
+  font-size: 0.95rem;
+  color: #1a202c;
+}
+
+.savedAccountHint {
+  font-size: 0.78rem;
+  color: #4a5568;
+}
+
 .passwordWrapper {
   position: relative;
   display: flex;
