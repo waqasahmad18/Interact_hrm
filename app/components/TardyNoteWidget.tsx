@@ -45,7 +45,7 @@ export function TardyNoteWidget({ employeeId }: { employeeId: string }) {
         setVisible(false);
         return;
       }
-      setVisible(Boolean(data.canAddNote));
+      setVisible(Boolean(data.success && data.isLate && data.isClockedIn && data.canAddNote));
       setAttendanceDate(data.attendanceDate || today);
       if (!data.canAddNote) {
         setSelectedCode("");

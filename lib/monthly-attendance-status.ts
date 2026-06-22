@@ -233,6 +233,44 @@ export function isEmptyClockDisplay(value: string | null | undefined) {
   return !v || v === "---" || v === "-";
 }
 
+export function normalizeShiftTimeString(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}:00`;
+  }
+  const raw = String(value).trim();
+  const timePart = raw.includes("T") ? raw.split("T")[1]?.slice(0, 8) || "" : raw.slice(0, 8);
+  const parts = timePart.split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+}
+
+export function formatDbClockInForLateCheck(clockIn: unknown): string | null {
+  if (!clockIn) return null;
+  const raw = String(clockIn).trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw;
+  const d = new Date(raw + (raw.includes("Z") ? "" : "Z"));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/** Same tardy rules as GET /api/attendance (shift required; no shift → not late). */
+export function computeClockInLateStatus(
+  clockIn: unknown,
+  shiftStart: unknown,
+  gender?: string | null
+): { isLate: boolean; lateMinutes: number } {
+  const shift = normalizeShiftTimeString(shiftStart);
+  const clockIso = formatDbClockInForLateCheck(clockIn);
+  if (!shift || !clockIso) {
+    return { isLate: false, lateMinutes: 0 };
+  }
+  return computeLate(clockIso, shift, graceMinutesForGender(gender));
+}
+
 function computeLate(
   clockIn: string | null | undefined,
   shiftStart: string | null | undefined,

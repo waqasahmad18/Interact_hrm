@@ -670,14 +670,15 @@ export default function MonthlyAttendancePage() {
     statusLabel: string,
     attendanceId?: number | null
   ): string {
+    const isTardy = normalizeAttendanceStatus(statusLabel) === "Tardy";
+    if (!isTardy) return "";
     if (attendanceId) {
       const bySession = tardyNotesByAttendanceId[String(attendanceId)];
       if (bySession) return bySession;
     }
     const saved = tardyNotes[employeeId]?.[dateKey];
     if (saved) return saved;
-    if (normalizeAttendanceStatus(statusLabel) === "Tardy") return "-";
-    return "";
+    return "-";
   }
 
   function isWorkingDay(dateKey: string) {

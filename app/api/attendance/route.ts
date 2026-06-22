@@ -9,9 +9,9 @@ import { pool } from "../../../lib/db";
 import { ATTENDANCE_TABLE, ensureAttendanceTable } from "../../../lib/attendance-table";
 import {
   getDateStringInTimeZone,
-  getTimeInMinutesInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
+import { computeClockInLateStatus } from "../../../lib/monthly-attendance-status";
 
 // GET: Fetch all attendance records or by employeeId, now with department name
 export async function GET(req: NextRequest) {
@@ -96,23 +96,6 @@ export async function GET(req: NextRequest) {
 
     // Simply return the rows as is; frontend will handle date parsing.
     
-    const graceMinutesForGender = (gender: string | null | undefined) => {
-      const g = String(gender || "").trim().toLowerCase();
-      if (g === "female") return 15;
-      if (g === "male") return 10;
-      return 10;
-    };
-
-    const parseTimeToMinutes = (timeStr: string | null | undefined) => {
-      if (!timeStr) return null;
-      const parts = String(timeStr).split(":");
-      if (parts.length < 2) return null;
-      const hours = Number(parts[0]);
-      const minutes = Number(parts[1]);
-      if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-      return hours * 60 + minutes;
-    };
-
     const formattedAttendance = (rows as any[]).map((row) => {
       let formattedClockIn = null;
       let clockInDate: Date | null = null;
@@ -135,23 +118,13 @@ export async function GET(req: NextRequest) {
       }
 
       // Calculate late status based on shift start time and grace minutes
-      let is_late = false;
-      let late_minutes = 0;
-      const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
-      const graceMinutes = graceMinutesForGender(row.gender);
-      if (clockInDate && shiftStartMinutes !== null) {
-        const clockInMinutes = getTimeInMinutesInTimeZone(
-          clockInDate,
-          SERVER_TIMEZONE
-        );
-        let diffMinutes =
-          clockInMinutes === null ? 0 : clockInMinutes - shiftStartMinutes;
-        if (diffMinutes < -12 * 60) diffMinutes += 24 * 60;
-        if (diffMinutes > graceMinutes) {
-          late_minutes = diffMinutes - graceMinutes;
-          is_late = late_minutes > 0;
-        }
-      }
+      const lateStatus = computeClockInLateStatus(
+        row.clock_in,
+        row.shift_start_time,
+        row.gender
+      );
+      const is_late = lateStatus.isLate;
+      const late_minutes = lateStatus.lateMinutes;
 
       return {
         ...row,

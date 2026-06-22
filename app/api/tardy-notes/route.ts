@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { ATTENDANCE_TABLE } from "@/lib/attendance-table";
+import { computeClockInLateStatus } from "@/lib/monthly-attendance-status";
 import {
   isValidTardyNoteCode,
   TARDY_NOTE_OPTIONS,
@@ -13,26 +14,7 @@ import {
   listTardyNotesInRange,
   upsertTardyNote,
 } from "@/lib/tardy-notes-table";
-import {
-  getDateStringInTimeZone,
-  getTimeInMinutesInTimeZone,
-  SERVER_TIMEZONE,
-} from "@/lib/timezone";
-
-function parseTimeToMinutes(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const parts = String(value).trim().split(":");
-  if (parts.length < 2) return null;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
-}
-
-function graceMinutesForGender(gender: string | null | undefined): number {
-  const g = String(gender || "").trim().toLowerCase();
-  return g === "female" ? 20 : 10;
-}
+import { getDateStringInTimeZone, SERVER_TIMEZONE } from "@/lib/timezone";
 
 type AttendanceLateRow = {
   attendance_id: number | null;
@@ -41,24 +23,6 @@ type AttendanceLateRow = {
   shift_start_time: string | null;
   attendance_date: string | Date | null;
 };
-
-function isClockInLate(row: AttendanceLateRow): boolean {
-  if (!row.clock_in) return false;
-
-  const clockInDate = new Date(String(row.clock_in) + "Z");
-  if (Number.isNaN(clockInDate.getTime())) return false;
-
-  const shiftStartMinutes = parseTimeToMinutes(row.shift_start_time);
-  if (shiftStartMinutes === null) return false;
-
-  const clockInMinutes = getTimeInMinutesInTimeZone(clockInDate, SERVER_TIMEZONE);
-  if (clockInMinutes === null) return false;
-
-  let diffMinutes = clockInMinutes - shiftStartMinutes;
-  if (diffMinutes < -12 * 60) diffMinutes += 24 * 60;
-  const grace = graceMinutesForGender(row.gender);
-  return diffMinutes > grace;
-}
 
 function dateKeyFromRow(value: string | Date | null | undefined): string {
   if (!value) return "";
@@ -90,8 +54,10 @@ async function getActiveTardyContext(employeeId: string) {
     return { isLate: false, isClockedIn: false, attendanceDate: "", attendanceId: 0 };
   }
 
+  const lateStatus = computeClockInLateStatus(row.clock_in, row.shift_start_time, row.gender);
+
   return {
-    isLate: isClockInLate(row),
+    isLate: lateStatus.isLate,
     isClockedIn: true,
     attendanceDate: dateKeyFromRow(row.attendance_date),
     attendanceId: Number(row.attendance_id) || 0,
