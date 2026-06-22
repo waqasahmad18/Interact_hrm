@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
 import {
   clearSavedLogin,
   hasSavedLogin,
@@ -25,7 +25,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     setSavedAvailable(hasSavedLogin());
-    setRememberMe(hasSavedLogin());
+  }, []);
+
+  const refreshSavedState = useCallback(() => {
+    setSavedAvailable(hasSavedLogin());
   }, []);
 
   const persistCredentials = useCallback(
@@ -95,21 +98,22 @@ export default function LoginPage() {
     await performLogin(loginId, password);
   };
 
-  const handleUseSaved = async () => {
+  const handleUseSaved = () => {
     const saved = loadSavedLogin();
     if (!saved) return;
     setLoginId(saved.loginId);
     setPassword(saved.password);
     setShowSavedPicker(false);
-    await performLogin(saved.loginId, saved.password);
   };
 
   const handleRememberChange = (checked: boolean) => {
     setRememberMe(checked);
-    if (!checked) {
-      clearSavedLogin();
-      setSavedAvailable(false);
-      setShowSavedPicker(false);
+  };
+
+  const openSavedPickerIfNeeded = () => {
+    if (hasSavedLogin()) {
+      refreshSavedState();
+      setShowSavedPicker(true);
     }
   };
 
@@ -143,26 +147,27 @@ export default function LoginPage() {
                 className={styles.input}
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
-                onFocus={() => {
-                  if (savedAvailable) setShowSavedPicker(true);
-                }}
+                onFocus={openSavedPickerIfNeeded}
                 onBlur={() => {
                   window.setTimeout(() => setShowSavedPicker(false), 180);
                 }}
                 required
               />
-              {showSavedPicker && savedAvailable ? (
-                <button
-                  type="button"
-                  className={styles.savedAccountBtn}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={handleUseSaved}
-                  disabled={loading}
-                >
-                  <span className={styles.savedAccountLabel}>Saved on this device</span>
-                  <strong>{loadSavedLogin()?.loginId}</strong>
-                  <span className={styles.savedAccountHint}>Tap to sign in</span>
-                </button>
+              {showSavedPicker && savedAvailable && loadSavedLogin() ? (
+                <div className={styles.savedDropdown} role="listbox">
+                  <button
+                    type="button"
+                    className={styles.savedAccountBtn}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleUseSaved}
+                  >
+                    <FaUser className={styles.savedAccountIcon} aria-hidden />
+                    <span className={styles.savedAccountText}>
+                      <strong>{loadSavedLogin()?.loginId}</strong>
+                      <span>Password saved on this device</span>
+                    </span>
+                  </button>
+                </div>
               ) : null}
             </div>
             <div className={styles.passwordWrapper}>

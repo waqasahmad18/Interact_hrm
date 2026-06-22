@@ -85,51 +85,63 @@
 
 .usernameFieldWrap {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+}
+
+.savedDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(60, 64, 67, 0.15);
+  overflow: hidden;
 }
 
 .savedAccountBtn {
   width: 100%;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 10px 14px;
-  border-radius: 12px;
-  border: 2px solid #0052CC;
-  background: #f0f6ff;
+  border: none;
+  background: #ffffff;
   cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.savedAccountBtn:hover {
+  background: #f1f3f4;
+}
+
+.savedAccountIcon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: #5f6368;
+}
+
+.savedAccountText {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  transition: background 0.15s, transform 0.1s;
+  min-width: 0;
 }
 
-.savedAccountBtn:hover:not(:disabled) {
-  background: #e2edff;
-  transform: translateY(-1px);
+.savedAccountText strong {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #202124;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.savedAccountBtn:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.savedAccountLabel {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #0052CC;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.savedAccountBtn strong {
-  font-size: 0.95rem;
-  color: #1a202c;
-}
-
-.savedAccountHint {
-  font-size: 0.78rem;
-  color: #4a5568;
+.savedAccountText span {
+  font-size: 0.75rem;
+  color: #5f6368;
 }
 
 .passwordWrapper {
