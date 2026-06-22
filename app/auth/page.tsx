@@ -164,7 +164,7 @@ export default function LoginPage() {
                     <FaUser className={styles.savedAccountIcon} aria-hidden />
                     <span className={styles.savedAccountText}>
                       <strong>{loadSavedLogin()?.loginId}</strong>
-                      <span>Password saved on this device</span>
+                      <span>Saved passwords</span>
                     </span>
                   </button>
                 </div>
@@ -197,7 +197,7 @@ export default function LoginPage() {
                   checked={rememberMe}
                   onChange={(e) => handleRememberChange(e.target.checked)}
                 />
-                Remember me on this device
+                Remember me
               </label>
               <a className={styles.linkBtn} onClick={() => router.push("/auth/forgot-password")}>
                 Forgot password?
