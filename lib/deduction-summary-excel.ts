@@ -9,6 +9,7 @@ export const DEDUCTION_SUMMARY_HEADERS = [
   "T.Punch out",
   "Status",
   "Tardy Count",
+  "Tardy Note",
   "Deduction",
 ] as const;
 
@@ -49,7 +50,7 @@ const TARDY_ROW_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFFFFF00" },
 };
 
-const COLUMN_WIDTHS = [14, 14, 14, 14, 14, 18, 12, 12];
+const COLUMN_WIDTHS = [14, 14, 14, 14, 14, 18, 12, 28, 12];
 
 export type DeductionSummaryDayRow = {
   date: string;
@@ -59,6 +60,7 @@ export type DeductionSummaryDayRow = {
   tPunchOut: string;
   status: string;
   tardyCount: number | string;
+  tardyNote: string;
   deduction: string;
 };
 
@@ -158,6 +160,7 @@ function addDeductionSummarySheet(
       row.tPunchOut,
       status,
       row.tardyCount === 0 || row.tardyCount === "" ? "" : row.tardyCount,
+      row.tardyNote || "",
       row.deduction,
     ]);
     const tardyRow = isTardyStatus(status);
@@ -180,7 +183,7 @@ function addDeductionSummarySheet(
     });
   });
 
-  const totalRow = sheet.addRow(["", "", "", "", "", "", "Total", `${block.totalDeduction}%`]);
+  const totalRow = sheet.addRow(["", "", "", "", "", "", "", "Total", `${block.totalDeduction}%`]);
   totalRow.eachCell((cell, colNumber) => {
     cell.alignment = { horizontal: "center", vertical: "middle" };
     applyBlackBorder(cell);

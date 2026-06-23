@@ -10,7 +10,6 @@ import {
 } from "../../../lib/monthly-attendance-excel";
 import {
   downloadDeductionSummaryExcel,
-  parseDeductionPercent,
   type DeductionSummaryDayRow,
   type DeductionSummaryEmployeeBlock,
 } from "../../../lib/deduction-summary-excel";
@@ -668,14 +667,26 @@ export default function MonthlyAttendancePage() {
     employeeId: string,
     dateKey: string,
     statusLabel: string,
-    attendanceId?: number | null
+    attendanceId?: number | null,
+    dayRecords?: Array<{ id?: number | null }>
   ): string {
     const isTardy = normalizeAttendanceStatus(statusLabel) === "Tardy";
     if (!isTardy) return "";
-    if (attendanceId) {
+
+    if (attendanceId != null) {
       const bySession = tardyNotesByAttendanceId[String(attendanceId)];
       if (bySession) return bySession;
+      const legacy = tardyNotes[employeeId]?.[dateKey];
+      if (legacy) return legacy;
+      return "-";
     }
+
+    for (const rec of dayRecords || []) {
+      if (rec?.id == null) continue;
+      const bySession = tardyNotesByAttendanceId[String(rec.id)];
+      if (bySession) return bySession;
+    }
+
     const saved = tardyNotes[employeeId]?.[dateKey];
     if (saved) return saved;
     return "-";
@@ -799,7 +810,7 @@ export default function MonthlyAttendancePage() {
             "---",
             meta?.runningLate ?? "",
             statusLabel,
-            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel),
+            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, undefined, dayRecords),
             deduction,
           ],
           status: statusLabel,
@@ -836,7 +847,7 @@ export default function MonthlyAttendancePage() {
             record ? excelOvertimeForExport(record) : "---",
             meta?.runningLate ?? "",
             statusLabel,
-            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel),
+            tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, record?.id, dayRecords),
             meta?.deduction || "",
           ],
           status: statusLabel,
@@ -951,94 +962,151 @@ export default function MonthlyAttendancePage() {
     return value;
   }
 
+  function pushDeductionSummaryRow(
+    rows: DeductionSummaryDayRow[],
+    employee: any,
+    dateKey: string,
+    statusLabel: string,
+    deduction: string,
+    tardyCount: number | string,
+    options: {
+      session?: EmployeeReportSession;
+      record?: any;
+      importedDay?: ImportedMonthlyDay;
+    } = {},
+  ) {
+    if (!shouldIncludeInDeductionSummary(statusLabel)) return;
+
+    const dayRecords = employee.byDate[dateKey] || [];
+    const { session, importedDay } = options;
+    const record =
+      options.record ??
+      (session ? findRecordForSession(dayRecords, session) : dayRecords[0]);
+
+    rows.push({
+      date: formatDateKey(dateKey),
+      tPunchIn: importedDay
+        ? deductionSummaryTungsten(importedDay.tPunchIn || "---")
+        : session
+          ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchIn))
+          : "--",
+      clockIn:
+        session && session.hrmClockIn !== "-"
+          ? session.hrmClockIn
+          : deductionSummaryClock(record, employee, dateKey, "in"),
+      clockOut:
+        session && session.hrmClockOut !== "-"
+          ? session.hrmClockOut
+          : deductionSummaryClock(record, employee, dateKey, "out"),
+      tPunchOut: importedDay
+        ? deductionSummaryTungsten(importedDay.tPunchOut || "---")
+        : session
+          ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
+          : "--",
+      status: formatDeductionSummaryStatus(normalizeAttendanceStatus(statusLabel)),
+      tardyCount,
+      tardyNote: tardyNoteForCell(
+        employee.employeeId,
+        dateKey,
+        statusLabel,
+        record?.id,
+        dayRecords,
+      ),
+      deduction,
+    });
+  }
+
   function buildDeductionSummaryBlock(employee: any): DeductionSummaryEmployeeBlock {
     const rows: DeductionSummaryDayRow[] = [];
     if (!monthInfo.days) {
       return { employeeName: employee.employeeName, rows, totalDeduction: 0 };
     }
 
-    const employeeSessions = employee.isImported
-      ? []
-      : sessionsByEmployeeId.get(employee.employeeId) || [];
-
-    monthInfo.days.forEach((day) => {
-      const workingDay = isWorkingDay(day.dateKey);
-      if (!workingDay) return;
-
-      const dayRecords = employee.byDate[day.dateKey] || [];
-      const meta = employee.dateMeta[day.dateKey];
-      const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
-      const session = daySessions[0];
-
-      if (dayRecords.length === 0 && daySessions.length === 0) {
-        let statusLabel = "Absent";
-        let deduction = "100%";
-        if (
-          approvedLeavesMap[employee.employeeId] &&
-          approvedLeavesMap[employee.employeeId][day.dateKey]
-        ) {
-          statusLabel = "Leave";
-          deduction = "0%";
-        }
-        if (!shouldIncludeInDeductionSummary(statusLabel)) return;
-        rows.push({
-          date: formatDateKey(day.dateKey),
-          tPunchIn: "--",
-          clockIn: "--",
-          clockOut: "--",
-          tPunchOut: "--",
-          status: formatDeductionSummaryStatus(statusLabel),
-          tardyCount: meta?.runningLate ?? "",
+    if (employee.isImported && employee.importedDays?.length) {
+      const days = [...employee.importedDays].sort((a: ImportedMonthlyDay, b: ImportedMonthlyDay) =>
+        a.dateKey.localeCompare(b.dateKey),
+      );
+      const fiveHourShift = importedEmployeeUsesFiveHourShift(days);
+      days.forEach((day: ImportedMonthlyDay) => {
+        if (!isWorkingDay(day.dateKey)) return;
+        const meta = employee.dateMeta?.[day.dateKey];
+        const statusLabel =
+          meta?.statusLabel ?? getImportedDayDisplayFields(day, { fiveHourShift }).status;
+        const deduction =
+          meta?.deduction ?? getImportedDayDisplayFields(day, { fiveHourShift }).deduction;
+        pushDeductionSummaryRow(
+          rows,
+          employee,
+          day.dateKey,
+          statusLabel,
           deduction,
-        });
-        return;
-      }
-
-      const statusLabel = meta?.statusLabel || "On Time";
-      if (!shouldIncludeInDeductionSummary(statusLabel)) return;
-
-      const importedDay = employee.isImported
-        ? (employee.importedDays as ImportedMonthlyDay[] | undefined)?.find(
-            (d) => d.dateKey === day.dateKey,
-          )
-        : undefined;
-
-      const record = dayRecords[0];
-      rows.push({
-        date: formatDateKey(day.dateKey),
-        tPunchIn: importedDay
-          ? deductionSummaryTungsten(importedDay.tPunchIn || "---")
-          : session
-            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchIn))
-            : "--",
-        clockIn:
-          session && session.hrmClockIn !== "-"
-            ? session.hrmClockIn
-            : deductionSummaryClock(record, employee, day.dateKey, "in"),
-        clockOut:
-          session && session.hrmClockOut !== "-"
-            ? session.hrmClockOut
-            : deductionSummaryClock(record, employee, day.dateKey, "out"),
-        tPunchOut: importedDay
-          ? deductionSummaryTungsten(importedDay.tPunchOut || "---")
-          : session
-            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
-            : "--",
-        status: formatDeductionSummaryStatus(normalizeAttendanceStatus(statusLabel)),
-        tardyCount: meta?.runningLate ?? "",
-        deduction: meta?.deduction || "",
+          formatImportedRunningLate(meta?.runningLate),
+          { importedDay: day },
+        );
       });
-    });
+    } else {
+      const employeeSessions = sessionsByEmployeeId.get(employee.employeeId) || [];
 
-    const totalDeduction = rows.reduce(
-      (sum, row) => sum + parseDeductionPercent(row.deduction),
-      0,
-    );
+      monthInfo.days.forEach((day) => {
+        if (!isWorkingDay(day.dateKey)) return;
+
+        const dayRecords = employee.byDate[day.dateKey] || [];
+        const meta = employee.dateMeta[day.dateKey];
+        const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
+
+        if (dayRecords.length === 0 && daySessions.length === 0) {
+          let statusLabel = "Absent";
+          let deduction = "100%";
+          if (
+            approvedLeavesMap[employee.employeeId] &&
+            approvedLeavesMap[employee.employeeId][day.dateKey]
+          ) {
+            statusLabel = "Leave";
+            deduction = "0%";
+          }
+          pushDeductionSummaryRow(
+            rows,
+            employee,
+            day.dateKey,
+            statusLabel,
+            deduction,
+            meta?.runningLate ?? "",
+          );
+          return;
+        }
+
+        const statusLabel = meta?.statusLabel || "On Time";
+        if (!shouldIncludeInDeductionSummary(statusLabel)) return;
+
+        const deduction = meta?.deduction || "";
+        const tardyCount = meta?.runningLate ?? "";
+        const sessionsToExport =
+          daySessions.length > 0
+            ? daySessions
+            : [
+                {
+                  sessionDate: day.dateKey,
+                  tungstenPunchIn: "-",
+                  hrmClockIn: "-",
+                  hrmClockOut: "-",
+                  tungstenPunchOut: "-",
+                },
+              ];
+
+        sessionsToExport.forEach((session) => {
+          const record = findRecordForSession(dayRecords, session);
+          pushDeductionSummaryRow(rows, employee, day.dateKey, statusLabel, deduction, tardyCount, {
+            session,
+            record,
+          });
+        });
+      });
+    }
 
     return {
       employeeName: employee.employeeName,
       rows,
-      totalDeduction,
+      totalDeduction: calculateTotalDeduction(employee),
     };
   }
 
@@ -1443,7 +1511,7 @@ export default function MonthlyAttendancePage() {
                                 <td style={{ color: uiStatusTextColor(statusLabel), fontWeight: 600 }}>
                                   {normalizeAttendanceStatus(statusLabel)}
                                 </td>
-                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel)}</td>
+                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, undefined, dayRecords)}</td>
                                 <td>{deduction}</td>
                               </tr>
                             );
@@ -1513,7 +1581,8 @@ export default function MonthlyAttendancePage() {
                                     employee.employeeId,
                                     day.dateKey,
                                     recordStatus,
-                                    record?.id
+                                    record?.id,
+                                    dayRecords
                                   )}
                                 </td>
                                 <td>{meta?.deduction || ""}</td>
