@@ -1,0 +1,729 @@
+================================================================================
+  INTERACT HRM 2.0
+  CENTRALIZED ACCESS CONTROL — IMPLEMENTATION PLAN
+  "System Control" from one page (Roles & Permissions → live control center)
+  Version: 1.0 | June 2026
+================================================================================
+
+
+--------------------------------------------------------------------------------
+WHAT YOU WANT (CONFIRMED)
+--------------------------------------------------------------------------------
+
+You want ONE professional admin page where Super Admin (and later delegated admins)
+can do everything without a developer opening backend code for every change:
+
+  1. Create / edit ROLES (Manager, Team Lead, HR, custom roles as org grows)
+  2. Tick CHECKBOXES for which FEATURES each role can use
+  3. Assign any EMPLOYEE a role from a dropdown → they instantly get that access
+  4. Enable / disable features from the UI when business rules change
+  5. Scale easily: new department, new title, new role — all from frontend
+
+The existing page `/admin/roles-permissions` is static (disabled checkboxes).
+This plan turns it into the real **System Control Center** for the whole HRM.
+
+
+================================================================================
+SECTION 1 — DESIGN PRINCIPLE (FRONTEND-FIRST, CODE-MINIMAL)
+================================================================================
+
+GOAL: Developer adds a new feature ONCE in a registry file. After that, Super
+Admin controls who sees it from the UI — no second code change for access.
+
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                    SYSTEM CONTROL CENTER                         │
+    │              /admin/roles-permissions (expanded)                 │
+    ├─────────────────────────────────────────────────────────────────┤
+    │  Tab 1: Roles          Create "Warehouse Manager", clone HR      │
+    │  Tab 2: Permissions    Checkmarks per role × feature             │
+    │  Tab 3: Assign Users   Employee dropdown → Role dropdown → Save  │
+    │  Tab 4: Feature List   Enable/disable features globally          │
+    │  Tab 5: Data Scope     Dept / Team / All (per role defaults)     │
+    └───────────────────────────────┬─────────────────────────────────┘
+                                    │ saves to MySQL
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────┐
+    │  hrm_roles  |  hrm_features  |  hrm_role_permissions            │
+    │  hrm_employees.role_id (or role_slug)                          │
+    └───────────────────────────────┬─────────────────────────────────┘
+                                    │ read at login
+                                    ▼
+    ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐
+    │ Dynamic menu │    │ Page guard   │    │ API permission check │
+    │ (sidebar)    │    │ (client)     │    │ (server — one helper)│
+    └──────────────┘    └──────────────┘    └──────────────────────┘
+
+
+RULE: Features are DATA, not hardcoded role names in 50 files.
+
+  • BAD:  if (role === "HOD") show monthly-attendance
+  • GOOD: if (hasPermission("attendance.monthly.view")) show link from DB
+
+
+================================================================================
+SECTION 2 — THE THREE PILLARS
+================================================================================
+
+PILLAR A — FEATURE CATALOG (what can be turned on/off)
+──────────────────────────────────────────────────────
+Every screen, button, and API action becomes a row in `hrm_features`.
+
+Examples:
+  attendance.summary.view      → Attendance Summary page (view)
+  attendance.summary.export    → Export button on that page
+  attendance.manage.edit         → Manage Attendance (edit records)
+  leave.approve.manager          → Manager first approval
+  leave.approve.hr               → HR final approval
+  payroll.monthly.view           → Monthly Payroll page
+  payroll.monthly.edit           → Edit payroll rows
+  team.view.attendance           → Team Lead: My Team attendance
+  system.roles.manage            → This control center itself
+
+Grouped in UI as:
+  Attendance | Leave | Payroll | Onboarding | Shifts | Reports | System
+
+
+PILLAR B — ROLES (who people are in the org)
+────────────────────────────────────────────
+Roles are rows in `hrm_roles`, created from UI.
+
+Built-in templates (seed data, editable):
+  Super Admin | CEO | HR | Manager | Team Lead | Officer | Accountant | Recruiter
+
+Custom (user-created):
+  "Night Shift Manager" | "Regional HOD" | "Intern" | etc.
+
+Each role has:
+  • display_name, slug, description
+  • hierarchy_level (number — for org chart sort)
+  • data_scope default: ALL | DEPARTMENT | TEAM | SELF
+  • is_system (Super Admin cannot be deleted)
+  • portal_type: ADMIN_SHELL | EMPLOYEE_SHELL | LEADER_SHELL
+
+
+PILLAR C — USER ASSIGNMENT (which employee gets which role)
+───────────────────────────────────────────────────────────
+On employee record OR on System Control → Assign Users tab:
+
+  Employee: [ Ali Khan ▼ ]     Primary role: [ Manager ▼ ]
+  Optional secondary roles: [ + HR Viewer ]  (future: multi-role)
+
+Save → updates hrm_employees.role_id (and legacy role string for compatibility).
+
+Manager of department / Team Lead of team stays separate tables (hrm_teams) but
+ROLE still drives menu and API permissions.
+
+
+================================================================================
+SECTION 3 — SYSTEM CONTROL UI (PROFESSIONAL LAYOUT)
+================================================================================
+
+Rename sidebar link: "Roles & Permissions" → **"System Control"**
+Route can stay: /admin/roles-permissions (or /admin/system-control)
+
+--------------------------------------------------------------------------------
+3.1 Page layout (single app shell, 5 tabs)
+--------------------------------------------------------------------------------
+
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  System Control                                    [Super Admin] │
+    ├──────────┬─────────────┬──────────────┬────────────┬───────────┤
+    │  Roles   │ Permissions │ Assign Users │  Features  │  Settings │
+    └──────────┴─────────────┴──────────────┴────────────┴───────────┘
+
+
+TAB 1 — ROLES
+─────────────
+  Left: role list (search, + New Role)
+  Right: role detail card
+    • Name, slug, description
+    • Portal: Admin / Employee / Team Lead dashboard
+    • Default data scope: All | Department | Team | Self
+    • Hierarchy level (1 = CEO, 99 = Officer)
+    • Buttons: [Clone role] [Delete] (disabled if is_system or users assigned)
+    • Count: "12 employees use this role"
+
+  [+ New Role] opens modal:
+    Name: ___________  Clone from: [ Manager ▼ ]  [Create]
+
+
+TAB 2 — PERMISSIONS (the checkmark matrix you want)
+────────────────────────────────────────────────────
+  Top: Role selector [ Manager ▼ ]  [Save changes]  [Reset to template]
+
+  Accordion by module (expand/collapse):
+
+    ▼ Attendance (8 permissions)
+        [✓] View attendance summary
+        [✓] Export attendance summary
+        [ ] Manage attendance (edit)
+        [✓] View monthly attendance
+        [✓] Export monthly / deduction summary
+        [ ] Manage breaks
+        ...
+
+    ▼ Leave (6 permissions)
+        [ ] Apply own leave          (usually Officer)
+        [✓] Approve leave (Manager step)
+        [ ] Approve leave (HR final)
+        ...
+
+  Quick actions:
+    [Select all in group] [Clear all] [Copy from another role ▼]
+
+  Visual: Super Admin row shows all checked (locked).
+
+
+TAB 3 — ASSIGN USERS
+────────────────────
+  Filters: Department [All ▼]  Search name _______
+
+  Table:
+  ┌────────────┬────────────┬──────────────┬────────────┬─────────┐
+  │ Emp ID     │ Name       │ Department   │ Role ▼     │ Actions │
+  ├────────────┼────────────┼──────────────┼────────────┼─────────┤
+  │ 1042       │ Sara Ali   │ HR           │ HR      ▼  │  Save   │
+  │ 1088       │ Ahmed Khan │ Production   │ Manager ▼  │  Save   │
+  │ 1201       │ Usman      │ Production   │ Team Lead▼ │  Save   │
+  └────────────┴────────────┴──────────────┴────────────┴─────────┘
+
+  Bulk assign: Select rows → Role [ Officer ▼ ] → [Apply to selected]
+
+  Changing role shows preview: "This user will lose: Payroll edit, Add employee"
+
+
+TAB 4 — FEATURES (global enable/disable)
+────────────────────────────────────────
+  List all registered features with toggle:
+
+  ┌─────────────────────────────┬──────────┬─────────────────────────┐
+  │ Feature                     │ Enabled  │ Notes                   │
+  ├─────────────────────────────┼──────────┼─────────────────────────┤
+  │ Biometric face clock-in     │ [ON]     │ Hide for all if OFF     │
+  │ Tungsten IN/OUT sync page     │ [ON]     │                         │
+  │ Prayer break tracking       │ [ON]     │                         │
+  │ Two-step leave approval     │ [OFF]    │ Enable when ready       │
+  │ Team Lead module            │ [OFF]    │ Beta                    │
+  └─────────────────────────────┴──────────┴─────────────────────────┘
+
+  If feature is globally OFF → hidden from every role (even if permission checked).
+
+
+TAB 5 — SETTINGS
+────────────────
+  • Default role for new employees: [ Officer ▼ ]
+  • Leave workflow: [ ] Single approver  [✓] Manager then HR
+  • Session timeout minutes
+  • Who can open System Control: only Super Admin (or list roles)
+
+
+================================================================================
+SECTION 4 — DATABASE TABLES (REQUIRED)
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1 Core tables
+--------------------------------------------------------------------------------
+
+  CREATE TABLE hrm_roles (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    slug            VARCHAR(64) NOT NULL UNIQUE,      -- 'manager', 'team_lead'
+    display_name    VARCHAR(128) NOT NULL,            -- 'Manager'
+    description     TEXT NULL,
+    portal_type     ENUM('admin','employee','leader') NOT NULL DEFAULT 'employee',
+    data_scope      ENUM('all','department','team','self') NOT NULL DEFAULT 'self',
+    hierarchy_level SMALLINT NOT NULL DEFAULT 50,
+    is_system       TINYINT(1) NOT NULL DEFAULT 0,      -- 1 = cannot delete
+    is_active       TINYINT(1) NOT NULL DEFAULT 1,
+    cloned_from_id  INT UNSIGNED NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  );
+
+
+  CREATE TABLE hrm_features (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    feature_key     VARCHAR(128) NOT NULL UNIQUE,     -- 'attendance.summary.view'
+    display_name    VARCHAR(256) NOT NULL,
+    module_group    VARCHAR(64) NOT NULL,               -- 'Attendance'
+    description     TEXT NULL,
+    route_path      VARCHAR(256) NULL,                  -- '/attendance-summary'
+    api_methods     JSON NULL,                          -- [{"method":"GET","path":"/api/attendance"}]
+    permission_type ENUM('view','create','edit','delete','approve','export') DEFAULT 'view',
+    parent_key      VARCHAR(128) NULL,                -- for nested UI
+    sort_order      INT NOT NULL DEFAULT 0,
+    is_globally_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    is_system       TINYINT(1) NOT NULL DEFAULT 1,      -- registry features
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+
+  CREATE TABLE hrm_role_permissions (
+    role_id         INT UNSIGNED NOT NULL,
+    feature_key     VARCHAR(128) NOT NULL,
+    allowed         TINYINT(1) NOT NULL DEFAULT 0,
+    PRIMARY KEY (role_id, feature_key),
+    FOREIGN KEY (role_id) REFERENCES hrm_roles(id) ON DELETE CASCADE
+  );
+
+
+  ALTER TABLE hrm_employees
+    ADD COLUMN role_id INT UNSIGNED NULL AFTER role,
+    ADD INDEX idx_role_id (role_id);
+
+  -- Keep hrm_employees.role (string) synced from hrm_roles.slug for backward compat
+  -- until all code migrated.
+
+
+--------------------------------------------------------------------------------
+4.2 Optional but recommended
+--------------------------------------------------------------------------------
+
+  CREATE TABLE hrm_role_permission_audit (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    changed_by      INT UNSIGNED NOT NULL,
+    role_id         INT UNSIGNED NULL,
+    employee_id     INT UNSIGNED NULL,
+    change_type     VARCHAR(64),    -- 'permission_toggle', 'role_assign', 'role_create'
+    payload         JSON,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE hrm_employee_roles (
+    employee_id     INT UNSIGNED NOT NULL,
+    role_id         INT UNSIGNED NOT NULL,
+    is_primary      TINYINT(1) DEFAULT 1,
+    PRIMARY KEY (employee_id, role_id)
+  );
+  -- Use when one person needs HR + Manager later; Phase 2.
+
+
+--------------------------------------------------------------------------------
+4.3 Seed data (run once)
+--------------------------------------------------------------------------------
+
+  Roles to insert:
+    super_admin  | Super Admin  | admin  | all  | level 1 | is_system=1
+    ceo          | CEO          | admin  | all  | level 2 | is_system=1
+    hr           | HR           | admin  | all  | level 10
+    manager      | Manager      | admin  | department | level 20
+    team_lead    | Team Lead    | leader | team | level 30
+    officer      | Officer      | employee | self | level 90
+    accountant   | Accountant   | admin  | all  | level 15
+    recruiter    | Recruiter    | admin  | department | level 25
+
+  Features: import from lib/access-control/feature-registry.ts (see Section 6)
+  Permissions: seed templates per role (Manager gets attendance.* view + dept, etc.)
+
+
+================================================================================
+SECTION 5 — HOW ACCESS FLOWS (RUNTIME)
+================================================================================
+
+--------------------------------------------------------------------------------
+5.1 Login
+--------------------------------------------------------------------------------
+
+    User logs in (/api/employee-login or admin)
+            │
+            ▼
+    Load employee + role_id → join hrm_roles
+            │
+            ▼
+    GET /api/access-control/me
+      returns: {
+        role: { slug, display_name, portal_type, data_scope },
+        permissions: ['attendance.summary.view', 'leave.approve.manager', ...],
+        features_enabled: ['biometric', 'two_step_leave', ...],
+        menu: [ { group, links: [{ name, path, icon }] } ]
+      }
+            │
+            ▼
+    Store in session (httpOnly cookie JWT or server session — not only localStorage)
+            │
+            ├── portal_type = admin  → layout-dashboard + dynamic menu
+            ├── portal_type = leader → leader-dashboard layout
+            └── portal_type = employee → employee-dashboard layout
+
+
+--------------------------------------------------------------------------------
+5.2 Sidebar (no more hardcoded sidebarLinks only)
+--------------------------------------------------------------------------------
+
+  layout-dashboard.tsx becomes:
+
+    const { menu } = useAccessControl();   // from /api/access-control/me
+    render menu groups from API response
+
+  Fallback: if API fails, show minimal safe menu for Officer.
+
+  Super Admin: menu = all features where globally enabled.
+
+
+--------------------------------------------------------------------------------
+5.3 Page protection (client)
+--------------------------------------------------------------------------------
+
+  Each admin page top:
+
+    useRequirePermission('attendance.monthly.view');
+    // redirects to /unauthorized if missing
+
+  One hook, one permission key — no role name checks in pages.
+
+
+--------------------------------------------------------------------------------
+5.4 API protection (server — mandatory)
+--------------------------------------------------------------------------------
+
+  One shared helper: lib/access-control/require-permission.ts
+
+    await requirePermission(req, 'attendance.manage.edit');
+    // reads session, loads permissions from DB cache, returns 403 if denied
+    // also applies data_scope: department → filter SQL by user's department_id
+
+  Developer never writes role if/else in each API — only permission key.
+
+
+--------------------------------------------------------------------------------
+5.5 Data scope (automatic filtering)
+--------------------------------------------------------------------------------
+
+    permission + scope        What query returns
+    ─────────────────────     ─────────────────────────────────────
+    all                       All employees / all departments
+    department                Only employee_jobs.department_id = user's dept
+    team                      Only hrm_team_members for this team_lead
+    self                      Only employee_id = current user
+
+  Scope comes from hrm_roles.data_scope unless feature overrides in DB.
+
+
+================================================================================
+SECTION 6 — FEATURE REGISTRY (DEVELOPER ADDS NEW FEATURE ONCE)
+================================================================================
+
+Single file: lib/access-control/feature-registry.ts
+
+  export const FEATURE_REGISTRY = [
+    {
+      key: 'attendance.summary.view',
+      name: 'View Attendance Summary',
+      group: 'Attendance',
+      route: '/attendance-summary',
+      type: 'view',
+      apis: [{ method: 'GET', path: '/api/attendance' }],
+    },
+    {
+      key: 'attendance.manage.edit',
+      name: 'Edit Attendance Records',
+      group: 'Attendance',
+      route: '/admin/manage-attendance',
+      type: 'edit',
+      apis: [{ method: 'PUT', path: '/api/attendance' }],
+    },
+    // ... all features
+  ];
+
+DEPLOY SCRIPT (run on release or admin button "Sync feature registry"):
+
+  POST /api/access-control/sync-registry
+    → upserts all keys from FEATURE_REGISTRY into hrm_features
+    → does NOT remove permissions already ticked in UI
+    → new features appear in System Control unchecked for all roles except Super Admin
+
+AFTER THIS: Super Admin ticks the new feature for Manager / HR from UI.
+Developer does NOT edit role logic again.
+
+
+================================================================================
+SECTION 7 — COMPLETE FEATURE LIST (INITIAL REGISTRY)
+================================================================================
+
+Use this as the first version of checkboxes in Permissions tab.
+(✓ = suggest default ON for Super Admin / CEO only; templates set others.)
+
+  MODULE: Dashboard & Main
+  ───────────────────────
+  dashboard.view
+  admin.home.view
+
+  MODULE: Leave / PTO
+  ─────────────────
+  leave.list.view
+  leave.apply.self
+  leave.approve.manager
+  leave.approve.hr
+  leave.balances.view
+  leave.balances.edit
+  leave.calendar.view
+  leave.summary.monthly.view
+
+  MODULE: Attendance
+  ──────────────────
+  attendance.summary.view
+  attendance.summary.export
+  attendance.break.summary.view
+  attendance.prayer.summary.view
+  attendance.manage.view
+  attendance.manage.edit
+  attendance.breaks.manage.edit
+  attendance.monthly.view
+  attendance.monthly.export
+  attendance.deduction.export
+  attendance.tungsten.view
+  attendance.employee.report.view
+
+  MODULE: Onboarding & People
+  ───────────────────────────
+  employees.add
+  employees.list.view
+  employees.edit
+  employees.credentials.manage
+  employees.face.enroll
+  employees.status.update
+  recruitment.view
+  recruitment.edit
+
+  MODULE: Shifts
+  ──────────────
+  shifts.scheduler.view
+  shifts.scheduler.edit
+  shifts.management.view
+  shifts.management.edit
+
+  MODULE: Payroll & Finance
+  ─────────────────────────
+  payroll.monthly.view
+  payroll.monthly.edit
+  payroll.commissions.view
+  payroll.commissions.edit
+  payroll.advance.view
+  payroll.advance.edit
+  payroll.loan.view
+  payroll.loan.edit
+
+  MODULE: Organization
+  ────────────────────
+  org.departments.view
+  org.departments.edit
+  org.events.view
+  org.events.edit
+  org.calendar.view
+  org.calendar.edit
+  org.policy.view
+  org.policy.edit
+
+  MODULE: Team Lead
+  ─────────────────
+  team.dashboard.view
+  team.attendance.view
+  team.breaks.view
+  team.prayer.view
+  team.management.assign          (HR: assign team members)
+
+  MODULE: System Control
+  ──────────────────────
+  system.control.access
+  system.roles.create
+  system.roles.delete
+  system.permissions.edit
+  system.features.toggle
+  system.users.assign_role
+  system.audit.view
+
+  MODULE: Employee Portal (Officer shell)
+  ───────────────────────────────────────
+  portal.dashboard.view
+  portal.myinfo.view
+  portal.time.clock
+  portal.time.history
+  portal.leave.apply
+  portal.credentials.edit
+
+
+================================================================================
+SECTION 8 — DEFAULT ROLE TEMPLATES (STARTING CHECKMARKS)
+================================================================================
+
+When admin clicks [Clone from Manager], these templates apply:
+
+  SUPER ADMIN / CEO — all keys = allowed (system enforced, not editable)
+
+  HR — all except:
+    system.roles.delete, system.permissions.edit (optional: HR can assign users only)
+
+  MANAGER — suggested ticks:
+    attendance.*.view, attendance.manage.edit (dept scope),
+    leave.list.view, leave.approve.manager,
+    attendance.monthly.view, attendance.monthly.export,
+    attendance.employee.report.view,
+    employees.list.view (dept),
+    shifts.management.view,
+    org.calendar.view, org.events.view
+
+  TEAM LEAD — suggested ticks:
+    portal.* (self), team.dashboard.view, team.attendance.view,
+    team.breaks.view, team.prayer.view
+
+  OFFICER — suggested ticks:
+    portal.dashboard.view, portal.myinfo.view, portal.time.clock,
+    portal.time.history, portal.leave.apply, portal.credentials.edit
+
+  ACCOUNTANT — payroll module view + edit, attendance.monthly.view (read)
+
+  RECRUITER — recruitment.*, employees.list.view, employees.add
+
+
+================================================================================
+SECTION 9 — API ENDPOINTS (BACKEND — SMALL SURFACE)
+================================================================================
+
+All under /api/access-control/
+
+  GET    /me                     Current user permissions + menu
+  GET    /roles                  List roles
+  POST   /roles                  Create role (clone_from optional)
+  PUT    /roles/:id              Update role metadata
+  DELETE /roles/:id              Delete if not system & no users
+
+  GET    /roles/:id/permissions  Matrix for one role
+  PUT    /roles/:id/permissions  Save checkmarks [{ feature_key, allowed }]
+
+  GET    /features               All features (grouped)
+  PUT    /features/:key/toggle   Global enable/disable
+
+  GET    /assignments            Employees with roles (filter dept)
+  PUT    /assignments/:empId     Set role_id
+
+  POST   /sync-registry          Dev/Super Admin: sync feature-registry.ts → DB
+
+  GET    /audit                  Permission change log
+
+Every other API in the app calls requirePermission() — not new CRUD here.
+
+
+================================================================================
+SECTION 10 — MIGRATION FROM TODAY'S SYSTEM
+================================================================================
+
+  Step 1: Create tables + seed roles/features
+  Step 2: Map existing hrm_employees.role string → role_id
+            BOD/CEO → ceo
+            HOD → manager
+            Management → manager (or new role)
+            Leader → team_lead
+            Officer → officer
+  Step 3: Replace static roles-permissions page with System Control UI
+  Step 4: Add GET /api/access-control/me on login
+  Step 5: Switch layout-dashboard to dynamic menu (feature flag: USE_DYNAMIC_MENU)
+  Step 6: Add requirePermission to top 10 critical APIs (attendance, leaves, payroll)
+  Step 7: Roll out to all APIs over 2–3 sprints
+  Step 8: Remove hardcoded admin@interact.com OR link it to Super Admin employee row
+
+  Backward compatibility:
+    Keep hrm_employees.role string updated when role_id changes (trigger or app logic)
+    until all redirects (auth/page.tsx) use portal_type from DB.
+
+
+================================================================================
+SECTION 11 — IMPLEMENTATION PHASES (TIMELINE)
+================================================================================
+
+  PHASE 1 — Foundation (1–2 weeks)
+  ────────────────────────────────
+  • SQL tables + seed
+  • feature-registry.ts with full feature list (Section 7)
+  • APIs: roles, permissions, assignments, /me
+  • System Control UI: Tabs 1–3 working (Roles, Permissions, Assign Users)
+  • Map employees to role_id
+
+  PHASE 2 — Dynamic UI (1 week)
+  ──────────────────────────────
+  • Dynamic admin sidebar from /me
+  • useRequirePermission hook on pages
+  • Login stores session; portal_type routing (admin vs employee vs leader)
+  • Tab 4 Features global toggles
+
+  PHASE 3 — API enforcement (2 weeks)
+  ───────────────────────────────────
+  • requirePermission on all APIs
+  • data_scope SQL helpers (department, team, self)
+  • Unauthorized page
+  • Audit log on permission changes
+
+  PHASE 4 — Polish & scale (ongoing)
+  ──────────────────────────────────
+  • Clone role, bulk assign, permission preview on role change
+  • Multi-role support (optional)
+  • Tab 5 settings (leave workflow, etc.)
+  • Remove legacy hardcoded checks
+
+
+================================================================================
+SECTION 12 — WHAT STAYS IN CODE vs WHAT SUPER ADMIN CONTROLS
+================================================================================
+
+  ┌─────────────────────────────┬──────────────────┬─────────────────────────┐
+  │ Item                        │ Developer (code) │ Super Admin (UI)        │
+  ├─────────────────────────────┼──────────────────┼─────────────────────────┤
+  │ New page exists             │ Yes — build page │ —                       │
+  │ Register feature key        │ Yes — one line   │ —                       │
+  │ Sync registry to DB         │ Deploy / button  │ Click "Sync features"   │
+  │ Who can open that page      │ —                │ Permissions checkmarks  │
+  │ Create "Warehouse Manager"  │ —                │ Roles tab               │
+  │ Assign Ahmed as Manager     │ —                │ Assign Users dropdown   │
+  │ Disable prayer module       │ —                │ Features toggle OFF     │
+  │ Manager approves leave      │ —                │ leave.approve.manager ✓ │
+  │ Enable two-step leave       │ —                │ Settings tab            │
+  └─────────────────────────────┴──────────────────┴─────────────────────────┘
+
+
+================================================================================
+SECTION 13 — SUCCESS CRITERIA (YOU KNOW IT WORKS WHEN…)
+================================================================================
+
+  1. Super Admin creates role "Floor Supervisor" cloned from Manager in 30 seconds
+  2. Ticks 5 attendance permissions, saves — no deploy needed
+  3. Assigns employee from dropdown — they see new menu on next login
+  4. Unchecks "Payroll edit" for Manager — all managers lose edit instantly
+  5. Developer adds new page + one registry entry — appears in System Control after sync
+  6. API returns 403 if user tampers URL without permission
+  7. Team Lead sees only team scope data, not whole company
+
+
+================================================================================
+SECTION 14 — RISKS & HOW WE AVOID THEM
+================================================================================
+
+  Risk: Locking out all admins
+  Fix: Super Admin is_system; always keep one break-glass DB flag or env override
+
+  Risk: Performance (loading permissions every request)
+  Fix: Cache permissions in JWT/session for 15 min; invalidate on role change
+
+  Risk: Too many checkboxes confuse users
+  Fix: Group by module; "Apply template" buttons; clone role
+
+  Risk: Frontend-only security (hackable)
+  Fix: APIs MUST use requirePermission — UI hiding is not enough
+
+  Risk: Old code still checks role === 'HOD'
+  Fix: Migration checklist; grep and replace with permission keys in phases
+
+
+================================================================================
+NEXT STEP (RECOMMENDED)
+================================================================================
+
+  Approve this plan → start Phase 1:
+    1. scripts/hrm_access_control.sql
+    2. lib/access-control/feature-registry.ts
+    3. app/api/access-control/*
+    4. Rebuild app/admin/roles-permissions → System Control (3 tabs MVP)
+
+  Related document: docs/HRM_Organizational_Hierarchy_Technical_Document.txt
+
+================================================================================
+                              END OF PLAN
+================================================================================

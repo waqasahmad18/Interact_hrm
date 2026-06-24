@@ -137,9 +137,14 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     syncBreakStartAnchor(breakTimer);
     clearBreakSyncInterval(employeeId);
     if (breakIntervalId) clearInterval(breakIntervalId);
-    breakPauseStartedAtRef.current = Date.now();
-    setBreakTimerPaused(true);
     clearBreakPauseTick();
+
+    if (breakTimerPausedRef.current && breakPauseStartedAtRef.current) {
+      breakPausedMsRef.current += Date.now() - breakPauseStartedAtRef.current;
+    }
+    breakPauseStartedAtRef.current = Date.now();
+    breakTimerPausedRef.current = true;
+    setBreakTimerPaused(true);
 
     breakPauseTickRef.current = setInterval(() => {
       if (!breakStartMsRef.current) return;
@@ -163,6 +168,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       breakPausedMsRef.current += Date.now() - breakPauseStartedAtRef.current;
       breakPauseStartedAtRef.current = null;
     }
+    breakTimerPausedRef.current = false;
     setBreakTimerPaused(false);
     clearBreakPauseTick();
     clearBreakSyncInterval(employeeId);
@@ -181,6 +187,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     breakStartMsRef.current = null;
     breakPausedMsRef.current = 0;
     breakPauseStartedAtRef.current = null;
+    breakTimerPausedRef.current = false;
     setBreakTimerPaused(false);
     clearBreakPauseTick();
   }, [clearBreakPauseTick]);
@@ -206,9 +213,14 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     syncPrayerStartAnchor(prayerBreakTimer);
     clearPrayerBreakSyncInterval(employeeId);
     if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
-    prayerPauseStartedAtRef.current = Date.now();
-    setPrayerTimerPaused(true);
     clearPrayerPauseTick();
+
+    if (prayerTimerPausedRef.current && prayerPauseStartedAtRef.current) {
+      prayerPausedMsRef.current += Date.now() - prayerPauseStartedAtRef.current;
+    }
+    prayerPauseStartedAtRef.current = Date.now();
+    prayerTimerPausedRef.current = true;
+    setPrayerTimerPaused(true);
 
     prayerPauseTickRef.current = setInterval(() => {
       if (!prayerStartMsRef.current) return;
@@ -234,6 +246,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
       prayerPausedMsRef.current += Date.now() - prayerPauseStartedAtRef.current;
       prayerPauseStartedAtRef.current = null;
     }
+    prayerTimerPausedRef.current = false;
     setPrayerTimerPaused(false);
     clearPrayerPauseTick();
     clearPrayerBreakSyncInterval(employeeId);
@@ -252,6 +265,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     prayerStartMsRef.current = null;
     prayerPausedMsRef.current = 0;
     prayerPauseStartedAtRef.current = null;
+    prayerTimerPausedRef.current = false;
     setPrayerTimerPaused(false);
     clearPrayerPauseTick();
   }, [clearPrayerPauseTick]);
@@ -279,12 +293,12 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
   const handleVerifyOpen = React.useCallback(
     (action: BiometricAction) => {
       if (action === "break_end") {
-        breakEndAtRef.current = new Date();
+        if (!breakEndAtRef.current) breakEndAtRef.current = new Date();
         pauseBreakTimerForVerify();
         return;
       }
       if (action === "prayer_end") {
-        prayerEndAtRef.current = new Date();
+        if (!prayerEndAtRef.current) prayerEndAtRef.current = new Date();
         pausePrayerTimerForVerify();
       }
     },
@@ -299,8 +313,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           resumeBreakTimerAfterVerify();
           return;
         }
-        clearBreakPauseTick();
-        setBreakTimerPaused(false);
+        // Face verified — stay paused until break end API succeeds or user cancels.
         return;
       }
       if (action === "prayer_end") {
@@ -309,16 +322,11 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           resumePrayerTimerAfterVerify();
           return;
         }
-        clearPrayerPauseTick();
-        setPrayerTimerPaused(false);
+        // Stay paused until prayer end API succeeds or user cancels.
+        return;
       }
     },
-    [
-      clearBreakPauseTick,
-      clearPrayerPauseTick,
-      resumeBreakTimerAfterVerify,
-      resumePrayerTimerAfterVerify,
-    ]
+    [resumeBreakTimerAfterVerify, resumePrayerTimerAfterVerify]
   );
 
   const biometricGateOptions = React.useMemo(
@@ -654,9 +662,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         pauseBreakTimerForVerify();
         runWithVerify("break_end", (token) => handleBreakEnd(token));
       } else {
+        breakEndAtRef.current = null;
+        resumeBreakTimerAfterVerify();
         alert(data.error || "Failed to end break.");
       }
     } catch (error) {
+      breakEndAtRef.current = null;
+      resumeBreakTimerAfterVerify();
       alert("Error ending break.");
     } finally {
       setBreakActionPending(false);
@@ -911,7 +923,11 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
               <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
             </div>
           )}
-          <BreakSummary employeeId={employeeId} />
+          <BreakSummary
+            employeeId={employeeId}
+            isOnBreak={isOnBreak}
+            liveBreakSeconds={breakTimer}
+          />
         </div>
       )}
 
@@ -927,6 +943,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           prayerTimerPaused={prayerTimerPaused}
           prayerEndAtRef={prayerEndAtRef}
           pausePrayerTimerForVerify={pausePrayerTimerForVerify}
+          resumePrayerTimerAfterVerify={resumePrayerTimerAfterVerify}
           resetPrayerPauseState={resetPrayerPauseState}
           onPrayerStateChanged={syncPrayerBreakFromServer}
           disabled={isOnBreak}
@@ -941,10 +958,22 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
 }
 
 // Today's break totals for quick glance
-function BreakSummary({ employeeId }: { employeeId: string }) {
-  const [totalBreakSeconds, setTotalBreakSeconds] = React.useState(0);
-  const [exceedSeconds, setExceedSeconds] = React.useState(0);
+function BreakSummary({
+  employeeId,
+  isOnBreak = false,
+  liveBreakSeconds = 0,
+}: {
+  employeeId: string;
+  isOnBreak?: boolean;
+  liveBreakSeconds?: number;
+}) {
+  const [completedBreakSeconds, setCompletedBreakSeconds] = React.useState(0);
   // Removed prayer totals from BreakSummary; shown in Prayer widget instead
+
+  const displayTotalSeconds =
+    completedBreakSeconds + (isOnBreak ? Math.max(0, liveBreakSeconds) : 0);
+  const displayExceedSeconds =
+    displayTotalSeconds > 3600 ? displayTotalSeconds - 3600 : 0;
 
   const refreshTotals = React.useCallback(async () => {
     try {
@@ -1030,15 +1059,12 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
             }
           }
         });
-        setTotalBreakSeconds(total);
-        setExceedSeconds(total > 3600 ? total - 3600 : 0);
+        setCompletedBreakSeconds(total);
       } else {
-        setTotalBreakSeconds(0);
-        setExceedSeconds(0);
+        setCompletedBreakSeconds(0);
       }
     } catch (error) {
-      setTotalBreakSeconds(0);
-      setExceedSeconds(0);
+      setCompletedBreakSeconds(0);
     }
   }, [employeeId]);
 
@@ -1061,9 +1087,9 @@ function BreakSummary({ employeeId }: { employeeId: string }) {
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
       <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>Today's Total Break</div>
-      <div style={{ fontSize: "1rem", fontWeight: 500, color: totalBreakSeconds > 3600 ? "#e74c3c" : "#2d3436" }}>{formatDuration(totalBreakSeconds)}</div>
-      {exceedSeconds > 0 && (
-        <div style={{ fontSize: "0.9rem", color: "#e74c3c", marginTop: 4 }}>Exceed: {formatDuration(exceedSeconds)}</div>
+      <div style={{ fontSize: "1rem", fontWeight: 500, color: displayTotalSeconds > 3600 ? "#e74c3c" : "#2d3436" }}>{formatDuration(displayTotalSeconds)}</div>
+      {displayExceedSeconds > 0 && (
+        <div style={{ fontSize: "0.9rem", color: "#e74c3c", marginTop: 4 }}>Exceed: {formatDuration(displayExceedSeconds)}</div>
       )}
     </div>
   );

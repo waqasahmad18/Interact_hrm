@@ -1,0 +1,857 @@
+================================================================================
+        INTERACT HRM 2.0
+        ORGANIZATIONAL HIERARCHY & ROLE ACCESS
+        Technical Document (Revised)
+        Version: 2.0 | June 2026
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ABOUT THIS DOCUMENT
+--------------------------------------------------------------------------------
+
+This document explains how Interact HRM 2.0 should work for each level of the
+organization: Super Admin, CEO, HR, Manager (HOD), Team Lead, and Officer.
+
+It is written in plain language with diagrams. Each section describes:
+  • What that role should be able to do
+  • Which existing app screens and APIs support it today
+  • What is missing and which database tables are needed to build it
+
+Current system reference:
+  • Employee roles stored in: hrm_employees.role
+  • Values today: BOD/CEO | HOD | Management | Leader | Officer
+  • Departments: employee_jobs.department_id → departments.id
+  • Admin menu: app/layout-dashboard.tsx
+  • Employee portal: app/employee-dashboard/*
+
+
+================================================================================
+SECTION 1 — ORGANIZATION STRUCTURE (OVERVIEW)
+================================================================================
+
+Interact Global ki recommended reporting line yeh hai:
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │                    SUPER ADMIN / CEO                        │
+    │         (Company-wide — same full access level)              │
+    └────────────────────────────┬─────────────────────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+    ┌────▼─────┐            ┌─────▼─────┐           ┌─────▼─────┐
+    │    HR    │            │  Manager  │           │  Manager  │
+    │ (System  │            │  (HOD)    │           │  (HOD)    │
+    │ Operator)│            │  Dept A   │           │  Dept B   │
+    └────┬─────┘            └─────┬─────┘           └─────┬─────┘
+         │                        │                       │
+         │                   ┌────▼─────┐            ┌────▼─────┐
+         │                   │Team Lead │            │Team Lead │
+         │                   │ (Leader) │            │ (Leader) │
+         │                   └────┬─────┘            └────┬─────┘
+         │                        │                       │
+         │                   ┌────▼─────┐            ┌────▼─────┐
+         │                   │ Officers │            │ Officers │
+         │                   │ (Staff)  │            │ (Staff)  │
+         │                   └──────────┘            └──────────┘
+         │
+         └── HR supports all departments (not a line manager for every team)
+
+
+PARAGRAPH — How the levels relate
+
+Super Admin and CEO sit at the top with the same access to every feature in the
+system. They do not need different menus; the difference is organizational title
+only. Super Admin is usually the IT/HR system owner who configures the app.
+CEO is the business owner who uses the same screens for oversight and decisions.
+
+HR is a functional role, not always in the direct chain above an Officer. HR
+runs employee records, payroll, onboarding, and final leave approval. Managers
+(HOD) run day-to-day department control. Team Leads supervise a small group
+within one department. Officers are regular employees who only manage their own
+time, attendance, and leave requests.
+
+
+================================================================================
+SECTION 2 — SUPER ADMIN & CEO (SAME ACCESS)
+================================================================================
+
+--------------------------------------------------------------------------------
+2.1 Policy: Both roles get identical access
+--------------------------------------------------------------------------------
+
+Super Admin and CEO (BOD/CEO in database) must see and use the SAME features.
+There should be no hidden module for one and not the other.
+
+    ┌─────────────────┐         ┌─────────────────┐
+    │   SUPER ADMIN   │  ═══►   │  ALL FEATURES   │
+    │   (HR / IT)     │         │  IN THE SYSTEM  │
+    └─────────────────┘         └────────▲────────┘
+                                         │
+    ┌─────────────────┐                  │
+    │   CEO / BOD     │  ════════════════╝
+    │  (Leadership)   │
+    └─────────────────┘
+
+Implementation note: In the database both can use role = 'BOD/CEO' OR a new
+permission flag is_super_admin = 1. The login should open the full admin shell
+(layout-dashboard) for both, not the employee portal.
+
+
+--------------------------------------------------------------------------------
+2.2 Full feature list — what CEO / Super Admin should have
+--------------------------------------------------------------------------------
+
+Below is every module that exists in Interact HRM today. CEO and Super Admin
+should have FULL access (view + create + edit + delete + export) on all of these.
+
+
+  MAIN & OVERVIEW
+  ───────────────
+  • Dashboard (/dashboard) — company KPIs, headcount, attendance overview
+  • Admin home (/admin)
+
+  PTO / LEAVE
+  ───────────
+  • Leave requests list (/leave) — all employees, all statuses
+  • Manage leaves — balances & allowances (/admin/manage-leaves)
+  • Leave calendar (/admin/calendar)
+  • Monthly leave summary (/admin/monthly-leave-summary)
+  • Final HR approval on leave (see Section 5)
+
+  ATTENDANCE
+  ──────────
+  • Attendance summary (/attendance-summary) — all departments
+  • Break summary (/break-summary)
+  • Prayer break summary (/prayer-summary)
+  • Manage attendance — manual edits (/admin/manage-attendance)
+  • Manage breaks (/admin/manage-breaks)
+  • Monthly attendance + Excel + Deduction summary (/admin/monthly-attendance)
+  • Tungsten IN/OUT sync view (/admin/tungsten-in-out)
+  • Employee attendance report (/attendance/employee-report)
+
+  PEOPLE / ONBOARDING
+  ───────────────────
+  • Add employee (/add-employee)
+  • Employee list (/admin/employee-list)
+  • Face enrollment (/admin/face-enrollment)
+  • Employee credentials (/admin/employee-credentials)
+  • Employment status update (/admin/employment-status-update)
+
+  SHIFTS
+  ──────
+  • Shift scheduler (/admin/shift-scheduler)
+  • Shift management (/admin/shift-management)
+
+  PAYROLL & FINANCE
+  ─────────────────
+  • Monthly payroll (/admin/monthly-payroll)
+  • Commissions (/admin/commissions)
+  • Advance (/admin/advance)
+  • Loan (/admin/loan)
+
+  ORGANIZATION
+  ────────────
+  • Departments (/admin/departments)
+  • Roles & permissions (/admin/roles-permissions)
+  • Company policy (/admin/company-policy)
+  • Events (/admin/events)
+  • Recruitment (/recruitment)
+
+
+--------------------------------------------------------------------------------
+2.3 Ideal Super Admin features — what SHOULD exist (some are MISSING today)
+--------------------------------------------------------------------------------
+
+These are features a professional HRM Super Admin typically needs. Marked as
+[BUILT] if already in the app, [MISSING] if not yet implemented.
+
+
+  SECURITY & GOVERNANCE
+  ─────────────────────
+  [MISSING]  User session management — force logout, active sessions list
+  [MISSING]  Audit log — who changed attendance, payroll, leave, and when
+  [MISSING]  API role enforcement — block unauthorized API calls by role
+  [MISSING]  Two-factor authentication for admin accounts
+  [BUILT]    Employee login with username/password (/api/employee-login)
+  [PARTIAL]  Roles & permissions page exists but is UI-only (not saved to DB)
+
+  SYSTEM CONFIGURATION
+  ────────────────────
+  [BUILT]    Company policy management
+  [BUILT]    Calendar / working day overrides (/api/calendar)
+  [BUILT]    Shift master and assignments
+  [MISSING]  Global settings table (grace minutes, auto clock-out rules, etc.)
+  [MISSING]  Email/SMS notification templates for leave, tardy, payroll
+  [MISSING]  Backup & restore admin action log
+
+  INTEGRATIONS
+  ────────────
+  [BUILT]    ZKBio / Tungsten punch sync (/admin/tungsten-in-out)
+  [BUILT]    Face enrollment / biometric gate
+  [MISSING]  Integration health dashboard (last sync time, error count)
+
+  REPORTING & EXPORT
+  ──────────────────
+  [BUILT]    Monthly attendance Excel, deduction summary export
+  [BUILT]    Leave summary, attendance summaries
+  [MISSING]  Scheduled report emails (e.g. monthly PDF to CEO automatically)
+  [MISSING]  Cross-department comparison dashboard for CEO
+
+  ORG STRUCTURE
+  ─────────────
+  [BUILT]    Departments CRUD
+  [MISSING]  Org chart view (reports_to hierarchy)
+  [MISSING]  Team Lead assignment screen
+  [MISSING]  Bulk role change / department transfer wizard
+
+
+--------------------------------------------------------------------------------
+2.4 Database tables needed for Super Admin / CEO (MISSING items)
+--------------------------------------------------------------------------------
+
+Separate heading as requested — tables to create for a complete Super Admin layer:
+
+
+  TABLE: hrm_audit_log
+  ────────────────────
+  Purpose: Record every sensitive change in the system.
+
+  Columns (suggested):
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+    actor_employee_id INT UNSIGNED NULL
+    actor_role      VARCHAR(64)
+    action          VARCHAR(128)    -- e.g. 'attendance.update', 'leave.hr_approve'
+    entity_type     VARCHAR(64)     -- 'employee_leaves', 'attendance', etc.
+    entity_id       BIGINT UNSIGNED
+    old_value       JSON NULL
+    new_value       JSON NULL
+    ip_address      VARCHAR(45) NULL
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+
+  TABLE: hrm_role_permissions
+  ─────────────────────────────
+  Purpose: Persist the Roles & Permissions page (currently prototype only).
+
+  Columns:
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+    role_name       VARCHAR(64) NOT NULL    -- 'Super Admin', 'HR', 'HOD', etc.
+    permission_key  VARCHAR(128) NOT NULL   -- 'attendance.manage', 'payroll.edit'
+    allowed         TINYINT(1) NOT NULL DEFAULT 0
+    UNIQUE KEY uq_role_perm (role_name, permission_key)
+
+
+  TABLE: hrm_system_settings
+  ────────────────────────────
+  Purpose: Key-value store for global rules editable by Super Admin.
+
+  Columns:
+    setting_key     VARCHAR(128) PRIMARY KEY
+    setting_value   TEXT
+    updated_by      INT UNSIGNED NULL
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+  Example keys: tardy_grace_minutes_male, tardy_grace_minutes_female,
+                auto_clock_out_hours, leave_require_hr_approval
+
+
+  TABLE: hrm_user_sessions (optional)
+  ───────────────────────────────────
+  Purpose: Track active logins; allow Super Admin to revoke sessions.
+
+  Columns:
+    id, employee_id, session_token_hash, created_at, expires_at, revoked_at
+
+
+  TABLE: hrm_scheduled_reports (optional)
+  ───────────────────────────────────────
+  Purpose: CEO monthly pack automation.
+
+  Columns:
+    id, report_type, cron_expression, recipient_emails, last_run_at, enabled
+
+
+Note: CEO does not need extra tables beyond what Super Admin uses. Both read
+the same permission set: permission_key = '*' OR role_name IN ('Super Admin','BOD/CEO').
+
+
+================================================================================
+SECTION 3 — HR ROLE (DETAILED ACCESS)
+================================================================================
+
+--------------------------------------------------------------------------------
+3.1 What is HR in this system?
+--------------------------------------------------------------------------------
+
+HR (Human Resources) is the operational owner of employee data, payroll,
+onboarding, and final leave sign-off. HR is not the same as Super Admin, but
+in practice HR often receives Super Admin or near-Super Admin access.
+
+Recommended approach:
+  • HR staff are employees in hrm_employees with role = 'HR' (new value to add)
+  • OR they use role = 'Management' with an HR permission profile
+  • They log in through employee login and land on the admin shell (not officer portal)
+
+
+--------------------------------------------------------------------------------
+3.2 HR access matrix — what HR should have
+--------------------------------------------------------------------------------
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │                         HR ACCESS                            │
+    ├──────────────────────────┬──────────────────────────────────┤
+    │ FULL (create/edit/delete)│ LIMITED (view / approve only)    │
+    ├──────────────────────────┼──────────────────────────────────┤
+    │ Add / edit employees     │ CEO dashboard (view if not CEO)  │
+    │ Employee list            │                                  │
+    │ Face enrollment          │                                  │
+    │ Employee credentials     │                                  │
+    │ Departments              │                                  │
+    │ Shift scheduler & mgmt   │                                  │
+    │ Manage attendance        │                                  │
+    │ Manage breaks / prayer   │                                  │
+    │ Monthly attendance       │                                  │
+    │ All attendance summaries │                                  │
+    │ Payroll, loan, advance   │                                  │
+    │ Commissions              │                                  │
+    │ Leave balances (manage)  │                                  │
+    │ Leave HR approval (final)│                                  │
+    │ Recruitment              │                                  │
+    │ Events & calendar        │                                  │
+    │ Company policy           │                                  │
+    │ Employment status update │                                  │
+    ├──────────────────────────┴──────────────────────────────────┤
+    │ NO ACCESS (recommended)                                      │
+    │ • Roles & permissions (Super Admin only)                     │
+    │ • System settings / audit log config (Super Admin only)      │
+    │ • ZKBio cron secrets / server env (Super Admin / IT only)    │
+    └─────────────────────────────────────────────────────────────┘
+
+
+--------------------------------------------------------------------------------
+3.3 HR responsibilities in paragraphs
+--------------------------------------------------------------------------------
+
+Employee lifecycle
+HR creates new employees through Add Employee, assigns department and role,
+enrolls face for biometric clock-in, and issues login credentials. HR also
+updates employment status (active, probation, terminated) and maintains
+department structure.
+
+Attendance operations
+HR can correct attendance and break records when devices fail or disputes arise.
+HR runs monthly attendance closing, exports deduction summaries for payroll, and
+reconciles Tungsten punches with HRM clock data. HR sees all departments, not
+just one.
+
+Leave and PTO
+HR manages annual and bereavement balances in Manage Leaves. After a Manager
+approves a leave request, HR performs the second (final) approval so the leave
+becomes official and reflects in attendance. HR can reject at either stage with
+a remark visible to the employee and manager.
+
+Payroll
+HR prepares monthly payroll using attendance deductions, overtime, commissions,
+advances, and loans. This is typically HR-only; Managers and Team Leads should
+not edit payroll.
+
+What HR should NOT do
+HR should not change role permissions or system-wide security settings unless
+they are also designated Super Admin. Line managers remain responsible for
+first-level leave approval within their department.
+
+
+--------------------------------------------------------------------------------
+3.4 HR screens (existing routes)
+--------------------------------------------------------------------------------
+
+  /add-employee
+  /admin/employee-list
+  /admin/face-enrollment
+  /admin/employee-credentials
+  /admin/departments
+  /admin/manage-attendance
+  /admin/manage-breaks
+  /admin/monthly-attendance
+  /attendance-summary, /break-summary, /prayer-summary
+  /leave  (with HR approval actions — see Section 5)
+  /admin/manage-leaves
+  /admin/monthly-leave-summary
+  /admin/monthly-payroll, /admin/commissions, /admin/advance, /admin/loan
+  /admin/shift-scheduler, /admin/shift-management
+  /admin/calendar, /admin/events
+  /admin/company-policy
+  /admin/employment-status-update
+  /recruitment
+
+
+================================================================================
+SECTION 4 — MANAGER (HOD) ROLE
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1 Who is a Manager?
+--------------------------------------------------------------------------------
+
+In the database the Manager is stored as role = 'HOD' (Head of Department).
+Each Manager is linked to one primary department through employee_jobs.department_id.
+
+The Manager is the first approver for leave and the owner of department-level
+attendance quality. The Manager sees only their department unless promoted to
+Management role for multiple departments.
+
+
+--------------------------------------------------------------------------------
+4.2 Manager access — department-scoped
+--------------------------------------------------------------------------------
+
+    Officer submits leave
+            │
+            ▼
+    ┌───────────────┐
+    │    MANAGER    │──────► Approve / Reject (1st level)
+    │     (HOD)     │        Dept employees only
+    └───────┬───────┘
+            │ if approved
+            ▼
+    ┌───────────────┐
+    │      HR       │──────► Final approve / Reject (2nd level)
+    └───────────────┘
+
+
+  VIEW + MANAGE (own department only)
+  ───────────────────────────────────
+  • Attendance summary — filter: my department
+  • Break & prayer summaries — filter: my department
+  • Monthly attendance — filter: my department; export Excel / deduction summary
+  • Employee report — employees in my department
+  • Manage attendance — edit records for dept staff only
+  • Manage breaks — dept staff only
+  • Leave list — dept staff; Manager approve / reject (1st level)
+  • Employee list — view dept staff (no salary edit unless granted)
+  • Shift assignments — view dept shifts
+
+  VIEW ONLY (company-wide or HR-owned)
+  ───────────────────────────────────
+  • Calendar, events, company policy
+
+  NO ACCESS
+  ─────────
+  • Add/delete employees (HR)
+  • Face enrollment (HR)
+  • Payroll, loans, commissions (HR/Finance)
+  • Roles & permissions (Super Admin)
+  • Other departments' data
+
+
+--------------------------------------------------------------------------------
+4.3 How Manager controls the department (daily workflow)
+--------------------------------------------------------------------------------
+
+Morning: Open Attendance Summary, select department, review who is late or
+absent. Use Employee Report for detail on a specific person.
+
+During day: Officers submit leave from employee portal. Manager opens Leave
+page, filters by department, approves or rejects with optional remark.
+
+Weekly: Review break and prayer summaries for policy violations.
+
+Month end: Open Monthly Attendance for the month, export deduction summary for
+HR/payroll handoff. Do not edit payroll — send exports to HR.
+
+Corrections: Use Manage Attendance only when necessary (device issue, approved
+exception). Every edit should require a reason (audit log when built).
+
+
+================================================================================
+SECTION 5 — LEAVE APPROVAL HIERARCHY (MANAGER → HR)
+================================================================================
+
+This section answers: Manager pehle approve karega, phir HR. Dono dekh saken
+ke HR ne approve kar diya ya abhi pending hai.
+
+
+--------------------------------------------------------------------------------
+5.1 Current system (today)
+--------------------------------------------------------------------------------
+
+Table: employee_leaves
+Statuses today: pending | approved | rejected
+
+Flow today is SINGLE-STEP only:
+  Officer submits → status = 'pending' → any admin approves → 'approved' or 'rejected'
+
+There is NO separate manager_approved and hr_approved field. Manager and HR
+cannot both see a two-step status with current schema.
+
+
+--------------------------------------------------------------------------------
+5.2 Recommended two-step approval flow
+--------------------------------------------------------------------------------
+
+    OFFICER                    MANAGER (HOD)              HR
+       │                            │                      │
+       │  Submit leave request      │                      │
+       ├───────────────────────────►│                      │
+       │  status: pending_manager   │                      │
+       │                            │  Approve / Reject    │
+       │                            ├──────────────────────►
+       │                            │  status: pending_hr  │
+       │                            │  (if manager approved)│
+       │                            │                      │ Final approve
+       │                            │                      ├──────────►
+       │                            │                      │ status: approved
+       │◄───────────────────────────┴──────────────────────┘
+       │  Employee sees full status on employee-dashboard/leave
+       │
+       │  If Manager rejects → status: rejected_manager (ends flow)
+       │  If HR rejects      → status: rejected_hr (ends flow)
+
+
+Status values (recommended):
+
+  pending_manager     Waiting for department Manager
+  rejected_manager    Manager rejected (visible to employee + HR)
+  pending_hr          Manager approved; waiting for HR
+  rejected_hr         HR rejected after manager approval
+  approved            Fully approved — counts against leave balance
+  cancelled           Employee cancelled before approval
+
+
+--------------------------------------------------------------------------------
+5.3 Who sees what on the leave screen
+--------------------------------------------------------------------------------
+
+    ┌────────────────┬──────────────────┬──────────────────┬─────────────────┐
+    │ Status         │ Officer sees     │ Manager sees     │ HR sees         │
+    ├────────────────┼──────────────────┼──────────────────┼─────────────────┤
+    │ pending_manager│ Submitted        │ Approve/Reject   │ View (waiting)  │
+    │ rejected_manager│ Rejected + note │ Done             │ View            │
+    │ pending_hr     │ Manager approved │ Approved by me ✓  │ Approve/Reject  │
+    │                │ Awaiting HR      │ Awaiting HR ⏳   │ Action needed   │
+    │ approved       │ Fully approved ✓ │ Fully approved ✓ │ Fully approved ✓│
+    │ rejected_hr    │ HR rejected+note │ HR rejected      │ Done            │
+    └────────────────┴──────────────────┴──────────────────┴─────────────────┘
+
+Both Manager and HR must see clearly:
+  • manager_approved_at / manager_approved_by / manager_remark
+  • hr_approved_at / hr_approved_by / hr_remark
+
+UI labels example:
+  Manager column: "Approved by Manager — Ahmed Khan — 12 Jun 2026"
+  HR column:      "Pending HR" or "Approved by HR — Sara Ali — 13 Jun 2026"
+
+
+--------------------------------------------------------------------------------
+5.4 Database changes for leave approval hierarchy
+--------------------------------------------------------------------------------
+
+  ALTER TABLE employee_leaves
+    MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'pending_manager';
+
+  ALTER TABLE employee_leaves
+    ADD COLUMN manager_status      ENUM('pending','approved','rejected') DEFAULT 'pending',
+    ADD COLUMN manager_approved_by INT UNSIGNED NULL,
+    ADD COLUMN manager_approved_at DATETIME NULL,
+    ADD COLUMN manager_remark      TEXT NULL,
+    ADD COLUMN hr_status           ENUM('pending','approved','rejected','not_required') DEFAULT 'pending',
+    ADD COLUMN hr_approved_by      INT UNSIGNED NULL,
+    ADD COLUMN hr_approved_at      DATETIME NULL,
+    ADD COLUMN hr_remark           TEXT NULL;
+
+  -- Optional: history table for compliance
+  CREATE TABLE employee_leave_approval_history (
+    id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    leave_id          BIGINT UNSIGNED NOT NULL,
+    step              ENUM('manager','hr') NOT NULL,
+    action            ENUM('approved','rejected') NOT NULL,
+    actor_employee_id INT UNSIGNED NOT NULL,
+    remark            TEXT NULL,
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_leave (leave_id)
+  );
+
+
+API changes (app/api/leaves/route.ts):
+
+  PATCH /api/leaves — accept { id, step: 'manager'|'hr', action, remark }
+    • Manager can only act when manager_status = pending AND employee in manager dept
+    • HR can only act when manager_status = approved AND hr_status = pending
+    • On HR approve → status = 'approved', deduct leave balance
+
+
+Pages to update:
+  • /leave — show two-step columns; filter actions by logged-in role
+  • /employee-dashboard/leave — show "Manager approved, waiting for HR"
+  • /admin/manage-leaves — balances unchanged; approval stays on /leave
+
+
+================================================================================
+SECTION 6 — TEAM LEAD ROLE
+================================================================================
+
+--------------------------------------------------------------------------------
+6.1 Who is a Team Lead?
+--------------------------------------------------------------------------------
+
+In the database use role = 'Leader'. Business title: Team Lead.
+
+A Team Lead is an Officer promoted to supervise a small team inside one
+department. The Team Lead is NOT a Manager and does NOT approve leave or edit
+attendance. The Team Lead only MONITORS team attendance, breaks, and prayer
+patterns and escalates issues to the Manager.
+
+
+--------------------------------------------------------------------------------
+6.2 How a team is created (admin assigns members)
+--------------------------------------------------------------------------------
+
+Today there is no team table. Team Lead assignment must be built as follows:
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │              ADMIN / HR — TEAM SETUP SCREEN                  │
+    │              (new: /admin/team-lead-management)              │
+    └────────────────────────────┬────────────────────────────────┘
+                                 │
+         Step 1: Select Department (e.g. Production)
+         Step 2: Select Team Lead employee (role must be Leader)
+         Step 3: Assign team members (Officers from same department)
+         Step 4: Save → rows in hrm_team_members table
+
+    Department: Production
+    Team Lead:  Ali Raza (Leader)
+    Members:    Officer A, Officer B, Officer C
+
+    ┌─────────────┐
+    │  Ali Raza   │  ◄── Team Lead (Leader role)
+    │ (Team Lead) │
+    └──────┬──────┘
+           │ manages (view only)
+    ┌──────┼──────┬──────────┐
+    ▼      ▼      ▼          ▼
+  Off A  Off B  Off C     (max team size: policy, e.g. 15)
+
+
+Rules for team membership:
+  • Every member must belong to the same department as the Team Lead
+  • One employee can only be in one team at a time
+  • Team Lead must have role = Leader
+  • Manager (HOD) of that department can reassign team members
+  • HR and Super Admin can create/delete teams
+
+
+--------------------------------------------------------------------------------
+6.3 Database tables for Team Lead
+--------------------------------------------------------------------------------
+
+  CREATE TABLE hrm_teams (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    department_id   INT UNSIGNED NOT NULL,
+    team_lead_id    INT UNSIGNED NOT NULL,
+    team_name       VARCHAR(128) NULL,
+    is_active       TINYINT(1) NOT NULL DEFAULT 1,
+    created_by      INT UNSIGNED NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_lead_active (team_lead_id, is_active),
+    INDEX idx_dept (department_id)
+  );
+
+  CREATE TABLE hrm_team_members (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    team_id         INT UNSIGNED NOT NULL,
+    employee_id     INT UNSIGNED NOT NULL,
+    assigned_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by     INT UNSIGNED NULL,
+    UNIQUE KEY uq_team_employee (team_id, employee_id),
+    UNIQUE KEY uq_employee_one_team (employee_id),
+    FOREIGN KEY (team_id) REFERENCES hrm_teams(id) ON DELETE CASCADE
+  );
+
+
+Optional: store reports_to on employee_jobs for org chart
+
+  ALTER TABLE employee_jobs
+    ADD COLUMN reports_to_employee_id INT UNSIGNED NULL,
+    ADD INDEX idx_reports_to (reports_to_employee_id);
+
+  -- Officer.reports_to = Team Lead
+  -- Team Lead.reports_to = Manager (HOD)
+
+
+--------------------------------------------------------------------------------
+6.4 What Team Lead can and cannot do
+--------------------------------------------------------------------------------
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │                    TEAM LEAD PERMISSIONS                      │
+    ├─────────────────────────────┬────────────────────────────────┤
+    │ ALLOWED (view / self)       │ NOT ALLOWED                    │
+    ├─────────────────────────────┼────────────────────────────────┤
+    │ Own clock in/out (Officer)  │ Edit anyone's attendance       │
+    │ Own breaks & prayer         │ Approve / reject leave         │
+    │ Own leave requests          │ Manage breaks for others       │
+    │ Own tardy notes             │ Payroll, commissions, loans    │
+    │ Team attendance summary     │ Add / delete employees         │
+    │ Team break summary          │ Face enrollment                │
+    │ Team prayer summary         │ See other departments          │
+    │ Team monthly view (read)    │ Export company-wide reports    │
+    │ Employee report (team only) │ Roles & permissions            │
+    └─────────────────────────────┴────────────────────────────────┘
+
+
+--------------------------------------------------------------------------------
+6.5 Team Lead dashboard and attendance tracking
+--------------------------------------------------------------------------------
+
+Route (to build): /leader-dashboard
+
+Layout: Same shell as employee-dashboard PLUS a new tab "My Team"
+
+    ┌─────────────────────────────────────────────────────────┐
+    │  Team Lead Dashboard                                     │
+    ├─────────────┬─────────────┬─────────────┬───────────────┤
+    │  Dashboard  │  My Info    │    Time     │   My Team     │
+    │  (self)     │  (self)     │   (self)    │  (team view)  │
+    └─────────────┴─────────────┴─────────────┴───────────────┘
+
+"My Team" tab shows (READ-ONLY — no edit buttons):
+
+  1. Team Attendance Summary
+     Reuse /attendance-summary logic with API filter:
+     GET /api/attendance?employeeIds=12,34,56&fromDate=...&toDate=...
+
+  2. Team Break Summary
+     Same pattern: /api/breaks filtered by team member IDs
+
+  3. Team Prayer Summary
+     Same pattern: /api/prayer_breaks filtered by team member IDs
+
+  4. Team list table
+     Name | Today status | Clock in | Clock out | Tardy | Leave status
+
+  5. Link to Employee Report per member (view only)
+
+Data scope rule (server-side — mandatory):
+  When role = Leader, API resolves team member IDs from hrm_team_members
+  WHERE team_lead_id = current user. Query MUST NOT return employees outside
+  that list even if client sends different IDs.
+
+
+--------------------------------------------------------------------------------
+6.6 Team Lead workflow diagram
+--------------------------------------------------------------------------------
+
+    HR/Admin creates team
+            │
+            ▼
+    Team Lead logs in → /leader-dashboard
+            │
+            ├──► My Team → sees today's attendance for all members
+            │
+            ├──► Notices late absence → messages Manager (outside system or chat)
+            │
+            └──► Cannot click "Edit attendance" or "Approve leave"
+
+    Manager (HOD) retains approval and correction powers for whole department,
+    including all teams inside it.
+
+
+================================================================================
+SECTION 7 — OFFICER (EMPLOYEE) ROLE
+================================================================================
+
+Role in database: Officer (default)
+
+Officers use the employee portal only (/employee-dashboard). They manage their
+own time card, apply for leave, and submit tardy notes when late. They cannot
+see teammates' or company-wide HR data.
+
+  Dashboard  — policies, events, tardy note widget
+  My Info    — personal record
+  Time       — clock in/out, breaks, prayer, history
+  Leave      — apply, track status (including manager + HR approval steps)
+  Credentials — change password
+
+On leave screen they see both approval steps, for example:
+  "Manager: Approved (12 Jun) | HR: Pending"
+
+
+================================================================================
+SECTION 8 — COMPLETE ROLE COMPARISON TABLE
+================================================================================
+
+  Feature                    Super Admin/CEO   HR        Manager    Team Lead   Officer
+  ─────────────────────────  ───────────────   ───       ───────    ─────────   ───────
+  All departments            YES               YES       DEPT ONLY  TEAM ONLY   SELF
+  Add employee               YES               YES       NO         NO          NO
+  Payroll edit               YES               YES       NO         NO          NO
+  Manage attendance          YES               YES       DEPT       NO          NO
+  Attendance summary         YES               YES       DEPT       TEAM        NO
+  Leave apply                YES*              YES*      YES*       YES*        YES
+  Leave approve (1st)        YES               YES**     DEPT       NO          NO
+  Leave approve (final HR)   YES               YES       NO         NO          NO
+  See HR approval status     YES               YES       YES        NO          YES
+  Team setup                 YES               YES       DEPT***    NO          NO
+  Team attendance view       YES               YES       DEPT       TEAM        NO
+  Roles & permissions        YES               NO        NO         NO          NO
+  Audit log                  YES               VIEW      NO         NO          NO
+
+  * Leadership roles rarely apply for own leave but can if they are employees too
+  ** HR may approve first only if no manager assigned (edge case setting)
+  *** Manager can propose team changes; HR/Admin saves in team management screen
+
+
+================================================================================
+SECTION 9 — IMPLEMENTATION PRIORITY (RECOMMENDED ORDER)
+================================================================================
+
+  Phase 1 — Role dashboards & menu guards
+    Build /leader-dashboard, /hod-dashboard, /management-dashboard, /bod-dashboard
+    Hide sidebar links based on role; fix auth redirects (currently 404)
+
+  Phase 2 — Leave two-step approval
+    Alter employee_leaves; update /api/leaves PATCH; update /leave UI columns
+
+  Phase 3 — Team Lead module
+    Create hrm_teams + hrm_team_members; admin team screen; team-filtered APIs
+
+  Phase 4 — RBAC & audit
+    hrm_role_permissions; middleware; hrm_audit_log on all admin edits
+
+  Phase 5 — Super Admin extras
+    System settings, session management, scheduled CEO reports
+
+
+================================================================================
+SECTION 10 — GAP SUMMARY (CURRENT vs TARGET)
+================================================================================
+
+  Item                              Current state           Target state
+  ────────────────────────────────  ──────────────────────  ─────────────────────
+  CEO / Super Admin same access     Admin login only        Both → full admin shell
+  Role dashboards                   404 routes              Working dashboards
+  Leave manager → HR flow           Single approve          Two-step with visibility
+  Team Lead team assignment         Not built               hrm_teams + admin UI
+  Team attendance view              Not built               Read-only My Team tab
+  HR role in database               Not in dropdown         Add 'HR' to role list
+  API security by role              Open APIs               Scoped queries + 403
+  Roles & permissions page          Static prototype        Saved to DB
+
+
+================================================================================
+RELATED FILES IN REPOSITORY
+================================================================================
+
+  app/add-employee/AddEmployeeForm.tsx       Role dropdown (BOD/CEO … Officer)
+  app/auth/page.tsx                          Login routing by role
+  app/layout-dashboard.tsx                   Admin sidebar (all modules)
+  app/employee-dashboard/layout.tsx          Officer portal
+  app/leave/page.tsx                         Leave approval UI (single-step today)
+  app/api/leaves/route.ts                    Leave API
+  app/admin/roles-permissions/page.tsx       Permissions prototype
+  HRM_TeamLead_Feature_Workflow.md           Team Lead planning notes
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================

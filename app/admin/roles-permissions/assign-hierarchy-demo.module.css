@@ -1,0 +1,331 @@
+.assignWrap {
+  padding: 0;
+}
+
+.explainCard {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6fffa 100%);
+  border: 1px solid #bee3f8;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #2d3748;
+}
+
+.explainCard strong {
+  color: #0052cc;
+}
+
+.subTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 6px;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.subTab {
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.subTabActive {
+  background: #fff;
+  color: #0052cc;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.deptGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.deptCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.deptCardHead {
+  background: linear-gradient(135deg, #0052cc 0%, #00b8a9 100%);
+  color: #fff;
+  padding: 14px 16px;
+}
+
+.deptCardHead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.deptCardHead p {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.deptCardBody {
+  padding: 14px 16px;
+}
+
+.managerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fffaf0;
+  border: 1px solid #fbd38d;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+
+.managerBadge {
+  background: #dd6b20;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.teamBlock {
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 3px solid #00b8a9;
+}
+
+.teamLeadRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 0.86rem;
+}
+
+.tlBadge {
+  background: #38a169;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 20px;
+}
+
+.memberList li {
+  padding: 6px 0;
+  font-size: 0.85rem;
+  color: #4a5568;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memberDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e0;
+  flex-shrink: 0;
+}
+
+.officerBadge {
+  font-size: 0.68rem;
+  background: #edf2f7;
+  color: #4a5568;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.unassignedBox {
+  font-size: 0.82rem;
+  color: #718096;
+  padding: 8px 10px;
+  background: #f7fafc;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.panelSection {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.panelSectionTitle {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 14px;
+}
+
+.formField {
+  flex: 1;
+  min-width: 180px;
+}
+
+.formField label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 5px;
+}
+
+.formField select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.memberPickGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.memberPick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+
+.memberPick:hover {
+  border-color: #0052cc;
+}
+
+.memberPickChecked {
+  border-color: #0052cc;
+  background: #ebf8ff;
+}
+
+.memberPick input {
+  accent-color: #0052cc;
+  width: 16px;
+  height: 16px;
+}
+
+.memberPickDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f7fafc;
+}
+
+.hierarchyTree {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  background: #1a202c;
+  color: #e2e8f0;
+  padding: 18px 20px;
+  border-radius: 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.hierarchyTree .hlDept {
+  color: #63b3ed;
+  font-weight: 700;
+}
+
+.hierarchyTree .hlMgr {
+  color: #f6ad55;
+}
+
+.hierarchyTree .hlTl {
+  color: #68d391;
+}
+
+.hierarchyTree .hlOff {
+  color: #cbd5e0;
+}
+
+.scopeNote {
+  font-size: 0.82rem;
+  color: #744210;
+  background: #fffaf0;
+  border: 1px solid #fbd38d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 14px;
+}
+
+.resultPreview {
+  margin-top: 16px;
+  padding: 14px;
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.resultPreview h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: #276749;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.tagMgr {
+  background: #feebc8;
+  color: #c05621;
+}
+
+.tagTl {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.tagDept {
+  background: #bee3f8;
+  color: #2c5282;
+}
