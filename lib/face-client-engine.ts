@@ -68,6 +68,36 @@ async function initFaceRuntime(): Promise<void> {
   ];
 }
 
+/**
+ * Run the full detection pipeline once on a blank canvas so the WebGL/TF.js
+ * shaders compile during preload instead of on the first real scan. Without
+ * this the first live verification is noticeably slow ("cold start").
+ */
+async function warmUpInference(): Promise<void> {
+  if (!faceapi || !LIVE_DESCRIPTOR) return;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 320;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#7f7f7f";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Detector runs on every frame — compile its shaders.
+    await faceapi.detectAllFaces(canvas, LIVE_DESCRIPTOR);
+
+    // Landmark + recognition nets only run once a face is found. Invoke them
+    // directly on the blank canvas so their shaders are also pre-compiled,
+    // making the first real "verifying" step fast instead of a cold start.
+    await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(canvas);
+    await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(canvas);
+  } catch {
+    // Warm-up is best-effort; a failure here must not block real scans.
+  }
+}
+
 export async function ensureFaceModelsLoaded(): Promise<void> {
   if (typeof window === "undefined") return;
   if (loadPromise) return loadPromise;
@@ -89,6 +119,8 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
       faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
+
+    await warmUpInference();
   })();
 
   return loadPromise;

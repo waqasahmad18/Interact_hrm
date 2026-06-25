@@ -101,7 +101,10 @@ export function useBiometricGate(
 
   React.useEffect(() => {
     if (!employeeId) return;
+    // Warm the engine (models + WebGL shaders) and preload the modal chunk so
+    // the camera and verification start fast on first use / after idle.
     void import("@/lib/face-client-engine").then((mod) => mod.ensureFaceModelsLoaded());
+    void import("@/app/components/FaceVerifyModal");
   }, [employeeId]);
 
   const onVerifyOpenRef = React.useRef(options.onVerifyOpen);
