@@ -22,15 +22,17 @@ let ENROLL_DETECTORS: TinyFaceDetectorOptions[] | null = null;
 
 export type FaceScanOutcome =
   | { status: "none" }
+  | { status: "adjust" }
   | { status: "multiple"; count: number }
-  | { status: "ok"; descriptor: Float32Array };
+  | { status: "ok"; descriptor: Float32Array; coverage: number };
 
-const MIN_FACE_AREA_RATIO = 0.05;
+const MIN_FACE_AREA_RATIO = 0.03;
 const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
-const COUNT_MIN_FACE_AREA_RATIO = 0.035;
+const COUNT_MIN_FACE_AREA_RATIO = 0.012;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
+let videoCanvasWhole: HTMLCanvasElement | null = null;
 
 async function initFaceRuntime(): Promise<void> {
   if (faceapi && tf && LIVE_DESCRIPTOR) return;
@@ -44,21 +46,21 @@ async function initFaceRuntime(): Promise<void> {
   tf = tfMod;
 
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.38,
+    inputSize: 416,
+    scoreThreshold: 0.28,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 384,
-    scoreThreshold: 0.3,
+    inputSize: 416,
+    scoreThreshold: 0.18,
   });
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 384,
-    scoreThreshold: 0.26,
+    inputSize: 512,
+    scoreThreshold: 0.2,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.2 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.15 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 608, scoreThreshold: 0.22 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.16 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.12 }),
   ];
   ENROLL_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
@@ -180,6 +182,35 @@ function drawVideoToCanvas(
   return el;
 }
 
+/**
+ * Draw the ENTIRE video frame (no square crop) preserving aspect ratio. Used
+ * for multi-face counting so a person standing at the left/right edge is not
+ * cropped away — the squared "full"/"crop" canvases lose the side regions.
+ */
+function drawWholeFrameCanvas(
+  video: HTMLVideoElement,
+  maxSize = 420
+): HTMLCanvasElement | null {
+  if (video.readyState < 2 || video.videoWidth < 64) return null;
+
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const scale = Math.min(1, maxSize / Math.max(vw, vh));
+  const w = Math.max(64, Math.round(vw * scale));
+  const h = Math.max(64, Math.round(vh * scale));
+
+  const el = videoCanvasWhole ?? document.createElement("canvas");
+  videoCanvasWhole = el;
+  el.width = w;
+  el.height = h;
+  const ctx = el.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(video, 0, 0, vw, vh, 0, 0, w, h);
+  return el;
+}
+
 function scaleImageToCanvas(
   img: HTMLImageElement,
   maxDim: number,
@@ -253,26 +284,23 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
   return maxCount;
 }
 
-/** Fast live check — one detector, full frame (used right before verify). */
+/** Fast live check — whole frame (full width, no side crop) used every scan. */
 export async function quickCountFacesInVideo(video: HTMLVideoElement): Promise<number> {
   await ensureFaceModelsLoaded();
   if (!faceapi || !LIVE_FACE_COUNT) return 0;
 
-  const full = drawVideoToCanvas(video, "full", 384);
-  if (!full) return 0;
-  const detections = await faceapi.detectAllFaces(full, LIVE_FACE_COUNT);
-  return filterByArea(full, detections, COUNT_MIN_FACE_AREA_RATIO).length;
+  const whole = drawWholeFrameCanvas(video, 640);
+  if (!whole) return 0;
+  const detections = await faceapi.detectAllFaces(whole, LIVE_FACE_COUNT);
+  return filterByArea(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;
 }
 
 export async function countFacesInVideo(video: HTMLVideoElement): Promise<number> {
   await ensureFaceModelsLoaded();
-  const full = drawVideoToCanvas(video, "full", 384);
-  const crop = drawVideoToCanvas(video, "crop", 320);
-  const counts = await Promise.all([
-    full ? countFacesOnCanvas(full) : Promise.resolve(0),
-    crop ? countFacesOnCanvas(crop) : Promise.resolve(0),
-  ]);
-  return Math.max(counts[0], counts[1]);
+  // Use the WHOLE frame (full width) so edge/side faces are never cropped out.
+  const whole = drawWholeFrameCanvas(video, 720);
+  if (!whole) return 0;
+  return countFacesOnCanvas(whole);
 }
 
 async function detectWithDescriptors(
@@ -312,7 +340,9 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
       continue;
     }
     if (significant.length === 1 && significant[0].descriptor) {
-      return { status: "ok", descriptor: significant[0].descriptor };
+      const box = significant[0].detection.box;
+      const coverage = (box.width * box.height) / (canvas.width * canvas.height);
+      return { status: "ok", descriptor: significant[0].descriptor, coverage };
     }
   }
 
@@ -324,22 +354,44 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   await ensureFaceModelsLoaded();
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return { status: "none" };
 
-  const cropCanvas = drawVideoToCanvas(video, "crop", 320);
-  if (!cropCanvas) return { status: "none" };
+  // The descriptor pass works on a centre crop, which can miss a second face
+  // near the frame edge. Check the FULL frame first so two people are blocked
+  // even when only one is centred.
+  const fullFaceCount = await quickCountFacesInVideo(video);
+  if (fullFaceCount >= 2) {
+    return { status: "multiple", count: fullFaceCount };
+  }
 
-  for (const detector of [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK]) {
-    const { significant } = await detectWithDescriptors(
-      cropCanvas,
-      detector,
-      MIN_FACE_AREA_RATIO
-    );
-    if (significant.length >= 2) {
-      return { status: "multiple", count: significant.length };
-    }
-    if (significant.length === 1 && significant[0].descriptor) {
-      return { status: "ok", descriptor: significant[0].descriptor };
+  // Try descriptor extraction on the centre crop first (best framing), then on
+  // the whole frame as a fallback so glasses / off-centre / dim faces still get
+  // a descriptor instead of falsely reporting "no face".
+  const cropCanvas = drawVideoToCanvas(video, "crop", 320);
+  const wholeCanvas = drawWholeFrameCanvas(video, 480);
+
+  for (const canvas of [cropCanvas, wholeCanvas]) {
+    if (!canvas) continue;
+    for (const detector of [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK]) {
+      const { significant } = await detectWithDescriptors(
+        canvas,
+        detector,
+        MIN_FACE_AREA_RATIO
+      );
+      if (significant.length >= 2) {
+        return { status: "multiple", count: significant.length };
+      }
+      if (significant.length === 1 && significant[0].descriptor) {
+        const box = significant[0].detection.box;
+        // Linear height ratio is far more stable than area across the square
+        // crop vs the rectangular whole frame, giving consistent distance hints.
+        const coverage = box.height / canvas.height;
+        return { status: "ok", descriptor: significant[0].descriptor, coverage };
+      }
     }
   }
+
+  // A face was counted in the frame but we couldn't extract a usable descriptor
+  // — ask the user to adjust rather than claiming there is no face at all.
+  if (fullFaceCount >= 1) return { status: "adjust" };
 
   return { status: "none" };
 }

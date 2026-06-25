@@ -3,9 +3,9 @@
 import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
 import {
+  countFacesInVideo,
   descriptorToJson,
   ensureFaceModelsLoaded,
-  quickCountFacesInVideo,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
 
@@ -45,6 +45,7 @@ export function FaceVerifyModal({
   const [error, setError] = React.useState<string | null>(null);
   const [verifying, setVerifying] = React.useState(false);
   const [multipleFaces, setMultipleFaces] = React.useState(false);
+  const [guidance, setGuidance] = React.useState<string | null>(null);
 
   const stopCamera = React.useCallback(() => {
     if (rafRef.current !== null) {
@@ -65,6 +66,7 @@ export function FaceVerifyModal({
     singleFaceStreakRef.current = 0;
     setMultipleFaces(true);
     setError(null);
+    setGuidance("Only one person should be in the frame — others please step out of camera view.");
     setStatus(
       count >= 2
         ? `${count} faces in frame — clock action blocked.`
@@ -94,24 +96,56 @@ export function FaceVerifyModal({
         if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Look at the camera — scanning automatically…");
+        setGuidance("No face detected — face the camera and keep your face in the centre of the frame.");
+        return;
+      }
+
+      if (scan.status === "adjust") {
+        singleFaceStreakRef.current = 0;
+        if (multipleFaces) setMultipleFaces(false);
+        setError(null);
+        setStatus("Adjusting…");
+        setGuidance("Center your face, look straight and hold still.");
+        return;
+      }
+
+      if (multipleFaces) setMultipleFaces(false);
+      setError(null);
+
+      // Distance guidance from face coverage. If the face is too close or too
+      // far we DON'T verify yet — we show guidance and let the user adjust, so
+      // the message is actually visible and verification happens at a good size.
+      if (scan.coverage >= 0.72) {
+        singleFaceStreakRef.current = 0;
+        setStatus("Adjust distance…");
+        setGuidance("Too close — move back a little (about 40–50cm from the camera).");
+        return;
+      }
+      if (scan.coverage <= 0.22) {
+        singleFaceStreakRef.current = 0;
+        setStatus("Adjust distance…");
+        setGuidance("Too far — move a little closer to the camera.");
         return;
       }
 
       singleFaceStreakRef.current += 1;
-      if (multipleFaces) setMultipleFaces(false);
-
-      setError(null);
-      setStatus("Face detected — verifying…");
+      setGuidance("Good position — hold still…");
+      setStatus("Checking frame…");
       busyRef.current = true;
       setVerifying(true);
 
-      const faceCount = await quickCountFacesInVideo(video);
+      // Thorough multi-pass count (full + crop) right before accepting so a
+      // second face near the edge / smaller / farther is reliably caught and
+      // the clock action is blocked. Only one face may proceed.
+      const faceCount = await countFacesInVideo(video);
       if (faceCount >= 2) {
         busyRef.current = false;
         setVerifying(false);
         blockMultipleFaces(faceCount);
         return;
       }
+
+      setStatus("Face detected — verifying…");
 
       try {
         const res = await fetch("/api/biometric/verify", {
@@ -167,6 +201,7 @@ export function FaceVerifyModal({
       setVerifying(false);
       setError(null);
       setMultipleFaces(false);
+      setGuidance(null);
       singleFaceStreakRef.current = 0;
       scanInFlightRef.current = false;
       busyRef.current = false;
@@ -185,8 +220,8 @@ export function FaceVerifyModal({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 480 },
-            height: { ideal: 360 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             frameRate: { ideal: 24, max: 30 },
           },
           audio: false,
@@ -370,9 +405,23 @@ export function FaceVerifyModal({
           )}
         </div>
 
-        <div style={{ fontSize: "0.9rem", color: "#2d3436", marginBottom: 8, minHeight: "1.35em" }}>
-          {status}
-        </div>
+        {guidance && !error && (
+          <div
+            style={{
+              fontSize: "0.86rem",
+              color: multipleFaces ? "#c0392b" : "#2563eb",
+              background: multipleFaces ? "#fdecea" : "#eef4ff",
+              border: `1px solid ${multipleFaces ? "#f5c6c0" : "#cfe0ff"}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              marginBottom: 10,
+              lineHeight: 1.4,
+              fontWeight: 500,
+            }}
+          >
+            {guidance}
+          </div>
+        )}
         {error && !multipleFaces && (
           <div style={{ fontSize: "0.88rem", color: "#e74c3c", marginBottom: 10, lineHeight: 1.4 }}>
             {error}
