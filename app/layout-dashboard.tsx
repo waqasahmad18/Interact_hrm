@@ -78,7 +78,7 @@ const sidebarLinks = [
 			},
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
-			{ name: "Roles & Permissions", path: "/admin/roles-permissions", icon: <FaCog /> },
+			{ name: "System Control", path: "/admin/system-control", icon: <FaCog /> },
 		],
 	},
 	{
