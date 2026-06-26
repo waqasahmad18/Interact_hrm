@@ -28,7 +28,13 @@ export type FaceScanOutcome =
 
 const MIN_FACE_AREA_RATIO = 0.03;
 const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
-const COUNT_MIN_FACE_AREA_RATIO = 0.012;
+// A genuine second person (a real privacy/security concern) produces a sizable,
+// high-confidence detection. Background texture — ceiling lights, wall patterns,
+// reflections, glass partitions — only produces small, low-score "ghost"
+// detections. Counting ignores those so one real person is never reported as
+// "multiple faces".
+const COUNT_MIN_FACE_AREA_RATIO = 0.045;
+const COUNT_MIN_SCORE = 0.5;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -53,14 +59,16 @@ async function initFaceRuntime(): Promise<void> {
     inputSize: 416,
     scoreThreshold: 0.18,
   });
+  // Counting detectors run at a HIGH score threshold so background "ghost"
+  // detections (lights, walls, reflections) are never mistaken for a person.
+  // Only confident, real-face detections are counted.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 512,
-    scoreThreshold: 0.2,
+    inputSize: 416,
+    scoreThreshold: 0.5,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 608, scoreThreshold: 0.22 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.16 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.12 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 }),
   ];
   ENROLL_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
@@ -136,13 +144,21 @@ function minArea(canvas: HTMLCanvasElement, ratio: number): number {
   return canvas.width * canvas.height * ratio;
 }
 
-function filterByArea(
+/**
+ * Count only GENUINE faces: each detection must be both large enough (a real
+ * person, not a tiny background artefact) and confident enough (high score, not
+ * a low-confidence hallucination on wall/light/glass texture). This is what
+ * stops a single person being reported as "multiple faces".
+ */
+function filterRealFaces(
   canvas: HTMLCanvasElement,
   detections: FaceDetection[],
   ratio: number
 ): FaceDetection[] {
   const area = minArea(canvas, ratio);
-  return detections.filter((d) => d.box.width * d.box.height >= area);
+  return detections.filter(
+    (d) => d.box.width * d.box.height >= area && d.score >= COUNT_MIN_SCORE
+  );
 }
 
 type WithDescriptor = {
@@ -276,7 +292,7 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
 
   for (const detector of FACE_COUNT_DETECTORS) {
     const detections = await faceapi.detectAllFaces(canvas, detector);
-    const count = filterByArea(canvas, detections, COUNT_MIN_FACE_AREA_RATIO).length;
+    const count = filterRealFaces(canvas, detections, COUNT_MIN_FACE_AREA_RATIO).length;
     if (count > maxCount) maxCount = count;
     if (maxCount >= 2) return maxCount;
   }
@@ -292,7 +308,7 @@ export async function quickCountFacesInVideo(video: HTMLVideoElement): Promise<n
   const whole = drawWholeFrameCanvas(video, 640);
   if (!whole) return 0;
   const detections = await faceapi.detectAllFaces(whole, LIVE_FACE_COUNT);
-  return filterByArea(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;
+  return filterRealFaces(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;
 }
 
 export async function countFacesInVideo(video: HTMLVideoElement): Promise<number> {
@@ -321,6 +337,49 @@ async function detectWithDescriptors(
   );
 
   return { significant };
+}
+
+/**
+ * Try to pull a single usable descriptor from a set of candidate canvases.
+ * Returns an "ok"/"multiple" outcome, or null if nothing usable was found so
+ * the caller can try another set (e.g. brightness-normalized) before giving up.
+ */
+async function descriptorFromCanvases(
+  canvases: (HTMLCanvasElement | null)[]
+): Promise<FaceScanOutcome | null> {
+  if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return null;
+
+  for (const canvas of canvases) {
+    if (!canvas) continue;
+    for (const detector of [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK]) {
+      const { significant } = await detectWithDescriptors(
+        canvas,
+        detector,
+        MIN_FACE_AREA_RATIO
+      );
+
+      // Only treat as "multiple" when at least two CONFIDENT faces are found.
+      // The fallback detector runs at a low score threshold to rescue a single
+      // dim / off-centre face, so its low-confidence extra detections (glass /
+      // background ghosts) must not trigger a false multi-face block.
+      const confident = significant.filter(
+        (r) => r.detection.score >= COUNT_MIN_SCORE
+      );
+      if (confident.length >= 2) {
+        return { status: "multiple", count: confident.length };
+      }
+
+      if (significant.length === 1 && significant[0].descriptor) {
+        const box = significant[0].detection.box;
+        // Linear height ratio is far more stable than area across the square
+        // crop vs the rectangular whole frame, giving consistent distance hints.
+        const coverage = box.height / canvas.height;
+        return { status: "ok", descriptor: significant[0].descriptor, coverage };
+      }
+    }
+  }
+
+  return null;
 }
 
 async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanOutcome> {
@@ -363,31 +422,21 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   }
 
   // Try descriptor extraction on the centre crop first (best framing), then on
-  // the whole frame as a fallback so glasses / off-centre / dim faces still get
-  // a descriptor instead of falsely reporting "no face".
+  // the whole frame as a fallback so glasses / off-centre faces still get a
+  // descriptor instead of falsely reporting "no face".
   const cropCanvas = drawVideoToCanvas(video, "crop", 320);
   const wholeCanvas = drawWholeFrameCanvas(video, 480);
 
-  for (const canvas of [cropCanvas, wholeCanvas]) {
-    if (!canvas) continue;
-    for (const detector of [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK]) {
-      const { significant } = await detectWithDescriptors(
-        canvas,
-        detector,
-        MIN_FACE_AREA_RATIO
-      );
-      if (significant.length >= 2) {
-        return { status: "multiple", count: significant.length };
-      }
-      if (significant.length === 1 && significant[0].descriptor) {
-        const box = significant[0].detection.box;
-        // Linear height ratio is far more stable than area across the square
-        // crop vs the rectangular whole frame, giving consistent distance hints.
-        const coverage = box.height / canvas.height;
-        return { status: "ok", descriptor: significant[0].descriptor, coverage };
-      }
-    }
-  }
+  const primary = await descriptorFromCanvases([cropCanvas, wholeCanvas]);
+  if (primary) return primary;
+
+  // RESCUE PASS — the biggest cause of a false "no face detected" is a dark /
+  // backlit face (window or light behind the person). Brighten the frame and
+  // try again so the detector can actually see the under-exposed face.
+  const brightCrop = cropCanvas ? brightenCanvas(cropCanvas, 0.6) : null;
+  const brightWhole = wholeCanvas ? brightenCanvas(wholeCanvas, 0.6) : null;
+  const rescued = await descriptorFromCanvases([brightCrop, brightWhole]);
+  if (rescued) return rescued;
 
   // A face was counted in the frame but we couldn't extract a usable descriptor
   // — ask the user to adjust rather than claiming there is no face at all.

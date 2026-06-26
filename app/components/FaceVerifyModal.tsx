@@ -38,6 +38,7 @@ export function FaceVerifyModal({
   const scanInFlightRef = React.useRef(false);
   const lastScanAtRef = React.useRef(0);
   const singleFaceStreakRef = React.useRef(0);
+  const multiFaceStreakRef = React.useRef(0);
 
   const [modelsReady, setModelsReady] = React.useState(false);
   const [cameraReady, setCameraReady] = React.useState(false);
@@ -87,16 +88,26 @@ export function FaceVerifyModal({
       const scan = await scanVideoFrame(video);
 
       if (scan.status === "multiple") {
-        blockMultipleFaces(scan.count);
+        // Require two consecutive multi-face frames before blocking. A single
+        // flicker / momentary background ghost must not slam up the red wall —
+        // this keeps the experience smooth and avoids false blocks on one
+        // person.
+        multiFaceStreakRef.current += 1;
+        if (multiFaceStreakRef.current >= 2) {
+          blockMultipleFaces(scan.count);
+        }
         return;
       }
+
+      // Any non-multiple result clears the multi-face streak immediately.
+      multiFaceStreakRef.current = 0;
 
       if (scan.status === "none") {
         singleFaceStreakRef.current = 0;
         if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Look at the camera — scanning automatically…");
-        setGuidance("No face detected — face the camera and keep your face in the centre of the frame.");
+        setGuidance(null);
         return;
       }
 
@@ -115,13 +126,13 @@ export function FaceVerifyModal({
       // Distance guidance from face coverage. If the face is too close or too
       // far we DON'T verify yet — we show guidance and let the user adjust, so
       // the message is actually visible and verification happens at a good size.
-      if (scan.coverage >= 0.72) {
+      if (scan.coverage >= 0.82) {
         singleFaceStreakRef.current = 0;
         setStatus("Adjust distance…");
         setGuidance("Too close — move back a little (about 40–50cm from the camera).");
         return;
       }
-      if (scan.coverage <= 0.22) {
+      if (scan.coverage <= 0.16) {
         singleFaceStreakRef.current = 0;
         setStatus("Adjust distance…");
         setGuidance("Too far — move a little closer to the camera.");
@@ -203,6 +214,7 @@ export function FaceVerifyModal({
       setMultipleFaces(false);
       setGuidance(null);
       singleFaceStreakRef.current = 0;
+      multiFaceStreakRef.current = 0;
       scanInFlightRef.current = false;
       busyRef.current = false;
       lastScanAtRef.current = 0;
