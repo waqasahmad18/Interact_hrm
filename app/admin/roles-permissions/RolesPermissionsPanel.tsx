@@ -20,18 +20,8 @@ type Props = {
   employeeCountByRole: (roleId: string) => number;
 };
 
-const ROLE_ACCENTS: Record<string, string> = {
-  super_admin: "#dc2626",
-  ceo: "#9333ea",
-  hr: "#2563eb",
-  accountant: "#0891b2",
-  manager: "#ea580c",
-  team_lead: "#16a34a",
-  officer: "#64748b",
-};
-
-function accentFor(roleId: string) {
-  return ROLE_ACCENTS[roleId] || "#9333ea";
+function accentOf(role: RoleDef | undefined) {
+  return role?.accent || "#9333ea";
 }
 
 export default function RolesPermissionsPanel({
@@ -50,8 +40,8 @@ export default function RolesPermissionsPanel({
   const [permSearch, setPermSearch] = useState("");
 
   const matrixRoles = useMemo(
-    () => allRoles.filter((r) => r.id !== "super_admin"),
-    [allRoles],
+    () => allRoles.filter((r) => !isRoleLocked(r.id)),
+    [allRoles, isRoleLocked],
   );
 
   const [selectedRoleId, setSelectedRoleId] = useState<string>(() => {
@@ -133,11 +123,11 @@ export default function RolesPermissionsPanel({
               type="button"
               className={`${styles.permRoleChip} ${active ? styles.permRoleChipActive : ""}`}
               onClick={() => setSelectedRoleId(role.id)}
-              style={active ? { borderColor: accentFor(role.id) } : undefined}
+              style={active ? { borderColor: accentOf(role) } : undefined}
             >
               <span
                 className={styles.permRoleChipDot}
-                style={{ background: accentFor(role.id) }}
+                style={{ background: accentOf(role) }}
               />
               <span className={styles.permRoleChipText}>
                 <span className={styles.permRoleChipName}>{role.name}</span>
@@ -157,7 +147,7 @@ export default function RolesPermissionsPanel({
           <div className={styles.permBodyTitle}>
             <span
               className={styles.permRoleChipDot}
-              style={{ background: accentFor(activeRoleId) }}
+              style={{ background: accentOf(activeRole) }}
             />
             Configuring <strong>{activeRole?.name ?? "—"}</strong>
             {locked && <span className={styles.permLockBadge}>Locked</span>}
@@ -173,7 +163,7 @@ export default function RolesPermissionsPanel({
                   width: totalPerms
                     ? `${Math.round((grantedCount / totalPerms) * 100)}%`
                     : "0%",
-                  background: accentFor(activeRoleId),
+                  background: accentOf(activeRole),
                 }}
               />
             </span>

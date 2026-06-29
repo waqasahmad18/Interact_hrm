@@ -5,18 +5,20 @@ import LayoutDashboard from "../../layout-dashboard";
 import AssignUsersTab from "./AssignUsersTab";
 import FeaturesTab from "./FeaturesTab";
 import NewRoleModal from "./NewRoleModal";
+import OrgChartTab from "./OrgChartTab";
 import RolesPermissionsPanel from "./RolesPermissionsPanel";
-import RolesTab from "./RolesTab";
 import SettingsTab from "./SettingsTab";
 import styles from "./system-control-demo.module.css";
 import {
   BASE_ROLES,
+  childRoles,
   clonePermissionMap,
   FEATURE_MODULES,
   GLOBAL_FEATURES,
   INITIAL_EMPLOYEES,
   TAB_HINT,
   isCustomRole,
+  isDescendantOf,
   isRoleLocked,
   roleMeta,
   scopeLabelFromScope,
@@ -33,6 +35,11 @@ export default function SystemControlPage() {
   const [deletedBaseIds, setDeletedBaseIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [levelOverrides, setLevelOverrides] = useState<Record<string, number>>({});
+  // Org-chart structure overrides (in-memory). parentOverrides re-parents roles
+  // via drag-drop; nameOverrides renames roles inline from the chart.
+  const [parentOverrides, setParentOverrides] = useState<Record<string, string | null>>({});
+  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
+  const [newRoleParentId, setNewRoleParentId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState(clonePermissionMap);
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
     attendance: true,
@@ -42,18 +49,17 @@ export default function SystemControlPage() {
     system: true,
   });
 
-  const [selectedRoleId, setSelectedRoleId] = useState("manager");
-  const [roleSearch, setRoleSearch] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState("it_manager");
   const [globalFeatures, setGlobalFeatures] = useState(GLOBAL_FEATURES);
   const [sessionTimeout, setSessionTimeout] = useState("480");
-  const [defaultRole, setDefaultRole] = useState("officer");
+  const [defaultRole, setDefaultRole] = useState("helpdesk");
   const [twoStepLeave, setTwoStepLeave] = useState(true);
-  const [systemControlRoles, setSystemControlRoles] = useState(["super_admin", "hr"]);
+  const [systemControlRoles, setSystemControlRoles] = useState(["exec_board"]);
   const [toast, setToast] = useState("");
 
   const [showNewRoleModal, setShowNewRoleModal] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
-  const [newRoleCloneFrom, setNewRoleCloneFrom] = useState("manager");
+  const [newRoleCloneFrom, setNewRoleCloneFrom] = useState("it_manager");
   const [newRolePortal, setNewRolePortal] = useState("admin-dashboard");
   const [newRoleScope, setNewRoleScope] = useState("DEPARTMENT");
 
@@ -65,10 +71,15 @@ export default function SystemControlPage() {
       ]
         .map((r) => ({
           ...r,
+          name: nameOverrides[r.id] ?? r.name,
           hierarchyLevel: levelOverrides[r.id] ?? r.hierarchyLevel,
+          parentId:
+            parentOverrides[r.id] !== undefined
+              ? parentOverrides[r.id]
+              : (r.parentId ?? null),
         }))
         .sort((a, b) => a.hierarchyLevel - b.hierarchyLevel),
-    [customRoles, deletedBaseIds, levelOverrides],
+    [customRoles, deletedBaseIds, levelOverrides, nameOverrides, parentOverrides],
   );
   const totalPermCount = FEATURE_MODULES.reduce((n, m) => n + m.permissions.length, 0);
 
@@ -119,7 +130,7 @@ export default function SystemControlPage() {
     const base = cloneFrom || selectedRoleId;
     const clone = roleMeta(base, allRoles);
     setNewRoleName("");
-    setNewRoleCloneFrom(isRoleLocked(base) ? "manager" : base);
+    setNewRoleCloneFrom(isRoleLocked(base) ? "it_manager" : base);
     setNewRolePortal(clone.portal);
     setNewRoleScope(clone.scope);
     setShowNewRoleModal(true);
@@ -148,6 +159,7 @@ export default function SystemControlPage() {
       return;
     }
     const clone = roleMeta(newRoleCloneFrom, allRoles);
+    const parentId = newRoleParentId ?? clone.parentId ?? null;
     const newRole: RoleDef = {
       id: slug,
       name,
@@ -156,6 +168,7 @@ export default function SystemControlPage() {
       scope: newRoleScope,
       scopeLabel: scopeLabelFromScope(newRoleScope),
       hierarchyLevel: clone.hierarchyLevel + 1,
+      parentId,
     };
     setCustomRoles((prev) => [...prev, newRole]);
     setPermissions((prev) => ({
@@ -163,9 +176,38 @@ export default function SystemControlPage() {
       [slug]: new Set(prev[newRoleCloneFrom] || []),
     }));
     setShowNewRoleModal(false);
+    setNewRoleParentId(null);
     setSelectedRoleId(slug);
-    setActiveTab("permissions");
-    showToast(`Role "${name}" created — set permissions in the matrix`);
+    const parentName = parentId ? roleMeta(parentId, allRoles).name : "top level";
+    showToast(`Role "${name}" added under ${parentName}`);
+  }
+
+  function openAddChildRole(parentId: string) {
+    setNewRoleParentId(parentId);
+    openNewRoleModal(isRoleLocked(parentId) ? "it_manager" : parentId);
+  }
+
+  function reparentRole(childId: string, newParentId: string | null) {
+    if (childId === newParentId) return;
+    if (isRoleLocked(childId)) {
+      showToast("Super Admin stays at the top of the chart");
+      return;
+    }
+    if (newParentId && isDescendantOf(allRoles, childId, newParentId)) {
+      showToast("Can't move a role under one of its own reports");
+      return;
+    }
+    setParentOverrides((prev) => ({ ...prev, [childId]: newParentId }));
+    const childName = roleMeta(childId, allRoles).name;
+    const parentName = newParentId ? roleMeta(newParentId, allRoles).name : "top level";
+    showToast(`${childName} now reports to ${parentName}`);
+  }
+
+  function renameRole(roleId: string, newName: string) {
+    const name = newName.trim();
+    if (!name || name === roleMeta(roleId, allRoles).name) return;
+    setNameOverrides((prev) => ({ ...prev, [roleId]: name }));
+    showToast(`Role renamed to "${name}"`);
   }
 
   function requestDeleteRole(roleId: string) {
@@ -189,6 +231,9 @@ export default function SystemControlPage() {
       return;
     }
     const name = roleMeta(roleId, allRoles).name;
+    const deletedParent = roleMeta(roleId, allRoles).parentId ?? null;
+    const kids = childRoles(allRoles, roleId);
+
     if (isCustomRole(roleId, customRoles)) {
       setCustomRoles((prev) => prev.filter((r) => r.id !== roleId));
     } else {
@@ -199,9 +244,26 @@ export default function SystemControlPage() {
       delete next[roleId];
       return next;
     });
-    if (selectedRoleId === roleId) setSelectedRoleId("officer");
+    // Reattach any children to the deleted role's parent so the tree stays
+    // connected, and drop the deleted role's own overrides.
+    setParentOverrides((prev) => {
+      const next = { ...prev };
+      for (const kid of kids) next[kid.id] = deletedParent;
+      delete next[roleId];
+      return next;
+    });
+    setNameOverrides((prev) => {
+      const next = { ...prev };
+      delete next[roleId];
+      return next;
+    });
+    if (selectedRoleId === roleId) setSelectedRoleId("exec_board");
     setDeleteTargetId(null);
-    showToast(`Role "${name}" deleted`);
+    showToast(
+      kids.length
+        ? `Role "${name}" deleted — ${kids.length} report(s) moved up`
+        : `Role "${name}" deleted`,
+    );
   }
 
   const deleteTargetMeta = deleteTargetId
@@ -266,7 +328,7 @@ export default function SystemControlPage() {
   }
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: "roles", label: "Roles" },
+    { id: "roles", label: "Org Chart" },
     { id: "permissions", label: "Permissions" },
     { id: "assign", label: "Assign Users" },
     { id: "features", label: "Features" },
@@ -304,19 +366,20 @@ export default function SystemControlPage() {
 
         <div className={styles.scPanel}>
           {activeTab === "roles" && (
-            <RolesTab
+            <OrgChartTab
               allRoles={allRoles}
               customRoles={customRoles}
-              roleSearch={roleSearch}
-              onRoleSearchChange={setRoleSearch}
               employeeCountByRole={employeeCountByRole}
               permCountByRole={permCountByRole}
               totalPermCount={totalPermCount}
-              onNewRole={() => openNewRoleModal()}
-              onCloneRole={(id) => openNewRoleModal(id)}
-              onDeleteRole={requestDeleteRole}
-              onManageRole={manageRolePermissions}
+              onReparent={reparentRole}
+              onAddChild={openAddChildRole}
+              onRename={renameRole}
+              onDelete={requestDeleteRole}
+              onManage={manageRolePermissions}
               onUpdateLevel={updateRoleLevel}
+              isRoleLocked={isRoleLocked}
+              isCustomRole={(id) => isCustomRole(id, customRoles)}
             />
           )}
 

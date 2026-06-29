@@ -8,8 +8,14 @@ const src = path.join(root, "node_modules", "@vladmandic", "face-api", "model");
 const dest = path.join(root, "public", "models", "face-api");
 
 const patterns = [
+  // Detectors: tiny (fast, live counting) + SSD MobileNet (more accurate,
+  // better at off-centre / angled faces — used for descriptor extraction).
   "tiny_face_detector",
-  "face_landmark_68_tiny",
+  "ssd_mobilenetv1",
+  // Landmarks: full 68-point net (better alignment → better descriptors) and
+  // the tiny variant (kept for any lightweight path).
+  "face_landmark_68",
+  // Recognition: 128-D embedding model.
   "face_recognition",
 ];
 

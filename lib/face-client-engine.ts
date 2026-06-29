@@ -12,13 +12,19 @@ let tf: TfModule | null = null;
 let loadPromise: Promise<void> | null = null;
 
 type TinyFaceDetectorOptions = FaceApi.TinyFaceDetectorOptions;
+type SsdMobilenetv1Options = FaceApi.SsdMobilenetv1Options;
+type DetectorOptions = TinyFaceDetectorOptions | SsdMobilenetv1Options;
 type FaceDetection = FaceApi.FaceDetection;
 
 let LIVE_DESCRIPTOR: TinyFaceDetectorOptions | null = null;
 let LIVE_DESCRIPTOR_FALLBACK: TinyFaceDetectorOptions | null = null;
-let LIVE_FACE_COUNT: TinyFaceDetectorOptions | null = null;
 let FACE_COUNT_DETECTORS: TinyFaceDetectorOptions[] | null = null;
 let ENROLL_DETECTORS: TinyFaceDetectorOptions[] | null = null;
+// SSD MobileNet v1 — a more accurate detector than the tiny one. It locates
+// off-centre, slightly angled, and glasses-wearing faces that the tiny detector
+// misses, so it is used as a rescue pass for descriptor extraction.
+let SSD_DESCRIPTOR: SsdMobilenetv1Options | null = null;
+let SSD_FACE_COUNT: SsdMobilenetv1Options | null = null;
 
 export type FaceScanOutcome =
   | { status: "none" }
@@ -35,6 +41,11 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // "multiple faces".
 const COUNT_MIN_FACE_AREA_RATIO = 0.045;
 const COUNT_MIN_SCORE = 0.5;
+// A person standing behind / beside the main subject is smaller in the frame.
+// These relaxed thresholds catch that second real face without counting tiny
+// wall/light ghosts (which stay well below 1.5% area).
+const COUNT_SECONDARY_MIN_AREA_RATIO = 0.018;
+const COUNT_SECONDARY_MIN_SCORE = 0.32;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -59,13 +70,6 @@ async function initFaceRuntime(): Promise<void> {
     inputSize: 416,
     scoreThreshold: 0.18,
   });
-  // Counting detectors run at a HIGH score threshold so background "ghost"
-  // detections (lights, walls, reflections) are never mistaken for a person.
-  // Only confident, real-face detections are counted.
-  LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.5,
-  });
   FACE_COUNT_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }),
     new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 }),
@@ -76,6 +80,16 @@ async function initFaceRuntime(): Promise<void> {
     new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.16 }),
     new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 }),
   ];
+  SSD_DESCRIPTOR = new faceapi.SsdMobilenetv1Options({
+    minConfidence: 0.35,
+    maxResults: 5,
+  });
+  // SSD tuned for multi-face counting — finds smaller / background faces that
+  // the tiny detector misses (e.g. a second person standing behind).
+  SSD_FACE_COUNT = new faceapi.SsdMobilenetv1Options({
+    minConfidence: 0.28,
+    maxResults: 10,
+  });
 }
 
 /**
@@ -101,7 +115,7 @@ async function warmUpInference(): Promise<void> {
     // Landmark + recognition nets only run once a face is found. Invoke them
     // directly on the blank canvas so their shaders are also pre-compiled,
     // making the first real "verifying" step fast instead of a cold start.
-    await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(canvas);
+    await faceapi.nets.faceLandmark68Net.detectLandmarks(canvas);
     await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(canvas);
   } catch {
     // Warm-up is best-effort; a failure here must not block real scans.
@@ -126,6 +140,11 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
 
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+      // Full 68-point landmark net gives noticeably better face alignment than
+      // the tiny variant, which directly improves descriptor (embedding)
+      // quality and therefore match accuracy.
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
@@ -144,21 +163,51 @@ function minArea(canvas: HTMLCanvasElement, ratio: number): number {
   return canvas.width * canvas.height * ratio;
 }
 
-/**
- * Count only GENUINE faces: each detection must be both large enough (a real
- * person, not a tiny background artefact) and confident enough (high score, not
- * a low-confidence hallucination on wall/light/glass texture). This is what
- * stops a single person being reported as "multiple faces".
- */
-function filterRealFaces(
+function faceAreaRatio(canvas: HTMLCanvasElement, d: FaceDetection): number {
+  return (d.box.width * d.box.height) / (canvas.width * canvas.height);
+}
+
+function isCountablePersonFace(canvas: HTMLCanvasElement, d: FaceDetection): boolean {
+  const ratio = faceAreaRatio(canvas, d);
+  if (ratio >= COUNT_MIN_FACE_AREA_RATIO && d.score >= COUNT_MIN_SCORE) return true;
+  // Second person behind / beside — smaller but still a real face.
+  if (ratio >= COUNT_SECONDARY_MIN_AREA_RATIO && d.score >= COUNT_SECONDARY_MIN_SCORE) {
+    return true;
+  }
+  return false;
+}
+
+function boxIoU(a: FaceDetection["box"], b: FaceDetection["box"]): number {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.width, b.x + b.width);
+  const y2 = Math.min(a.y + a.height, b.y + b.height);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  if (inter <= 0) return 0;
+  const union = a.width * a.height + b.width * b.height - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+/** Merge overlapping detections of the same face (same detector run). */
+function dedupeFaceDetections(detections: FaceDetection[]): FaceDetection[] {
+  const sorted = [...detections].sort((a, b) => b.score - a.score);
+  const kept: FaceDetection[] = [];
+  for (const d of sorted) {
+    const overlaps = kept.some((k) => boxIoU(d.box, k.box) > 0.45);
+    if (!overlaps) kept.push(d);
+  }
+  return kept;
+}
+
+/** Count distinct people visible in the frame (primary + smaller secondary faces). */
+function countDistinctPeople(
   canvas: HTMLCanvasElement,
-  detections: FaceDetection[],
-  ratio: number
-): FaceDetection[] {
-  const area = minArea(canvas, ratio);
-  return detections.filter(
-    (d) => d.box.width * d.box.height >= area && d.score >= COUNT_MIN_SCORE
+  detections: FaceDetection[]
+): number {
+  const people = dedupeFaceDetections(
+    detections.filter((d) => isCountablePersonFace(canvas, d))
   );
+  return people.length;
 }
 
 type WithDescriptor = {
@@ -283,7 +332,7 @@ function enrollmentCanvases(img: HTMLImageElement): HTMLCanvasElement[] {
   return list;
 }
 
-/** Max face count across sensitive passes — catches background / side faces. */
+/** Max face count across sensitive passes — catches background / side / behind faces. */
 export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<number> {
   await ensureFaceModelsLoaded();
   if (!faceapi || !FACE_COUNT_DETECTORS) return 0;
@@ -292,9 +341,24 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
 
   for (const detector of FACE_COUNT_DETECTORS) {
     const detections = await faceapi.detectAllFaces(canvas, detector);
-    const count = filterRealFaces(canvas, detections, COUNT_MIN_FACE_AREA_RATIO).length;
+    const count = countDistinctPeople(canvas, detections);
     if (count > maxCount) maxCount = count;
     if (maxCount >= 2) return maxCount;
+  }
+
+  // Sensitive tiny pass — catches a second person the high-threshold pass missed.
+  const sensitiveTiny = new faceapi!.TinyFaceDetectorOptions({
+    inputSize: 512,
+    scoreThreshold: 0.32,
+  });
+  const tinyDetections = await faceapi.detectAllFaces(canvas, sensitiveTiny);
+  maxCount = Math.max(maxCount, countDistinctPeople(canvas, tinyDetections));
+  if (maxCount >= 2) return maxCount;
+
+  // SSD pass — best at finding multiple faces at different scales / depths.
+  if (SSD_FACE_COUNT) {
+    const ssdDetections = await faceapi.detectAllFaces(canvas, SSD_FACE_COUNT);
+    maxCount = Math.max(maxCount, countDistinctPeople(canvas, ssdDetections));
   }
 
   return maxCount;
@@ -303,12 +367,11 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
 /** Fast live check — whole frame (full width, no side crop) used every scan. */
 export async function quickCountFacesInVideo(video: HTMLVideoElement): Promise<number> {
   await ensureFaceModelsLoaded();
-  if (!faceapi || !LIVE_FACE_COUNT) return 0;
+  if (!faceapi) return 0;
 
   const whole = drawWholeFrameCanvas(video, 640);
   if (!whole) return 0;
-  const detections = await faceapi.detectAllFaces(whole, LIVE_FACE_COUNT);
-  return filterRealFaces(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;
+  return countFacesOnCanvas(whole);
 }
 
 export async function countFacesInVideo(video: HTMLVideoElement): Promise<number> {
@@ -321,14 +384,18 @@ export async function countFacesInVideo(video: HTMLVideoElement): Promise<number
 
 async function detectWithDescriptors(
   canvas: HTMLCanvasElement,
-  detector: TinyFaceDetectorOptions,
+  detector: DetectorOptions,
   minAreaRatio: number
 ): Promise<{ significant: WithDescriptor[] }> {
   if (!faceapi) return { significant: [] };
 
+  // withFaceLandmarks(false) selects the FULL 68-point landmark net (true =
+  // tiny). Better landmarks → better face alignment → a cleaner, more
+  // discriminative descriptor, which improves both accept (right person) and
+  // reject (look-alike) accuracy.
   const results = (await faceapi
     .detectAllFaces(canvas, detector)
-    .withFaceLandmarks(true)
+    .withFaceLandmarks(false)
     .withFaceDescriptors()) as WithDescriptor[];
 
   const significant = results.filter(
@@ -345,28 +412,36 @@ async function detectWithDescriptors(
  * the caller can try another set (e.g. brightness-normalized) before giving up.
  */
 async function descriptorFromCanvases(
-  canvases: (HTMLCanvasElement | null)[]
+  canvases: (HTMLCanvasElement | null)[],
+  detectors?: DetectorOptions[]
 ): Promise<FaceScanOutcome | null> {
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return null;
 
+  const detectorList = detectors ?? [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK];
+
   for (const canvas of canvases) {
     if (!canvas) continue;
-    for (const detector of [LIVE_DESCRIPTOR, LIVE_DESCRIPTOR_FALLBACK]) {
+
+    // Block if more than one person is visible on this canvas before we even
+    // try to extract a descriptor (catches someone standing behind / beside).
+    const peopleOnCanvas = await countFacesOnCanvas(canvas);
+    if (peopleOnCanvas >= 2) {
+      return { status: "multiple", count: peopleOnCanvas };
+    }
+
+    for (const detector of detectorList) {
       const { significant } = await detectWithDescriptors(
         canvas,
         detector,
         MIN_FACE_AREA_RATIO
       );
 
-      // Only treat as "multiple" when at least two CONFIDENT faces are found.
-      // The fallback detector runs at a low score threshold to rescue a single
-      // dim / off-centre face, so its low-confidence extra detections (glass /
-      // background ghosts) must not trigger a false multi-face block.
-      const confident = significant.filter(
-        (r) => r.detection.score >= COUNT_MIN_SCORE
+      // Backup multi-face check on faces found in the descriptor pipeline.
+      const people = dedupeFaceDetections(
+        significant.map((r) => r.detection).filter((d) => isCountablePersonFace(canvas, d))
       );
-      if (confident.length >= 2) {
-        return { status: "multiple", count: confident.length };
+      if (people.length >= 2) {
+        return { status: "multiple", count: people.length };
       }
 
       if (significant.length === 1 && significant[0].descriptor) {
@@ -387,7 +462,12 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
 
   let maxMultiple = 0;
 
-  for (const detector of ENROLL_DETECTORS) {
+  // Try the fast tiny detectors first, then fall back to the more accurate SSD
+  // detector for hard enrollment photos (off-centre, angled, glasses).
+  const detectors: DetectorOptions[] = [...ENROLL_DETECTORS];
+  if (SSD_DESCRIPTOR) detectors.push(SSD_DESCRIPTOR);
+
+  for (const detector of detectors) {
     const { significant } = await detectWithDescriptors(
       canvas,
       detector,
@@ -421,22 +501,37 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
     return { status: "multiple", count: fullFaceCount };
   }
 
-  // Try descriptor extraction on the centre crop first (best framing), then on
-  // the whole frame as a fallback so glasses / off-centre faces still get a
-  // descriptor instead of falsely reporting "no face".
-  const cropCanvas = drawVideoToCanvas(video, "crop", 320);
-  const wholeCanvas = drawWholeFrameCanvas(video, 480);
+  // Descriptor extraction runs on the WHOLE frame first (full width, no side
+  // crop). A 16:9 webcam frame squared to a centre crop loses roughly the left
+  // and right edges, so a person standing a little off-centre gets cropped out
+  // and falsely reads as "no face". Using the full frame keeps faces anywhere
+  // in the frame intact; the tighter centre crop is only a fallback for close-up
+  // framing where the whole-frame face is too small.
+  const wholeCanvas = drawWholeFrameCanvas(video, 600);
+  const cropCanvas = drawVideoToCanvas(video, "crop", 360);
 
-  const primary = await descriptorFromCanvases([cropCanvas, wholeCanvas]);
+  const primary = await descriptorFromCanvases([wholeCanvas, cropCanvas]);
   if (primary) return primary;
 
   // RESCUE PASS — the biggest cause of a false "no face detected" is a dark /
   // backlit face (window or light behind the person). Brighten the frame and
   // try again so the detector can actually see the under-exposed face.
-  const brightCrop = cropCanvas ? brightenCanvas(cropCanvas, 0.6) : null;
   const brightWhole = wholeCanvas ? brightenCanvas(wholeCanvas, 0.6) : null;
-  const rescued = await descriptorFromCanvases([brightCrop, brightWhole]);
+  const brightCrop = cropCanvas ? brightenCanvas(cropCanvas, 0.6) : null;
+  const rescued = await descriptorFromCanvases([brightWhole, brightCrop]);
   if (rescued) return rescued;
+
+  // FINAL RESCUE — the SSD MobileNet detector is more accurate than the tiny
+  // one and finds faces the tiny detector misses (off-centre, slightly turned,
+  // glasses glare). It is slower, so it only runs here when the fast tiny
+  // passes have already failed.
+  if (SSD_DESCRIPTOR) {
+    const ssd = await descriptorFromCanvases(
+      [wholeCanvas, brightWhole, cropCanvas],
+      [SSD_DESCRIPTOR]
+    );
+    if (ssd) return ssd;
+  }
 
   // A face was counted in the frame but we couldn't extract a usable descriptor
   // — ask the user to adjust rather than claiming there is no face at all.
@@ -487,4 +582,36 @@ export async function descriptorFromBlob(blob: Blob): Promise<Float32Array | nul
 
 export function descriptorToJson(descriptor: Float32Array): number[] {
   return Array.from(descriptor);
+}
+
+/** L2-normalize a descriptor to unit length (face-api embeddings are unit-norm). */
+export function normalizeDescriptor(d: number[] | Float32Array): number[] {
+  let norm = 0;
+  for (let i = 0; i < d.length; i++) norm += d[i] * d[i];
+  norm = Math.sqrt(norm) || 1;
+  const out = new Array<number>(d.length);
+  for (let i = 0; i < d.length; i++) out[i] = d[i] / norm;
+  return out;
+}
+
+/**
+ * Combine several per-frame descriptors into one stable embedding. face-api
+ * descriptors are unit-length, so we take the mean and re-normalize to get the
+ * "mean direction". Averaging cancels per-frame noise (slight pose changes,
+ * lighting, glasses glare, momentary blur), giving a far more reliable — and
+ * harder to fool — probe than any single captured frame.
+ */
+export function averageDescriptors(
+  list: Array<number[] | Float32Array>
+): number[] {
+  const valid = list.filter((d) => d && d.length === 128);
+  if (!valid.length) return [];
+  if (valid.length === 1) return normalizeDescriptor(valid[0]);
+
+  const sum = new Array<number>(128).fill(0);
+  for (const d of valid) {
+    for (let i = 0; i < 128; i++) sum[i] += d[i];
+  }
+  for (let i = 0; i < 128; i++) sum[i] /= valid.length;
+  return normalizeDescriptor(sum);
 }

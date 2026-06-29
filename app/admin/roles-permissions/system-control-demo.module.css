@@ -1,7 +1,8 @@
 .page {
-  padding: 24px 28px 40px;
-  max-width: 1480px;
-  margin: 0 auto;
+  padding: 20px 24px 40px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
 }
 
 /* ── Roles tab (professional card grid) ── */
@@ -3097,4 +3098,661 @@
 .levelEditorInput:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* ============================================================
+   ORG CHART TAB
+   ============================================================ */
+.orgWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.orgHintBar {
+  font-size: 0.85rem;
+  color: #475569;
+  background: #f1f5ff;
+  border: 1px solid #d9e2ff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  line-height: 1.5;
+}
+.orgHintBar strong {
+  color: #4f46e5;
+}
+
+.orgLayout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.orgCanvasWrap {
+  position: relative;
+}
+
+.orgCanvas {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: 78vh;
+  overflow: auto;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 1px 1px, #e2e8f0 1px, transparent 0) 0 0 / 22px 22px,
+    #fafbff;
+  border: 1px solid #eef1f6;
+  border-radius: 14px;
+  cursor: grab;
+  /* Visible scrollbars so the far-left/right edge cards are always reachable.
+     Drag-panning the empty surface still works as a quick alternative. */
+  scrollbar-width: thin;
+  scrollbar-color: #9aa6b8 #eef1f6;
+  scrollbar-gutter: stable;
+}
+.orgCanvas::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.orgCanvas::-webkit-scrollbar-track {
+  background: #eef1f6;
+  border-radius: 999px;
+}
+.orgCanvas::-webkit-scrollbar-thumb {
+  background: #9aa6b8;
+  border-radius: 999px;
+  border: 3px solid #eef1f6;
+}
+.orgCanvas::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+.orgCanvas::-webkit-scrollbar-corner {
+  background: #eef1f6;
+}
+.orgCanvasPanning {
+  cursor: grabbing;
+  user-select: none;
+  scroll-behavior: auto;
+}
+
+/* floating zoom controls */
+.orgZoomBar {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid #e7eaf1;
+  border-radius: 12px;
+  padding: 5px 7px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+.orgZoomBtn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.orgZoomBtn:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+.orgZoomBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.orgZoomValue {
+  min-width: 42px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+.orgZoomDivider {
+  width: 1px;
+  height: 20px;
+  background: #e2e8f0;
+  margin: 0 2px;
+}
+.orgZoomText {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  background: #f1f5f9;
+  color: #4f46e5;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.orgZoomText:hover {
+  background: #ede9fe;
+}
+
+.orgPanel {
+  flex: 0 0 260px;
+  position: sticky;
+  top: 12px;
+  background: #fff;
+  border: 1px solid #e7eaf1;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.orgPanelHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 3px solid #9333ea;
+  padding-top: 12px;
+}
+
+.orgPanelTitle {
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: #1e293b;
+}
+
+.orgPanelLabel {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.orgPanelRow {
+  display: flex;
+  gap: 8px;
+}
+
+.orgPanelInput {
+  width: 100%;
+  border: 1px solid #d7dce5;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #1e293b;
+}
+.orgPanelInput:focus {
+  outline: none;
+  border-color: #9333ea;
+  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.15);
+}
+.orgPanelInput:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.orgPanelChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.orgPanelStats {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.orgPanelStats > div {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px solid #eef1f6;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.orgPanelStatValue {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #1e293b;
+}
+.orgPanelStatLabel {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.orgPanelActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.orgPanelActions button {
+  width: 100%;
+}
+
+.orgPanelNote {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.orgEmpty {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  padding: 24px;
+  text-align: center;
+}
+
+/* ---- The tree (nested lists + connectors) ---- */
+.orgTree {
+  display: inline-block;
+  width: max-content;
+}
+
+.orgTree .orgList {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  position: relative;
+  padding-top: 14px;
+}
+
+/* vertical line from a parent down to the row of children */
+.orgTree .orgItem {
+  position: relative;
+  padding: 14px 9px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* connector lines */
+.orgTree .orgItem::before,
+.orgTree .orgItem::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 14px;
+  border-top: 2px solid #d3dbe8;
+}
+.orgTree .orgItem::before {
+  left: 0;
+  border-right: 2px solid #d3dbe8;
+}
+.orgTree .orgItem::after {
+  right: 0;
+}
+/* single child / first-level cleanups */
+.orgTree .orgItem:only-child::before,
+.orgTree .orgItem:only-child::after {
+  display: none;
+}
+.orgTree .orgItem:first-child::before,
+.orgTree .orgItem:last-child::after {
+  border: none;
+}
+.orgTree .orgItem:last-child::before {
+  border-right: 2px solid #d3dbe8;
+  border-radius: 0 6px 0 0;
+}
+.orgTree .orgItem:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+/* stub line going up from each child card */
+.orgTree .orgList .orgItem .orgCard::before {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  width: 2px;
+  height: 14px;
+  background: #d3dbe8;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+/* root list: no top connectors */
+.orgTree > .orgList {
+  padding-top: 0;
+}
+.orgTree > .orgList > .orgItem {
+  padding-top: 0;
+}
+.orgTree > .orgList > .orgItem::before,
+.orgTree > .orgList > .orgItem::after {
+  display: none;
+}
+.orgTree > .orgList > .orgItem > .orgCard::before {
+  display: none;
+}
+
+/* ---- Node card (premium) ---- */
+.orgCard {
+  position: relative;
+  width: 330px;
+  background: #ffffff;
+  border: 1px solid #e8ecf3;
+  border-radius: 18px;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 20px rgba(15, 23, 42, 0.06);
+  transition: box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+}
+.orgCard:hover {
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+  transform: translateY(-3px);
+  border-color: #d7dcea;
+}
+.orgCard:active {
+  cursor: grabbing;
+}
+.orgCardSelected {
+  border-color: #9333ea;
+  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.25), 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+.orgCardDrop {
+  border-color: #16a34a !important;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.32), 0 14px 34px rgba(22, 163, 74, 0.2);
+  transform: translateY(-3px) scale(1.03);
+}
+.orgCardDragging {
+  opacity: 0.4;
+  transform: scale(0.96);
+}
+
+/* coloured header band: avatar + name + actions inline */
+.orgCardBand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 17px 17px 0 0;
+}
+.orgCardAvatar {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.orgCardBandText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.orgCardName {
+  font-weight: 750;
+  font-size: 1.08rem;
+  line-height: 1.2;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+}
+.orgCardTier {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.orgCardBody {
+  padding: 14px 15px 15px;
+}
+.orgCardTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 11px;
+}
+.orgCardScope {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+/* compact meta row: users + permission count */
+.orgCardMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+.orgCardUsers {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.orgCardUserDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04);
+}
+
+/* permissions progress */
+.orgCardPermBar {
+  height: 7px;
+  border-radius: 999px;
+  background: #eef1f6;
+  overflow: hidden;
+}
+.orgCardPermFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+@media (max-width: 900px) {
+  .orgLayout {
+    flex-direction: column;
+  }
+  .orgPanel {
+    flex-basis: auto;
+    width: 100%;
+    position: static;
+  }
+}
+
+/* ---- Card action buttons (edit / delete / hide) — sit in the card body ---- */
+.orgCardActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.orgCardBtn {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  background: #f4f7fb;
+  color: #334155;
+  border-radius: 13px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.orgCardBtn:hover:not(:disabled) {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
+}
+.orgCardBtnOn {
+  background: #eef2f8;
+  color: #0f172a;
+  border-color: #d7dcea;
+}
+.orgCardBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* badge shown on a collapsed (hidden) branch */
+.orgCollapseBadge {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 3px 6px;
+  font-size: 0.56rem;
+  font-weight: 700;
+  color: #6d28d9;
+  background: #f5f3ff;
+  border: 1px dashed #c4b5fd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.orgCollapseBadge:hover {
+  background: #ede9fe;
+}
+
+/* ---- Centered Edit Role modal ---- */
+.orgEditModal {
+  background: #fff;
+  border-radius: 16px;
+  width: min(440px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  animation: orgEditPop 0.16s ease-out;
+}
+@keyframes orgEditPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.orgEditHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-top: 4px solid #9333ea;
+  border-bottom: 1px solid #f1f5f9;
+}
+.orgEditHead .orgCardAvatar {
+  width: 38px;
+  height: 38px;
+  font-size: 0.82rem;
+  border-radius: 10px;
+}
+.orgEditHeadText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.orgEditHeadText .orgCardSlug {
+  font-size: 0.7rem;
+}
+.orgEditClose {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.orgEditClose:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.orgEditBody {
+  padding: 14px 18px 4px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.orgEditBody .orgPanelLabel {
+  margin-top: 8px;
+}
+
+.orgEditActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.orgEditActions button {
+  width: 100%;
+}
+
+.orgEditFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid #f1f5f9;
+  background: #fafbff;
 }

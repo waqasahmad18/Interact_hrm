@@ -3,9 +3,11 @@
 import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
 import {
+  averageDescriptors,
   countFacesInVideo,
   descriptorToJson,
   ensureFaceModelsLoaded,
+  quickCountFacesInVideo,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
 
@@ -21,6 +23,10 @@ type Props = {
 
 const SCAN_INTERVAL_MS = 280;
 const RETRY_AFTER_FAIL_MS = 200;
+// Good consecutive frames whose descriptors are averaged into one stable probe.
+// Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
+// match is far more reliable — and harder to fool — than a single snapshot.
+const REQUIRED_PROBES = 3;
 
 export function FaceVerifyModal({
   open,
@@ -38,7 +44,7 @@ export function FaceVerifyModal({
   const scanInFlightRef = React.useRef(false);
   const lastScanAtRef = React.useRef(0);
   const singleFaceStreakRef = React.useRef(0);
-  const multiFaceStreakRef = React.useRef(0);
+  const probeBufferRef = React.useRef<number[][]>([]);
 
   const [modelsReady, setModelsReady] = React.useState(false);
   const [cameraReady, setCameraReady] = React.useState(false);
@@ -65,9 +71,12 @@ export function FaceVerifyModal({
 
   const blockMultipleFaces = React.useCallback((count: number) => {
     singleFaceStreakRef.current = 0;
+    probeBufferRef.current = [];
     setMultipleFaces(true);
     setError(null);
-    setGuidance("Only one person should be in the frame — others please step out of camera view.");
+    setGuidance(
+      "Only one person in the frame — ask anyone behind or beside you to step out of camera view."
+    );
     setStatus(
       count >= 2
         ? `${count} faces in frame — clock action blocked.`
@@ -88,22 +97,14 @@ export function FaceVerifyModal({
       const scan = await scanVideoFrame(video);
 
       if (scan.status === "multiple") {
-        // Require two consecutive multi-face frames before blocking. A single
-        // flicker / momentary background ghost must not slam up the red wall —
-        // this keeps the experience smooth and avoids false blocks on one
-        // person.
-        multiFaceStreakRef.current += 1;
-        if (multiFaceStreakRef.current >= 2) {
-          blockMultipleFaces(scan.count);
-        }
+        blockMultipleFaces(scan.count);
         return;
       }
 
-      // Any non-multiple result clears the multi-face streak immediately.
-      multiFaceStreakRef.current = 0;
-
+      // Any non-multiple result continues scanning.
       if (scan.status === "none") {
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Look at the camera — scanning automatically…");
@@ -113,6 +114,7 @@ export function FaceVerifyModal({
 
       if (scan.status === "adjust") {
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Adjusting…");
@@ -128,19 +130,47 @@ export function FaceVerifyModal({
       // the message is actually visible and verification happens at a good size.
       if (scan.coverage >= 0.82) {
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         setStatus("Adjust distance…");
         setGuidance("Too close — move back a little (about 40–50cm from the camera).");
         return;
       }
       if (scan.coverage <= 0.16) {
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         setStatus("Adjust distance…");
         setGuidance("Too far — move a little closer to the camera.");
         return;
       }
 
       singleFaceStreakRef.current += 1;
-      setGuidance("Good position — hold still…");
+
+      // Re-check the full frame before each captured probe — someone can walk
+      // behind the user between scan ticks (e.g. standing slightly lower).
+      const liveFaceCount = await quickCountFacesInVideo(video);
+      if (liveFaceCount >= 2) {
+        singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
+        blockMultipleFaces(liveFaceCount);
+        return;
+      }
+
+      // Collect several good frames and average their descriptors into one
+      // stable probe before contacting the server. A single frame can be noisy
+      // (slight angle, glasses glare, blur); the averaged embedding is much
+      // closer to the enrolled photos and far harder to fool.
+      probeBufferRef.current.push(descriptorToJson(scan.descriptor));
+      if (probeBufferRef.current.length < REQUIRED_PROBES) {
+        setError(null);
+        setGuidance("Good — hold still…");
+        setStatus(`Capturing face… (${probeBufferRef.current.length}/${REQUIRED_PROBES})`);
+        return;
+      }
+
+      const averagedProbe = averageDescriptors(probeBufferRef.current);
+      probeBufferRef.current = [];
+
+      setGuidance("Hold still…");
       setStatus("Checking frame…");
       busyRef.current = true;
       setVerifying(true);
@@ -166,7 +196,7 @@ export function FaceVerifyModal({
             employee_id: employeeId,
             employee_name: employeeName || "",
             action,
-            descriptor: descriptorToJson(scan.descriptor),
+            descriptor: averagedProbe,
           }),
         });
         const data = await res.json();
@@ -178,11 +208,13 @@ export function FaceVerifyModal({
         }
 
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         setError(data.error || "Face not verified. Hold still — retrying…");
         setStatus("Scanning again…");
         lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS + RETRY_AFTER_FAIL_MS;
       } catch {
         singleFaceStreakRef.current = 0;
+        probeBufferRef.current = [];
         setError("Network error. Retrying…");
         setStatus("Scanning again…");
         lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS + RETRY_AFTER_FAIL_MS;
@@ -214,7 +246,7 @@ export function FaceVerifyModal({
       setMultipleFaces(false);
       setGuidance(null);
       singleFaceStreakRef.current = 0;
-      multiFaceStreakRef.current = 0;
+      probeBufferRef.current = [];
       scanInFlightRef.current = false;
       busyRef.current = false;
       lastScanAtRef.current = 0;

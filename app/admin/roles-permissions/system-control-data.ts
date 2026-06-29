@@ -9,7 +9,22 @@ export type RoleDef = {
   scopeLabel: string;
   hierarchyLevel: number;
   system?: boolean;
+  // Org-chart parent. null = top of the tree (root). Drives the hierarchy view.
+  parentId?: string | null;
+  // Visual/permission tier used for org-chart colour and default permissions.
+  tier?: RoleTier;
+  accent?: string;
 };
+
+export type RoleTier =
+  | "board"
+  | "partner"
+  | "director"
+  | "manager"
+  | "lead"
+  | "staff"
+  | "support"
+  | "junior";
 
 export type DemoEmployee = {
   id: string;
@@ -76,72 +91,89 @@ function withPermissionHints(
   }));
 }
 
-export const BASE_ROLES: RoleDef[] = [
-  {
-    id: "super_admin",
-    name: "Super Admin",
-    description: "Full system access. Cannot be deleted or restricted.",
-    portal: "admin-dashboard",
-    scope: "ALL",
-    scopeLabel: "ALL — unlimited",
-    hierarchyLevel: 1,
-    system: true,
-  },
-  {
-    id: "ceo",
-    name: "CEO",
-    description: "Executive leadership with full company visibility.",
-    portal: "admin-dashboard",
-    scope: "ALL",
-    scopeLabel: "ALL — unlimited",
-    hierarchyLevel: 2,
-  },
-  {
-    id: "hr",
-    name: "HR",
-    description: "Human resources — company-wide employee and leave management.",
-    portal: "admin-dashboard",
-    scope: "ALL",
-    scopeLabel: "ALL company",
-    hierarchyLevel: 10,
-  },
-  {
-    id: "accountant",
-    name: "Accountant",
-    description: "Payroll and finance operations across the company.",
-    portal: "admin-dashboard",
-    scope: "ALL",
-    scopeLabel: "ALL company",
-    hierarchyLevel: 15,
-  },
-  {
-    id: "manager",
-    name: "Manager",
-    description: "Department head — manages team within their department.",
-    portal: "admin-dashboard",
-    scope: "DEPARTMENT",
-    scopeLabel: "DEPARTMENT",
-    hierarchyLevel: 20,
-  },
-  {
-    id: "team_lead",
-    name: "Team Lead",
-    description: "Leads a team — team dashboard and team attendance.",
-    portal: "leader-dashboard",
-    scope: "TEAM",
-    scopeLabel: "TEAM",
-    hierarchyLevel: 30,
-  },
-  {
-    id: "officer",
-    name: "Officer",
-    description: "Standard employee — self-service portal only.",
-    portal: "employee-dashboard",
-    scope: "SELF",
-    scopeLabel: "SELF",
-    hierarchyLevel: 90,
-  },
+// Per-tier defaults: org-chart colour, dashboard portal, data scope, and the
+// hierarchy level (lower number = higher rank).
+const TIER_META: Record<
+  RoleTier,
+  { level: number; portal: string; scope: string; accent: string }
+> = {
+  board: { level: 1, portal: "admin-dashboard", scope: "ALL", accent: "#6366f1" },
+  partner: { level: 5, portal: "admin-dashboard", scope: "ALL", accent: "#1f2937" },
+  director: { level: 10, portal: "admin-dashboard", scope: "DEPARTMENT", accent: "#dc2626" },
+  manager: { level: 20, portal: "admin-dashboard", scope: "DEPARTMENT", accent: "#ea580c" },
+  lead: { level: 30, portal: "leader-dashboard", scope: "TEAM", accent: "#2563eb" },
+  staff: { level: 40, portal: "employee-dashboard", scope: "SELF", accent: "#2563eb" },
+  support: { level: 45, portal: "employee-dashboard", scope: "SELF", accent: "#94a3b8" },
+  junior: { level: 50, portal: "employee-dashboard", scope: "SELF", accent: "#16a34a" },
+};
+
+// [id, display name, parentId, tier] — the company's actual org structure.
+type RoleSeed = [string, string, string | null, RoleTier];
+
+const ROLE_SEEDS: RoleSeed[] = [
+  // Top
+  ["exec_board", "Executive Board / Managing Partners", null, "board"],
+
+  // ── IT & Technology ──────────────────────────────────────────
+  ["mp_it", "Managing Partner — IT & Technology", "exec_board", "partner"],
+  ["dir_it", "Director of IT", "mp_it", "director"],
+  ["it_manager", "IT Manager", "dir_it", "manager"],
+  ["sysadmin", "System Administrator / Network Engineer", "it_manager", "lead"],
+  ["it_support", "IT Support Specialist", "sysadmin", "staff"],
+  ["helpdesk", "Helpdesk Associate", "it_support", "junior"],
+  ["telephony", "Telephony & Voice Specialist (Genesys / Avaya)", "it_manager", "staff"],
+  ["voice_infra", "Support Voice Infrastructure", "telephony", "support"],
+
+  // ── Finance & Data Analytics ─────────────────────────────────
+  ["mp_finance", "Managing Partner — Finance & Data Analytics", "exec_board", "partner"],
+  ["dir_privacy", "Director of Privacy", "mp_finance", "director"],
+  ["finance_manager", "Finance Manager", "dir_privacy", "manager"],
+  ["accountant_billing", "Accountant / Billing Specialist", "finance_manager", "staff"],
+  ["dir_data", "Director of Data Mining & Analytics", "mp_finance", "director"],
+  ["bd_sourcing", "BD / Sourcing Manager", "dir_data", "manager"],
+  ["data_engineer", "Data Engineers / ETL Specialists", "bd_sourcing", "staff"],
+  ["data_analyst", "Data Analysts / BI Reporters", "bd_sourcing", "staff"],
+  ["junior_data_analyst", "Junior Data Analyst", "data_analyst", "junior"],
+  ["provider_insights", "Provider System Performance Insights", "data_analyst", "support"],
+  ["provider_forecast", "Provider Reimbursement / P&L Forecasting", "data_analyst", "support"],
+
+  // ── Medical Billing Operations ───────────────────────────────
+  ["mp_medical", "Managing Partner — Medical Billing Operations", "exec_board", "partner"],
+  // Client Billing & Collections
+  ["dir_billing", "Director — Medical Billing Operations", "mp_medical", "director"],
+  ["qa_manager", "QA & Assurance Manager (HIPAA / Compliance)", "dir_billing", "manager"],
+  ["qa_lead", "QA Lead / Auditor", "qa_manager", "lead"],
+  ["qa_analyst", "QA Analyst / Chart Reviewer", "qa_lead", "junior"],
+  ["billing_ops_manager", "Medical Billing Operations Manager", "dir_billing", "manager"],
+  ["team_lead_billing", "Team Lead / Supervisor", "billing_ops_manager", "lead"],
+  ["senior_coder", "Senior Medical Coder / Biller", "team_lead_billing", "staff"],
+  ["junior_coder", "Junior Medical Coder / CDI", "senior_coder", "junior"],
+  // Recruit & Onboard / HR & Admin
+  ["dir_hr", "Director of Human Resources & Admin", "mp_medical", "director"],
+  ["hr_manager", "HR Manager", "dir_hr", "manager"],
+  ["recruitment", "Recruitment / Talent Acquisition", "hr_manager", "staff"],
+  ["hr_coordinator", "HR Coordinators / Payroll", "hr_manager", "staff"],
+  ["admin_manager", "Administration Manager", "dir_hr", "manager"],
+  ["admin_officer", "Admin Officers / Facility Executive", "admin_manager", "staff"],
 ];
+
+export const BASE_ROLES: RoleDef[] = ROLE_SEEDS.map(([id, name, parentId, tier], i) => {
+  const meta = TIER_META[tier];
+  return {
+    id,
+    name,
+    description: `${name} — ${tier} level.`,
+    portal: meta.portal,
+    scope: meta.scope,
+    scopeLabel: scopeLabelFromScope(meta.scope),
+    // Keep levels unique-ish per node so card sorting is stable within a tier.
+    hierarchyLevel: meta.level * 100 + i,
+    system: tier === "board",
+    parentId,
+    tier,
+    accent: meta.accent,
+  };
+});
 
 export const DEPARTMENTS = [
   { id: "executive", name: "Executive" },
@@ -152,13 +184,15 @@ export const DEPARTMENTS = [
 ];
 
 export const INITIAL_EMPLOYEES: DemoEmployee[] = [
-  { id: "1001", name: "CEO Office", initials: "CEO", roleId: "ceo", departmentId: "executive", reportsTo: null },
-  { id: "1088", name: "Ali Hassan", initials: "AH", roleId: "manager", departmentId: "production", reportsTo: "1001" },
-  { id: "1201", name: "Sara Khan", initials: "SK", roleId: "team_lead", departmentId: "production", reportsTo: "1088" },
-  { id: "1210", name: "Omar Raza", initials: "OR", roleId: "officer", departmentId: "production", reportsTo: "1201" },
-  { id: "1042", name: "Zara Malik", initials: "ZM", roleId: "hr", departmentId: "hr", reportsTo: "1001" },
-  { id: "1220", name: "Bilal Hussain", initials: "BH", roleId: "officer", departmentId: "production", reportsTo: "1201" },
-  { id: "1315", name: "Hina Shah", initials: "HS", roleId: "manager", departmentId: "sales", reportsTo: "1001" },
+  { id: "1001", name: "Mahnoor", initials: "MN", roleId: "mp_it", departmentId: "executive", reportsTo: null },
+  { id: "1002", name: "Akhtar", initials: "AK", roleId: "mp_finance", departmentId: "executive", reportsTo: null },
+  { id: "1003", name: "Saqib", initials: "SQ", roleId: "mp_medical", departmentId: "executive", reportsTo: "1001" },
+  { id: "1088", name: "Ali Hassan", initials: "AH", roleId: "it_manager", departmentId: "engineering", reportsTo: "1001" },
+  { id: "1201", name: "Sara Khan", initials: "SK", roleId: "team_lead_billing", departmentId: "production", reportsTo: "1003" },
+  { id: "1210", name: "Omar Raza", initials: "OR", roleId: "junior_coder", departmentId: "production", reportsTo: "1201" },
+  { id: "1042", name: "Zara Malik", initials: "ZM", roleId: "hr_manager", departmentId: "hr", reportsTo: "1003" },
+  { id: "1220", name: "Bilal Hussain", initials: "BH", roleId: "senior_coder", departmentId: "production", reportsTo: "1201" },
+  { id: "1315", name: "Hina Shah", initials: "HS", roleId: "billing_ops_manager", departmentId: "production", reportsTo: "1003" },
 ];
 
 export const FEATURE_MODULES = withPermissionHints([
@@ -221,31 +255,51 @@ export const FEATURE_MODULES = withPermissionHints([
   },
 ]);
 
-export const DEFAULT_PERMISSIONS: Record<string, Set<string>> = {
-  super_admin: new Set(FEATURE_MODULES.flatMap((m) => m.permissions.map((p) => p.key))),
-  ceo: new Set(FEATURE_MODULES.flatMap((m) => m.permissions.map((p) => p.key))),
-  hr: new Set([
-    "attendance.summary.view",
-    "attendance.manage.edit",
-    "attendance.monthly.view",
-    "leave.list.view",
-    "leave.approve.hr",
-    "leave.balances.edit",
-    "payroll.monthly.view",
-    "team.management.assign",
-    "system.users.assign",
-  ]),
-  manager: new Set([
-    "attendance.summary.view",
-    "attendance.manage.edit",
-    "attendance.monthly.view",
-    "leave.list.view",
-    "leave.approve.manager",
-  ]),
-  team_lead: new Set(["leave.apply.self", "team.dashboard.view", "team.attendance.view"]),
-  officer: new Set(["leave.apply.self"]),
-  accountant: new Set(["payroll.monthly.view", "payroll.monthly.edit", "payroll.commissions"]),
-};
+const ALL_PERMISSION_KEYS = FEATURE_MODULES.flatMap((m) =>
+  m.permissions.map((p) => p.key),
+);
+
+/** Default granted permissions for a tier. Users fine-tune in Permissions tab. */
+function permissionsForTier(tier: RoleTier): string[] {
+  switch (tier) {
+    case "board":
+    case "partner":
+      return ALL_PERMISSION_KEYS;
+    case "director":
+      return [
+        "attendance.summary.view",
+        "attendance.summary.export",
+        "attendance.manage.edit",
+        "attendance.monthly.view",
+        "attendance.monthly.export",
+        "leave.list.view",
+        "leave.approve.manager",
+        "leave.approve.hr",
+        "team.dashboard.view",
+        "team.attendance.view",
+        "team.management.assign",
+        "payroll.monthly.view",
+      ];
+    case "manager":
+      return [
+        "attendance.summary.view",
+        "attendance.manage.edit",
+        "attendance.monthly.view",
+        "leave.list.view",
+        "leave.approve.manager",
+        "team.dashboard.view",
+        "team.attendance.view",
+      ];
+    case "lead":
+      return ["leave.apply.self", "team.dashboard.view", "team.attendance.view"];
+    default:
+      return ["leave.apply.self"];
+  }
+}
+
+export const DEFAULT_PERMISSIONS: Record<string, Set<string>> = Object.fromEntries(
+  BASE_ROLES.map((r) => [r.id, new Set(permissionsForTier(r.tier ?? "staff"))]),
+);
 
 export const GLOBAL_FEATURES: GlobalFeature[] = [
   { key: "biometric", name: "Biometric face clock-in", desc: "Require face verify on clock in/out", on: true },
@@ -256,7 +310,7 @@ export const GLOBAL_FEATURES: GlobalFeature[] = [
 ];
 
 export const TAB_HINT: Record<TabId, string> = {
-  roles: "Set hierarchy level per role (lower number = higher rank). Cards reorder automatically; lowering level inherits permissions from all roles below.",
+  roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. Changes sync to the other tabs.",
   permissions: "Grant or revoke permissions per role using the matrix. Hover (i) for details.",
   assign: "Assign a primary role to each employee. Changes apply on next login.",
   features: "Globally enable or disable features for the entire organization.",
@@ -290,7 +344,11 @@ export function slugifyRoleName(name: string) {
 }
 
 export function roleMeta(roleId: string, allRoles: RoleDef[]) {
-  return allRoles.find((r) => r.id === roleId) || allRoles.find((r) => r.id === "officer") || BASE_ROLES[6];
+  return (
+    allRoles.find((r) => r.id === roleId) ||
+    allRoles.find((r) => r.id === "exec_board") ||
+    BASE_ROLES[0]
+  );
 }
 
 export function isSystemRole(roleId: string) {
@@ -303,7 +361,31 @@ export function isCustomRole(roleId: string, customRoles: RoleDef[]) {
 }
 
 export function isRoleLocked(roleId: string) {
-  return roleId === "super_admin";
+  return roleId === "exec_board";
+}
+
+/** Direct children of a role in the org tree. */
+export function childRoles(roles: RoleDef[], parentId: string | null) {
+  return roles.filter((r) => (r.parentId ?? null) === parentId);
+}
+
+/**
+ * True if `maybeDescendantId` sits anywhere below `rootId` in the tree. Used to
+ * stop an illegal drag-drop that would create a cycle (dropping a role onto one
+ * of its own descendants).
+ */
+export function isDescendantOf(
+  roles: RoleDef[],
+  rootId: string,
+  maybeDescendantId: string,
+): boolean {
+  const stack = [...childRoles(roles, rootId)];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.id === maybeDescendantId) return true;
+    stack.push(...childRoles(roles, node.id));
+  }
+  return false;
 }
 
 export function empNameById(employees: DemoEmployee[], id: string | null) {

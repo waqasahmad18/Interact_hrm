@@ -20,13 +20,13 @@ export default function AssignUsersTab({
   onSaveEmployee,
   onBulkAssign,
 }: Props) {
+  const assignableRoles = allRoles.filter((r) => !r.system);
+
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkRole, setBulkRole] = useState("officer");
+  const [bulkRole, setBulkRole] = useState(() => assignableRoles[0]?.id ?? "");
   const [draftRoles, setDraftRoles] = useState<Record<string, string>>({});
-
-  const assignableRoles = allRoles.filter((r) => !r.system);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
