@@ -337,13 +337,18 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     [handleVerifyOpen, handleVerifyClose]
   );
 
-  const { runWithVerify, gateModal, bioStatusLoading, bioEnforcementRequired, faceEngineReady } = useBiometricGate(
+  const { runWithVerify, gateModal, bioStatusLoading } = useBiometricGate(
     employeeId,
     employeeName,
     biometricGateOptions
   );
 
-  const verifyPreparing = bioStatusLoading || (bioEnforcementRequired && !faceEngineReady);
+  // Buttons are only disabled during the quick bio-status fetch. We deliberately
+  // do NOT block on full face-model load: on a remote server the weights take a
+  // few seconds to download, and the verify modal already loads them in parallel
+  // with the camera. Blocking here left buttons stuck on "Preparing…" for too
+  // long.
+  const verifyPreparing = bioStatusLoading;
 
   const isBiometricGateError = (error: unknown) =>
     String(error || "").toLowerCase().includes("face verification");

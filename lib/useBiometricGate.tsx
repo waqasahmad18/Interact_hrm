@@ -132,10 +132,12 @@ export function useBiometricGate(
         return;
       }
 
+      // If enforcement is on but models are still downloading, do NOT block the
+      // click — the verify modal starts the camera and loads the engine in
+      // parallel, showing its own "Loading face engine…" state. Kick off the
+      // load (idempotent) and open the modal so the user is never stuck waiting.
       if (bioStatus.enforcementRequired && !faceEngineReady) {
         void ensureFaceModelsLoaded();
-        alert("Face verification is preparing — please wait a few seconds and try again.");
-        return;
       }
 
       if (!bioStatus.enforcementRequired) {
