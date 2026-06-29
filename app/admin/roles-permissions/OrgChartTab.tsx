@@ -11,6 +11,9 @@ type Props = {
   permCountByRole: (roleId: string) => number;
   totalPermCount: number;
   onReparent: (childId: string, newParentId: string | null) => void;
+  onInsertAbove: (draggedId: string, targetId: string) => void;
+  onMakeSibling: (draggedId: string, targetId: string) => void;
+  onResetChart: () => void;
   onAddChild: (parentId: string) => void;
   onRename: (roleId: string, name: string) => void;
   onDelete: (roleId: string) => void;
@@ -71,6 +74,9 @@ export default function OrgChartTab({
   permCountByRole,
   totalPermCount,
   onReparent,
+  onInsertAbove,
+  onMakeSibling,
+  onResetChart,
   onAddChild,
   onRename,
   onDelete,
@@ -83,6 +89,21 @@ export default function OrgChartTab({
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // Drop intent based on cursor position over the target card:
+  //  "above"   → dragged role becomes the target's manager
+  //  "sibling" → dragged role becomes a parallel sibling
+  //  "child"   → dragged role reports to the target
+  type DropMode = "child" | "above" | "sibling";
+  type DropEdge = "top" | "bottom" | "left" | "right";
+  const [dropMode, setDropMode] = useState<DropMode>("child");
+  const [siblingSide, setSiblingSide] = useState<"left" | "right">("right");
+  // Which edge of the target the cursor is nearest — drives the joint symbol.
+  const [dropEdge, setDropEdge] = useState<DropEdge>("bottom");
+  // Mirror drag state in refs so handlers read the CURRENT value synchronously;
+  // React state is async/batched and the first dragover could otherwise skip
+  // preventDefault and silently block the drop.
+  const dragIdRef = React.useRef<string | null>(null);
+  const dropModeRef = React.useRef<DropMode>("child");
   // Click-and-drag panning of the empty canvas surface (replaces scrollbars).
   const panRef = React.useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -138,7 +159,14 @@ export default function OrgChartTab({
   }, [editing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDrop(targetId: string) {
-    if (dragId && dragId !== targetId) onReparent(dragId, targetId);
+    const sourceId = dragIdRef.current ?? dragId;
+    if (sourceId && sourceId !== targetId) {
+      const mode = dropModeRef.current;
+      if (mode === "above") onInsertAbove(sourceId, targetId);
+      else if (mode === "sibling") onMakeSibling(sourceId, targetId);
+      else onReparent(sourceId, targetId);
+    }
+    dragIdRef.current = null;
     setDragId(null);
     setDropTargetId(null);
   }
@@ -210,6 +238,9 @@ export default function OrgChartTab({
     const accent = accentOf(role);
     const locked = isRoleLocked(role.id);
     const isDropping = dropTargetId === role.id && dragId !== role.id;
+    const isDroppingAbove = isDropping && dropMode === "above";
+    const isDroppingChild = isDropping && dropMode === "child";
+    const isDroppingSibling = isDropping && dropMode === "sibling";
     const isDragging = dragId === role.id;
     const isCollapsed = collapsed.has(role.id);
     const hiddenCount = isCollapsed ? descendantCount(role.id) : 0;
@@ -224,7 +255,15 @@ export default function OrgChartTab({
           data-orgcard=""
           className={[
             styles.orgCard,
-            isDropping ? styles.orgCardDrop : "",
+            isDroppingChild ? styles.orgCardDrop : "",
+            isDroppingAbove ? styles.orgCardDropAbove : "",
+            isDroppingSibling ? styles.orgCardDropSibling : "",
+            isDroppingSibling && siblingSide === "left"
+              ? styles.orgCardDropSiblingLeft
+              : "",
+            isDroppingSibling && siblingSide === "right"
+              ? styles.orgCardDropSiblingRight
+              : "",
             isDragging ? styles.orgCardDragging : "",
           ]
             .filter(Boolean)
@@ -240,18 +279,57 @@ export default function OrgChartTab({
               e.preventDefault();
               return;
             }
+            dragIdRef.current = role.id;
             setDragId(role.id);
             e.dataTransfer.effectAllowed = "move";
+            try {
+              e.dataTransfer.setData("text/plain", role.id);
+            } catch {
+              /* ignore */
+            }
           }}
           onDragEnd={() => {
+            dragIdRef.current = null;
             setDragId(null);
             setDropTargetId(null);
           }}
           onDragOver={(e) => {
-            if (!dragId || dragId === role.id) return;
+            const source = dragIdRef.current;
+            if (!source || source === role.id) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
+            // Pick the NEAREST edge to whichever side the cursor came in from:
+            //  top → ABOVE (manager), bottom → CHILD (reports),
+            //  left/right → SIBLING (parallel, same manager).
+            const rect = e.currentTarget.getBoundingClientRect();
+            const yRatio = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+            const xRatio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+            const dTop = yRatio;
+            const dBottom = 1 - yRatio;
+            const dLeft = xRatio;
+            const dRight = 1 - xRatio;
+            const nearest = Math.min(dTop, dBottom, dLeft, dRight);
+            let edge: DropEdge;
+            let mode: DropMode;
+            if (nearest === dLeft) {
+              edge = "left";
+              mode = "sibling";
+              if (siblingSide !== "left") setSiblingSide("left");
+            } else if (nearest === dRight) {
+              edge = "right";
+              mode = "sibling";
+              if (siblingSide !== "right") setSiblingSide("right");
+            } else if (nearest === dTop) {
+              edge = "top";
+              mode = "above";
+            } else {
+              edge = "bottom";
+              mode = "child";
+            }
+            dropModeRef.current = mode;
             if (dropTargetId !== role.id) setDropTargetId(role.id);
+            if (dropMode !== mode) setDropMode(mode);
+            if (dropEdge !== edge) setDropEdge(edge);
           }}
           onDragLeave={() => {
             if (dropTargetId === role.id) setDropTargetId(null);
@@ -261,6 +339,42 @@ export default function OrgChartTab({
             handleDrop(role.id);
           }}
         >
+          {isDropping && (
+            <>
+              <span
+                className={`${styles.orgJoint} ${
+                  dropEdge === "top"
+                    ? styles.orgJointTop
+                    : dropEdge === "bottom"
+                      ? styles.orgJointBottom
+                      : dropEdge === "left"
+                        ? styles.orgJointLeft
+                        : styles.orgJointRight
+                }`}
+                aria-hidden
+              >
+                <span className={styles.orgJointDot} />
+              </span>
+              <span
+                className={`${styles.orgJointLabel} ${
+                  dropEdge === "top"
+                    ? styles.orgJointLabelTop
+                    : dropEdge === "bottom"
+                      ? styles.orgJointLabelBottom
+                      : dropEdge === "left"
+                        ? styles.orgJointLabelLeft
+                        : styles.orgJointLabelRight
+                }`}
+              >
+                {dropEdge === "top"
+                  ? "↑ Becomes manager"
+                  : dropEdge === "bottom"
+                    ? "↓ Reports here"
+                    : "↔ Parallel role"}
+              </span>
+            </>
+          )}
+
           {/* coloured header band: avatar + name + actions inline */}
           <div
             className={styles.orgCardBand}
@@ -381,10 +495,11 @@ export default function OrgChartTab({
   return (
     <div className={styles.orgWrap}>
       <div className={styles.orgHintBar}>
-        <strong>Drag</strong> any card onto another to change who it reports to —
-        the hierarchy and permissions update live. Use the
-        <strong> edit</strong>, <strong>delete</strong>, and <strong>hide</strong>{" "}
-        buttons on each card to manage it.
+        <strong>Drag</strong> a card onto another and aim at an edge — drop near
+        the <strong>top</strong> to make it the manager, the{" "}
+        <strong>bottom</strong> to make it report, or the{" "}
+        <strong>left/right</strong> to place it parallel. Hierarchy, arrows, and
+        permissions update live.
       </div>
 
       <div className={styles.orgCanvasWrap}>
@@ -446,6 +561,15 @@ export default function OrgChartTab({
             )}
           </div>
         </div>
+
+        <button
+          type="button"
+          className={styles.orgResetBtn}
+          onClick={onResetChart}
+          title="Reset all drag-drop hierarchy, names, levels and permissions to default"
+        >
+          ⟲ Reset chart
+        </button>
       </div>
 
       {editing && (

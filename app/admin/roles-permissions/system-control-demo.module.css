@@ -3436,6 +3436,24 @@
   transform: translateX(-50%);
   z-index: 1;
 }
+/* arrowhead at the top of the stub, pointing up toward the manager so the
+   reporting direction reads clearly */
+.orgTree .orgList .orgItem .orgCard::after {
+  content: "";
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid #b8c2d4;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+.orgTree > .orgList > .orgItem > .orgCard::after {
+  display: none;
+}
 /* root list: no top connectors */
 .orgTree > .orgList {
   padding-top: 0;
@@ -3483,6 +3501,140 @@
 .orgCardDragging {
   opacity: 0.4;
   transform: scale(0.96);
+}
+
+/* Drop ABOVE: dragged card becomes this card's manager (blue top edge) */
+.orgCardDropAbove {
+  border-color: #2563eb !important;
+  box-shadow:
+    0 -4px 0 0 #2563eb,
+    0 0 0 3px rgba(37, 99, 235, 0.28),
+    0 14px 34px rgba(37, 99, 235, 0.2);
+  transform: translateY(-3px) scale(1.03);
+}
+/* Drop SIBLING: dragged card becomes parallel (amber side edge) */
+.orgCardDropSibling {
+  border-color: #f59e0b !important;
+  box-shadow:
+    0 0 0 3px rgba(245, 158, 11, 0.28),
+    0 14px 34px rgba(245, 158, 11, 0.2);
+  transform: translateY(-3px) scale(1.03);
+}
+.orgCardDropSiblingLeft {
+  box-shadow:
+    -5px 0 0 0 #f59e0b,
+    0 0 0 3px rgba(245, 158, 11, 0.28),
+    0 14px 34px rgba(245, 158, 11, 0.2);
+}
+.orgCardDropSiblingRight {
+  box-shadow:
+    5px 0 0 0 #f59e0b,
+    0 0 0 3px rgba(245, 158, 11, 0.28),
+    0 14px 34px rgba(245, 158, 11, 0.2);
+}
+
+/* ---- "Join here" indicator: glowing dot + connector line on the active edge ---- */
+.orgJoint {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.orgJointDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid currentColor;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.7), 0 0 14px currentColor;
+  animation: orgJointPulse 1s ease-in-out infinite;
+}
+@keyframes orgJointPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+}
+/* the connector stub linking the dot back to the card */
+.orgJoint::before {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  border-radius: 999px;
+}
+.orgJointTop {
+  color: #2563eb;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.orgJointTop::before { width: 3px; height: 26px; top: 16px; left: 50%; transform: translateX(-50%); }
+.orgJointBottom {
+  color: #16a34a;
+  bottom: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.orgJointBottom::before { width: 3px; height: 26px; bottom: 16px; left: 50%; transform: translateX(-50%); }
+.orgJointLeft {
+  color: #f59e0b;
+  left: -34px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.orgJointLeft::before { height: 3px; width: 26px; left: 16px; top: 50%; transform: translateY(-50%); }
+.orgJointRight {
+  color: #f59e0b;
+  right: -34px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.orgJointRight::before { height: 3px; width: 26px; right: 16px; top: 50%; transform: translateY(-50%); }
+
+/* text label that names the relationship while dragging */
+.orgJointLabel {
+  position: absolute;
+  z-index: 9;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.92);
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.3);
+}
+.orgJointLabelTop { top: -60px; left: 50%; transform: translateX(-50%); }
+.orgJointLabelBottom { bottom: -60px; left: 50%; transform: translateX(-50%); }
+.orgJointLabelLeft { left: -8px; top: 50%; transform: translate(-100%, -50%); }
+.orgJointLabelRight { right: -8px; top: 50%; transform: translate(100%, -50%); }
+
+/* floating Reset button — mirrors the zoom bar, bottom-right of the canvas */
+.orgResetBtn {
+  position: absolute;
+  bottom: 14px;
+  right: 28px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b91c1c;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(6px);
+  border: 1px solid #f1d4d4;
+  border-radius: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.orgResetBtn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+  transform: translateY(-1px);
 }
 
 /* coloured header band: avatar + name + actions inline */

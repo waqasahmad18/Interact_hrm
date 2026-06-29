@@ -187,20 +187,143 @@ export default function SystemControlPage() {
     openNewRoleModal(isRoleLocked(parentId) ? "it_manager" : parentId);
   }
 
+  /** Target id plus every role beneath it in the current tree. */
+  function collectSubtreeIds(roles: RoleDef[], rootId: string): string[] {
+    const out = [rootId];
+    const stack = [...childRoles(roles, rootId)];
+    while (stack.length) {
+      const node = stack.pop()!;
+      out.push(node.id);
+      stack.push(...childRoles(roles, node.id));
+    }
+    return out;
+  }
+
+  const effectiveParentOf = (roleId: string): string | null =>
+    roleMeta(roleId, allRoles).parentId ?? null;
+
+  /**
+   * Move `childId` so it reports to `newParentId`, ALWAYS succeeding. If
+   * `newParentId` currently sits below `childId` (which would form a loop), the
+   * conflicting branch is first lifted into `childId`'s old slot — so any role
+   * can be dropped onto any other role from any department without being blocked.
+   */
   function reparentRole(childId: string, newParentId: string | null) {
     if (childId === newParentId) return;
     if (isRoleLocked(childId)) {
       showToast("Super Admin stays at the top of the chart");
       return;
     }
-    if (newParentId && isDescendantOf(allRoles, childId, newParentId)) {
-      showToast("Can't move a role under one of its own reports");
-      return;
-    }
-    setParentOverrides((prev) => ({ ...prev, [childId]: newParentId }));
+    const oldParent = effectiveParentOf(childId);
+    setParentOverrides((prev) => {
+      const next = { ...prev };
+      if (newParentId && isDescendantOf(allRoles, childId, newParentId)) {
+        next[newParentId] = oldParent;
+      }
+      next[childId] = newParentId;
+      return next;
+    });
     const childName = roleMeta(childId, allRoles).name;
     const parentName = newParentId ? roleMeta(newParentId, allRoles).name : "top level";
     showToast(`${childName} now reports to ${parentName}`);
+  }
+
+  /**
+   * Drop the dragged role ABOVE the target so the dragged role becomes the
+   * target's new manager: the dragged role takes the target's old parent slot,
+   * and the target (plus its subtree) now reports to the dragged role. Always
+   * succeeds — loops are auto-resolved by lifting the conflicting branch. The
+   * dragged role keeps its identity but inherits the subtree's permissions.
+   */
+  function insertRoleAbove(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+    if (isRoleLocked(draggedId)) {
+      showToast("Super Admin stays at the top of the chart");
+      return;
+    }
+    if (isRoleLocked(targetId)) {
+      showToast("Can't place a role above the top of the chart");
+      return;
+    }
+    const targetParent = effectiveParentOf(targetId);
+    const draggedOldParent = effectiveParentOf(draggedId);
+    setParentOverrides((prev) => {
+      const next = { ...prev };
+      if (
+        targetParent &&
+        (targetParent === draggedId ||
+          isDescendantOf(allRoles, draggedId, targetParent))
+      ) {
+        next[targetParent] = draggedOldParent;
+      }
+      next[draggedId] = targetParent;
+      next[targetId] = draggedId;
+      return next;
+    });
+
+    const subtreeIds = collectSubtreeIds(allRoles, targetId);
+    let gained = 0;
+    setPermissions((prev) => {
+      const union = new Set(prev[draggedId] || []);
+      const before = union.size;
+      for (const id of subtreeIds) {
+        for (const key of prev[id] || []) union.add(key);
+      }
+      gained = union.size - before;
+      return { ...prev, [draggedId]: union };
+    });
+
+    const draggedName = roleMeta(draggedId, allRoles).name;
+    const targetName = roleMeta(targetId, allRoles).name;
+    showToast(
+      gained > 0
+        ? `${targetName} now reports to ${draggedName} (+${gained} permission${gained === 1 ? "" : "s"})`
+        : `${targetName} now reports to ${draggedName}`,
+    );
+  }
+
+  /**
+   * Drop the dragged role BESIDE the target so they become parallel siblings:
+   * the dragged role takes the same parent as the target (same level, same
+   * manager). Always succeeds — loops auto-resolved. Role identity unchanged.
+   */
+  function makeRoleSibling(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+    if (isRoleLocked(draggedId)) {
+      showToast("Super Admin stays at the top of the chart");
+      return;
+    }
+    const targetParent = effectiveParentOf(targetId);
+    const currentParent = effectiveParentOf(draggedId);
+    if (targetParent === currentParent) {
+      showToast(`${roleMeta(draggedId, allRoles).name} is already parallel here`);
+      return;
+    }
+    setParentOverrides((prev) => {
+      const next = { ...prev };
+      if (
+        targetParent &&
+        (targetParent === draggedId ||
+          isDescendantOf(allRoles, draggedId, targetParent))
+      ) {
+        next[targetParent] = currentParent;
+      }
+      next[draggedId] = targetParent;
+      return next;
+    });
+    const draggedName = roleMeta(draggedId, allRoles).name;
+    const parentName = targetParent
+      ? roleMeta(targetParent, allRoles).name
+      : "top level";
+    showToast(`${draggedName} placed parallel under ${parentName}`);
+  }
+
+  function resetOrgChart() {
+    setParentOverrides({});
+    setLevelOverrides({});
+    setNameOverrides({});
+    setPermissions(clonePermissionMap());
+    showToast("Org chart reset to default hierarchy and permissions");
   }
 
   function renameRole(roleId: string, newName: string) {
@@ -373,6 +496,9 @@ export default function SystemControlPage() {
               permCountByRole={permCountByRole}
               totalPermCount={totalPermCount}
               onReparent={reparentRole}
+              onInsertAbove={insertRoleAbove}
+              onMakeSibling={makeRoleSibling}
+              onResetChart={resetOrgChart}
               onAddChild={openAddChildRole}
               onRename={renameRole}
               onDelete={requestDeleteRole}
