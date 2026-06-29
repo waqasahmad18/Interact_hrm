@@ -7,7 +7,6 @@ import {
   countFacesInVideo,
   descriptorToJson,
   ensureFaceModelsLoaded,
-  quickCountFacesInVideo,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
 
@@ -26,6 +25,7 @@ const RETRY_AFTER_FAIL_MS = 200;
 // Good consecutive frames whose descriptors are averaged into one stable probe.
 // Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
 // match is far more reliable — and harder to fool — than a single snapshot.
+// This is a big accuracy gain that costs almost nothing (pure math).
 const REQUIRED_PROBES = 3;
 
 export function FaceVerifyModal({
@@ -44,6 +44,7 @@ export function FaceVerifyModal({
   const scanInFlightRef = React.useRef(false);
   const lastScanAtRef = React.useRef(0);
   const singleFaceStreakRef = React.useRef(0);
+  const multiFaceStreakRef = React.useRef(0);
   const probeBufferRef = React.useRef<number[][]>([]);
 
   const [modelsReady, setModelsReady] = React.useState(false);
@@ -74,9 +75,7 @@ export function FaceVerifyModal({
     probeBufferRef.current = [];
     setMultipleFaces(true);
     setError(null);
-    setGuidance(
-      "Only one person in the frame — ask anyone behind or beside you to step out of camera view."
-    );
+    setGuidance("Only one person should be in the frame — others please step out of camera view.");
     setStatus(
       count >= 2
         ? `${count} faces in frame — clock action blocked.`
@@ -97,11 +96,20 @@ export function FaceVerifyModal({
       const scan = await scanVideoFrame(video);
 
       if (scan.status === "multiple") {
-        blockMultipleFaces(scan.count);
+        // Require two consecutive multi-face frames before blocking. A single
+        // flicker / momentary background ghost must not slam up the red wall —
+        // this keeps the experience smooth and avoids false blocks on one
+        // person.
+        multiFaceStreakRef.current += 1;
+        if (multiFaceStreakRef.current >= 2) {
+          blockMultipleFaces(scan.count);
+        }
         return;
       }
 
-      // Any non-multiple result continues scanning.
+      // Any non-multiple result clears the multi-face streak immediately.
+      multiFaceStreakRef.current = 0;
+
       if (scan.status === "none") {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
@@ -144,16 +152,6 @@ export function FaceVerifyModal({
       }
 
       singleFaceStreakRef.current += 1;
-
-      // Re-check the full frame before each captured probe — someone can walk
-      // behind the user between scan ticks (e.g. standing slightly lower).
-      const liveFaceCount = await quickCountFacesInVideo(video);
-      if (liveFaceCount >= 2) {
-        singleFaceStreakRef.current = 0;
-        probeBufferRef.current = [];
-        blockMultipleFaces(liveFaceCount);
-        return;
-      }
 
       // Collect several good frames and average their descriptors into one
       // stable probe before contacting the server. A single frame can be noisy
@@ -246,6 +244,7 @@ export function FaceVerifyModal({
       setMultipleFaces(false);
       setGuidance(null);
       singleFaceStreakRef.current = 0;
+      multiFaceStreakRef.current = 0;
       probeBufferRef.current = [];
       scanInFlightRef.current = false;
       busyRef.current = false;

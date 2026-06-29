@@ -8,12 +8,9 @@ import {
 } from "../../../lib/ui-sync/breakPrayerDataRefresh";
 import styles from "../../break-summary/break-summary.module.css";
 import attStyles from "../../attendance-summary/attendance-summary.module.css";
-import { ClockBreakPrayerWidget } from "../../components/ClockBreakPrayer";
-import { TardyNoteWidget } from "../../components/TardyNoteWidget";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
 import { FaFileExcel } from "react-icons/fa";
-import * as XLSX from 'xlsx';
 import {
   getDateStringInTimeZone,
   getTimeStringInTimeZone,
@@ -225,16 +222,19 @@ export default function EmployeeTimePage() {
   }, [employeeId, attFromDate, attToDate]);
 
   useEffect(() => {
+    if (!employeeId) return;
     fetchBreaks();
-  }, [fetchBreaks]);
+  }, [employeeId, fetchBreaks]);
 
   useEffect(() => {
+    if (!employeeId || activeTab !== "prayer") return;
     fetchPrayerBreaks();
-  }, [fetchPrayerBreaks]);
+  }, [employeeId, activeTab, fetchPrayerBreaks]);
 
   useEffect(() => {
+    if (!employeeId || activeTab !== "attendance") return;
     fetchAttendance();
-  }, [fetchAttendance]);
+  }, [employeeId, activeTab, fetchAttendance]);
 
   useEffect(() => {
     const onBreakChanged = () => fetchBreaks();
@@ -383,7 +383,8 @@ export default function EmployeeTimePage() {
     window.URL.revokeObjectURL(url);
   };
 
-  const downloadAttendanceCSV = () => {
+  const downloadAttendanceCSV = async () => {
+    const XLSX = await import("xlsx");
     const data = attendance.map(row => {
       const date = row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "";
       const clockIn = row.clock_in ? getTimeStringInTimeZone(row.clock_in, SERVER_TIMEZONE) : "";
@@ -442,14 +443,8 @@ export default function EmployeeTimePage() {
   });
 
   return (
-    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #6a82fb 0%, #fc5c7d 100%)', padding: 0, margin: 0 }}>
+    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)', padding: 0, margin: 0 }}>
       <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 16px' }}>
-        {/* Shared Clock / Break / Prayer controls at the very top */}
-        <div style={{ marginTop: '40px' }}>
-          <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
-          {employeeId ? <TardyNoteWidget employeeId={employeeId} /> : null}
-        </div>
-
         <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
 
         <div style={{ ...tabStyles, borderBottom: 'none' }}>

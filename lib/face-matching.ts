@@ -98,8 +98,6 @@ export function matchProbeToDescriptors(
   //  1. the single closest enrolled photo is a clear match,
   //  2. the closest-two average is also within the threshold (no slack), and
   //  3. at least `minMatchingPhotos` enrolled photos individually match.
-  // Requiring corroboration from two photos stops a look-alike (who may be
-  // close to ONE photo by chance) from being accepted.
   const pass =
     bestDistance <= maxDistance &&
     avgDistance <= maxDistance &&

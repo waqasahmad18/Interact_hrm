@@ -44,12 +44,8 @@ function CompanyPolicyWidget() {
     </>
   );
 }
-import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
-import { TardyNoteWidget } from "../components/TardyNoteWidget";
 
 export default function EmployeeDashboardPage() {
-  const [employeeId, setEmployeeId] = React.useState<string>("");
-  const [employeeName, setEmployeeName] = React.useState("");
   const [calendarNow, setCalendarNow] = React.useState(() => new Date());
 
   const todayParts = React.useMemo(() => {
@@ -89,44 +85,6 @@ export default function EmployeeDashboardPage() {
     };
   }, []);
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const loginId = localStorage.getItem("loginId");
-    const cachedId = localStorage.getItem("employeeId");
-    const cachedName = localStorage.getItem("employeeName");
-
-    if (cachedId) setEmployeeId(cachedId);
-    if (cachedName) setEmployeeName(cachedName);
-
-    if (!loginId) return;
-    let apiUrl = "/api/hrm_employees?";
-    apiUrl += loginId.includes("@") ? `email=${loginId}` : `username=${loginId}`;
-
-    Promise.all([
-      fetch(apiUrl).then(res => res.json()).catch(() => ({ success: false })),
-      fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(() => ({ success: false }))
-    ]).then(([data1, data2]) => {
-      const data = data1.success ? data1 : data2;
-      if (data.success && data.employee) {
-        const empId = data.employee.id || data.employee.employee_id || loginId;
-        const empName = `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim();
-        setEmployeeId(String(empId));
-        setEmployeeName(empName);
-        localStorage.setItem("employeeId", String(empId));
-        localStorage.setItem("employeeName", empName);
-      }
-    });
-  }, []);
-
-  const gradientCard: React.CSSProperties = {
-    background: "linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)",
-    borderRadius: 0,
-    padding: "32px 32px 28px",
-    color: "#e8f0ff",
-    boxShadow: "0 20px 60px rgba(8, 25, 66, 0.35)",
-    width: "100%"
-  };
-
   const quickActionStyle: React.CSSProperties = {
     border: "none",
     borderRadius: 14,
@@ -138,18 +96,6 @@ export default function EmployeeDashboardPage() {
     background: "#f7fafc",
     boxShadow: "0 8px 24px rgba(15,29,64,0.12)",
     transition: "transform 0.2s ease, box-shadow 0.2s ease"
-  };
-
-  const infoPill: React.CSSProperties = {
-    background: "rgba(255,255,255,0.08)",
-    borderRadius: 12,
-    padding: "10px 14px",
-    fontSize: "0.92rem",
-    color: "#dbe7ff",
-    border: "1px solid rgba(255,255,255,0.12)",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8
   };
 
   const calendarYear = todayParts.year;
@@ -223,28 +169,6 @@ export default function EmployeeDashboardPage() {
       minHeight: "100vh",
       padding: 0
     }}>
-      <div style={{ width: "100%", padding: 0, margin: 0 }}>
-        <div style={gradientCard}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: "0.95rem", opacity: 0.85 }}>Welcome back</div>
-              <div style={{ fontSize: "1.7rem", fontWeight: 700, marginTop: 6 }}>{employeeName || "Your dashboard"}</div>
-              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <span style={infoPill}>Small daily efforts compound into big wins. Keep going.</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button style={{ ...quickActionStyle, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40" }} onClick={() => window.location.href = "/employee-dashboard/time"}>Time & Attendance</button>
-              <button style={{ ...quickActionStyle, background: "linear-gradient(120deg, #ffd89b, #f7b733)", color: "#3d2600" }} onClick={() => window.location.href = "/employee-dashboard/leave"}>Leave Center</button>
-            </div>
-          </div>
-          <div style={{ marginTop: 22, background: "rgba(255,255,255,0.08)", borderRadius: 0, padding: 18, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName} />
-            {employeeId ? <TardyNoteWidget employeeId={employeeId} /> : null}
-          </div>
-        </div>
-      </div>
-
       <div style={{ width: "100%", padding: "8px 20px 12px" }}>
         <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
           <div style={{ background: "#ffffff", borderRadius: 14, padding: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", border: "1px solid #e6ecf5" }}>

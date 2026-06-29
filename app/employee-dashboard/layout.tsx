@@ -1,8 +1,11 @@
 "use client";
 import React from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee, FaUser } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
+import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
+import { TardyNoteWidget } from "../components/TardyNoteWidget";
 
 const employeeTabs = [
   { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
@@ -11,43 +14,69 @@ const employeeTabs = [
   { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> }
 ];
 
+/** Routes where the clock/break widget stays mounted so Dashboard ↔ Time switches
+ *  do not tear down timers, face-model preload, or attendance sync state. */
+const CLOCK_WIDGET_PATHS = new Set(["/employee-dashboard", "/employee-dashboard/time"]);
+
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
-    // ...existing code...
   const router = useRouter();
   const pathname = usePathname();
-  // Get employee name from API using loginId
   const [employeeName, setEmployeeName] = React.useState<string>("");
+  const [employeeId, setEmployeeId] = React.useState<string>("");
+  const showClockBar = pathname != null && CLOCK_WIDGET_PATHS.has(pathname);
+  const isDashboardHome = pathname === "/employee-dashboard";
+
+  const quickActionStyle: React.CSSProperties = {
+    border: "none",
+    borderRadius: 14,
+    padding: "12px 16px",
+    fontSize: "0.9rem",
+    fontWeight: 700,
+    color: "#0f1d40",
+    cursor: "pointer",
+    background: "#f7fafc",
+    boxShadow: "0 8px 24px rgba(15,29,64,0.12)",
+  };
+
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      const loginId = localStorage.getItem("loginId");
-      if (!loginId) {
-        // Auto-logout: redirect to login if loginId missing (e.g., after cache clear)
-        window.location.href = "/auth";
-        return;
-      }
-      // ...existing code for fetching employee name...
-      let apiUrl = "/api/hrm_employees?";
-      if (loginId.includes("@")) {
-        apiUrl += `email=${loginId}`;
-      } else {
-        apiUrl += `username=${loginId}`;
-      }
-      Promise.all([
-        fetch(apiUrl).then(res => res.json()).catch(e => ({ success: false, error: e })),
-        fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(e => ({ success: false, error: e }))
-      ]).then(([data1, data2]) => {
-        const data = (data1.success ? data1 : data2);
-        if (data.success && data.employee) {
-          const name = (data.employee.first_name || "") + (data.employee.last_name ? " " + data.employee.last_name : "");
-          setEmployeeName(name.trim());
-        } else {
-          setEmployeeName("Employee");
-        }
-      })
-      .catch(err => {
-        setEmployeeName("Employee");
-      });
+    if (typeof window === "undefined") return;
+    const loginId = localStorage.getItem("loginId");
+    if (!loginId) {
+      window.location.href = "/auth";
+      return;
     }
+
+    const cachedId = localStorage.getItem("employeeId");
+    const cachedName = localStorage.getItem("employeeName");
+    if (cachedId) setEmployeeId(cachedId);
+    else setEmployeeId(loginId);
+    if (cachedName) setEmployeeName(cachedName);
+
+    let apiUrl = "/api/hrm_employees?";
+    if (loginId.includes("@")) {
+      apiUrl += `email=${loginId}`;
+    } else {
+      apiUrl += `username=${loginId}`;
+    }
+    Promise.all([
+      fetch(apiUrl).then(res => res.json()).catch(() => ({ success: false })),
+      fetch(`/api/hrm_employees?employeeId=${loginId}`).then(res => res.json()).catch(() => ({ success: false }))
+    ]).then(([data1, data2]) => {
+      const data = data1.success ? data1 : data2;
+      if (data.success && data.employee) {
+        const name = (data.employee.first_name || "") + (data.employee.last_name ? " " + data.employee.last_name : "");
+        const trimmedName = name.trim() || "Employee";
+        const empId = String(data.employee.id || data.employee.employee_id || loginId);
+        setEmployeeName(trimmedName);
+        setEmployeeId(empId);
+        localStorage.setItem("employeeId", empId);
+        localStorage.setItem("employeeName", trimmedName);
+      } else {
+        setEmployeeName("Employee");
+      }
+    }).catch(() => {
+      setEmployeeName("Employee");
+    });
   }, []);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -113,19 +142,58 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
             {employeeTabs.map((tab, idx) => {
               const isActive = pathname === tab.path;
               return (
-                <div
+                <Link
                   key={tab.path || idx}
-                  onClick={() => router.push(tab.path)}
+                  href={tab.path}
+                  prefetch
                   className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
                 >
                   <span className={styles.navIcon}>{tab.icon}</span>
                   <span>{tab.name}</span>
-                </div>
+                </Link>
               );
             })}
           </nav>
         </aside>
         <div className={styles.contentArea}>
+          {isDashboardHome ? (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)",
+                color: "#e8f0ff",
+                padding: "28px 32px 24px",
+                boxShadow: "0 20px 60px rgba(8, 25, 66, 0.35)",
+                width: "100%",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: "0.95rem", opacity: 0.85 }}>Welcome back</div>
+                  <div style={{ fontSize: "1.7rem", fontWeight: 700, marginTop: 6 }}>{employeeName || "Your dashboard"}</div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ background: "rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 14px", fontSize: "0.92rem", color: "#dbe7ff", border: "1px solid rgba(255,255,255,0.12)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      Small daily efforts compound into big wins. Keep going.
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Link href="/employee-dashboard/time" prefetch style={{ ...quickActionStyle, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40", textDecoration: "none" }}>Time & Attendance</Link>
+                  <Link href="/employee-dashboard/leave" prefetch style={{ ...quickActionStyle, background: "linear-gradient(120deg, #ffd89b, #f7b733)", color: "#3d2600", textDecoration: "none" }}>Leave Center</Link>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {showClockBar && employeeId ? (
+            <div
+              style={{
+                padding: "16px 20px",
+                background: "linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)",
+              }}
+            >
+              <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName || "Employee"} />
+              <TardyNoteWidget employeeId={employeeId} />
+            </div>
+          ) : null}
           <main className={styles.main}>{children}</main>
         </div>
       </div>

@@ -221,6 +221,7 @@
       transition: background 0.3s, color 0.3s, transform 0.2s, box-shadow 0.2s;
       box-shadow: none;
       border: none;
+      text-decoration: none;
     }
 
     .navItem:hover {
