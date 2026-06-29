@@ -337,11 +337,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
     [handleVerifyOpen, handleVerifyClose]
   );
 
-  const { runWithVerify, gateModal, bioStatusLoading } = useBiometricGate(
+  const { runWithVerify, gateModal, bioStatusLoading, bioEnforcementRequired, faceEngineReady } = useBiometricGate(
     employeeId,
     employeeName,
     biometricGateOptions
   );
+
+  const verifyPreparing = bioStatusLoading || (bioEnforcementRequired && !faceEngineReady);
 
   const isBiometricGateError = (error: unknown) =>
     String(error || "").toLowerCase().includes("face verification");
@@ -733,7 +735,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                   ? handleClockOut
                   : () => runWithVerify("clock_in", (token) => handleClockIn(token))
               }
-              disabled={clockActionPending || bioStatusLoading}
+              disabled={clockActionPending || verifyPreparing}
               style={{
                 background: isClockedIn ? "#e74c3c" : "#27ae60",
                 color: "#fff",
@@ -742,13 +744,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                 padding: "8px 18px",
                 fontSize: "1rem",
                 fontWeight: 600,
-                cursor: clockActionPending ? "not-allowed" : "pointer",
-                opacity: clockActionPending ? 0.6 : 1,
+                cursor: clockActionPending || verifyPreparing ? "not-allowed" : "pointer",
+                opacity: clockActionPending || verifyPreparing ? 0.6 : 1,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                 transition: "background 0.2s"
               }}
             >
-              {isClockedIn ? "Clock Out" : "Clock In"}
+              {verifyPreparing ? "Preparing…" : isClockedIn ? "Clock Out" : "Clock In"}
             </button>
             {showClockOutConfirm && (
               <>
@@ -898,7 +900,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                 ? () => runWithVerify("break_end", (token) => handleBreakEnd(token))
                 : () => runWithVerify("break_start", (token) => handleBreakStart(token))
             }
-            disabled={isPrayerOn || breakActionPending || bioStatusLoading}
+            disabled={isPrayerOn || breakActionPending || verifyPreparing}
             style={{
               background: isOnBreak ? "#e74c3c" : "#e67e22",
               color: "#fff",
@@ -907,13 +909,13 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
               padding: "8px 18px",
               fontSize: "1rem",
               fontWeight: 600,
-              cursor: isPrayerOn || breakActionPending ? "not-allowed" : "pointer",
-              opacity: isPrayerOn || breakActionPending ? 0.6 : 1,
+              cursor: isPrayerOn || breakActionPending || verifyPreparing ? "not-allowed" : "pointer",
+              opacity: isPrayerOn || breakActionPending || verifyPreparing ? 0.6 : 1,
               boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
               transition: "background 0.2s"
             }}
           >
-            {isOnBreak ? "End Break" : "Start Break"}
+            {verifyPreparing ? "Preparing…" : isOnBreak ? "End Break" : "Start Break"}
           </button>
           {isOnBreak && (
             <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
@@ -948,7 +950,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           onPrayerStateChanged={syncPrayerBreakFromServer}
           disabled={isOnBreak}
           runWithVerify={runWithVerify}
-          bioStatusLoading={bioStatusLoading}
+          bioStatusLoading={verifyPreparing}
           onClearServerPrayerInterval={() => clearPrayerBreakSyncInterval(employeeId)}
         />
       )}

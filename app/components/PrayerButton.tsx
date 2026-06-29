@@ -192,13 +192,13 @@ export function PrayerButton({
           padding: "8px 18px",
           fontSize: "1rem",
           fontWeight: 600,
-          cursor: disabled || prayerActionPending ? "not-allowed" : "pointer",
-          opacity: disabled || prayerActionPending ? 0.6 : 1,
+          cursor: disabled || prayerActionPending || bioStatusLoading ? "not-allowed" : "pointer",
+          opacity: disabled || prayerActionPending || bioStatusLoading ? 0.6 : 1,
           boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
           transition: "background 0.2s"
         }}
       >
-        {isPrayerOn ? "End Prayer" : "Start Prayer"}
+        {bioStatusLoading ? "Preparing…" : isPrayerOn ? "End Prayer" : "Start Prayer"}
       </button>
       {isPrayerOn && (
         <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>

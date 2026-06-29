@@ -12,6 +12,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        // Model weights are static — cache hard so tab reopen loads from disk
+        // instead of re-downloading several MB on every fresh session.
+        source: "/models/face-api/:file*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
   poweredByHeader: false,
 };
 

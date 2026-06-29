@@ -6,6 +6,7 @@ import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee, FaUser } from "react
 import styles from "../layout-dashboard.module.css";
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
 import { TardyNoteWidget } from "../components/TardyNoteWidget";
+import { preloadFaceRuntime, ensureFaceModelsLoaded } from "../../lib/face-client-engine";
 
 const employeeTabs = [
   { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
@@ -37,6 +38,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     background: "#f7fafc",
     boxShadow: "0 8px 24px rgba(15,29,64,0.12)",
   };
+
+  React.useEffect(() => {
+    if (!showClockBar) return;
+    preloadFaceRuntime();
+    void ensureFaceModelsLoaded();
+  }, [showClockBar]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

@@ -10,6 +10,23 @@ type TfModule = typeof import("@tensorflow/tfjs");
 let faceapi: FaceApiModule | null = null;
 let tf: TfModule | null = null;
 let loadPromise: Promise<void> | null = null;
+let runtimePreloadPromise: Promise<void> | null = null;
+let modelsLoaded = false;
+
+/** Parse tfjs + face-api JS bundles early so weight download can overlap. */
+export function preloadFaceRuntime(): void {
+  if (typeof window === "undefined") return;
+  if (!runtimePreloadPromise) {
+    runtimePreloadPromise = Promise.all([
+      import("@tensorflow/tfjs"),
+      import("@vladmandic/face-api"),
+    ]).then(() => undefined);
+  }
+}
+
+export function areFaceModelsLoaded(): boolean {
+  return modelsLoaded;
+}
 
 type TinyFaceDetectorOptions = FaceApi.TinyFaceDetectorOptions;
 type FaceDetection = FaceApi.FaceDetection;
@@ -42,6 +59,9 @@ let videoCanvasWhole: HTMLCanvasElement | null = null;
 
 async function initFaceRuntime(): Promise<void> {
   if (faceapi && tf && LIVE_DESCRIPTOR) return;
+
+  preloadFaceRuntime();
+  if (runtimePreloadPromise) await runtimePreloadPromise;
 
   const [faceapiMod, tfMod] = await Promise.all([
     import("@vladmandic/face-api"),
@@ -110,7 +130,10 @@ async function warmUpInference(): Promise<void> {
 
 export async function ensureFaceModelsLoaded(): Promise<void> {
   if (typeof window === "undefined") return;
+  if (modelsLoaded) return;
   if (loadPromise) return loadPromise;
+
+  preloadFaceRuntime();
 
   loadPromise = (async () => {
     await initFaceRuntime();
@@ -130,7 +153,16 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
 
-    await warmUpInference();
+    modelsLoaded = true;
+
+    // Shader warm-up is expensive on the main thread — run when idle so the
+    // first button click after a tab reopen does not freeze the UI.
+    const runWarmUp = () => void warmUpInference();
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(runWarmUp, { timeout: 4000 });
+    } else {
+      setTimeout(runWarmUp, 50);
+    }
   })();
 
   return loadPromise;
@@ -138,6 +170,7 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
 
 export function resetFaceModelsForRetry(): void {
   loadPromise = null;
+  modelsLoaded = false;
 }
 
 function minArea(canvas: HTMLCanvasElement, ratio: number): number {

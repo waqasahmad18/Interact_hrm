@@ -1,16 +1,9 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
-
-const FaceVerifyModal = dynamic(
-  () =>
-    import("@/app/components/FaceVerifyModal").then((mod) => ({
-      default: mod.FaceVerifyModal,
-    })),
-  { ssr: false, loading: () => null }
-);
+import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
+import { ensureFaceModelsLoaded, preloadFaceRuntime } from "@/lib/face-client-engine";
 
 type PendingAction = {
   action: BiometricAction;
@@ -59,6 +52,7 @@ export function useBiometricGate(
   });
   const [pending, setPending] = React.useState<PendingAction | null>(null);
   const [modalOpen, setModalOpen] = React.useState(false);
+  const [faceEngineReady, setFaceEngineReady] = React.useState(false);
   const pendingRef = React.useRef<PendingAction | null>(null);
 
   const refreshStatus = React.useCallback(async () => {
@@ -100,11 +94,19 @@ export function useBiometricGate(
   }, [refreshStatus]);
 
   React.useEffect(() => {
-    if (!employeeId) return;
-    // Warm the engine (models + WebGL shaders) and preload the modal chunk so
-    // the camera and verification start fast on first use / after idle.
-    void import("@/lib/face-client-engine").then((mod) => mod.ensureFaceModelsLoaded());
-    void import("@/app/components/FaceVerifyModal");
+    if (!employeeId) {
+      setFaceEngineReady(false);
+      return;
+    }
+    let cancelled = false;
+    setFaceEngineReady(false);
+    preloadFaceRuntime();
+    void ensureFaceModelsLoaded().then(() => {
+      if (!cancelled) setFaceEngineReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [employeeId]);
 
   const onVerifyOpenRef = React.useRef(options.onVerifyOpen);
@@ -130,6 +132,12 @@ export function useBiometricGate(
         return;
       }
 
+      if (bioStatus.enforcementRequired && !faceEngineReady) {
+        void ensureFaceModelsLoaded();
+        alert("Face verification is preparing — please wait a few seconds and try again.");
+        return;
+      }
+
       if (!bioStatus.enforcementRequired) {
         void callback(null);
         return;
@@ -150,7 +158,7 @@ export function useBiometricGate(
 
       openVerifyModal(action, callback);
     },
-    [bioStatus, openVerifyModal]
+    [bioStatus, faceEngineReady, openVerifyModal]
   );
 
   const handleVerified = React.useCallback(async (token: string) => {
@@ -189,6 +197,8 @@ export function useBiometricGate(
     gateModal,
     modalOpen,
     bioStatusLoading: bioStatus.loading,
+    bioEnforcementRequired: bioStatus.enforcementRequired,
+    faceEngineReady,
     refreshBioStatus: refreshStatus,
   };
 }
