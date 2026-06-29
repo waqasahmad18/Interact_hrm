@@ -10,6 +10,12 @@ type TfModule = typeof import("@tensorflow/tfjs");
 let faceapi: FaceApiModule | null = null;
 let tf: TfModule | null = null;
 let loadPromise: Promise<void> | null = null;
+// Heavy "enhancement" models (SSD detector + full 68-point landmarks) load in
+// the background AFTER the fast essential models, so the first verification is
+// not delayed by several extra megabytes. These flags say what is ready.
+let enhancementPromise: Promise<void> | null = null;
+let fullLandmarksReady = false;
+let ssdReady = false;
 
 type TinyFaceDetectorOptions = FaceApi.TinyFaceDetectorOptions;
 type SsdMobilenetv1Options = FaceApi.SsdMobilenetv1Options;
@@ -114,12 +120,49 @@ async function warmUpInference(): Promise<void> {
 
     // Landmark + recognition nets only run once a face is found. Invoke them
     // directly on the blank canvas so their shaders are also pre-compiled,
-    // making the first real "verifying" step fast instead of a cold start.
-    await faceapi.nets.faceLandmark68Net.detectLandmarks(canvas);
+    // making the first real "verifying" step fast instead of a cold start. The
+    // tiny landmark net is used here because it is part of the fast essential
+    // load; the full net (if/when it loads) is warmed separately.
+    await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(canvas);
     await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(canvas);
   } catch {
     // Warm-up is best-effort; a failure here must not block real scans.
   }
+}
+
+/**
+ * Load the heavy enhancement models (full landmarks + SSD detector) in the
+ * background. These improve accuracy on hard faces but are NOT required for a
+ * working verification, so they never block the first scan. Runs at most once.
+ */
+function loadEnhancementModels(): Promise<void> {
+  if (enhancementPromise) return enhancementPromise;
+
+  enhancementPromise = (async () => {
+    if (!faceapi) return;
+    try {
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      fullLandmarksReady = true;
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      ssdReady = true;
+
+      // Pre-compile the full-landmark shaders so the first scan that uses them
+      // is not a cold start.
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 320;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#7f7f7f";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      await faceapi.nets.faceLandmark68Net.detectLandmarks(canvas);
+    } catch {
+      // Best-effort: if these fail we silently keep using the essential models.
+    }
+  })();
+
+  return enhancementPromise;
 }
 
 export async function ensureFaceModelsLoaded(): Promise<void> {
@@ -138,13 +181,9 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
       await tf.ready();
     }
 
+    // ESSENTIAL models only — small and fast, enough for a full verification.
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-      // Full 68-point landmark net gives noticeably better face alignment than
-      // the tiny variant, which directly improves descriptor (embedding)
-      // quality and therefore match accuracy.
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
@@ -152,11 +191,25 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
     await warmUpInference();
   })();
 
+  // Kick off the heavy models in the background — does NOT block this promise,
+  // so the camera/verify is usable as soon as the essential models are ready.
+  void loadPromise.then(() => loadEnhancementModels());
+
   return loadPromise;
+}
+
+/** Await the heavy models — used for enrollment, where accuracy matters more
+ * than latency (admin-side, not the live employee clock-in path). */
+export async function ensureEnhancementModelsLoaded(): Promise<void> {
+  await ensureFaceModelsLoaded();
+  await loadEnhancementModels();
 }
 
 export function resetFaceModelsForRetry(): void {
   loadPromise = null;
+  enhancementPromise = null;
+  fullLandmarksReady = false;
+  ssdReady = false;
 }
 
 function minArea(canvas: HTMLCanvasElement, ratio: number): number {
@@ -356,7 +409,7 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
   if (maxCount >= 2) return maxCount;
 
   // SSD pass — best at finding multiple faces at different scales / depths.
-  if (SSD_FACE_COUNT) {
+  if (ssdReady && SSD_FACE_COUNT) {
     const ssdDetections = await faceapi.detectAllFaces(canvas, SSD_FACE_COUNT);
     maxCount = Math.max(maxCount, countDistinctPeople(canvas, ssdDetections));
   }
@@ -389,13 +442,15 @@ async function detectWithDescriptors(
 ): Promise<{ significant: WithDescriptor[] }> {
   if (!faceapi) return { significant: [] };
 
-  // withFaceLandmarks(false) selects the FULL 68-point landmark net (true =
-  // tiny). Better landmarks → better face alignment → a cleaner, more
-  // discriminative descriptor, which improves both accept (right person) and
-  // reject (look-alike) accuracy.
+  // withFaceLandmarks(true) = tiny landmark net, (false) = full net. The full
+  // net gives better alignment (→ cleaner descriptor), so it is used once it
+  // has finished loading in the background; until then the tiny net keeps
+  // verification fully working. Passing `!fullLandmarksReady` picks the best
+  // available net without ever blocking on the heavy download.
+  const useTinyLandmarks = !fullLandmarksReady;
   const results = (await faceapi
     .detectAllFaces(canvas, detector)
-    .withFaceLandmarks(false)
+    .withFaceLandmarks(useTinyLandmarks)
     .withFaceDescriptors()) as WithDescriptor[];
 
   const significant = results.filter(
@@ -465,7 +520,7 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
   // Try the fast tiny detectors first, then fall back to the more accurate SSD
   // detector for hard enrollment photos (off-centre, angled, glasses).
   const detectors: DetectorOptions[] = [...ENROLL_DETECTORS];
-  if (SSD_DESCRIPTOR) detectors.push(SSD_DESCRIPTOR);
+  if (ssdReady && SSD_DESCRIPTOR) detectors.push(SSD_DESCRIPTOR);
 
   for (const detector of detectors) {
     const { significant } = await detectWithDescriptors(
@@ -525,7 +580,7 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   // one and finds faces the tiny detector misses (off-centre, slightly turned,
   // glasses glare). It is slower, so it only runs here when the fast tiny
   // passes have already failed.
-  if (SSD_DESCRIPTOR) {
+  if (ssdReady && SSD_DESCRIPTOR) {
     const ssd = await descriptorFromCanvases(
       [wholeCanvas, brightWhole, cropCanvas],
       [SSD_DESCRIPTOR]
@@ -541,7 +596,9 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
 }
 
 export async function scanBlob(blob: Blob): Promise<FaceScanOutcome> {
-  await ensureFaceModelsLoaded();
+  // Enrollment is admin-side and quality-critical, so wait for the full
+  // landmark + SSD models to give the best possible descriptors.
+  await ensureEnhancementModelsLoaded();
   if (!faceapi) return { status: "none" };
 
   const url = URL.createObjectURL(blob);

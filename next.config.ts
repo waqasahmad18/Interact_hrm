@@ -12,6 +12,23 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        // Face-api model weights are static and content-stable. Cache them hard
+        // so they are downloaded only once — reopening a tab or reloading the
+        // app then loads the camera/engine from cache instead of re-fetching
+        // several megabytes (SSD + landmark + recognition models).
+        source: "/models/face-api/:file*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
   poweredByHeader: false,
 };
 
