@@ -86,7 +86,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     });
   }, []);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
 
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -104,8 +109,19 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     <>
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
+          <span
+            className={styles.sidebarMenuIcon}
+            role="button"
+            tabIndex={0}
+            aria-label="Toggle menu"
+            onClick={() => setSidebarOpen((open) => !open)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setSidebarOpen((open) => !open);
+            }}
+          >
+            &#9776;
+          </span>
           <span className={styles.sidebarTitle}>Interact Global</span>
-          <span className={styles.sidebarMenuIcon}>&#9776;</span>
         </div>
         <div className={styles.topBarRight}>
           <div className={styles.topBarProfile}>
@@ -144,7 +160,14 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         </div>
       </div>
       <div className={styles.layout}>
-        <aside className={styles.sidebar}>
+        {sidebarOpen && (
+          <div
+            className={styles.sidebarOverlay}
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+          />
+        )}
+        <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
           <nav className={styles.nav}>
             {employeeTabs.map((tab, idx) => {
               const isActive = pathname === tab.path;
