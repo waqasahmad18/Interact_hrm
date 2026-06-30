@@ -1003,6 +1003,11 @@ export default function MonthlyAttendancePage() {
         : session
           ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
           : "--",
+      totalWorkingHours: importedDay
+        ? deductionSummaryTungsten(importedDay.totalWH || "---")
+        : record?.total_hours
+          ? formatHoursMins(record.total_hours)
+          : "--",
       status: formatDeductionSummaryStatus(normalizeAttendanceStatus(statusLabel)),
       tardyCount,
       tardyNote: tardyNoteForCell(

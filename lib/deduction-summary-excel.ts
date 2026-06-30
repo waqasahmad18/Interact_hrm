@@ -7,6 +7,7 @@ export const DEDUCTION_SUMMARY_HEADERS = [
   "Clock In",
   "Clock Out",
   "T.Punch out",
+  "Total Working Hours",
   "Status",
   "Tardy Count",
   "Tardy Note",
@@ -50,7 +51,7 @@ const TARDY_ROW_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFFFFF00" },
 };
 
-const COLUMN_WIDTHS = [14, 14, 14, 14, 14, 18, 12, 28, 12];
+const COLUMN_WIDTHS = [14, 14, 14, 14, 14, 18, 18, 12, 28, 12];
 
 export type DeductionSummaryDayRow = {
   date: string;
@@ -58,6 +59,7 @@ export type DeductionSummaryDayRow = {
   clockIn: string;
   clockOut: string;
   tPunchOut: string;
+  totalWorkingHours: string;
   status: string;
   tardyCount: number | string;
   tardyNote: string;
@@ -69,28 +71,6 @@ export type DeductionSummaryEmployeeBlock = {
   rows: DeductionSummaryDayRow[];
   totalDeduction: number;
 };
-
-function sanitizeSheetName(name: string): string {
-  const cleaned = String(name || "Employee")
-    .replace(/[\\/*?:\[\]]/g, "")
-    .trim();
-  return (cleaned || "Employee").slice(0, 31);
-}
-
-function uniqueSheetName(base: string, used: Set<string>): string {
-  let candidate = sanitizeSheetName(base);
-  if (!used.has(candidate)) {
-    used.add(candidate);
-    return candidate;
-  }
-  let n = 2;
-  while (used.has(candidate)) {
-    candidate = sanitizeSheetName(`${base.slice(0, 18)} ${n}`).slice(0, 31);
-    n += 1;
-  }
-  used.add(candidate);
-  return candidate;
-}
 
 function applyBlackBorder(cell: ExcelJS.Cell) {
   cell.border = {
@@ -122,13 +102,11 @@ function addMergedBannerRow(
   }
 }
 
-function addDeductionSummarySheet(
-  workbook: ExcelJS.Workbook,
-  sheetName: string,
+/** Append one employee's deduction block (banner → header → rows → total) to a sheet. */
+function appendEmployeeBlock(
+  sheet: ExcelJS.Worksheet,
   block: DeductionSummaryEmployeeBlock,
 ) {
-  const sheet = workbook.addWorksheet(sheetName);
-
   addMergedBannerRow(sheet, block.employeeName, YELLOW_EMPLOYEE_FILL, {
     bold: true,
     color: { argb: "FF000000" },
@@ -158,6 +136,7 @@ function addDeductionSummarySheet(
       row.clockIn,
       row.clockOut,
       row.tPunchOut,
+      row.totalWorkingHours || "--",
       status,
       row.tardyCount === 0 || row.tardyCount === "" ? "" : row.tardyCount,
       row.tardyNote || "",
@@ -183,7 +162,11 @@ function addDeductionSummarySheet(
     });
   });
 
-  const totalRow = sheet.addRow(["", "", "", "", "", "", "", "Total", `${block.totalDeduction}%`]);
+  const totalRow = sheet.addRow([
+    ...Array(COL_COUNT - 2).fill(""),
+    "Total",
+    `${block.totalDeduction}%`,
+  ]);
   totalRow.eachCell((cell, colNumber) => {
     cell.alignment = { horizontal: "center", vertical: "middle" };
     applyBlackBorder(cell);
@@ -191,12 +174,6 @@ function addDeductionSummarySheet(
       cell.font = RED_BOLD_FONT;
     }
   });
-
-  COLUMN_WIDTHS.forEach((w, i) => {
-    sheet.getColumn(i + 1).width = w;
-  });
-
-  return sheet;
 }
 
 export async function downloadDeductionSummaryExcel(
@@ -205,20 +182,23 @@ export async function downloadDeductionSummaryExcel(
 ) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Interact HRM";
-  const usedNames = new Set<string>();
 
-  blocks.forEach((block) => {
-    const tabName = uniqueSheetName(block.employeeName, usedNames);
-    addDeductionSummarySheet(workbook, tabName, block);
+  // All employees go on a single sheet, stacked top-to-bottom with a blank
+  // spacer row between them — no more per-employee tabs to switch through.
+  const sheet = workbook.addWorksheet("Deduction Summary");
+
+  const exportBlocks = blocks.length
+    ? blocks
+    : [{ employeeName: "No employees", rows: [], totalDeduction: 0 }];
+
+  exportBlocks.forEach((block, index) => {
+    if (index > 0) sheet.addRow([]); // spacer between employees
+    appendEmployeeBlock(sheet, block);
   });
 
-  if (workbook.worksheets.length === 0) {
-    addDeductionSummarySheet(workbook, "Deduction Summary", {
-      employeeName: "No employees",
-      rows: [],
-      totalDeduction: 0,
-    });
-  }
+  COLUMN_WIDTHS.forEach((w, i) => {
+    sheet.getColumn(i + 1).width = w;
+  });
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
