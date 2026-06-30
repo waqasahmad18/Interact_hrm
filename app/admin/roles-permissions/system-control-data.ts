@@ -1,4 +1,4 @@
-export type TabId = "roles" | "permissions" | "assign" | "features" | "settings";
+export type TabId = "roles" | "permissions" | "features" | "settings";
 
 export type RoleDef = {
   id: string;
@@ -30,6 +30,7 @@ export type DemoEmployee = {
   id: string;
   name: string;
   initials: string;
+  pseudonym?: string;
   roleId: string;
   departmentId: string;
   reportsTo: string | null;
@@ -184,15 +185,15 @@ export const DEPARTMENTS = [
 ];
 
 export const INITIAL_EMPLOYEES: DemoEmployee[] = [
-  { id: "1001", name: "Mahnoor", initials: "MN", roleId: "mp_it", departmentId: "executive", reportsTo: null },
-  { id: "1002", name: "Akhtar", initials: "AK", roleId: "mp_finance", departmentId: "executive", reportsTo: null },
-  { id: "1003", name: "Saqib", initials: "SQ", roleId: "mp_medical", departmentId: "executive", reportsTo: "1001" },
-  { id: "1088", name: "Ali Hassan", initials: "AH", roleId: "it_manager", departmentId: "engineering", reportsTo: "1001" },
-  { id: "1201", name: "Sara Khan", initials: "SK", roleId: "team_lead_billing", departmentId: "production", reportsTo: "1003" },
-  { id: "1210", name: "Omar Raza", initials: "OR", roleId: "junior_coder", departmentId: "production", reportsTo: "1201" },
-  { id: "1042", name: "Zara Malik", initials: "ZM", roleId: "hr_manager", departmentId: "hr", reportsTo: "1003" },
-  { id: "1220", name: "Bilal Hussain", initials: "BH", roleId: "senior_coder", departmentId: "production", reportsTo: "1201" },
-  { id: "1315", name: "Hina Shah", initials: "HS", roleId: "billing_ops_manager", departmentId: "production", reportsTo: "1003" },
+  { id: "1001", name: "Mahnoor", initials: "MN", pseudonym: "MN-Exec", roleId: "mp_it", departmentId: "executive", reportsTo: null },
+  { id: "1002", name: "Akhtar", initials: "AK", pseudonym: "AK-Finance", roleId: "mp_finance", departmentId: "executive", reportsTo: null },
+  { id: "1003", name: "Saqib", initials: "SQ", pseudonym: "SQ-Medical", roleId: "mp_medical", departmentId: "executive", reportsTo: "1001" },
+  { id: "1088", name: "Ali Hassan", initials: "AH", pseudonym: "Developer", roleId: "it_manager", departmentId: "engineering", reportsTo: "1001" },
+  { id: "1201", name: "Sara Khan", initials: "SK", pseudonym: "SK-Billing", roleId: "team_lead_billing", departmentId: "production", reportsTo: "1003" },
+  { id: "1210", name: "Omar Raza", initials: "OR", pseudonym: "OR-Coder", roleId: "junior_coder", departmentId: "production", reportsTo: "1201" },
+  { id: "1042", name: "Zara Malik", initials: "ZM", pseudonym: "ZM-HR", roleId: "hr_manager", departmentId: "hr", reportsTo: "1003" },
+  { id: "1220", name: "Bilal Hussain", initials: "BH", pseudonym: "BH-Senior", roleId: "senior_coder", departmentId: "production", reportsTo: "1201" },
+  { id: "1315", name: "Hina Shah", initials: "HS", pseudonym: "HS-Ops", roleId: "billing_ops_manager", departmentId: "production", reportsTo: "1003" },
 ];
 
 export const FEATURE_MODULES = withPermissionHints([
@@ -311,11 +312,103 @@ export const GLOBAL_FEATURES: GlobalFeature[] = [
 
 export const TAB_HINT: Record<TabId, string> = {
   roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. Changes sync to the other tabs.",
-  permissions: "Grant or revoke permissions per role using the matrix. Hover (i) for details.",
-  assign: "Assign a primary role to each employee. Changes apply on next login.",
+  permissions: "Select a role to configure permissions, assign it to an employee, and toggle feature access.",
   features: "Globally enable or disable features for the entire organization.",
   settings: "Session defaults, leave workflow, and who can access System Control.",
 };
+
+/** Managing partners — each owns one org-chart department column. */
+export const ORG_DEPT_ROOT_IDS = ["mp_it", "mp_finance", "mp_medical"] as const;
+
+/** "Managing Partner — IT & Technology" → "IT & Technology" */
+export function deptSectionLabel(partnerName: string): string {
+  const dash = partnerName.indexOf("—");
+  if (dash >= 0) return partnerName.slice(dash + 1).trim();
+  return partnerName;
+}
+
+/** Pre-order traversal of a role subtree (root included), top-down like the org chart. */
+export function rolesInSubtree(roles: RoleDef[], rootId: string): RoleDef[] {
+  const root = roles.find((r) => r.id === rootId);
+  if (!root) return [];
+  const out: RoleDef[] = [root];
+  const walk = (parentId: string) => {
+    const kids = childRoles(roles, parentId).sort(
+      (a, b) => a.hierarchyLevel - b.hierarchyLevel,
+    );
+    for (const k of kids) {
+      out.push(k);
+      walk(k.id);
+    }
+  };
+  walk(rootId);
+  return out;
+}
+
+/** Department branch root (`mp_*`) for a role, or null when above the three columns. */
+export function deptRootForRole(roles: RoleDef[], roleId: string): string | null {
+  let cur = roles.find((r) => r.id === roleId);
+  while (cur) {
+    if ((ORG_DEPT_ROOT_IDS as readonly string[]).includes(cur.id)) return cur.id;
+    if (cur.parentId == null) return null;
+    cur = roles.find((r) => r.id === cur!.parentId);
+  }
+  return null;
+}
+
+export type RoleSectionGroup = {
+  id: string;
+  title: string;
+  roles: RoleDef[];
+  variant: "executive" | "department";
+};
+
+/** Group roles into executive + three org-chart department sections. */
+export function groupRolesByOrgSection(roles: RoleDef[]): RoleSectionGroup[] {
+  const sections: RoleSectionGroup[] = [];
+
+  const topRoles = roles
+    .filter((r) => {
+      if ((ORG_DEPT_ROOT_IDS as readonly string[]).includes(r.id)) return false;
+      return deptRootForRole(roles, r.id) === null;
+    })
+    .sort((a, b) => a.hierarchyLevel - b.hierarchyLevel);
+
+  if (topRoles.length > 0) {
+    sections.push({
+      id: "executive",
+      title: "Executive Board",
+      roles: topRoles,
+      variant: "executive",
+    });
+  }
+
+  for (const rootId of ORG_DEPT_ROOT_IDS) {
+    const root = roles.find((r) => r.id === rootId);
+    if (!root) continue;
+    const subtree = rolesInSubtree(roles, rootId);
+    if (subtree.length === 0) continue;
+    sections.push({
+      id: rootId,
+      title: deptSectionLabel(root.name),
+      roles: subtree,
+      variant: "department",
+    });
+  }
+
+  const assigned = new Set(sections.flatMap((s) => s.roles.map((r) => r.id)));
+  const orphans = roles.filter((r) => !assigned.has(r.id));
+  if (orphans.length > 0) {
+    sections.push({
+      id: "other",
+      title: "Other roles",
+      roles: orphans.sort((a, b) => a.hierarchyLevel - b.hierarchyLevel),
+      variant: "executive",
+    });
+  }
+
+  return sections;
+}
 
 export function clonePermissionMap() {
   const out: Record<string, Set<string>> = {};

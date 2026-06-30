@@ -2,10 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import styles from "./system-control-demo.module.css";
-import type { FeatureModule, RoleDef } from "./system-control-data";
+import SearchableSelect, { type SelectGroup, type SelectOption } from "./SearchableSelect";
+import type { DemoEmployee, FeatureModule, RoleDef } from "./system-control-data";
+import { groupRolesByOrgSection, roleMeta } from "./system-control-data";
 
 type Props = {
   allRoles: RoleDef[];
+  employees: DemoEmployee[];
   initialRoleId?: string;
   permissions: Record<string, Set<string>>;
   modules: FeatureModule[];
@@ -15,6 +18,7 @@ type Props = {
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
   onResetAll: () => void;
   onSave: () => void;
+  onAssignEmployee: (employeeId: string, roleId: string) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
   employeeCountByRole: (roleId: string) => number;
@@ -24,8 +28,18 @@ function accentOf(role: RoleDef | undefined) {
   return role?.accent || "#9333ea";
 }
 
+function roleFilter(opt: SelectOption, query: string) {
+  return opt.label.toLowerCase().includes(query);
+}
+
+function employeeFilter(opt: SelectOption, query: string) {
+  const hay = `${opt.label} ${opt.meta ?? ""}`.toLowerCase();
+  return hay.includes(query);
+}
+
 export default function RolesPermissionsPanel({
   allRoles,
+  employees,
   initialRoleId,
   permissions,
   modules,
@@ -33,15 +47,56 @@ export default function RolesPermissionsPanel({
   onToggleModuleForRole,
   onResetAll,
   onSave,
+  onAssignEmployee,
   isRoleLocked,
   isCustomRole,
   employeeCountByRole,
 }: Props) {
   const [permSearch, setPermSearch] = useState("");
+  const [assignEmployeeId, setAssignEmployeeId] = useState(() => employees[0]?.id ?? "");
 
   const matrixRoles = useMemo(
     () => allRoles.filter((r) => !isRoleLocked(r.id)),
     [allRoles, isRoleLocked],
+  );
+
+  const roleSections = useMemo(
+    () => groupRolesByOrgSection(matrixRoles),
+    [matrixRoles],
+  );
+
+  const roleSelectGroups: SelectGroup[] = useMemo(
+    () =>
+      roleSections.map((section) => ({
+        id: section.id,
+        label: section.title,
+        options: section.roles.map((role) => {
+          const count = employeeCountByRole(role.id);
+          const custom = isCustomRole(role.id);
+          return {
+            value: role.id,
+            label: role.name,
+            accent: accentOf(role),
+            meta: `${count} ${count === 1 ? "user" : "users"}${custom ? " · custom" : ""}`,
+          };
+        }),
+      })),
+    [roleSections, employeeCountByRole, isCustomRole],
+  );
+
+  const employeeOptions: SelectOption[] = useMemo(
+    () =>
+      employees.map((emp) => ({
+        value: emp.id,
+        label: emp.name,
+        meta: [
+          emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
+          `Current: ${roleMeta(emp.roleId, allRoles).name}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+    [employees, allRoles],
   );
 
   const [selectedRoleId, setSelectedRoleId] = useState<string>(() => {
@@ -51,11 +106,21 @@ export default function RolesPermissionsPanel({
     return matrixRoles[0]?.id ?? "";
   });
 
+  React.useEffect(() => {
+    if (initialRoleId && matrixRoles.some((r) => r.id === initialRoleId)) {
+      setSelectedRoleId(initialRoleId);
+    }
+  }, [initialRoleId, matrixRoles]);
+
   const activeRole =
     matrixRoles.find((r) => r.id === selectedRoleId) ?? matrixRoles[0];
   const activeRoleId = activeRole?.id ?? "";
   const locked = activeRoleId ? isRoleLocked(activeRoleId) : false;
   const roleSet = (activeRoleId && permissions[activeRoleId]) || new Set<string>();
+
+  const assignEmployee = employees.find((e) => e.id === assignEmployeeId);
+  const assignChanged =
+    Boolean(assignEmployee && activeRoleId && assignEmployee.roleId !== activeRoleId);
 
   const totalPerms = useMemo(
     () => modules.reduce((sum, m) => sum + m.permissions.length, 0),
@@ -91,13 +156,18 @@ export default function RolesPermissionsPanel({
     return module.permissions.every((p) => roleSet.has(p.key));
   }
 
+  function handleAssign() {
+    if (!assignEmployeeId || !activeRoleId || !assignChanged) return;
+    onAssignEmployee(assignEmployeeId, activeRoleId);
+  }
+
   return (
     <div className={styles.permWrap}>
       <div className={styles.permHeader}>
         <div>
           <h2 className={styles.matrixTitle}>Roles &amp; Permissions</h2>
           <p className={styles.matrixSubtitle}>
-            Select a role, then toggle exactly what it can access.
+            Select a role, assign it to an employee, then toggle what it can access.
           </p>
         </div>
         <div className={styles.matrixSearchWrap}>
@@ -111,35 +181,41 @@ export default function RolesPermissionsPanel({
         </div>
       </div>
 
-      <div className={styles.roleChips}>
-        {matrixRoles.map((role) => {
-          const active = role.id === activeRoleId;
-          const count = employeeCountByRole(role.id);
-          const rLocked = isRoleLocked(role.id);
-          const rCustom = isCustomRole(role.id);
-          return (
-            <button
-              key={role.id}
-              type="button"
-              className={`${styles.permRoleChip} ${active ? styles.permRoleChipActive : ""}`}
-              onClick={() => setSelectedRoleId(role.id)}
-              style={active ? { borderColor: accentOf(role) } : undefined}
-            >
-              <span
-                className={styles.permRoleChipDot}
-                style={{ background: accentOf(role) }}
-              />
-              <span className={styles.permRoleChipText}>
-                <span className={styles.permRoleChipName}>{role.name}</span>
-                <span className={styles.permRoleChipMeta}>
-                  {count} {count === 1 ? "user" : "users"}
-                  {rLocked ? " · locked" : ""}
-                  {rCustom ? " · custom" : ""}
-                </span>
-              </span>
-            </button>
-          );
-        })}
+      <div className={styles.permPickerBar}>
+        <SearchableSelect
+          id="perm-role"
+          label="Select role"
+          value={selectedRoleId}
+          onChange={setSelectedRoleId}
+          groups={roleSelectGroups}
+          searchPlaceholder="Search by role name…"
+          emptyText="No roles match your search"
+          filterOption={roleFilter}
+        />
+        <SearchableSelect
+          id="perm-employee"
+          label="Assign to user"
+          value={assignEmployeeId}
+          onChange={setAssignEmployeeId}
+          options={employeeOptions}
+          searchPlaceholder="Search by name or P.Name…"
+          emptyText="No employees match your search"
+          filterOption={employeeFilter}
+          disabled={employees.length === 0}
+        />
+        <div className={styles.permAssignBtnCol}>
+          <span className={styles.permSelectLabel} aria-hidden="true">
+            &nbsp;
+          </span>
+          <button
+            type="button"
+            className={styles.permAssignBtn}
+            disabled={!assignChanged}
+            onClick={handleAssign}
+          >
+            Assign role
+          </button>
+        </div>
       </div>
 
       <div className={styles.permBody}>
@@ -248,7 +324,7 @@ export default function RolesPermissionsPanel({
       <div className={styles.matrixFooter}>
         <p className={styles.matrixFooterHint}>
           <span className={styles.legendLocked} /> Only Super Admin is locked with
-          full access. Use <strong>Select all</strong> to grant a whole module at once.
+          full access. Role changes apply on the employee&apos;s next login.
         </p>
         <div className={styles.permFooterActions}>
           <button type="button" className={styles.btnOutlinePurple} onClick={onResetAll}>

@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import AssignUsersTab from "./AssignUsersTab";
 import FeaturesTab from "./FeaturesTab";
 import NewRoleModal from "./NewRoleModal";
 import OrgChartTab from "./OrgChartTab";
@@ -443,17 +442,9 @@ export default function SystemControlPage() {
     );
   }
 
-  function bulkAssignRole(ids: string[], roleId: string) {
-    setEmployees((prev) =>
-      prev.map((e) => (ids.includes(e.id) ? { ...e, roleId } : e)),
-    );
-    showToast(`${ids.length} employee(s) → ${roleMeta(roleId, allRoles).name}`);
-  }
-
   const tabs: { id: TabId; label: string }[] = [
     { id: "roles", label: "Org Chart" },
     { id: "permissions", label: "Permissions" },
-    { id: "assign", label: "Assign Users" },
     { id: "features", label: "Features" },
     { id: "settings", label: "Settings" },
   ];
@@ -512,6 +503,7 @@ export default function SystemControlPage() {
           {activeTab === "permissions" && (
             <RolesPermissionsPanel
               allRoles={allRoles}
+              employees={employees}
               initialRoleId={selectedRoleId}
               permissions={permissions}
               modules={FEATURE_MODULES}
@@ -529,19 +521,10 @@ export default function SystemControlPage() {
                 showToast("All roles reset to default templates");
               }}
               onSave={() => showToast("Permissions saved (demo)")}
+              onAssignEmployee={saveEmployeeRole}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id, customRoles)}
               employeeCountByRole={employeeCountByRole}
-            />
-          )}
-
-          {activeTab === "assign" && (
-            <AssignUsersTab
-              employees={employees}
-              allRoles={allRoles}
-              customRoles={customRoles}
-              onSaveEmployee={saveEmployeeRole}
-              onBulkAssign={bulkAssignRole}
             />
           )}
 
