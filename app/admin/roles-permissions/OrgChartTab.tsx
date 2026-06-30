@@ -27,6 +27,27 @@ function accentOf(role: RoleDef | undefined) {
   return role?.accent || "#9333ea";
 }
 
+function tierCardClass(tier: RoleDef["tier"] | undefined, styles: Record<string, string>) {
+  const map: Record<string, string> = {
+    board: styles.orgCardTierBoard,
+    partner: styles.orgCardTierPartner,
+    director: styles.orgCardTierDirector,
+    manager: styles.orgCardTierManager,
+    lead: styles.orgCardTierLead,
+    staff: styles.orgCardTierStaff,
+    support: styles.orgCardTierSupport,
+    junior: styles.orgCardTierJunior,
+  };
+  return tier ? map[tier] || "" : "";
+}
+
+/** "Managing Partner — IT & Technology" → "IT & Technology" for dept box headers */
+function deptBoxLabel(name: string): string {
+  const dash = name.indexOf("—");
+  if (dash >= 0) return name.slice(dash + 1).trim();
+  return name;
+}
+
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
@@ -244,10 +265,7 @@ export default function OrgChartTab({
     const isDragging = dragId === role.id;
     const isCollapsed = collapsed.has(role.id);
     const hiddenCount = isCollapsed ? descendantCount(role.id) : 0;
-    const users = employeeCountByRole(role.id);
-    const perms = permCountByRole(role.id);
-    const permPct = totalPermCount ? Math.round((perms / totalPermCount) * 100) : 0;
-    const tierLabel = role.tier ? role.tier.toUpperCase() : "ROLE";
+    const tierClass = tierCardClass(role.tier, styles);
 
     return (
       <li key={role.id} className={styles.orgItem}>
@@ -255,6 +273,7 @@ export default function OrgChartTab({
           data-orgcard=""
           className={[
             styles.orgCard,
+            tierClass,
             isDroppingChild ? styles.orgCardDrop : "",
             isDroppingAbove ? styles.orgCardDropAbove : "",
             isDroppingSibling ? styles.orgCardDropSibling : "",
@@ -375,118 +394,87 @@ export default function OrgChartTab({
             </>
           )}
 
-          {/* coloured header band: avatar + name + actions inline */}
-          <div
-            className={styles.orgCardBand}
-            style={{
-              background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)`,
-            }}
-          >
-            <span className={styles.orgCardAvatar}>{initials(role.name)}</span>
-            <span className={styles.orgCardBandText}>
-              <span className={styles.orgCardName}>{role.name}</span>
-              <span className={styles.orgCardTier}>{tierLabel}</span>
-            </span>
+          <div className={styles.orgCardLabel}>{role.name}</div>
+
+          <div className={styles.orgCardActions}>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Edit role"
+              aria-label={`Edit ${role.name}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditId(role.id);
+              }}
+            >
+              <IconEdit />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title={locked ? "This role cannot be deleted" : "Delete role"}
+              aria-label={`Delete ${role.name}`}
+              disabled={locked}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(role.id);
+              }}
+            >
+              <IconTrash />
+            </button>
+            <button
+              type="button"
+              className={`${styles.orgCardBtn} ${isCollapsed ? styles.orgCardBtnOn : ""}`}
+              title={
+                kids.length === 0
+                  ? "No reports to hide"
+                  : isCollapsed
+                    ? "Show reports"
+                    : "Hide reports"
+              }
+              aria-label={`${isCollapsed ? "Show" : "Hide"} reports of ${role.name}`}
+              disabled={kids.length === 0}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(role.id);
+              }}
+            >
+              <IconEye off={isCollapsed} />
+            </button>
           </div>
 
-          <div className={styles.orgCardBody}>
-            <div className={styles.orgCardTags}>
-              {role.system && <span className={styles.badgeSystem}>System</span>}
-              {isCustomRole(role.id) && (
-                <span className={styles.tagCustom}>Custom</span>
-              )}
-              <span className={styles.orgCardScope}>{role.scopeLabel}</span>
-            </div>
-
-            <div className={styles.orgCardMeta}>
-              <span className={styles.orgCardUsers} title="Employees with this role">
-                <span
-                  className={styles.orgCardUserDot}
-                  style={{ background: accent }}
-                />
-                {users} {users === 1 ? "user" : "users"}
-              </span>
-              <span title="Granted permissions">
-                {perms}/{totalPermCount}
-              </span>
-            </div>
-
-            <div className={styles.orgCardPermBar} title={`${permPct}% access`}>
-              <span
-                className={styles.orgCardPermFill}
-                style={{ width: `${permPct}%`, background: accent }}
-              />
-            </div>
-
-            <div className={styles.orgCardActions}>
-              <button
-                type="button"
-                className={styles.orgCardBtn}
-                title="Edit role"
-                aria-label={`Edit ${role.name}`}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditId(role.id);
-                }}
-              >
-                <IconEdit />
-              </button>
-              <button
-                type="button"
-                className={styles.orgCardBtn}
-                title={locked ? "This role cannot be deleted" : "Delete role"}
-                aria-label={`Delete ${role.name}`}
-                disabled={locked}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(role.id);
-                }}
-              >
-                <IconTrash />
-              </button>
-              <button
-                type="button"
-                className={`${styles.orgCardBtn} ${isCollapsed ? styles.orgCardBtnOn : ""}`}
-                title={
-                  kids.length === 0
-                    ? "No reports to hide"
-                    : isCollapsed
-                      ? "Show reports"
-                      : "Hide reports"
-                }
-                aria-label={`${isCollapsed ? "Show" : "Hide"} reports of ${role.name}`}
-                disabled={kids.length === 0}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleCollapse(role.id);
-                }}
-              >
-                <IconEye off={isCollapsed} />
-              </button>
-            </div>
-
-            {isCollapsed && hiddenCount > 0 && (
-              <button
-                type="button"
-                className={styles.orgCollapseBadge}
-                title="Show hidden reports"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleCollapse(role.id);
-                }}
-              >
-                +{hiddenCount} hidden
-              </button>
-            )}
-          </div>
+          {isCollapsed && hiddenCount > 0 && (
+            <button
+              type="button"
+              className={styles.orgCollapseBadge}
+              title="Show hidden reports"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(role.id);
+              }}
+            >
+              +{hiddenCount} hidden
+            </button>
+          )}
         </div>
 
         {kids.length > 0 && !isCollapsed && (
-          <ul className={styles.orgList}>{kids.map((kid) => renderNode(kid))}</ul>
+          role.tier === "board" ? (
+            <div className={styles.orgDeptRow}>
+              {kids.map((kid) => (
+                <div key={kid.id} className={styles.orgDeptBox}>
+                  <div className={styles.orgDeptBoxTitle}>{deptBoxLabel(kid.name)}</div>
+                  <ul className={styles.orgList}>{renderNode(kid)}</ul>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ul className={styles.orgList}>{kids.map((kid) => renderNode(kid))}</ul>
+          )
         )}
       </li>
     );
@@ -554,6 +542,7 @@ export default function OrgChartTab({
             ref={treeRef}
             style={{ zoom } as React.CSSProperties}
           >
+            <h2 className={styles.orgChartTitle}>Organizational Chart</h2>
             {roots.length > 0 ? (
               <ul className={styles.orgList}>{roots.map((r) => renderNode(r))}</ul>
             ) : (

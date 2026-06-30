@@ -97,14 +97,14 @@ const TIER_META: Record<
   RoleTier,
   { level: number; portal: string; scope: string; accent: string }
 > = {
-  board: { level: 1, portal: "admin-dashboard", scope: "ALL", accent: "#6366f1" },
-  partner: { level: 5, portal: "admin-dashboard", scope: "ALL", accent: "#1f2937" },
-  director: { level: 10, portal: "admin-dashboard", scope: "DEPARTMENT", accent: "#dc2626" },
+  board: { level: 1, portal: "admin-dashboard", scope: "ALL", accent: "#a78bfa" },
+  partner: { level: 5, portal: "admin-dashboard", scope: "ALL", accent: "#1a1a1a" },
+  director: { level: 10, portal: "admin-dashboard", scope: "DEPARTMENT", accent: "#b91c1c" },
   manager: { level: 20, portal: "admin-dashboard", scope: "DEPARTMENT", accent: "#ea580c" },
-  lead: { level: 30, portal: "leader-dashboard", scope: "TEAM", accent: "#2563eb" },
-  staff: { level: 40, portal: "employee-dashboard", scope: "SELF", accent: "#2563eb" },
-  support: { level: 45, portal: "employee-dashboard", scope: "SELF", accent: "#94a3b8" },
-  junior: { level: 50, portal: "employee-dashboard", scope: "SELF", accent: "#16a34a" },
+  lead: { level: 30, portal: "leader-dashboard", scope: "TEAM", accent: "#2b6cb0" },
+  staff: { level: 40, portal: "employee-dashboard", scope: "SELF", accent: "#2b6cb0" },
+  support: { level: 45, portal: "employee-dashboard", scope: "SELF", accent: "#38a169" },
+  junior: { level: 50, portal: "employee-dashboard", scope: "SELF", accent: "#38a169" },
 };
 
 // [id, display name, parentId, tier] — the company's actual org structure.
