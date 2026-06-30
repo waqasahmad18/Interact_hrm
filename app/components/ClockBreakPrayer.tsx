@@ -728,7 +728,7 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         notifyPrayerDataChanged();
       }}
     />
-    <div className={`cbp-fade-in${fadeIn ? ' cbp-fade-in-active' : ''}`} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 24, marginBottom: 32 }}>
+    <div className={`cbp-fade-in cbp-widget-row${fadeIn ? ' cbp-fade-in-active' : ''}`}>
       {/* Clock In Widget */}
       <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#27ae60", marginBottom: 10 }}>Clock In</div>

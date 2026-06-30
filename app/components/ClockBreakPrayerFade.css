@@ -5,3 +5,44 @@
 .cbp-fade-in-active {
   opacity: 1;
 }
+
+/* Clock / Break / Prayer widget row.
+   Desktop: centered row. Mobile: horizontal swipe-scroll so all three
+   cards stay usable without squishing or overflowing off screen. */
+.cbp-widget-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 768px) {
+  .cbp-widget-row {
+    justify-content: flex-start;
+    gap: 14px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+  }
+  /* keep each card at its natural size instead of shrinking to fit */
+  .cbp-widget-row > * {
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+  }
+  .cbp-widget-row::-webkit-scrollbar {
+    height: 7px;
+  }
+  .cbp-widget-row::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 999px;
+  }
+  .cbp-widget-row::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 999px;
+  }
+}
