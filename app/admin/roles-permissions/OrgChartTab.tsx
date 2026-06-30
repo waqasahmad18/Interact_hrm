@@ -128,7 +128,8 @@ export default function OrgChartTab({
   // Click-and-drag panning of the empty canvas surface (replaces scrollbars).
   const panRef = React.useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
-  // ids whose subtree (direct reports) is hidden/collapsed
+  // Role ids whose card is hidden — their direct reports visually attach to the
+  // hidden role's parent (only the card disappears, not the subtree).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // role currently open in the centered edit modal
   const [editId, setEditId] = useState<string | null>(null);
@@ -238,9 +239,50 @@ export default function OrgChartTab({
     });
   }
 
-  function descendantCount(roleId: string): number {
-    const kids = childRoles(allRoles, roleId);
-    return kids.reduce((n, k) => n + 1 + descendantCount(k.id), 0);
+  /** Direct children promoted up through any hidden intermediate roles. */
+  function visibleKids(roleId: string): RoleDef[] {
+    const out: RoleDef[] = [];
+    for (const child of childRoles(allRoles, roleId)) {
+      if (collapsed.has(child.id)) {
+        out.push(...visibleKids(child.id));
+      } else {
+        out.push(child);
+      }
+    }
+    return out;
+  }
+
+  function hiddenDirectKids(roleId: string): RoleDef[] {
+    return childRoles(allRoles, roleId).filter((c) => collapsed.has(c.id));
+  }
+
+  function renderChildList(parentId: string): React.ReactNode {
+    const hidden = hiddenDirectKids(parentId);
+    const visible = visibleKids(parentId);
+    if (hidden.length === 0 && visible.length === 0) return null;
+    return (
+      <>
+        {hidden.length > 0 && (
+          <div className={styles.orgHiddenRestoreBar}>
+            {hidden.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                className={styles.orgHiddenRestoreBtn}
+                onClick={() => toggleCollapse(h.id)}
+              >
+                Show: {h.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {visible.length > 0 && (
+          <ul className={styles.orgList}>
+            {visible.map((kid) => renderNode(kid))}
+          </ul>
+        )}
+      </>
+    );
   }
 
   function commitEdit() {
@@ -255,6 +297,8 @@ export default function OrgChartTab({
   }
 
   function renderNode(role: RoleDef): React.ReactNode {
+    if (collapsed.has(role.id)) return null;
+
     const kids = childRoles(allRoles, role.id);
     const accent = accentOf(role);
     const locked = isRoleLocked(role.id);
@@ -263,8 +307,6 @@ export default function OrgChartTab({
     const isDroppingChild = isDropping && dropMode === "child";
     const isDroppingSibling = isDropping && dropMode === "sibling";
     const isDragging = dragId === role.id;
-    const isCollapsed = collapsed.has(role.id);
-    const hiddenCount = isCollapsed ? descendantCount(role.id) : 0;
     const tierClass = tierCardClass(role.tier, styles);
 
     return (
@@ -426,44 +468,22 @@ export default function OrgChartTab({
             </button>
             <button
               type="button"
-              className={`${styles.orgCardBtn} ${isCollapsed ? styles.orgCardBtnOn : ""}`}
-              title={
-                kids.length === 0
-                  ? "No reports to hide"
-                  : isCollapsed
-                    ? "Show reports"
-                    : "Hide reports"
-              }
-              aria-label={`${isCollapsed ? "Show" : "Hide"} reports of ${role.name}`}
-              disabled={kids.length === 0}
+              className={styles.orgCardBtn}
+              title="Hide this role — direct reports move up to the manager above"
+              aria-label={`Hide ${role.name}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleCollapse(role.id);
               }}
             >
-              <IconEye off={isCollapsed} />
+              <IconEye off={false} />
             </button>
           </div>
-
-          {isCollapsed && hiddenCount > 0 && (
-            <button
-              type="button"
-              className={styles.orgCollapseBadge}
-              title="Show hidden reports"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleCollapse(role.id);
-              }}
-            >
-              +{hiddenCount} hidden
-            </button>
-          )}
         </div>
 
-        {kids.length > 0 && !isCollapsed && (
-          role.tier === "board" ? (
+        {kids.length > 0 &&
+          (role.tier === "board" ? (
             <div className={styles.orgDeptRow}>
               {kids.map((kid) => (
                 <div key={kid.id} className={styles.orgDeptBox}>
@@ -473,9 +493,8 @@ export default function OrgChartTab({
               ))}
             </div>
           ) : (
-            <ul className={styles.orgList}>{kids.map((kid) => renderNode(kid))}</ul>
-          )
-        )}
+            renderChildList(role.id)
+          ))}
       </li>
     );
   }

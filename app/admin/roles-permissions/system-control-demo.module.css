@@ -3904,6 +3904,31 @@
   background: #ede9fe;
 }
 
+/* restore chips when a direct report role is hidden (children stay visible) */
+.orgHiddenRestoreBar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 0 4px;
+  padding: 0 4px;
+}
+.orgHiddenRestoreBtn {
+  padding: 4px 10px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #5b21b6;
+  background: #faf5ff;
+  border: 1px dashed #c4b5fd;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.orgHiddenRestoreBtn:hover {
+  background: #ede9fe;
+  border-color: #a78bfa;
+}
+
 /* ---- Centered Edit Role modal ---- */
 .orgEditModal {
   background: #fff;
