@@ -1,0 +1,261 @@
+.page {
+  min-height: 100%;
+  padding: 20px 28px 40px;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.06) 0%, transparent 55%),
+    linear-gradient(180deg, #f4f6f9 0%, #f6f8fb 100%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+}
+
+.inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.subtitle {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 4px 18px rgba(97, 31, 105, 0.06);
+}
+
+.statCardPurple {
+  border-top: 4px solid #611f69;
+}
+
+.statCardGreen {
+  border-top: 4px solid #007a5a;
+}
+
+.statCardGold {
+  border-top: 4px solid #e8912d;
+}
+
+.statLabel {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.statValue {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.tableCard {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 18px;
+  padding: 20px 22px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.badgeApproved {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.badgeRejected {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.badgePending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btnView {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f3e8f5;
+  color: #611f69;
+}
+
+.btnApprove {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #007a5a 0%, #2eb67d 100%);
+  color: #fff;
+}
+
+.btnReject {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.alertError {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #64748b;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 26px 24px;
+  width: min(520px, 94vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+}
+
+.modalTitle {
+  margin: 0 0 16px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #611f69;
+}
+
+.modalRow {
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.modalRow b {
+  color: #0f172a;
+}
+
+.balanceBox {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #faf5ff;
+  border: 1px solid #ede9fe;
+  font-size: 13px;
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 72px;
+  margin-top: 6px;
+  box-sizing: border-box;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.modalClose {
+  margin-top: 14px;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.docBtn {
+  border: none;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f3e8f5;
+  color: #611f69;
+  margin-right: 6px;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 16px;
+  }
+
+  .statRow {
+    grid-template-columns: 1fr;
+  }
+}

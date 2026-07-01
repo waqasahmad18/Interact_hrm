@@ -6,10 +6,18 @@ import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
 import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { ShellImageUpload } from "./components/ShellImageUpload";
+import {
+	fetchShellBranding,
+	removeAdminAvatar,
+	removeCompanyLogo,
+	saveAdminAvatar,
+	saveCompanyLogo,
+} from "./shell-branding-api";
 
-/** Sub-menu row ~44–48px; avoids clipping last link when dropdown grows */
+/** Sub-menu row ~44–48px; full height so items are not clipped inside scrollable nav */
 function sidebarDropdownMaxHeightPx(itemCount: number) {
-	return Math.min(960, Math.max(100, itemCount * 50 + 16));
+	return Math.max(100, itemCount * 50 + 16);
 }
 
 const sidebarLinks = [
@@ -74,6 +82,7 @@ const sidebarLinks = [
 					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
 					{ name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
 					{ name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
+					{ name: "Request Inbox", path: "/admin/financial-requests", icon: <FaClipboardList /> },
 				]
 			},
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
@@ -98,11 +107,23 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const [shiftsDropdownOpen, setShiftsDropdownOpen] = React.useState(false);
 	const [payrollDropdownOpen, setPayrollDropdownOpen] = React.useState(false);
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
+	const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
+	const [adminAvatar, setAdminAvatar] = React.useState<string | null>(null);
 	const menuRef = React.useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
 	const isTimePage = pathname === "/time";
-	const isEmployeeCredentialsPage = pathname === "/admin/employee-credentials";
+
+	React.useEffect(() => {
+		void fetchShellBranding()
+			.then((branding) => {
+				setCompanyLogo(branding.companyLogo);
+				setAdminAvatar(branding.adminAvatar);
+			})
+			.catch(() => {
+				/* keep placeholders */
+			});
+	}, []);
 
 	// Close the mobile drawer whenever the route changes (after a nav tap).
 	React.useEffect(() => {
@@ -132,7 +153,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	return (
 		<>
 			<div className={styles.topBar}>
-				<div className={styles.topBarLeft}>
+				<div className={styles.topBarSidebarSlot}>
 					<span
 						className={styles.sidebarMenuIcon}
 						role="button"
@@ -145,16 +166,55 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 					>
 						&#9776;
 					</span>
-					<span className={styles.sidebarTitle}>Interact Global</span>
+					<div className={styles.topBarBrandGroup}>
+						<ShellImageUpload
+							variant="logo"
+							image={companyLogo}
+							title="Upload company logo"
+							onImage={(dataUrl) => {
+								const prev = companyLogo;
+								setCompanyLogo(dataUrl);
+								void saveCompanyLogo(dataUrl).catch(() => {
+									setCompanyLogo(prev);
+									window.alert("Could not save company logo.");
+								});
+							}}
+							onRemove={() => {
+								const prev = companyLogo;
+								setCompanyLogo(null);
+								void removeCompanyLogo().catch(() => {
+									setCompanyLogo(prev);
+									window.alert("Could not remove company logo.");
+								});
+							}}
+						/>
+					</div>
 				</div>
+				<div className={styles.topBarMain}>
 				<div className={styles.topBarRight}>
 					<div className={styles.topBarProfile}>
-						{/* If user image exists, show image, else show initials */}
-						{false ? (
-							<span className={styles.topBarProfilePic} style={{backgroundImage: "url('https://ui-avatars.com/api/?name=Admin')"}}></span>
-						) : (
-							<span className={styles.topBarProfileInitials}>A</span>
-						)}
+						<ShellImageUpload
+							variant="avatar"
+							image={adminAvatar}
+							fallbackInitial="A"
+							title="Upload profile photo"
+							onImage={(dataUrl) => {
+								const prev = adminAvatar;
+								setAdminAvatar(dataUrl);
+								void saveAdminAvatar(dataUrl).catch(() => {
+									setAdminAvatar(prev);
+									window.alert("Could not save profile photo.");
+								});
+							}}
+							onRemove={() => {
+								const prev = adminAvatar;
+								setAdminAvatar(null);
+								void removeAdminAvatar().catch(() => {
+									setAdminAvatar(prev);
+									window.alert("Could not remove profile photo.");
+								});
+							}}
+						/>
 						<span className={styles.topBarProfileName}>Admin</span>
 						<div className={styles.profileMenuWrapper} ref={menuRef}>
 							<button
@@ -162,7 +222,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 								onClick={() => setMenuOpen((open) => !open)}
 								aria-label="Open menu"
 							>
-								<span style={{ fontSize: "1.7rem", color: "#fff" }}>⋮</span>
+								<span className={styles.profileMenuDots}>⋮</span>
 							</button>
 							{menuOpen && (
 								<div className={styles.profileMenuDropdown}>
@@ -182,6 +242,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						</div>
 					</div>
 				</div>
+				</div>
 			</div>
 			<div className={styles.layout}>
 				{sidebarOpen && (
@@ -196,14 +257,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						{sidebarLinks.map((group, idx) => (
 							<div key={group.group}>
 								{group.group !== "Main" && (
-									<div
-										style={{
-											fontSize: "0.95rem",
-											color: "#bfc8e2",
-											fontWeight: 600,
-											margin: "16px 0 8px 32px",
-										}}
-									>
+									<div className={styles.navGroupLabel}>
 										{group.group}
 									</div>
 								)}
@@ -215,22 +269,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
-														className={styles.navItem}
-														style={{
-															display: "flex",
-															alignItems: "center",
-															cursor: "pointer",
-															borderRadius: 8,
-															padding: "10px 22px",
-															fontSize: "0.93rem",
-															background: payrollDropdownOpen ? "#181c2b" : (link.dropdown.some(subLink => pathname === subLink.path) ? "#1a2032" : undefined),
-															transition: "background 0.25s"
-														}}
+														className={`${styles.navItem} ${(payrollDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path)) ? styles.navItemOpen : ""}`}
 														onClick={() => setPayrollDropdownOpen(open => !open)}
 													>
 														<span className={styles.navIcon}>{link.icon}</span>
 														<span>{link.name}</span>
-														<span style={{ marginLeft: 8, fontSize: "1.15rem", color: "#bfc8e2", display: "flex", alignItems: "center" }}>
+														<span className={styles.navChevron}>
 															{payrollDropdownOpen ? <FiChevronDown /> : <FiChevronRight />}
 														</span>
 													</div>
@@ -245,16 +289,9 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 													}}
 												>
 													<div
+														className={`${styles.navDropdownPanel} ${payrollDropdownOpen ? styles.navDropdownPanelOpen : ""}`}
 														style={{
-															background: "#232b3e",
-															borderRadius: 12,
-															boxShadow: payrollDropdownOpen ? "0 8px 32px rgba(44,62,80,0.18)" : "none",
-															minWidth: 170,
 															padding: payrollDropdownOpen ? "4px 0" : "0 0",
-															marginTop: 0,
-															display: "flex",
-															flexDirection: "column",
-															gap: 0,
 														}}
 													>
 														{link.dropdown.map((subLink) => {
@@ -267,16 +304,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 																		if (link.name === "Attendance") setAttendanceDropdownOpen(false);
 																		if (link.name === "Payroll") setPayrollDropdownOpen(false);
 																	}}
-																	className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-																	style={{
-																		padding: "7px 22px 7px 38px",
-																		fontSize: "0.85rem",
-																		borderRadius: 7,
-																		background: isActive ? "#1a2032" : "none",
-																		marginBottom: 1,
-																		minWidth: 0,
-																		transition: "background 0.2s, color 0.2s"
-																	}}
+																	className={
+																		isActive
+																			? `${styles.navItem} ${styles.navSubItem} ${styles.navItemActive}`
+																			: `${styles.navItem} ${styles.navSubItem}`
+																	}
 																>
 																	<span className={styles.navIcon} style={{ fontSize: "1.02rem", minWidth: 22 }}>{subLink.icon}</span>
 																	<span>{subLink.name}</span>
@@ -295,22 +327,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
-														className={styles.navItem}
-														style={{
-															display: "flex",
-															alignItems: "center",
-															cursor: "pointer",
-															borderRadius: 8,
-															padding: "10px 22px",
-															fontSize: "0.93rem",
-															background: ptoDropdownOpen ? "#181c2b" : (link.dropdown.some(subLink => pathname === subLink.path) ? "#1a2032" : undefined),
-															transition: "background 0.25s"
-														}}
+														className={`${styles.navItem} ${(ptoDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path)) ? styles.navItemOpen : ""}`}
 														onClick={() => setPtoDropdownOpen(open => !open)}
 													>
 														<span className={styles.navIcon}>{link.icon}</span>
 														<span>{link.name}</span>
-														<span style={{ marginLeft: 8, fontSize: "1.15rem", color: "#bfc8e2", display: "flex", alignItems: "center" }}>
+														<span className={styles.navChevron}>
 															{ptoDropdownOpen ? <FiChevronDown /> : <FiChevronRight />}
 														</span>
 													</div>
@@ -325,16 +347,9 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 													}}
 												>
 													<div
+														className={`${styles.navDropdownPanel} ${ptoDropdownOpen ? styles.navDropdownPanelOpen : ""}`}
 														style={{
-															background: "#232b3e",
-															borderRadius: 12,
-															boxShadow: ptoDropdownOpen ? "0 8px 32px rgba(44,62,80,0.18)" : "none",
-															minWidth: 170,
 															padding: ptoDropdownOpen ? "4px 0" : "0 0",
-															marginTop: 0,
-															display: "flex",
-															flexDirection: "column",
-															gap: 0,
 														}}
 													>
 														{link.dropdown.map((subLink) => {
@@ -343,16 +358,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 																<div
 																	key={subLink.name}
 																	onClick={() => { router.push(subLink.path); }}
-																	className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-																	style={{
-																		padding: "7px 22px 7px 38px",
-																		fontSize: "0.85rem",
-																		borderRadius: 7,
-																		background: isActive ? "#1a2032" : "none",
-																		marginBottom: 1,
-																		minWidth: 0,
-																		transition: "background 0.2s, color 0.2s"
-																	}}
+																	className={
+																		isActive
+																			? `${styles.navItem} ${styles.navSubItem} ${styles.navItemActive}`
+																			: `${styles.navItem} ${styles.navSubItem}`
+																	}
 																>
 																	<span className={styles.navIcon} style={{ fontSize: "1.02rem", minWidth: 22 }}>{subLink.icon}</span>
 																	<span>{subLink.name}</span>
@@ -371,22 +381,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
-														className={styles.navItem}
-														style={{
-															display: "flex",
-															alignItems: "center",
-															cursor: "pointer",
-															borderRadius: 8,
-															padding: "10px 22px",
-															fontSize: "0.93rem",
-															background: shiftsDropdownOpen ? "#181c2b" : (link.dropdown.some(subLink => pathname === subLink.path) ? "#1a2032" : undefined),
-															transition: "background 0.25s"
-														}}
+														className={`${styles.navItem} ${(shiftsDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path)) ? styles.navItemOpen : ""}`}
 														onClick={() => setShiftsDropdownOpen(open => !open)}
 													>
 														<span className={styles.navIcon}>{link.icon}</span>
 														<span>{link.name}</span>
-														<span style={{ marginLeft: 8, fontSize: "1.15rem", color: "#bfc8e2", display: "flex", alignItems: "center" }}>
+														<span className={styles.navChevron}>
 															{shiftsDropdownOpen ? <FiChevronDown /> : <FiChevronRight />}
 														</span>
 													</div>
@@ -401,16 +401,9 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 													}}
 												>
 													<div
+														className={`${styles.navDropdownPanel} ${shiftsDropdownOpen ? styles.navDropdownPanelOpen : ""}`}
 														style={{
-															background: "#232b3e",
-															borderRadius: 12,
-															boxShadow: shiftsDropdownOpen ? "0 8px 32px rgba(44,62,80,0.18)" : "none",
-															minWidth: 170,
 															padding: shiftsDropdownOpen ? "4px 0" : "0 0",
-															marginTop: 0,
-															display: "flex",
-															flexDirection: "column",
-															gap: 0,
 														}}
 													>
 														{link.dropdown.map((subLink) => {
@@ -419,16 +412,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 																<div
 																	key={subLink.name}
 																	onClick={() => { router.push(subLink.path); }}
-																	className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-																	style={{
-																		padding: "7px 22px 7px 38px",
-																		fontSize: "0.85rem",
-																		borderRadius: 7,
-																		background: isActive ? "#1a2032" : "none",
-																		marginBottom: 1,
-																		minWidth: 0,
-																		transition: "background 0.2s, color 0.2s"
-																	}}
+																	className={
+																		isActive
+																			? `${styles.navItem} ${styles.navSubItem} ${styles.navItemActive}`
+																			: `${styles.navItem} ${styles.navSubItem}`
+																	}
 																>
 																	<span className={styles.navIcon} style={{ fontSize: "1.02rem", minWidth: 22 }}>{subLink.icon}</span>
 																	<span>{subLink.name}</span>
@@ -448,22 +436,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
-														className={styles.navItem}
-														style={{
-															display: "flex",
-															alignItems: "center",
-															cursor: "pointer",
-															borderRadius: 8,
-															padding: "10px 22px",
-															fontSize: "0.93rem",
-															background: attendanceDropdownOpen ? "#181c2b" : (link.dropdown.some(subLink => pathname === subLink.path) ? "#1a2032" : undefined),
-															transition: "background 0.25s"
-														}}
+														className={`${styles.navItem} ${(attendanceDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path)) ? styles.navItemOpen : ""}`}
 														onClick={() => setAttendanceDropdownOpen(open => !open)}
 													>
 														<span className={styles.navIcon}>{link.icon}</span>
 														<span>{link.name}</span>
-														<span style={{ marginLeft: 8, fontSize: "1.15rem", color: "#bfc8e2", display: "flex", alignItems: "center" }}>
+														<span className={styles.navChevron}>
 															{attendanceDropdownOpen ? <FiChevronDown /> : <FiChevronRight />}
 														</span>
 													</div>
@@ -478,16 +456,9 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 													}}
 												>
 													<div
+														className={`${styles.navDropdownPanel} ${attendanceDropdownOpen ? styles.navDropdownPanelOpen : ""}`}
 														style={{
-															background: "#232b3e",
-															borderRadius: 12,
-															boxShadow: attendanceDropdownOpen ? "0 8px 32px rgba(44,62,80,0.18)" : "none",
-															minWidth: 170,
 															padding: attendanceDropdownOpen ? "4px 0" : "0 0",
-															marginTop: 0,
-															display: "flex",
-															flexDirection: "column",
-															gap: 0,
 														}}
 													>
 														{link.dropdown.map((subLink) => {
@@ -496,16 +467,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 																<div
 																	key={subLink.name}
 																	onClick={() => { router.push(subLink.path); }}
-																	className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-																	style={{
-																		padding: "7px 22px 7px 38px",
-																		fontSize: "0.85rem",
-																		borderRadius: 7,
-																		background: isActive ? "#1a2032" : "none",
-																		marginBottom: 1,
-																		minWidth: 0,
-																		transition: "background 0.2s, color 0.2s"
-																	}}
+																	className={
+																		isActive
+																			? `${styles.navItem} ${styles.navSubItem} ${styles.navItemActive}`
+																			: `${styles.navItem} ${styles.navSubItem}`
+																	}
 																>
 																	<span className={styles.navIcon} style={{ fontSize: "1.02rem", minWidth: 22 }}>{subLink.icon}</span>
 																	<span>{subLink.name}</span>
@@ -524,22 +490,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 											<React.Fragment key={link.name}>
 												<div key={link.name} style={{ position: "relative", zIndex: 2 }}>
 													<div
-														className={styles.navItem}
-														style={{
-															display: "flex",
-															alignItems: "center",
-															cursor: "pointer",
-															borderRadius: 8,
-															padding: "10px 22px",
-															fontSize: "0.93rem",
-															background: onboardDropdownOpen ? "#181c2b" : (link.dropdown.some(subLink => pathname === subLink.path) ? "#1a2032" : undefined),
-															transition: "background 0.25s"
-														}}
+														className={`${styles.navItem} ${(onboardDropdownOpen || link.dropdown.some(subLink => pathname === subLink.path)) ? styles.navItemOpen : ""}`}
 														onClick={() => setOnboardDropdownOpen(open => !open)}
 													>
 														<span className={styles.navIcon}>{link.icon}</span>
 														<span>{link.name}</span>
-														<span style={{ marginLeft: 8, fontSize: "1.15rem", color: "#bfc8e2", display: "flex", alignItems: "center" }}>
+														<span className={styles.navChevron}>
 															{onboardDropdownOpen ? <FiChevronDown /> : <FiChevronRight />}
 														</span>
 													</div>
@@ -554,16 +510,9 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 													}}
 												>
 													<div
+														className={`${styles.navDropdownPanel} ${onboardDropdownOpen ? styles.navDropdownPanelOpen : ""}`}
 														style={{
-															background: "#232b3e",
-															borderRadius: 12,
-															boxShadow: onboardDropdownOpen ? "0 8px 32px rgba(44,62,80,0.18)" : "none",
-															minWidth: 170,
 															padding: onboardDropdownOpen ? "4px 0" : "0 0",
-															marginTop: 0,
-															display: "flex",
-															flexDirection: "column",
-															gap: 0,
 														}}
 													>
 														{link.dropdown.map((subLink) => {
@@ -572,16 +521,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 																<div
 																	key={subLink.name}
 																	onClick={() => { router.push(subLink.path); }}
-																	className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-																	style={{
-																		padding: "7px 22px 7px 38px",
-																		fontSize: "0.85rem",
-																		borderRadius: 7,
-																		background: isActive ? "#1a2032" : "none",
-																		marginBottom: 1,
-																		minWidth: 0,
-																		transition: "background 0.2s, color 0.2s"
-																	}}
+																	className={
+																		isActive
+																			? `${styles.navItem} ${styles.navSubItem} ${styles.navItemActive}`
+																			: `${styles.navItem} ${styles.navSubItem}`
+																	}
 																>
 																	<span className={styles.navIcon} style={{ fontSize: "1.02rem", minWidth: 22 }}>{subLink.icon}</span>
 																	<span>{subLink.name}</span>
@@ -611,10 +555,10 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 					</nav>
 				</aside>
 				<div
-					className={`${styles.contentArea} ${isTimePage ? styles.contentAreaTimePage : ""} ${isEmployeeCredentialsPage ? styles.contentAreaEmployeeCredentialsPage : ""}`}
+					className={`${styles.contentArea} ${isTimePage ? styles.contentAreaTimePage : ""}`}
 				>
 					<main
-						className={`${styles.main} ${isTimePage ? styles.mainTimePage : ""} ${isEmployeeCredentialsPage ? styles.mainEmployeeCredentialsPage : ""}`}
+						className={`${styles.main} ${isTimePage ? styles.mainTimePage : ""}`}
 					>
 						{children}
 					</main>

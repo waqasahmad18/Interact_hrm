@@ -1,0 +1,226 @@
+.page {
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #f4f6f9 0%, #f6f8fb 100%);
+  padding: 24px 28px 40px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.profileRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+}
+
+.profileMeta {
+  min-width: 0;
+}
+
+.profileName {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.profileSub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.sub {
+  margin: 0 0 20px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+
+.formGrid {
+  display: grid;
+  gap: 14px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: #611f69;
+  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+}
+
+.textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.submit {
+  margin-top: 6px;
+  padding: 11px 22px;
+  border: none;
+  border-radius: 10px;
+  background: #611f69;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.submit:hover:not(:disabled) {
+  background: #4a1850;
+}
+
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.submitAdvance {
+  background: #007a5a;
+}
+
+.submitAdvance:hover:not(:disabled) {
+  background: #006b4f;
+}
+
+.submitLoan {
+  background: #d97706;
+}
+
+.submitLoan:hover:not(:disabled) {
+  background: #b45309;
+}
+
+.alertOk {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.alertErr {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.historyTitle {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.historyItem {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+}
+
+.historyTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.historyAmount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badgePending {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.badgeApproved {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badgeRejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.historyMeta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .page { padding: 16px; }
+}

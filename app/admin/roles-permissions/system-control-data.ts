@@ -31,6 +31,7 @@ export type DemoEmployee = {
   name: string;
   initials: string;
   pseudonym?: string;
+  profilePhoto?: string;
   roleId: string;
   departmentId: string;
   reportsTo: string | null;

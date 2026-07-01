@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import tableStyles from "../break-summary/break-summary.module.css";
+import adminStyles from "../admin/admin-page.module.css";
 
 // Define Department type
 interface Department {
@@ -39,12 +41,12 @@ export default function DepartmentsTable() {
   // Fetch employees for all departments
   useEffect(() => {
     if (departments.length === 0) return;
-    departments.forEach(dep => {
+    departments.forEach((dep) => {
       fetch(`/api/employee-list?department_id=${dep.id}`)
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => res.json())
+        .then((data) => {
           if (data.success && Array.isArray(data.employees)) {
-            setEmployeesByDept(prev => ({ ...prev, [dep.id]: data.employees }));
+            setEmployeesByDept((prev) => ({ ...prev, [dep.id]: data.employees }));
           }
         });
     });
@@ -56,7 +58,7 @@ export default function DepartmentsTable() {
     await fetch("/api/departments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newDept })
+      body: JSON.stringify({ name: newDept }),
     });
     setNewDept("");
     setShowDialog(false);
@@ -75,7 +77,7 @@ export default function DepartmentsTable() {
     await fetch(`/api/departments?id=${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName })
+      body: JSON.stringify({ name: editName }),
     });
     setEditId(null);
     setEditName("");
@@ -103,77 +105,145 @@ export default function DepartmentsTable() {
   };
 
   return (
-    <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, marginTop: 24 }}>
+    <div className={tableStyles.breakSummaryContainer}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-        <h2 style={{ fontWeight: 700, fontSize: "1.2rem" }}>Departments</h2>
-        <button style={{ background: "#38b2ac", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 600, border: "none", cursor: "pointer" }} onClick={() => setShowDialog(true)}>Add Department</button>
+        <h2 className={tableStyles.pageTitle} style={{ margin: 0 }}>All Departments</h2>
+        <button type="button" className={tableStyles.breakSummaryXLSButton} onClick={() => setShowDialog(true)}>
+          Add Department
+        </button>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#e2e8f0" }}>
-            <th style={{ padding: 8, textAlign: "left" }}>Name</th>
-            <th style={{ padding: 8, textAlign: "center" }}>Employees</th>
-            <th style={{ padding: 8, textAlign: "center" }}>Edit</th>
-            <th style={{ padding: 8, textAlign: "center" }}>Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          {departments.map((dept) => (
-            <tr key={dept.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-              <td style={{ padding: 8, verticalAlign: "top" }}>
-                {editId === dept.id ? (
-                  <input value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: 4, display: "block", marginBottom: 8 }} />
-                ) : (
-                  <span style={{ display: "block", marginBottom: 8 }}>{dept.name}</span>
-                )}
-              </td>
-              <td style={{ padding: 8, verticalAlign: "top", textAlign: "center" }}>
-                <button style={{ background: "#38b2ac", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", cursor: "pointer", marginBottom: 4 }} onClick={() => setShowEmp(prev => ({ ...prev, [dept.id]: !prev[dept.id] }))}>
-                  {showEmp[dept.id] ? "Hide" : "Show"} Employees
-                </button>
-                {showEmp[dept.id] && employeesByDept[dept.id] && (
-                  <div style={{ marginTop: 8, background: "#f1f5f9", borderRadius: 8, padding: 8, maxHeight: 180, overflowY: "auto", minWidth: 180 }}>
-                    {employeesByDept[dept.id].length === 0 ? (
-                      <div style={{ color: '#888' }}>No employees</div>
-                    ) : (
-                      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                        {employeesByDept[dept.id].map(emp => (
-                          <li key={emp.id} style={{ padding: '4px 0', borderBottom: '1px solid #e2e8f0' }}>
-                            {emp.first_name} {emp.last_name}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              </td>
-              <td style={{ padding: 8, verticalAlign: "top", textAlign: "center" }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  {editId === dept.id ? (
-                    <button style={{ background: "#3182ce", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", marginBottom: 4, cursor: "pointer" }} onClick={() => handleEdit(dept.id)}>Save</button>
-                  ) : (
-                    <button style={{ background: "#3182ce", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", marginBottom: 4, cursor: "pointer" }} onClick={() => { setEditId(dept.id); setEditName(dept.name); }}>Edit</button>
-                  )}
-                </div>
-              </td>
-              <td style={{ padding: 8, verticalAlign: "top", textAlign: "center" }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <button style={{ background: "#e53e3e", color: "#fff", borderRadius: 6, padding: "4px 12px", border: "none", marginBottom: 4, cursor: "pointer" }} onClick={() => handleDelete(dept.id)}>Delete</button>
-                </div>
-              </td>
+      <div className={tableStyles.breakSummaryTableWrapper}>
+        <table className={tableStyles.breakSummaryTable} style={{ minWidth: 720 }}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th style={{ textAlign: "center" }}>Employees</th>
+              <th style={{ textAlign: "center" }}>Edit</th>
+              <th style={{ textAlign: "center" }}>Delete</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {/* Add Department Dialog */}
+          </thead>
+          <tbody>
+            {departments.length === 0 ? (
+              <tr>
+                <td colSpan={4} className={tableStyles.breakSummaryNoRecords}>
+                  No departments found.
+                </td>
+              </tr>
+            ) : (
+              departments.map((dept) => (
+                <tr key={dept.id}>
+                  <td style={{ verticalAlign: "top" }}>
+                    {editId === dept.id ? (
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className={tableStyles.breakSummaryInput}
+                        style={{ width: "100%" }}
+                      />
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>{dept.name}</span>
+                    )}
+                  </td>
+                  <td style={{ verticalAlign: "top", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      className={tableStyles.breakSummaryXLSButtonSecondary}
+                      style={{ padding: "6px 14px", fontSize: 12 }}
+                      onClick={() => setShowEmp((prev) => ({ ...prev, [dept.id]: !prev[dept.id] }))}
+                    >
+                      {showEmp[dept.id] ? "Hide" : "Show"} Employees
+                    </button>
+                    {showEmp[dept.id] && employeesByDept[dept.id] && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          background: "#faf5ff",
+                          borderRadius: 10,
+                          padding: 8,
+                          maxHeight: 180,
+                          overflowY: "auto",
+                          minWidth: 180,
+                          textAlign: "left",
+                        }}
+                      >
+                        {employeesByDept[dept.id].length === 0 ? (
+                          <div className={tableStyles.cellMuted}>No employees</div>
+                        ) : (
+                          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                            {employeesByDept[dept.id].map((emp) => (
+                              <li
+                                key={emp.id}
+                                style={{ padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}
+                              >
+                                {emp.first_name} {emp.last_name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ verticalAlign: "top", textAlign: "center" }}>
+                    {editId === dept.id ? (
+                      <button
+                        type="button"
+                        className={adminStyles.btnGreen}
+                        style={{ padding: "6px 14px", fontSize: 13 }}
+                        onClick={() => handleEdit(dept.id)}
+                      >
+                        Save
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={adminStyles.btnPrimary}
+                        style={{ padding: "6px 14px", fontSize: 13 }}
+                        onClick={() => {
+                          setEditId(dept.id);
+                          setEditName(dept.name);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ verticalAlign: "top", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      className={adminStyles.btnReject}
+                      style={{ padding: "6px 14px", fontSize: 13 }}
+                      onClick={() => handleDelete(dept.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
       {showDialog && (
-        <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 32, minWidth: 320, boxShadow: "0 2px 12px #e2e8f0" }}>
-            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: 18 }}>Add Department</h3>
-            <input value={newDept} onChange={e => setNewDept(e.target.value)} placeholder="Department Name" style={{ width: "100%", padding: 8, marginBottom: 18, borderRadius: 6, border: "1px solid #e2e8f0" }} />
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button style={{ background: "#38b2ac", color: "#fff", borderRadius: 6, padding: "6px 18px", border: "none", cursor: "pointer" }} onClick={handleAdd}>Save</button>
-              <button style={{ background: "#a0aec0", color: "#fff", borderRadius: 6, padding: "6px 18px", border: "none", cursor: "pointer" }} onClick={() => setShowDialog(false)}>Close</button>
+        <div className={adminStyles.modalBackdrop}>
+          <div className={adminStyles.modal}>
+            <h3 className={adminStyles.modalTitle}>Add Department</h3>
+            <div className={adminStyles.field} style={{ marginBottom: 16 }}>
+              <label>Department Name</label>
+              <input
+                value={newDept}
+                onChange={(e) => setNewDept(e.target.value)}
+                placeholder="Department Name"
+                className={adminStyles.input}
+              />
+            </div>
+            <div className={adminStyles.modalActions}>
+              <button type="button" className={adminStyles.btnGreen} onClick={handleAdd}>
+                Save
+              </button>
+              <button type="button" className={adminStyles.btnSecondary} onClick={() => setShowDialog(false)}>
+                Close
+              </button>
             </div>
           </div>
         </div>

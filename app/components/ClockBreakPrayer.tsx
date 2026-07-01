@@ -1,7 +1,10 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import './ClockBreakPrayerFade.css';
+import slackStyles from './clock-widgets-slack.module.css';
+import modalStyles from './clock-break-prayer-modals.module.css';
 import { PrayerButton } from "./PrayerButton";
 import {
   clearClockSyncInterval,
@@ -70,7 +73,16 @@ function formatDuration(seconds: number) {
 }
 
 // Compact widget combining Clock In/Out, Break, and Prayer controls
-export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeId: string; employeeName: string }) {
+export function ClockBreakPrayerWidget({
+  employeeId,
+  employeeName,
+  variant = "default",
+}: {
+  employeeId: string;
+  employeeName: string;
+  variant?: "default" | "slack";
+}) {
+  const isSlack = variant === "slack";
   const [isPrayerOn, setIsPrayerOn] = React.useState(false);
   const [prayerStart, setPrayerStart] = React.useState<Date | null>(null);
   const [isOnBreak, setIsOnBreak] = React.useState(false);
@@ -728,10 +740,21 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
         notifyPrayerDataChanged();
       }}
     />
-    <div className={`cbp-fade-in cbp-widget-row${fadeIn ? ' cbp-fade-in-active' : ''}`}>
+    <div className={`cbp-fade-in ${isSlack ? slackStyles.row : "cbp-widget-row"}${fadeIn ? " cbp-fade-in-active" : ""}`}>
       {/* Clock In Widget */}
-      <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#27ae60", marginBottom: 10 }}>Clock In</div>
+      <div
+        className={isSlack ? `${slackStyles.card} ${slackStyles.cardClock}` : undefined}
+        style={isSlack ? undefined : { background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}
+      >
+        {isSlack ? (
+          <div className={slackStyles.cardHeader}>
+            <span className={`${slackStyles.cardTitle} ${slackStyles.titleClock}`}>Clock in</span>
+            {isClockedIn && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>Active</span>}
+          </div>
+        ) : (
+          <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#27ae60", marginBottom: 10 }}>Clock In</div>
+        )}
+        {isSlack && isClockedIn && <span className={slackStyles.clockRing} aria-hidden />}
         {!loadingAttendance && (
           <>
             <button
@@ -741,7 +764,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                   : () => runWithVerify("clock_in", (token) => handleClockIn(token))
               }
               disabled={clockActionPending || verifyPreparing}
-              style={{
+              className={isSlack ? `${slackStyles.btn} ${isClockedIn ? slackStyles.btnClockOut : slackStyles.btnClockIn}` : undefined}
+              style={isSlack ? undefined : {
                 background: isClockedIn ? "#e74c3c" : "#27ae60",
                 color: "#fff",
                 border: "none",
@@ -757,139 +781,18 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
             >
               {verifyPreparing ? "Preparing…" : isClockedIn ? "Clock Out" : "Clock In"}
             </button>
-            {showClockOutConfirm && (
-              <>
-                <style>{`
-                  .cbp-modal-overlay {
-                    position: fixed;
-                    top: 0; left: 0; width: 100vw; height: 100vh;
-                    background: rgba(0,0,0,0.35);
-                    display: flex; align-items: center; justify-content: center;
-                    z-index: 9999;
-                    animation: cbp-fade-in 0.3s;
-                  }
-                  @keyframes cbp-fade-in {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                  }
-                  .cbp-modal-box {
-                    background: #fff;
-                    border-radius: 18px;
-                    padding: 38px 32px 32px 32px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-                    min-width: 340px;
-                    text-align: center;
-                    animation: cbp-modal-pop 0.35s cubic-bezier(.22,1,.36,1);
-                  }
-                  @keyframes cbp-modal-pop {
-                    0% { transform: scale(0.85); opacity: 0; }
-                    100% { transform: scale(1); opacity: 1; }
-                  }
-                  .cbp-modal-title {
-                    font-weight: 700;
-                    font-size: 1.25rem;
-                    margin-bottom: 22px;
-                    color: #e67e22;
-                  }
-                  .cbp-modal-btn {
-                    border: none;
-                    border-radius: 8px;
-                    padding: 10px 28px;
-                    font-weight: 600;
-                    font-size: 1.08rem;
-                    margin: 0 10px;
-                    cursor: pointer;
-                    transition: background 0.18s, box-shadow 0.18s;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                  }
-                  .cbp-modal-btn-yes {
-                    background: linear-gradient(90deg,#e74c3c 60%,#e67e22 100%);
-                    color: #fff;
-                  }
-                  .cbp-modal-btn-yes:hover {
-                    background: linear-gradient(90deg,#e67e22 0%,#e74c3c 100%);
-                  }
-                  .cbp-modal-btn-no {
-                    background: linear-gradient(90deg,#27ae60 60%,#00b894 100%);
-                    color: #fff;
-                  }
-                  .cbp-modal-btn-no:hover {
-                    background: linear-gradient(90deg,#00b894 0%,#27ae60 100%);
-                  }
-                `}</style>
-                <div className="cbp-modal-overlay">
-                  <div className="cbp-modal-box">
-                    <div className="cbp-modal-title">Are you sure you want to clock out?</div>
-                    <button className="cbp-modal-btn cbp-modal-btn-yes" onClick={() => confirmClockOut(true)}>Yes</button>
-                    <button className="cbp-modal-btn cbp-modal-btn-no" onClick={() => confirmClockOut(false)}>No</button>
-                  </div>
-                </div>
-              </>
-            )}
             {isClockedIn && (
-              <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(52,120,246,0.10)", padding: "8px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#3478f6", marginBottom: 6 }}>Working</div>
-                <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(timer)}</div>
-              </div>
-            )}
-            {showActiveBreakModal && (
-              <>
-                <style>{`
-                  .cbp-break-modal-overlay {
-                    position: fixed;
-                    top: 0; left: 0; width: 100vw; height: 100vh;
-                    background: rgba(0,0,0,0.35);
-                    display: flex; align-items: center; justify-content: center;
-                    z-index: 9999;
-                    animation: cbp-fade-in 0.3s;
-                  }
-                  .cbp-break-modal-box {
-                    background: #fff;
-                    border-radius: 18px;
-                    padding: 38px 32px 32px 32px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-                    min-width: 360px;
-                    text-align: center;
-                    animation: cbp-modal-pop 0.35s cubic-bezier(.22,1,.36,1);
-                  }
-                  .cbp-break-modal-title {
-                    font-weight: 700;
-                    font-size: 1.25rem;
-                    margin-bottom: 8px;
-                    color: #e74c3c;
-                  }
-                  .cbp-break-modal-message {
-                    font-weight: 500;
-                    font-size: 1.05rem;
-                    margin-bottom: 22px;
-                    color: #2d3436;
-                    line-height: 1.5;
-                  }
-                  .cbp-break-modal-btn-ok {
-                    border: none;
-                    border-radius: 8px;
-                    padding: 12px 42px;
-                    font-weight: 600;
-                    font-size: 1.1rem;
-                    cursor: pointer;
-                    background: linear-gradient(90deg,#e74c3c 60%,#e67e22 100%);
-                    color: #fff;
-                    transition: background 0.18s, box-shadow 0.18s;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                  }
-                  .cbp-break-modal-btn-ok:hover {
-                    background: linear-gradient(90deg,#e67e22 0%,#e74c3c 100%);
-                  }
-                `}</style>
-                <div className="cbp-break-modal-overlay">
-                  <div className="cbp-break-modal-box">
-                    <div style={{ fontSize: "3rem", marginBottom: 12 }}>⚠️</div>
-                    <div className="cbp-break-modal-title">{activeBreakTitle}</div>
-                    <div className="cbp-break-modal-message">{activeBreakErrorMsg}</div>
-                    <button className="cbp-break-modal-btn-ok" onClick={() => setShowActiveBreakModal(false)}>OK</button>
-                  </div>
+              isSlack ? (
+                <div className={slackStyles.statusBox}>
+                  <div className={`${slackStyles.statusLabel} ${slackStyles.statusClock}`}>Working</div>
+                  <div className={slackStyles.statusTimer}>{formatTime(timer)}</div>
                 </div>
-              </>
+              ) : (
+                <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(52,120,246,0.10)", padding: "8px 12px", minWidth: 120 }}>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#3478f6", marginBottom: 6 }}>Working</div>
+                  <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(timer)}</div>
+                </div>
+              )
             )}
           </>
         )}
@@ -897,8 +800,18 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
 
       {/* Break Widget */}
       {isClockedIn && (
-        <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
+        <div
+          className={isSlack ? `${slackStyles.card} ${slackStyles.cardBreak}` : undefined}
+          style={isSlack ? undefined : { background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}
+        >
+          {isSlack ? (
+            <div className={slackStyles.cardHeader}>
+              <span className={`${slackStyles.cardTitle} ${slackStyles.titleBreak}`}>Break</span>
+              {isOnBreak && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>On break</span>}
+            </div>
+          ) : (
+            <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
+          )}
           <button
             onClick={
               isOnBreak
@@ -906,7 +819,8 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
                 : () => runWithVerify("break_start", (token) => handleBreakStart(token))
             }
             disabled={isPrayerOn || breakActionPending || verifyPreparing}
-            style={{
+            className={isSlack ? `${slackStyles.btn} ${isOnBreak ? slackStyles.btnBreakEnd : slackStyles.btnBreak}` : undefined}
+            style={isSlack ? undefined : {
               background: isOnBreak ? "#e74c3c" : "#e67e22",
               color: "#fff",
               border: "none",
@@ -923,17 +837,27 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
             {verifyPreparing ? "Preparing…" : isOnBreak ? "End Break" : "Start Break"}
           </button>
           {isOnBreak && (
-            <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
-              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>
-                {breakTimerPaused ? "⏸ Verifying…" : "🔴 Break Running"}
+            isSlack ? (
+              <div className={slackStyles.statusBox}>
+                <div className={`${slackStyles.statusLabel} ${slackStyles.statusBreak}`}>
+                  {breakTimerPaused ? "Verifying…" : "Break running"}
+                </div>
+                <div className={slackStyles.statusTimer}>{formatTime(breakTimer)}</div>
               </div>
-              <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
-            </div>
+            ) : (
+              <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>
+                  {breakTimerPaused ? "⏸ Verifying…" : "🔴 Break Running"}
+                </div>
+                <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
+              </div>
+            )
           )}
           <BreakSummary
             employeeId={employeeId}
             isOnBreak={isOnBreak}
             liveBreakSeconds={breakTimer}
+            variant={variant}
           />
         </div>
       )}
@@ -957,9 +881,59 @@ export function ClockBreakPrayerWidget({ employeeId, employeeName }: { employeeI
           runWithVerify={runWithVerify}
           bioStatusLoading={verifyPreparing}
           onClearServerPrayerInterval={() => clearPrayerBreakSyncInterval(employeeId)}
+          variant={variant}
         />
       )}
     </div>
+    {typeof document !== "undefined" && showClockOutConfirm
+      ? createPortal(
+          <div className={modalStyles.overlay} role="presentation">
+            <div
+              className={modalStyles.box}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Confirm clock out"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={modalStyles.title}>Are you sure you want to clock out?</div>
+              <div className={modalStyles.actions}>
+                <button type="button" className={modalStyles.btnYes} onClick={() => confirmClockOut(true)}>
+                  Yes
+                </button>
+                <button type="button" className={modalStyles.btnNo} onClick={() => confirmClockOut(false)}>
+                  No
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null}
+    {typeof document !== "undefined" && showActiveBreakModal
+      ? createPortal(
+          <div className={modalStyles.overlay} role="presentation">
+            <div
+              className={modalStyles.box}
+              role="dialog"
+              aria-modal="true"
+              aria-label={activeBreakTitle}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={modalStyles.warnIcon} aria-hidden>⚠️</div>
+              <div className={modalStyles.titleDanger}>{activeBreakTitle}</div>
+              <div className={modalStyles.message}>{activeBreakErrorMsg}</div>
+              <button
+                type="button"
+                className={modalStyles.btnOk}
+                onClick={() => setShowActiveBreakModal(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+      : null}
     </>
   );
 }
@@ -969,11 +943,14 @@ function BreakSummary({
   employeeId,
   isOnBreak = false,
   liveBreakSeconds = 0,
+  variant = "default",
 }: {
   employeeId: string;
   isOnBreak?: boolean;
   liveBreakSeconds?: number;
+  variant?: "default" | "slack";
 }) {
+  const isSlack = variant === "slack";
   const [completedBreakSeconds, setCompletedBreakSeconds] = React.useState(0);
   // Removed prayer totals from BreakSummary; shown in Prayer widget instead
 
@@ -1090,6 +1067,23 @@ function BreakSummary({
       window.removeEventListener(ATTENDANCE_DATA_CHANGED, onRefresh);
     };
   }, [refreshTotals]);
+
+  if (isSlack) {
+    return (
+      <div className={slackStyles.summaryBox}>
+        <div className={`${slackStyles.summaryLabel} ${slackStyles.titleBreak}`}>Today&apos;s total break</div>
+        <div
+          className={slackStyles.summaryValue}
+          style={displayTotalSeconds > 3600 ? { color: "#dc2626" } : undefined}
+        >
+          {formatDuration(displayTotalSeconds)}
+        </div>
+        {displayExceedSeconds > 0 && (
+          <div className={slackStyles.summaryExceed}>Exceed: {formatDuration(displayExceedSeconds)}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>

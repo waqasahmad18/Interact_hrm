@@ -1,0 +1,74 @@
+.wrap {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f3e8f5, #e9d5ff);
+  color: #611f69;
+  font-weight: 800;
+  box-sizing: border-box;
+}
+
+.sizeSm { width: 36px; height: 36px; font-size: 0.6875rem; }
+.sizeMd { width: 48px; height: 48px; font-size: 0.8125rem; }
+.sizeLg { width: 64px; height: 64px; font-size: 1rem; }
+.sizeXl { width: 88px; height: 88px; font-size: 1.25rem; }
+
+.ringPurple { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #611f69; }
+.ringGreen { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #2eb67d; }
+.ringGold { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #e8912d; }
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 1px;
+}
+
+.placeholderIcon {
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.sizeSm .placeholderIcon { font-size: 14px; }
+.sizeMd .placeholderIcon { font-size: 18px; }
+.sizeLg .placeholderIcon { font-size: 24px; }
+.sizeXl .placeholderIcon { font-size: 32px; }
+
+.initials {
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+.sizeSm .initials { font-size: 0.5rem; }
+.sizeMd .initials { font-size: 0.5625rem; }
+.sizeLg .initials { font-size: 0.625rem; }
+.sizeXl .initials { font-size: 0.75rem; }
+
+.dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+
+.dot_online { background: #2eb67d; }
+.dot_offline { background: #8b8b8b; }
+.dot_late { background: #dc2626; }

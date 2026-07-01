@@ -3,22 +3,36 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "./dashboard.module.css";
+import { EmployeeAvatar } from "../components/EmployeeAvatar";
+import { employeeInitials } from "../../lib/employee-photo-shared";
+import {
+  FaUsers,
+  FaUserCheck,
+  FaBriefcase,
+  FaChartLine,
+  FaUserPlus,
+  FaCalendarAlt,
+  FaBirthdayCake,
+  FaBell,
+  FaClipboardList,
+  FaBolt,
+  FaSun,
+  FaHourglassHalf,
+  FaGift,
+  FaMoneyBillWave,
+} from "react-icons/fa";
 
 const quickLinks = [
-  { label: "Add Employee", action: "/add-employee" },
-  { label: "Leave Requests", action: "/leave" },
-  { label: "Recruitment", action: "/recruitment" },
+  { label: "Add Employee", action: "/add-employee", icon: <FaUserPlus /> },
+  { label: "Leave Requests", action: "/leave", icon: <FaCalendarAlt /> },
+  { label: "Payroll Requests", action: "/admin/financial-requests", icon: <FaMoneyBillWave /> },
+  { label: "Recruitment", action: "/recruitment", icon: <FaBriefcase /> },
 ];
 
 const recruitment = [
-  "Software Engineer — 2 candidates",
-  "HR Manager — 1 candidate",
-  "Accountant — 1 candidate",
-];
-
-const announcements = [
-  "New HR policies are live.",
-  "Company townhall on Dec 22.",
+  { role: "Software Engineer", candidates: 2 },
+  { role: "HR Manager", candidates: 1 },
+  { role: "Accountant", candidates: 1 },
 ];
 
 type Leave = {
@@ -31,29 +45,168 @@ type Leave = {
   requested_at?: string;
 };
 
+type FinancialRequest = {
+  id: number;
+  employee_id: string;
+  employee_name: string;
+  request_type: "advance" | "loan";
+  amount: number;
+  status: string;
+  requested_at: string;
+  photo?: string | null;
+  initials?: string;
+};
+
+type DayChart = {
+  label: string;
+  pct: number;
+  isToday: boolean;
+};
+
+function last5Weekdays(): Date[] {
+  const out: Date[] = [];
+  const d = new Date();
+  while (out.length < 5) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) out.unshift(new Date(d));
+    d.setDate(d.getDate() - 1);
+  }
+  return out;
+}
+
+function dayLabel(d: Date) {
+  return d.toLocaleDateString("en-US", { weekday: "short" });
+}
+
+function timeGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatToday() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function AnimatedValue({ value }: { value: string }) {
+  const numeric = parseInt(value.replace(/[^\d]/g, ""), 10) || 0;
+  const suffix = value.includes("%") ? "%" : "";
+  const [n, setN] = React.useState(0);
+
+  React.useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const dur = 700;
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(eased * numeric));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [numeric]);
+
+  return (
+    <>
+      {n}
+      {suffix}
+    </>
+  );
+}
+
+function Sparkline({ data }: { data: number[] }) {
+  if (data.length < 2) return null;
+  const w = 280;
+  const h = 36;
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    return `${x},${y}`;
+  });
+  const line = pts.join(" ");
+  const area = `0,${h} ${line} ${w},${h}`;
+
+  return (
+    <svg className={styles.sparkline} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#611f69" />
+          <stop offset="100%" stopColor="#611f69" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon className={styles.sparklineArea} points={area} />
+      <polyline
+        points={line}
+        className={styles.sparklineLine}
+        fill="none"
+        stroke="#611f69"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [leaves, setLeaves] = React.useState<Leave[]>([]);
+  const [financialRequests, setFinancialRequests] = React.useState<FinancialRequest[]>([]);
   const [loadingLeaves, setLoadingLeaves] = React.useState(false);
+  const [loadingFinancial, setLoadingFinancial] = React.useState(false);
   const [pulseIds, setPulseIds] = React.useState<number[]>([]);
+  const [finPulseIds, setFinPulseIds] = React.useState<number[]>([]);
   const [stats, setStats] = React.useState([
-    { label: "Employees", value: "0", badge: "+0 this week" },
+    { label: "Employees", value: "0", badge: "Team size" },
     { label: "Attendance", value: "0%", badge: "Today" },
     { label: "Open Roles", value: "3", badge: "Hiring" },
+    { label: "On Leave", value: "0", badge: "Today" },
   ]);
   const [weeklyAttendance, setWeeklyAttendance] = React.useState("0%");
+  const [weekChart, setWeekChart] = React.useState<DayChart[]>([
+    { label: "Mon", pct: 0, isToday: false },
+    { label: "Tue", pct: 0, isToday: false },
+    { label: "Wed", pct: 0, isToday: false },
+    { label: "Thu", pct: 0, isToday: false },
+    { label: "Fri", pct: 0, isToday: false },
+  ]);
   const [employeeSnapshot, setEmployeeSnapshot] = React.useState({
     active: 0,
     onLeave: 0,
-    probation: 0
+    probation: 0,
   });
   const [announcements, setAnnouncements] = React.useState<any[]>([]);
   const [reminders, setReminders] = React.useState<any[]>([]);
   const [birthdays, setBirthdays] = React.useState<string[]>([]);
   const leavesRef = React.useRef<Leave[]>([]);
+  const finRef = React.useRef<FinancialRequest[]>([]);
   const timerRef = React.useRef<number | null>(null);
+  const finTimerRef = React.useRef<number | null>(null);
 
-  const pendingLeaves = React.useMemo(() => leaves.filter((l) => (l.status || "").toLowerCase() === "pending"), [leaves]);
+  const pendingLeaves = React.useMemo(
+    () => leaves.filter((l) => (l.status || "").toLowerCase() === "pending"),
+    [leaves],
+  );
+
+  const pendingFinancial = React.useMemo(
+    () => financialRequests.filter((r) => (r.status || "").toLowerCase() === "pending"),
+    [financialRequests],
+  );
+
+  const maxRecruitment = Math.max(...recruitment.map((r) => r.candidates), 1);
+  const snapshotTotal = Math.max(
+    employeeSnapshot.active + employeeSnapshot.onLeave + employeeSnapshot.probation,
+    1,
+  );
+  const todayPct = parseInt(stats[1].value, 10) || 0;
+  const chartValues = weekChart.map((d) => d.pct);
 
   const formatDate = React.useCallback((value: string) => {
     if (!value) return "";
@@ -85,17 +238,41 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Fetch employee count
+  const fetchFinancialRequests = React.useCallback(async () => {
+    try {
+      setLoadingFinancial(true);
+      const res = await fetch("/api/financial-requests?status=pending", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) {
+        const next: FinancialRequest[] = data.requests || [];
+        const prevIds = new Set(finRef.current.map((r) => r.id));
+        const newOnes = next.filter((r) => !prevIds.has(r.id)).map((r) => r.id);
+        setFinancialRequests(next);
+        finRef.current = next;
+        if (newOnes.length) {
+          setFinPulseIds(newOnes);
+          if (finTimerRef.current) window.clearTimeout(finTimerRef.current);
+          finTimerRef.current = window.setTimeout(() => setFinPulseIds([]), 3500);
+        }
+      }
+    } catch (err) {
+      console.error("financial requests fetch", err);
+    } finally {
+      setLoadingFinancial(false);
+    }
+  }, []);
+
   const fetchEmployeeCount = React.useCallback(async () => {
     try {
       const res = await fetch("/api/employee-list", { cache: "no-store" });
       const data = await res.json();
       if (data?.success && data.employees) {
         const employeeCount = data.employees.length;
-        setStats(prev => [
-          { label: "Employees", value: employeeCount.toString(), badge: "+0 this week" },
+        setStats((prev) => [
+          { label: "Employees", value: employeeCount.toString(), badge: "Team size" },
           prev[1],
           prev[2],
+          prev[3],
         ]);
       }
     } catch (err) {
@@ -103,94 +280,135 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Calculate today's attendance percentage
   const fetchTodayAttendance = React.useCallback(async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Get total employees
+      const today = new Date().toISOString().split("T")[0];
       const empRes = await fetch("/api/employee-list", { cache: "no-store" });
       const empData = await empRes.json();
-      const totalEmployees = empData.success && empData.employees ? empData.employees.length : 0;
-      
+      const totalEmployees =
+        empData.success && empData.employees ? empData.employees.length : 0;
+
       if (totalEmployees === 0) {
-        setStats(prev => [
+        setStats((prev) => [
           prev[0],
           { label: "Attendance", value: "0%", badge: "Today" },
           prev[2],
+          prev[3],
         ]);
         return;
       }
-      
-      // Get today's attendance (employees with clock_in today)
+
       const attRes = await fetch(`/api/attendance?date=${today}`, { cache: "no-store" });
       const attData = await attRes.json();
-      const todayClockIns = attData.success && attData.attendance ? 
-        attData.attendance.filter((a: any) => a.clock_in).length : 0;
-      
+      const todayClockIns =
+        attData.success && attData.attendance
+          ? attData.attendance.filter((a: any) => a.clock_in).length
+          : 0;
+
       const attendancePercentage = Math.round((todayClockIns / totalEmployees) * 100);
-      
-      setStats(prev => [
+
+      setStats((prev) => [
         prev[0],
         { label: "Attendance", value: `${attendancePercentage}%`, badge: "Today" },
         prev[2],
+        prev[3],
       ]);
     } catch (err) {
       console.error("today attendance fetch", err);
     }
   }, []);
 
-  // Calculate weekly attendance (Mon-Fri of last week, excluding Sat-Sun)
+  const fetchWeekChart = React.useCallback(async () => {
+    try {
+      const weekdays = last5Weekdays();
+      const todayStr = new Date().toISOString().split("T")[0];
+      const fromDate = weekdays[0].toISOString().split("T")[0];
+      const toDate = weekdays[weekdays.length - 1].toISOString().split("T")[0];
+
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const empData = await empRes.json();
+      const totalEmployees =
+        empData.success && empData.employees ? empData.employees.length : 0;
+
+      if (totalEmployees === 0) {
+        setWeekChart(
+          weekdays.map((d) => ({
+            label: dayLabel(d),
+            pct: 0,
+            isToday: d.toISOString().split("T")[0] === todayStr,
+          })),
+        );
+        return;
+      }
+
+      const attRes = await fetch(
+        `/api/attendance?fromDate=${fromDate}&toDate=${toDate}`,
+        { cache: "no-store" },
+      );
+      const attData = await attRes.json();
+      const records =
+        attData.success && attData.attendance ? attData.attendance : [];
+
+      const chart = weekdays.map((d) => {
+        const dateStr = d.toISOString().split("T")[0];
+        const unique = new Set(
+          records
+            .filter((a: any) => {
+              const ad = (a.date || a.attendance_date || "").toString().slice(0, 10);
+              return ad === dateStr && a.clock_in;
+            })
+            .map((a: any) => a.employee_id),
+        ).size;
+        return {
+          label: dayLabel(d),
+          pct: Math.round((unique / totalEmployees) * 100),
+          isToday: dateStr === todayStr,
+        };
+      });
+
+      setWeekChart(chart);
+    } catch (err) {
+      console.error("week chart fetch", err);
+    }
+  }, []);
+
   const fetchWeeklyAttendance = React.useCallback(async () => {
     try {
-      // Get last Monday to Friday (5 working days)
       const today = new Date();
-      const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      
-      // Calculate last Friday
+      const dayOfWeek = today.getDay();
       let lastFriday = new Date(today);
-      if (dayOfWeek === 0) {
-        // If today is Sunday, go back to Friday (2 days)
-        lastFriday.setDate(today.getDate() - 2);
-      } else if (dayOfWeek === 1) {
-        // If today is Monday, go back to Friday of previous week (3 days)
-        lastFriday.setDate(today.getDate() - 3);
-      } else {
-        // Otherwise, go back to Friday of current week
-        lastFriday.setDate(today.getDate() - (dayOfWeek - 5));
-      }
-      
-      // Calculate last Monday (5 days before Friday)
+      if (dayOfWeek === 0) lastFriday.setDate(today.getDate() - 2);
+      else if (dayOfWeek === 1) lastFriday.setDate(today.getDate() - 3);
+      else lastFriday.setDate(today.getDate() - (dayOfWeek - 5));
+
       const lastMonday = new Date(lastFriday);
       lastMonday.setDate(lastFriday.getDate() - 4);
-      
-      const fromDate = lastMonday.toISOString().split('T')[0];
-      const toDate = lastFriday.toISOString().split('T')[0];
-      
-      // Get total employees
+
+      const fromDate = lastMonday.toISOString().split("T")[0];
+      const toDate = lastFriday.toISOString().split("T")[0];
+
       const empRes = await fetch("/api/employee-list", { cache: "no-store" });
-      const empData = empRes.json();
-      const totalEmployees = (await empData).success && (await empData).employees ? 
-        (await empData).employees.length : 0;
-      
+      const empData = await empRes.json();
+      const totalEmployees =
+        empData.success && empData.employees ? empData.employees.length : 0;
+
       if (totalEmployees === 0) {
         setWeeklyAttendance("0%");
         return;
       }
-      
-      // Get attendance for the week
-      const attRes = await fetch(`/api/attendance?fromDate=${fromDate}&toDate=${toDate}`, { 
-        cache: "no-store" 
-      });
+
+      const attRes = await fetch(
+        `/api/attendance?fromDate=${fromDate}&toDate=${toDate}`,
+        { cache: "no-store" },
+      );
       const attData = await attRes.json();
-      const weeklyRecords = attData.success && attData.attendance ? attData.attendance : [];
-      
-      // Count unique employees who clocked in during the week
+      const weeklyRecords =
+        attData.success && attData.attendance ? attData.attendance : [];
+
       const uniqueEmployees = new Set(
-        weeklyRecords.filter((a: any) => a.clock_in).map((a: any) => a.employee_id)
+        weeklyRecords.filter((a: any) => a.clock_in).map((a: any) => a.employee_id),
       ).size;
-      
-      // Calculate 5 working days average
+
       const weeklyPercentage = Math.round((uniqueEmployees / totalEmployees) * 100);
       setWeeklyAttendance(`${weeklyPercentage}%`);
     } catch (err) {
@@ -198,96 +416,96 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Fetch employee snapshot (Active, On Leave, Probation)
   const fetchEmployeeSnapshot = React.useCallback(async () => {
     try {
       const empRes = await fetch("/api/employee-list", { cache: "no-store" });
       const empData = await empRes.json();
-      
+
       if (!empData.success || !empData.employees) {
         setEmployeeSnapshot({ active: 0, onLeave: 0, probation: 0 });
         return;
       }
 
       const employees = empData.employees;
-      
-      // Get today's date
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      
-      // Fetch leaves for today
+      const todayStr = new Date().toISOString().split("T")[0];
+
       const leaveRes = await fetch("/api/leaves", { cache: "no-store" });
       const leaveData = await leaveRes.json();
-      const leaves = leaveData.success && leaveData.leaves ? leaveData.leaves : [];
-      
-      // Find employees on leave today (start_date <= today <= end_date)
+      const leavesList =
+        leaveData.success && leaveData.leaves ? leaveData.leaves : [];
+
       const employeesOnLeaveToday = new Set(
-        leaves
+        leavesList
           .filter((l: any) => {
-            const startDate = l.start_date ? new Date(l.start_date).toISOString().split('T')[0] : "";
-            const endDate = l.end_date ? new Date(l.end_date).toISOString().split('T')[0] : "";
+            const startDate = l.start_date
+              ? new Date(l.start_date).toISOString().split("T")[0]
+              : "";
+            const endDate = l.end_date
+              ? new Date(l.end_date).toISOString().split("T")[0]
+              : "";
             const status = (l.status || "").toLowerCase();
-            // Check if leave is approved and today falls within the date range
-            return status === "approved" && 
-                   startDate <= todayStr && todayStr <= endDate;
+            return (
+              status === "approved" && startDate <= todayStr && todayStr <= endDate
+            );
           })
-          .map((l: any) => l.employee_id)
+          .map((l: any) => l.employee_id),
       );
 
-      // Count employees by status
       let activeCount = 0;
       let probationCount = 0;
 
       employees.forEach((emp: any) => {
         const status = (emp.status || "").toLowerCase();
         const empStatus = (emp.employment_status || "").toLowerCase();
-        
-        if (empStatus === "probation") {
-          probationCount++;
-        } else if (status === "active" || status === "enabled") {
-          activeCount++;
-        }
+        if (empStatus === "probation") probationCount++;
+        else if (status === "active" || status === "enabled") activeCount++;
       });
 
-      // Active employees = total active - those on leave today
       const onLeaveCount = employeesOnLeaveToday.size;
       const finalActiveCount = Math.max(0, activeCount - onLeaveCount);
 
       setEmployeeSnapshot({
         active: finalActiveCount,
         onLeave: onLeaveCount,
-        probation: probationCount
+        probation: probationCount,
       });
+
+      setStats((prev) => [
+        prev[0],
+        prev[1],
+        prev[2],
+        { label: "On Leave", value: onLeaveCount.toString(), badge: "Today" },
+      ]);
     } catch (err) {
       console.error("employee snapshot fetch", err);
     }
   }, []);
 
-  // Fetch announcements and reminders
   const fetchAnnouncementsAndReminders = React.useCallback(async () => {
     try {
-      // Fetch events (announcements)
       const eventsRes = await fetch("/api/events", { cache: "no-store" });
       const eventsData = await eventsRes.json();
-      const events = eventsData.success && eventsData.events ? eventsData.events : [];
-      setAnnouncements(events);
+      setAnnouncements(
+        eventsData.success && eventsData.events ? eventsData.events : [],
+      );
 
-      // Fetch reminders
       const remindersRes = await fetch("/api/reminders", { cache: "no-store" });
       const remindersData = await remindersRes.json();
-      const remindersArray = remindersData.success && remindersData.reminders ? remindersData.reminders : [];
-      setReminders(remindersArray);
+      setReminders(
+        remindersData.success && remindersData.reminders
+          ? remindersData.reminders
+          : [],
+      );
     } catch (err) {
       console.error("announcements and reminders fetch", err);
     }
   }, []);
 
-  // Fetch and calculate upcoming birthdays
   const fetchUpcomingBirthdays = React.useCallback(async () => {
     try {
       const empRes = await fetch("/api/employee-list", { cache: "no-store" });
       const empData = await empRes.json();
-      
+
       if (!empData.success || !empData.employees) {
         setBirthdays([]);
         return;
@@ -295,52 +513,44 @@ export default function DashboardPage() {
 
       const employees = empData.employees;
       const today = new Date();
-      const todayMonth = today.getMonth();
-      const todayDate = today.getDate();
-      
-      // Calculate birthdays for next 30 days
       const upcomingBdayList: { name: string; date: Date }[] = [];
-      
+
       employees.forEach((emp: any) => {
         if (!emp.dob) return;
-        
         const dobDate = new Date(emp.dob);
-        if (isNaN(dobDate.getTime())) return; // Invalid date
-        
+        if (isNaN(dobDate.getTime())) return;
+
         const bdayMonth = dobDate.getMonth();
         const bdayDate = dobDate.getDate();
-        
-        // Check if birthday is in next 30 days
-        let daysUntilBirthday = 0;
         let bdayThisYear = new Date(today.getFullYear(), bdayMonth, bdayDate);
-        
         if (bdayThisYear < today) {
-          // Birthday already passed this year, check next year
           bdayThisYear = new Date(today.getFullYear() + 1, bdayMonth, bdayDate);
         }
-        
-        daysUntilBirthday = Math.ceil((bdayThisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (daysUntilBirthday >= 0 && daysUntilBirthday <= 30) {
+        const daysUntil = Math.ceil(
+          (bdayThisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        if (daysUntil >= 0 && daysUntil <= 30) {
           upcomingBdayList.push({
-            name: emp.first_name && emp.last_name ? 
-              `${emp.first_name} ${emp.last_name}` : 
-              (emp.first_name || emp.pseudonym || "Employee"),
-            date: bdayThisYear
+            name:
+              emp.first_name && emp.last_name
+                ? `${emp.first_name} ${emp.last_name}`
+                : emp.first_name || emp.pseudonym || "Employee",
+            date: bdayThisYear,
           });
         }
       });
-      
-      // Sort by date
+
       upcomingBdayList.sort((a, b) => a.date.getTime() - b.date.getTime());
-      
-      // Format for display
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const formattedBirthdays = upcomingBdayList.map(bday => 
-        `${bday.name} — ${monthNames[bday.date.getMonth()]} ${bday.date.getDate()}`
+      const monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      setBirthdays(
+        upcomingBdayList.map(
+          (b) =>
+            `${b.name} — ${monthNames[b.date.getMonth()]} ${b.date.getDate()}`,
+        ),
       );
-      
-      setBirthdays(formattedBirthdays);
     } catch (err) {
       console.error("upcoming birthdays fetch", err);
     }
@@ -348,22 +558,24 @@ export default function DashboardPage() {
 
   React.useEffect(() => {
     fetchLeaves();
+    fetchFinancialRequests();
     fetchEmployeeCount();
     fetchTodayAttendance();
     fetchWeeklyAttendance();
+    fetchWeekChart();
     fetchEmployeeSnapshot();
     fetchAnnouncementsAndReminders();
     fetchUpcomingBirthdays();
-    
-    // Refresh data every 30 seconds for real-time updates
+
     const dataInterval = setInterval(() => {
       fetchTodayAttendance();
       fetchWeeklyAttendance();
+      fetchWeekChart();
       fetchEmployeeSnapshot();
       fetchAnnouncementsAndReminders();
       fetchUpcomingBirthdays();
     }, 30000);
-    
+
     if (typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
@@ -374,200 +586,518 @@ export default function DashboardPage() {
           fetchLeaves();
           fetchEmployeeSnapshot();
         }
-      } catch (_) {
-        // ignore malformed
+        if (msg?.type === "financial_request_update") {
+          fetchFinancialRequests();
+        }
+      } catch {
+        /* ignore */
       }
     };
     return () => {
       ws.close();
       clearInterval(dataInterval);
       if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (finTimerRef.current) window.clearTimeout(finTimerRef.current);
     };
-  }, [fetchLeaves, fetchEmployeeCount, fetchTodayAttendance, fetchWeeklyAttendance, fetchEmployeeSnapshot, fetchAnnouncementsAndReminders, fetchUpcomingBirthdays]);
+  }, [
+    fetchLeaves,
+    fetchFinancialRequests,
+    fetchEmployeeCount,
+    fetchTodayAttendance,
+    fetchWeeklyAttendance,
+    fetchWeekChart,
+    fetchEmployeeSnapshot,
+    fetchAnnouncementsAndReminders,
+    fetchUpcomingBirthdays,
+  ]);
 
   return (
     <LayoutDashboard>
       <div className={styles.page}>
-        <section className={styles.hero}>
-          <div className={styles.heroText}>
-            <span className={styles.heroBadge}>Admin overview</span>
-            <h1 className={styles.heroTitle}>Welcome back, Admin</h1>
-            <p className={styles.heroSubtitle}>
-              Keep an eye on hiring, attendance, and employee engagement in one place.
-            </p>
-            <div className={styles.heroActions}>
-              <button className={styles.primaryButton} onClick={() => router.push("/add-employee")}>Add employee</button>
-              <button className={styles.ghostButton} onClick={() => router.push("/admin/events")}>View events</button>
+        <div className={styles.headerBanner}>
+          <div className={styles.dateChip}>
+            <span className={styles.dateChipDot} />
+            {formatToday()} · Live sync
+          </div>
+          <header className={styles.header}>
+            <div className={styles.headerText}>
+              <p className={styles.greeting}>{timeGreeting()}</p>
+              <h1 className={styles.title}>Welcome back, Admin</h1>
+              <p className={styles.subtitle}>
+                Hiring, attendance, and engagement — all in one clean workspace.
+              </p>
             </div>
-          </div>
-          <div className={styles.heroStats}>
-            {stats.map((item) => (
-              <div key={item.label} className={styles.heroStat}>
-                <div className={styles.heroStatValue}>{item.value}</div>
-                <div className={styles.heroStatLabel}>{item.label}</div>
-                <span className={styles.heroStatBadge}>{item.badge}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+            <div className={styles.headerActions}>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={() => router.push("/add-employee")}
+              >
+                <FaUserPlus /> Add employee
+              </button>
+              <button
+                type="button"
+                className={styles.btnGhost}
+                onClick={() => router.push("/admin/events")}
+              >
+                <FaCalendarAlt /> View events
+              </button>
+            </div>
+          </header>
+        </div>
 
-        <section className={styles.grid}>
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Quick actions</h2>
+        <div className={styles.insightRow}>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaSun />
+            </span>
+            <span>
+              <strong>{todayPct}%</strong> of team checked in today
+            </span>
+          </div>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaHourglassHalf />
+            </span>
+            <span>
+              <strong>{pendingLeaves.length}</strong> leave request
+              {pendingLeaves.length === 1 ? "" : "s"} pending review
+            </span>
+          </div>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaMoneyBillWave />
+            </span>
+            <span>
+              <strong>{pendingFinancial.length}</strong> payroll request
+              {pendingFinancial.length === 1 ? "" : "s"} pending
+            </span>
+          </div>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaGift />
+            </span>
+            <span>
+              <strong>{birthdays.length}</strong> birthday
+              {birthdays.length === 1 ? "" : "s"} in the next 30 days
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.kpiRow}>
+          <div className={styles.kpiCard}>
+            <div className={`${styles.kpiIcon} ${styles.kpiIconPurple}`}>
+              <FaUsers />
             </div>
-            <div className={styles.quickActions}>
-              {quickLinks.map((item) => (
-                <button key={item.label} className={styles.quickChip} onClick={() => router.push(item.action)}>
-                  {item.label}
-                </button>
-              ))}
+            <div className={styles.kpiBody}>
+              <div className={styles.kpiValue}>
+                <AnimatedValue value={stats[0].value} />
+              </div>
+              <div className={styles.kpiLabel}>{stats[0].label}</div>
+              <span className={styles.kpiBadge}>{stats[0].badge}</span>
             </div>
           </div>
-
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Employee snapshot</h2>
-              <span className={styles.pill}>Live</span>
+          <div className={styles.kpiCard}>
+            <div className={`${styles.kpiIcon} ${styles.kpiIconBlue}`}>
+              <FaUserCheck />
             </div>
-            <div className={styles.metricsRow}>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>{employeeSnapshot.active}</div>
-                <div className={styles.metricLabel}>Active</div>
+            <div className={styles.kpiBody}>
+              <div className={styles.kpiValue}>
+                <AnimatedValue value={stats[1].value} />
               </div>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>{employeeSnapshot.onLeave}</div>
-                <div className={styles.metricLabel}>On leave</div>
-              </div>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>{employeeSnapshot.probation}</div>
-                <div className={styles.metricLabel}>Probation</div>
-              </div>
+              <div className={styles.kpiLabel}>{stats[1].label}</div>
+              <span className={styles.kpiBadge}>{stats[1].badge}</span>
             </div>
           </div>
-
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Recruitment</h2>
-              <span className={styles.pill}>3 open</span>
+          <div className={styles.kpiCard}>
+            <div className={`${styles.kpiIcon} ${styles.kpiIconGold}`}>
+              <FaBriefcase />
             </div>
-            <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
+            <div className={styles.kpiBody}>
+              <div className={styles.kpiValue}>
+                <AnimatedValue value={stats[2].value} />
+              </div>
+              <div className={styles.kpiLabel}>{stats[2].label}</div>
+              <span className={styles.kpiBadge}>{stats[2].badge}</span>
+            </div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={`${styles.kpiIcon} ${styles.kpiIconGreen}`}>
+              <FaChartLine />
+            </div>
+            <div className={styles.kpiBody}>
+              <div className={styles.kpiValue}>
+                <AnimatedValue value={weeklyAttendance} />
+              </div>
+              <div className={styles.kpiLabel}>Weekly avg</div>
+              <span className={styles.kpiBadge}>Past week</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.mainGrid}>
+          <div className={styles.col}>
+            <section className={`${styles.card} ${styles.cardDelay1}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaChartLine />
+                  </span>
+                  <h2 className={styles.cardTitle}>Attendance trend</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillLive}`}>Live</span>
+              </div>
+              <div className={styles.chartRow}>
+                <div className={styles.chartMain}>
+                  <div className={styles.chartWrap}>
+                    <div className={styles.chartBars}>
+                      <div className={styles.chartGrid} aria-hidden>
+                        <div className={styles.chartGridLine} />
+                        <div className={styles.chartGridLine} />
+                        <div className={styles.chartGridLine} />
+                        <div className={styles.chartGridLine} />
+                      </div>
+                      {weekChart.map((day, i) => (
+                        <div
+                          key={day.label}
+                          className={styles.chartCol}
+                          title={`${day.label}: ${day.pct}% attendance`}
+                          style={{ animationDelay: `${i * 0.06}s` }}
+                        >
+                          <span className={styles.chartPct}>{day.pct}%</span>
+                          <div className={styles.chartBarTrack}>
+                            <div
+                              className={`${styles.chartBar} ${day.isToday ? styles.chartBarToday : ""}`}
+                              style={{
+                                height: `${Math.max(day.pct, 4)}%`,
+                                animationDelay: `${0.1 + i * 0.08}s`,
+                              }}
+                            />
+                          </div>
+                          <span className={styles.chartLabel}>{day.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <Sparkline data={chartValues} />
+                    <div className={styles.chartLegend}>
+                      <span>
+                        <span
+                          className={styles.legendDot}
+                          style={{ background: "var(--slack-purple)" }}
+                        />
+                        Weekdays
+                      </span>
+                      <span>
+                        <span
+                          className={styles.legendDot}
+                          style={{ background: "var(--slack-blue)" }}
+                        />
+                        Today
+                      </span>
+                      <span>Peak: {Math.max(...chartValues, 0)}%</span>
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.donutPanel}>
+                  <div
+                    className={styles.donut}
+                    style={{
+                      background: `conic-gradient(var(--slack-blue) 0% ${todayPct}%, #eef0f2 ${todayPct}% 100%)`,
+                    }}
+                  >
+                    <div className={styles.donutHole}>
+                      <span className={styles.donutValue}>
+                        <AnimatedValue value={stats[1].value} />
+                      </span>
+                      <span className={styles.donutLabel}>Today</span>
+                    </div>
+                  </div>
+                  <p className={styles.donutCaption}>Check-in rate across your team</p>
+                </div>
+              </div>
+            </section>
+
+            <section className={`${styles.card} ${styles.cardDelay2}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaUsers />
+                  </span>
+                  <h2 className={styles.cardTitle}>Employee snapshot</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillLive}`}>Live</span>
+              </div>
+              <div className={styles.snapshotGrid}>
+                <div className={styles.snapRing}>
+                  <div className={styles.snapRingValue}>
+                    <AnimatedValue value={String(employeeSnapshot.active)} />
+                  </div>
+                  <div className={styles.snapRingLabel}>Active</div>
+                </div>
+                <div className={styles.snapRing}>
+                  <div className={styles.snapRingValue}>
+                    <AnimatedValue value={String(employeeSnapshot.onLeave)} />
+                  </div>
+                  <div className={styles.snapRingLabel}>On leave</div>
+                </div>
+                <div className={styles.snapRing}>
+                  <div className={styles.snapRingValue}>
+                    <AnimatedValue value={String(employeeSnapshot.probation)} />
+                  </div>
+                  <div className={styles.snapRingLabel}>Probation</div>
+                </div>
+              </div>
+              <div className={styles.snapshotBars}>
+                <div className={styles.snapRow}>
+                  <div className={styles.snapMeta}>
+                    <span className={styles.snapLabel}>Active</span>
+                    <span className={styles.snapValue}>{employeeSnapshot.active}</span>
+                  </div>
+                  <div className={styles.snapTrack}>
+                    <div
+                      className={`${styles.snapFill} ${styles.snapFillPurple}`}
+                      style={{
+                        width: `${(employeeSnapshot.active / snapshotTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className={styles.snapRow}>
+                  <div className={styles.snapMeta}>
+                    <span className={styles.snapLabel}>On leave</span>
+                    <span className={styles.snapValue}>{employeeSnapshot.onLeave}</span>
+                  </div>
+                  <div className={styles.snapTrack}>
+                    <div
+                      className={`${styles.snapFill} ${styles.snapFillBlue}`}
+                      style={{
+                        width: `${(employeeSnapshot.onLeave / snapshotTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className={styles.snapRow}>
+                  <div className={styles.snapMeta}>
+                    <span className={styles.snapLabel}>Probation</span>
+                    <span className={styles.snapValue}>{employeeSnapshot.probation}</span>
+                  </div>
+                  <div className={styles.snapTrack}>
+                    <div
+                      className={`${styles.snapFill} ${styles.snapFillGold}`}
+                      style={{
+                        width: `${(employeeSnapshot.probation / snapshotTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className={`${styles.card} ${styles.cardDelay3}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaBriefcase />
+                  </span>
+                  <h2 className={styles.cardTitle}>Recruitment pipeline</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillMuted}`}>3 open</span>
+              </div>
               {recruitment.map((item) => (
-                <li key={item} className={styles.listItem}>{item}</li>
+                <div key={item.role} className={styles.roleRow}>
+                  <div className={styles.roleHeader}>
+                    <span>{item.role}</span>
+                    <span>{item.candidates} candidates</span>
+                  </div>
+                  <div className={styles.roleBar}>
+                    <div
+                      className={styles.roleFill}
+                      style={{
+                        width: `${(item.candidates / maxRecruitment) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
               ))}
-            </ul>
+            </section>
           </div>
 
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Attendance</h2>
-              <span className={styles.pill}>Live</span>
-            </div>
-            <div className={styles.metricsRow}>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>{stats[1].value}</div>
-                <div className={styles.metricLabel}>Today</div>
+          <div className={styles.col}>
+            <section className={`${styles.card} ${styles.cardDelay1}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaBolt />
+                  </span>
+                  <h2 className={styles.cardTitle}>Quick actions</h2>
+                </div>
               </div>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>{weeklyAttendance}</div>
-                <div className={styles.metricLabel}>Past Week</div>
+              <div className={styles.quickGrid}>
+                {quickLinks.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className={styles.quickLink}
+                    onClick={() => router.push(item.action)}
+                  >
+                    <span className={styles.quickLinkIcon}>{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
               </div>
-              <div className={styles.metricBlock}>
-                <div className={styles.metricValue}>09:02</div>
-                <div className={styles.metricLabel}>Avg. check-in</div>
-              </div>
-            </div>
-          </div>
+            </section>
 
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Leave requests</h2>
-              <span className={styles.pill}>{loadingLeaves ? "Loading" : "Live"}</span>
-            </div>
-            <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
-              {pendingLeaves.length === 0 && (
-                <li className={styles.listItem} onClick={() => router.push("/leave")}>
-                  <div className={styles.listItemTitle}>No new leave requests</div>
-                  <div className={styles.listItemMeta}>Tap to view leave page</div>
-                </li>
-              )}
-              {pendingLeaves.slice(0, 1).map((leave) => {
-                const isNew = pulseIds.includes(leave.id);
-                return (
+            <section className={`${styles.card} ${styles.cardDelay2}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaClipboardList />
+                  </span>
+                  <h2 className={styles.cardTitle}>Leave requests</h2>
+                </div>
+                <span className={styles.pill}>
+                  {loadingLeaves ? "…" : `${pendingLeaves.length} pending`}
+                </span>
+              </div>
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {pendingLeaves.length === 0 && (
+                  <li
+                    className={styles.listItem}
+                    onClick={() => router.push("/leave")}
+                  >
+                    <div className={styles.listItemTitle}>No pending requests</div>
+                    <div className={styles.listItemMeta}>Tap to open leave center</div>
+                  </li>
+                )}
+                {pendingLeaves.slice(0, 4).map((leave) => (
                   <li
                     key={leave.id}
-                    className={`${styles.listItem} ${isNew ? styles.listItemNew : ""}`}
+                    className={`${styles.listItem} ${pulseIds.includes(leave.id) ? styles.listItemNew : ""}`}
                     onClick={() => router.push("/leave")}
                   >
                     <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>{leave.employee_name || "Employee"}</span>
+                      <span className={styles.listItemTitle}>
+                        {leave.employee_name || "Employee"}
+                      </span>
                       <span className={styles.badge}>Pending</span>
                     </div>
                     <div className={styles.listItemMeta}>
-                      {leave.leave_category} • {formatDate(leave.start_date)} → {formatDate(leave.end_date)}
+                      {leave.leave_category} · {formatDate(leave.start_date)} →{" "}
+                      {formatDate(leave.end_date)}
                     </div>
                   </li>
-                );
-              })}
-            </ul>
-          </div>
+                ))}
+              </ul>
+            </section>
 
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Upcoming birthdays</h2>
-              <span className={styles.pill}>Live</span>
-            </div>
-            <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
-              {birthdays.length === 0 && (
-                <li className={styles.listItem}>
-                  <div className={styles.listItemTitle}>No upcoming birthdays in the next 30 days</div>
-                </li>
-              )}
-              {birthdays.map((item) => (
-                <li key={item} className={styles.listItem}>{item}</li>
-              ))}
-            </ul>
-          </div>
+            <section className={`${styles.card} ${styles.cardDelay2}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaMoneyBillWave />
+                  </span>
+                  <h2 className={styles.cardTitle}>Payroll requests</h2>
+                </div>
+                <span className={styles.pill}>
+                  {loadingFinancial ? "…" : `${pendingFinancial.length} pending`}
+                </span>
+              </div>
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {pendingFinancial.length === 0 && (
+                  <li
+                    className={styles.listItem}
+                    onClick={() => router.push("/admin/financial-requests")}
+                  >
+                    <div className={styles.listItemTitle}>No pending requests</div>
+                    <div className={styles.listItemMeta}>Tap to open payroll inbox</div>
+                  </li>
+                )}
+                {pendingFinancial.slice(0, 4).map((req) => (
+                  <li
+                    key={req.id}
+                    className={`${styles.listItem} ${finPulseIds.includes(req.id) ? styles.listItemNew : ""}`}
+                    onClick={() => router.push("/admin/financial-requests")}
+                  >
+                    <div className={styles.listItemTop}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <EmployeeAvatar
+                          name={req.employee_name}
+                          initials={req.initials || employeeInitials(req.employee_name)}
+                          photo={req.photo}
+                          size="sm"
+                        />
+                        <span className={styles.listItemTitle}>{req.employee_name}</span>
+                      </span>
+                      <span className={styles.badge}>Pending</span>
+                    </div>
+                    <div className={styles.listItemMeta}>
+                      {req.request_type === "advance" ? "Advance" : "Loan"} · PKR{" "}
+                      {Number(req.amount).toLocaleString()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Announcements & Reminders</h2>
-              <span className={styles.pill}>Live</span>
-            </div>
-            <ul className={`${styles.list} ${styles.listScrollable}`} style={{ minHeight: 220 }}>
-              {announcements.length === 0 && reminders.length === 0 && (
-                <li className={styles.listItem}>
-                  <div className={styles.listItemTitle}>No announcements or reminders</div>
-                </li>
-              )}
-              
-              {reminders.length > 0 && (
-                <>
-                  {reminders.map((reminder) => (
-                    <li key={`reminder-${reminder.id}`} className={styles.listItem}>
-                      <div className={styles.listItemTitle} style={{ color: "#e74c3c", fontWeight: "600" }}>
-                        🔔 {reminder.message}
-                      </div>
+            <section className={`${styles.card} ${styles.cardDelay3}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaBirthdayCake />
+                  </span>
+                  <h2 className={styles.cardTitle}>Upcoming birthdays</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillMuted}`}>30 days</span>
+              </div>
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {birthdays.length === 0 ? (
+                  <li className={styles.emptyState}>No birthdays in the next 30 days</li>
+                ) : (
+                  birthdays.map((item) => (
+                    <li key={item} className={styles.listItem}>
+                      <div className={styles.listItemTitle}>{item}</div>
                     </li>
-                  ))}
-                </>
-              )}
-              
-              {announcements.length > 0 && (
-                <>
-                  {announcements.map((announcement) => (
-                    <li key={`announcement-${announcement.id}`} className={styles.listItem}>
-                      <div className={styles.listItemTitle}>{announcement.title}</div>
-                      {announcement.description && (
-                        <div className={styles.listItemMeta}>{announcement.description}</div>
-                      )}
-                    </li>
-                  ))}
-                </>
-              )}
-            </ul>
+                  ))
+                )}
+              </ul>
+            </section>
+
+            <section className={`${styles.card} ${styles.cardDelay4}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaBell />
+                  </span>
+                  <h2 className={styles.cardTitle}>Announcements</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillLive}`}>Live</span>
+              </div>
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {announcements.length === 0 && reminders.length === 0 && (
+                  <li className={styles.emptyState}>No announcements or reminders</li>
+                )}
+                {reminders.map((reminder) => (
+                  <li key={`reminder-${reminder.id}`} className={styles.listItem}>
+                    <div className={styles.listItemTop}>
+                      <span className={styles.listItemTitle}>{reminder.message}</span>
+                      <span className={`${styles.badge} ${styles.badgeReminder}`}>
+                        Reminder
+                      </span>
+                    </div>
+                  </li>
+                ))}
+                {announcements.map((announcement) => (
+                  <li key={`announcement-${announcement.id}`} className={styles.listItem}>
+                    <div className={styles.listItemTitle}>{announcement.title}</div>
+                    {announcement.description && (
+                      <div className={styles.listItemMeta}>{announcement.description}</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
-        </section>
+        </div>
       </div>
     </LayoutDashboard>
   );

@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "./manage-leaves.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../admin-page.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
 
 interface Employee {
@@ -45,6 +49,7 @@ export default function ManageLeavesPage() {
   });
   const [saving, setSaving] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
     fetchEmployees();
@@ -283,32 +288,30 @@ export default function ManageLeavesPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.container}>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
-          <h1 className={styles.title} style={{ margin: 0, marginBottom: 6 }}>Manage Leaves</h1>
-          <p className={styles.subtitle} style={{ margin: 0 }}>
-            Update leave balances for Employees.
-          </p>
-        </div>
+      <div className={adminStyles.page}>
+        <div className={adminStyles.inner}>
+          <h1 className={adminStyles.title}>Manage leaves</h1>
+          <p className={adminStyles.subtitle}>Update annual and bereavement leave balances per employee.</p>
 
-        <div className={styles.tableContainer} style={{ overflowY: "auto", maxHeight: "74vh" }}>
-          <table className={styles.table}>
-            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
-              <tr style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)", color: "#fff" }}>
-                <th style={thStyle}>{renderSortableHeader("Id", "id")}</th>
-                <th style={thStyle}>{renderSortableHeader("Full Name", "full_name")}</th>
-                <th style={thStyle}>{renderSortableHeader("P.Name", "pseudonym")}</th>
-                <th style={thStyle}>{renderSortableHeader("Department", "department_name")}</th>
-                <th style={thStyle}>{renderSortableHeader("Employment Status", "employment_status")}</th>
-                <th style={thStyle}>{renderSortableHeader("Annual Leave Balance", "annual_balance")}</th>
-                <th style={thStyle}>{renderSortableHeader("Bereavement Leave Balance", "bereavement_balance")}</th>
-                <th style={thActionsStyle}>Actions</th>
+          <div className={adminStyles.card}>
+        <div className={tableStyles.breakSummaryTableWrapper} style={{ overflowY: "auto", maxHeight: "74vh" }}>
+          <table className={tableStyles.breakSummaryTable}>
+            <thead>
+              <tr>
+                <th>{renderSortableHeader("Id", "id")}</th>
+                <th>{renderSortableHeader("Full Name", "full_name")}</th>
+                <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
+                <th>{renderSortableHeader("Department", "department_name")}</th>
+                <th>{renderSortableHeader("Employment Status", "employment_status")}</th>
+                <th>{renderSortableHeader("Annual Leave Balance", "annual_balance")}</th>
+                <th>{renderSortableHeader("Bereavement Leave Balance", "bereavement_balance")}</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {sortedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center" }}>
+                  <td colSpan={8} className={tableStyles.breakSummaryNoRecords}>
                     No employees found
                   </td>
                 </tr>
@@ -316,26 +319,41 @@ export default function ManageLeavesPage() {
                 sortedEmployees.map((emp) => {
                   return (
                     <tr key={emp.id}>
-                      <td style={tdAlignedStyle}>{emp.id}</td>
-                      <td style={tdAlignedStyle}>{getFullName(emp)}</td>
-                      <td style={tdAlignedStyle}>{emp.pseudonym || '-'}</td>
-                      <td style={tdAlignedStyle}>{emp.department_name || '-'}</td>
-                      <td style={tdAlignedStyle}>
+                      <td>{emp.id}</td>
+                      <td>
+                        <EmployeeTableNameCell
+                          name={getFullName(emp)}
+                          employeeId={emp.id}
+                          photo={getPhoto(emp.id)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: emp.id,
+                              first_name: emp.first_name,
+                              last_name: emp.last_name,
+                              pseudonym: emp.pseudonym,
+                              department_name: emp.department_name,
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{emp.pseudonym || "-"}</td>
+                      <td>{emp.department_name || "-"}</td>
+                      <td>
                         <span className={emp.employment_status === "Permanent" ? styles.statusPermanent : styles.statusProbation}>
                           {emp.employment_status || "Permanent"}
                         </span>
                       </td>
-                      <td style={tdAlignedStyle}>
-                        <span style={{ fontWeight: 600, color: '#2563eb' }}>
+                      <td>
+                        <span style={{ fontWeight: 600, color: "#007a5a" }}>
                           {emp.annual_current_balance} / {emp.annual_allowance}
                         </span>
                       </td>
-                      <td style={tdAlignedStyle}>
-                        <span style={{ fontWeight: 600, color: '#2563eb' }}>
+                      <td>
+                        <span style={{ fontWeight: 600, color: "#007a5a" }}>
                           {emp.bereavement_current_balance} / {emp.bereavement_allowance}
                         </span>
                       </td>
-                      <td style={tdActionsStyle}>
+                      <td>
                         <button
                           className={styles.editBtn}
                           onClick={() => handleEdit(emp)}
@@ -350,6 +368,7 @@ export default function ManageLeavesPage() {
             </tbody>
           </table>
         </div>
+          </div>
 
         {/* Edit Modal */}
         {showModal && editingEmployee && (
@@ -449,7 +468,9 @@ export default function ManageLeavesPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

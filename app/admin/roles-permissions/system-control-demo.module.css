@@ -3394,6 +3394,64 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  position: relative;
+}
+
+.orgTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px 2px;
+}
+
+.orgTopStats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: #64748b;
+}
+
+.orgTopStats strong {
+  color: #0f172a;
+}
+
+.orgTopDivider {
+  color: #cbd5e1;
+}
+
+.orgTopActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.orgPhotoInput {
+  display: none;
+}
+
+.orgPhotoBtn {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.orgPhotoBtn:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.orgPhotoBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .orgHintBar {
@@ -3797,23 +3855,188 @@
   display: none;
 }
 
-/* ---- Node card (reference org-chart style) ---- */
+/* ---- Node card (modern org-chart reference style) ---- */
 .orgCard {
   position: relative;
-  width: 220px;
-  min-height: 48px;
-  background: var(--accent, #6366f1);
-  border: none;
-  border-radius: 6px;
+  width: 240px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
   cursor: grab;
   user-select: none;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
-  transition: box-shadow 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  color: #1e293b;
+}
+
+.orgCardMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 14px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.orgCardPhoto {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  overflow: visible;
+  border: 2px solid #f1f5f9;
+  position: relative;
+}
+
+.orgPhotoWrap,
+.orgPhotoWrapDrawer {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.orgPhotoWrapDrawer {
+  width: 88px;
+  height: 88px;
+}
+
+.orgPhotoRemove {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 4;
+}
+
+.orgPhotoWrap:hover .orgPhotoRemove,
+.orgPhotoWrapDrawer:hover .orgPhotoRemove,
+.orgPhotoRemove:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.orgPhotoRemove:hover {
+  background: #dc2626;
+  transform: translateY(-50%) scale(1.06);
+}
+
+.orgDrawerPhotoImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.orgCardPhotoImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.orgCardPhotoInitials {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 14px;
+  width: 100%;
+  height: 100%;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.orgCardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.orgCardPersonName {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.orgCardRoleTitle {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.orgCardPill,
+.orgCardPillMuted {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.orgCardPill {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.orgCardPillMuted {
+  color: #94a3b8;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+}
+
+.orgCardFooter {
+  padding: 7px 12px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: #ffffff;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.orgCardFooterBoard { background: #8b5cf6 !important; }
+.orgCardFooterPartner { background: #1a1a1a !important; }
+.orgCardFooterDirector { background: #b91c1c !important; }
+.orgCardFooterManager { background: #ea580c !important; }
+.orgCardFooterLead,
+.orgCardFooterStaff { background: #2b6cb0 !important; }
+.orgCardFooterSupport,
+.orgCardFooterJunior { background: #38a169 !important; }
+
+.orgCardBoard {
+  width: 300px;
 }
 
 .orgCardLabel {
@@ -3826,46 +4049,17 @@
   word-break: break-word;
 }
 
-/* Tier-specific widths and colours (matches company org-chart reference) */
-.orgCardTierBoard {
-  width: 340px;
-  min-height: 52px;
-  background: #a78bfa;
-}
-.orgCardTierPartner {
-  width: 260px;
-  background: #1a1a1a;
-}
-.orgCardTierDirector {
-  width: 240px;
-  background: #b91c1c;
-}
-.orgCardTierManager {
-  width: 230px;
-  background: #ea580c;
-}
-.orgCardTierLead,
-.orgCardTierStaff {
-  width: 220px;
-  background: #2b6cb0;
-}
-.orgCardTierSupport,
-.orgCardTierJunior {
-  width: 210px;
-  background: #38a169;
-}
-
 .orgCard:hover {
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
   transform: translateY(-2px);
-  filter: brightness(1.05);
+  border-color: #cbd5e1;
 }
 .orgCard:active {
   cursor: grabbing;
 }
 .orgCardSelected {
   border-color: #9333ea;
-  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.25), 0 6px 18px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2), 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 .orgCardDrop {
   border-color: #16a34a !important;
@@ -4151,16 +4345,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  background: rgba(0, 0, 0, 0.35);
-  color: #ffffff;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.96);
+  color: #475569;
+  border-radius: 8px;
   cursor: pointer;
   padding: 0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   transition: background 0.15s ease, transform 0.15s ease;
 }
 .orgCardBtn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.55);
+  background: #f8fafc;
   transform: scale(1.05);
 }
 .orgCardBtnOn {
@@ -4214,6 +4409,200 @@
 .orgHiddenRestoreBtn:hover {
   background: #ede9fe;
   border-color: #a78bfa;
+}
+
+/* ---- Right-side role detail drawer ---- */
+.orgDrawerBackdrop {
+  position: fixed;
+  top: 58px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(15, 23, 42, 0.22);
+  border: none;
+  z-index: 900;
+  cursor: pointer;
+}
+
+.orgDrawer {
+  position: fixed;
+  top: 58px;
+  right: 0;
+  z-index: 901;
+  width: min(380px, 100vw);
+  height: calc(100vh - 58px);
+  background: #fff;
+  box-shadow: -12px 0 40px rgba(15, 23, 42, 0.14);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  animation: orgDrawerIn 0.18s ease-out;
+}
+
+@media (max-width: 900px) {
+  .orgDrawerBackdrop {
+    top: 52px;
+  }
+
+  .orgDrawer {
+    top: 52px;
+    height: calc(100vh - 52px);
+  }
+}
+
+@keyframes orgDrawerIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.orgDrawerClose {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.orgDrawerHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 24px 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.orgDrawerAvatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: visible;
+  border: 3px solid #f1f5f9;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.orgDrawerAvatar img,
+.orgDrawerAvatar > span {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: cover;
+  font-size: 1.4rem;
+  font-weight: 800;
+  border-radius: 50%;
+}
+
+.orgDrawerName {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.orgDrawerTitle {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.orgDrawerBadge {
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: #7c3aed;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.orgDrawerTabs {
+  display: flex;
+  gap: 18px;
+  padding: 0 24px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.orgDrawerTabActive {
+  padding: 12px 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0f172a;
+  border-bottom: 2px solid #0f172a;
+}
+
+.orgDrawerDetails {
+  margin: 0;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.orgDrawerRow {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.orgDrawerRow dt {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.orgDrawerRow dd {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.orgDrawerMore {
+  padding: 0 24px 8px;
+}
+
+.orgDrawerMoreTitle {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.orgDrawerMoreList {
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 0.84rem;
+}
+
+.orgDrawerActions {
+  margin-top: auto;
+  padding: 16px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ---- Centered Edit Role modal ---- */

@@ -2,15 +2,17 @@
 import React from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import DepartmentsTable from "../../components/DepartmentsTable";
+import styles from "../admin-page.module.css";
 
 export default function DepartmentsPage() {
   return (
     <LayoutDashboard>
-      <div style={{ padding: 32 }}>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 24 }}>
-          <h1 style={{ fontWeight: 700, fontSize: "1.5rem", margin: 0 }}>Departments</h1>
+      <div className={styles.page}>
+        <div className={styles.inner}>
+          <h1 className={styles.title}>Departments</h1>
+          <p className={styles.subtitle}>Manage company departments and view assigned employees.</p>
+          <DepartmentsTable />
         </div>
-        <DepartmentsTable />
       </div>
     </LayoutDashboard>
   );

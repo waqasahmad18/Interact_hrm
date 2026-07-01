@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../../attendance-summary/attendance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
 import { FaFileExcel, FaUpload, FaDownload } from "react-icons/fa";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 export default function CommissionsPage() {
   const [commissionsData, setCommissionsData] = useState<any[]>([]);
@@ -11,9 +13,9 @@ export default function CommissionsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [uploadStatus, setUploadStatus] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
-    // Set current month as default
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     setSelectedMonth(currentMonth);
@@ -27,12 +29,12 @@ export default function CommissionsPage() {
 
   const fetchCommissionsData = async () => {
     if (!selectedMonth) return;
-    
+
     setIsLoading(true);
     try {
       const response = await fetch(`/api/commissions?month=${selectedMonth}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setCommissionsData(result.data || []);
       }
@@ -51,7 +53,7 @@ export default function CommissionsPage() {
 
     try {
       const response = await fetch(`/api/commissions/download-template?month=${selectedMonth}`);
-      
+
       if (!response.ok) {
         throw new Error("Failed to download template");
       }
@@ -97,7 +99,7 @@ export default function CommissionsPage() {
 
       if (result.success) {
         setUploadStatus(`✅ Successfully uploaded ${result.successCount} records`);
-        fetchCommissionsData(); // Refresh data
+        fetchCommissionsData();
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
@@ -115,68 +117,34 @@ export default function CommissionsPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.attendanceSummaryContainer} style={{ minHeight: 'calc(100vh - 96px)' }}>
-        <h1 style={{ color: "#22223B", marginBottom: 20 }}>Employee Commissions & Incentives</h1>
-        
-        {/* Month Selection & Actions */}
-        <div style={{ 
-          display: "flex", 
-          gap: 15, 
-          alignItems: "center", 
-          marginBottom: 20,
-          flexWrap: "wrap"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <label style={{ fontWeight: 600, color: "#22223B" }}>Month:</label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 6,
-                border: "1px solid #d1d5db",
-                fontSize: 14,
-              }}
-            />
-          </div>
+      <div className={styles.breakSummaryContainer}>
+        <h1 className={styles.pageTitle}>Employee Commissions & Incentives</h1>
+
+        <div className={styles.breakSummaryFilters}>
+          <label style={{ fontWeight: 600 }}>Month:</label>
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className={styles.breakSummaryDate}
+          />
 
           <button
+            type="button"
             onClick={handleDownloadTemplate}
             disabled={!selectedMonth || isLoading}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 20px",
-              background: "linear-gradient(135deg, #00B8A9 0%, #0052CC 100%)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              cursor: selectedMonth && !isLoading ? "pointer" : "not-allowed",
-              fontWeight: 600,
-              fontSize: 14,
-              opacity: selectedMonth && !isLoading ? 1 : 0.6,
-            }}
+            className={styles.breakSummaryXLSButton}
+            style={{ opacity: selectedMonth && !isLoading ? 1 : 0.6 }}
           >
             <FaDownload />
             Download Template
           </button>
 
           <label
+            className={styles.breakSummaryXLSButton}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 20px",
-              background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              cursor: selectedMonth && !isLoading ? "pointer" : "not-allowed",
-              fontWeight: 600,
-              fontSize: 14,
               opacity: selectedMonth && !isLoading ? 1 : 0.6,
+              cursor: selectedMonth && !isLoading ? "pointer" : "not-allowed",
             }}
           >
             <FaUpload />
@@ -192,97 +160,84 @@ export default function CommissionsPage() {
           </label>
         </div>
 
-        {/* Upload Status */}
         {uploadStatus && (
-          <div style={{
-            padding: "12px 16px",
-            borderRadius: 6,
-            background: uploadStatus.includes("✅") ? "#d1fae5" : "#fee2e2",
-            border: `1px solid ${uploadStatus.includes("✅") ? "#6ee7b7" : "#fca5a5"}`,
-            marginBottom: 20,
-            fontSize: 14,
-            fontWeight: 600,
-          }}>
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: 10,
+              background: uploadStatus.includes("✅") ? "#d1fae5" : "#fee2e2",
+              border: `1px solid ${uploadStatus.includes("✅") ? "#6ee7b7" : "#fca5a5"}`,
+              marginBottom: 20,
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
             {uploadStatus}
           </div>
         )}
 
-        {/* Commissions Data Table */}
-        <div style={{ marginTop: 20 }}>
-          <h3 style={{ color: "#22223B", marginBottom: 15 }}>
-            Uploaded Commissions ({commissionsData.length} employees)
-          </h3>
-          
-          {isLoading ? (
-            <div style={{ textAlign: "center", padding: 40, color: "#666" }}>
-              Loading...
-            </div>
-          ) : commissionsData.length > 0 ? (
-            <div style={{ overflow: 'hidden', position: 'relative' }}>
-              <div style={{ overflowX: 'auto', overflowY: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8, width: 'calc(100vw - 290px)', maxHeight: '600px', boxSizing: 'border-box' }}>
-                <table style={{
-                  width: "1400px",
-                  borderCollapse: "collapse",
-                  background: "#fff",
-                }}>
-                <thead>
-                  <tr style={{
-                    background: "linear-gradient(90deg, #0052CC 0%, #00B8A9 100%)",
-                    color: "#fff",
-                  }}>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Employee ID</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Employee Name</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>6H Train Amt</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Arrears</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>KPI Add</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Commission</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Existing Client Incentive</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Trainer Incentive</th>
-                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, whiteSpace: "nowrap" }}>Floor Incentive</th>
+        <h3 style={{ margin: "0 0 12px", fontSize: "1rem", fontWeight: 700, color: "#611f69" }}>
+          Uploaded Commissions ({commissionsData.length} employees)
+        </h3>
+
+        {isLoading ? (
+          <div className={styles.breakSummaryNoRecords}>Loading...</div>
+        ) : commissionsData.length > 0 ? (
+          <div className={styles.breakSummaryTableWrapper}>
+            <table className={styles.breakSummaryTable}>
+              <thead>
+                <tr>
+                  <th>Employee ID</th>
+                  <th>Employee Name</th>
+                  <th>6H Train Amt</th>
+                  <th>Arrears</th>
+                  <th>KPI Add</th>
+                  <th>Commission</th>
+                  <th>Existing Client Incentive</th>
+                  <th>Trainer Incentive</th>
+                  <th>Floor Incentive</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commissionsData.map((comm: any) => (
+                  <tr key={comm.employee_id}>
+                    <td>{comm.employee_id}</td>
+                    <td>
+                      <EmployeeTableNameCell
+                        name={comm.employee_name}
+                        employeeId={comm.employee_id}
+                        photo={getPhoto(comm.employee_id)}
+                        onOpen={() =>
+                          openFromRow({
+                            employee_id: comm.employee_id,
+                            employee_name: comm.employee_name,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>{comm.train_6h_amt || 0}</td>
+                    <td>{comm.arrears || 0}</td>
+                    <td>{comm.kpi_add || 0}</td>
+                    <td>{comm.commission || 0}</td>
+                    <td>{comm.existing_client_incentive || 0}</td>
+                    <td>{comm.trainer_incentive || 0}</td>
+                    <td>{comm.floor_incentive || 0}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {commissionsData.map((comm: any, idx: number) => (
-                    <tr
-                      key={comm.employee_id}
-                      style={{
-                        borderBottom: "1px solid #e2e8f0",
-                        background: idx % 2 === 0 ? "#fff" : "#f9fafb",
-                      }}
-                    >
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.employee_id}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.employee_name}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.train_6h_amt || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.arrears || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.kpi_add || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.commission || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.existing_client_incentive || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.trainer_incentive || 0}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 14 }}>{comm.floor_incentive || 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              background: "#fff",
-              padding: 40,
-              borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              textAlign: "center",
-              color: "#666",
-            }}>
-              <FaFileExcel style={{ fontSize: 48, marginBottom: 15, color: "#0052CC" }} />
-              <p style={{ fontSize: 16, marginBottom: 10 }}>No commissions data found for this month</p>
-              <p style={{ fontSize: 14, color: "#999" }}>
-                Download template, fill the data, and upload to add commissions
-              </p>
-            </div>
-          )}
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={styles.breakSummaryNoRecords}>
+            <FaFileExcel style={{ fontSize: 48, marginBottom: 15, color: "#611f69" }} />
+            <p style={{ fontSize: 16, marginBottom: 10 }}>No commissions data found for this month</p>
+            <p style={{ fontSize: 14, color: "#94a3b8" }}>
+              Download template, fill the data, and upload to add commissions
+            </p>
+          </div>
+        )}
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

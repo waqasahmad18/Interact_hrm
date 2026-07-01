@@ -7,10 +7,16 @@ import {
   PRAYER_DATA_CHANGED,
 } from "../../../lib/ui-sync/breakPrayerDataRefresh";
 import styles from "../../break-summary/break-summary.module.css";
-import attStyles from "../../attendance-summary/attendance-summary.module.css";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
 import { FaFileExcel } from "react-icons/fa";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import {
+  EmployeeDetailPopup,
+  type EmployeeDetailPayload,
+} from "../../components/EmployeeDetailPopup";
+import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
+import { useEmployeePhotoMap } from "../../components/use-employee-photo-map";
 import {
   getDateStringInTimeZone,
   getTimeStringInTimeZone,
@@ -125,8 +131,10 @@ export default function EmployeeTimePage() {
   const [attToDate, setAttToDate] = useState(getLocalDateString());
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
+  const [detail, setDetail] = useState<EmployeeDetailPayload | null>(null);
   // For live timer
   const [now, setNow] = useState(Date.now());
+  const { getPhoto } = useEmployeePhotoMap();
 
   const isInRange = (dateStr: string | null | undefined, fromDate?: string, toDate?: string) => {
     if (!dateStr) return false;
@@ -429,32 +437,59 @@ export default function EmployeeTimePage() {
   };
 
   const tabButtonStyles = (isActive: boolean): React.CSSProperties => ({
-    padding: "12px 24px",
+    padding: "12px 20px",
     border: "none",
-    background: isActive ? "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)" : "transparent",
+    background: isActive ? "linear-gradient(135deg, #611f69 0%, #007a5a 100%)" : "transparent",
     cursor: "pointer",
     fontSize: "14px",
     fontWeight: isActive ? "600" : "500",
-    color: isActive ? "#fff" : "#4A5568",
-    borderRadius: isActive ? "8px 8px 0 0" : "0",
+    color: isActive ? "#fff" : "#64748b",
+    borderRadius: isActive ? "8px 8px 0 0" : "8px 8px 0 0",
     marginBottom: "-2px",
-    transition: "all 0.3s",
-    boxShadow: isActive ? "0 -2px 8px rgba(0,82,204,0.15)" : "none"
+    transition: "background 0.15s, color 0.15s",
+    boxShadow: isActive ? "0 -2px 8px rgba(97, 31, 105, 0.15)" : "none",
   });
 
-  return (
-    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)', padding: 0, margin: 0 }}>
-      <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 16px' }}>
-        <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#fff", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px" }}>My Time & Attendance</h1>
+  const employeePseudonym =
+    breaks[0]?.pseudonym ||
+    attendance[0]?.pseudonym ||
+    null;
+  const employeeDepartment =
+    breaks[0]?.department_name ||
+    attendance[0]?.department_name ||
+    null;
+  const employeeEmail = breaks[0]?.email || attendance[0]?.email || null;
 
-        <div style={{ ...tabStyles, borderBottom: 'none' }}>
-          <button style={{ ...tabButtonStyles(activeTab === "break"), color: '#fff' }} onClick={() => setActiveTab("break")}> 
+  const openBreakDetail = (row: any) => {
+    void buildEmployeeDetailPayload(
+      {
+        ...row,
+        employee_id: employeeId || row.employee_id,
+        employee_name: employeeName || row.employee_name,
+        pseudonym: row.pseudonym || employeePseudonym,
+        department_name: row.department_name || employeeDepartment,
+        email: row.email || employeeEmail,
+      },
+      getPhoto
+    ).then(setDetail);
+  };
+
+  const displayPseudonym = (row?: { pseudonym?: string | null }) =>
+    row?.pseudonym || employeePseudonym || "—";
+
+  return (
+    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(180deg, #f4f6f9 0%, #eef1f6 100%)', padding: 0, margin: 0 }}>
+      <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 16px 32px' }}>
+        <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#0f172a", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "-0.02em" }}>My Time & Attendance</h1>
+
+        <div style={{ ...tabStyles, borderBottom: '2px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', padding: '8px 8px 0' }}>
+          <button style={tabButtonStyles(activeTab === "break")} onClick={() => setActiveTab("break")}> 
             Break Summary
           </button>
-          <button style={{ ...tabButtonStyles(activeTab === "prayer"), color: '#fff' }} onClick={() => setActiveTab("prayer")}> 
+          <button style={tabButtonStyles(activeTab === "prayer")} onClick={() => setActiveTab("prayer")}> 
             Prayer Break Summary
           </button>
-          <button style={{ ...tabButtonStyles(activeTab === "attendance"), color: '#fff' }} onClick={() => setActiveTab("attendance")}> 
+          <button style={tabButtonStyles(activeTab === "attendance")} onClick={() => setActiveTab("attendance")}> 
             Attendance Summary
           </button>
         </div>
@@ -481,20 +516,8 @@ export default function EmployeeTimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper} style={{
-              width: '100%',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              background: '#fff',
-              borderRadius: 12,
-              boxShadow: '0 2px 8px #e2e8f0',
-              padding: '0',
-              margin: '0',
-              border: '1px solid #e2e8f0',
-              scrollbarWidth: 'thin',
-              WebkitOverflowScrolling: 'touch'
-            }}>
-              <table className={styles.breakSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
+            <div className={styles.breakSummaryTableWrapper}>
+              <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
                   <th>Id</th>
@@ -512,11 +535,10 @@ export default function EmployeeTimePage() {
               <tbody>
                 {breakRows.length === 0 ? (
                   <tr>
-                      <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
+                      <td colSpan={10} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   (() => {
-                    // Find last break index for each attendance session
                     const lastIndexMap = new Map();
                     breakRows.forEach((row, idx) => {
                       const key = getSessionGroupingKey(row, "break_start");
@@ -525,19 +547,34 @@ export default function EmployeeTimePage() {
                     return breakRows.map((b, idx) => {
                       const key = getSessionGroupingKey(b, "break_start");
                       const isLast = lastIndexMap.get(key) === idx;
+                      const pseudo = b.pseudonym || employeePseudonym || "—";
+                      const dept = b.department_name || employeeDepartment || "—";
                       return (
                         <tr key={b.id || idx}>
-                          <td>{employeeId}</td>
-                          <td>{employeeName}</td>
-                          <td>{attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : 'undefined'}</td>
-                          <td>{attendance && attendance[0]?.department_name ? attendance[0].department_name : '-'}</td>
+                          <td className={styles.cellMuted}>{employeeId}</td>
+                          <td className={styles.nameCol}>
+                            <EmployeeTableNameCell
+                              name={employeeName || b.employee_name || ""}
+                              employeeId={employeeId}
+                              photo={getPhoto(employeeId)}
+                              onOpen={() => openBreakDetail(b)}
+                            />
+                          </td>
+                          <td>{pseudo}</td>
+                          <td>{dept}</td>
                           <td>{b.date_display}</td>
                           <td>{b.break_start_display}</td>
-                          <td>{b.break_end_display}</td>
+                          <td>
+                            {b.isRunning ? (
+                              <span className={styles.badgeRunning}>Running</span>
+                            ) : (
+                              b.break_end_display
+                            )}
+                          </td>
                           <td>{b.total_break_time}</td>
                           <td>{b.total_break_time_today}</td>
-                          <td style={{ color: isLast && b.exceed_today ? "#e74c3c" : undefined }}>
-                            {isLast ? b.exceed_today : ""}
+                          <td className={isLast && b.exceed_today ? styles.cellExceed : undefined}>
+                            {isLast ? b.exceed_today || "—" : "—"}
                           </td>
                         </tr>
                       );
@@ -572,20 +609,8 @@ export default function EmployeeTimePage() {
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={styles.breakSummaryTableWrapper} style={{
-              width: '100%',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              background: '#fff',
-              borderRadius: 12,
-              boxShadow: '0 2px 8px #e2e8f0',
-              padding: '0',
-              margin: '0',
-              border: '1px solid #e2e8f0',
-              scrollbarWidth: 'thin',
-              WebkitOverflowScrolling: 'touch'
-            }}>
-              <table className={styles.breakSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
+            <div className={styles.breakSummaryTableWrapper}>
+              <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
                   <th>Id</th>
@@ -603,11 +628,10 @@ export default function EmployeeTimePage() {
               <tbody>
                 {prayerRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className={styles.breakSummaryNoRecords}>No records found.</td>
+                    <td colSpan={10} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   (() => {
-                    // Find last prayer break index for each attendance session
                     const lastIndexMap = new Map();
                     prayerRows.forEach((row, idx) => {
                       const key = getSessionGroupingKey(row, "prayer_break_start");
@@ -618,16 +642,29 @@ export default function EmployeeTimePage() {
                       const isLast = lastIndexMap.get(key) === idx;
                       return (
                         <tr key={p.id || idx}>
-                          <td>{employeeId}</td>
-                          <td>{employeeName}</td>
-                          <td>{attendance && attendance[0]?.pseudonym ? attendance[0].pseudonym : 'undefined'}</td>
-                          <td>{attendance && attendance[0]?.department_name ? attendance[0].department_name : '-'}</td>
+                          <td className={styles.cellMuted}>{employeeId}</td>
+                          <td className={styles.nameCol}>
+                            <EmployeeTableNameCell
+                              name={employeeName}
+                              employeeId={employeeId}
+                              photo={getPhoto(employeeId)}
+                              onOpen={() => openBreakDetail(p)}
+                            />
+                          </td>
+                          <td>{displayPseudonym(p)}</td>
+                          <td>{p.department_name || employeeDepartment || "—"}</td>
                           <td>{p.date_display}</td>
                           <td>{p.prayer_start_display}</td>
-                          <td>{p.prayer_end_display}</td>
+                          <td>
+                            {p.prayer_break_start && !p.prayer_break_end ? (
+                              <span className={styles.badgeRunning}>Running</span>
+                            ) : (
+                              p.prayer_end_display
+                            )}
+                          </td>
                           <td>{p.total_prayer_time}</td>
                           <td>{p.total_prayer_time_today}</td>
-                          <td style={{ color: isLast && p.exceed_today ? "#e74c3c" : undefined }}>
+                          <td className={isLast && p.exceed_today ? styles.cellExceed : undefined}>
                             {isLast ? p.exceed_today : ""}
                           </td>
                         </tr>
@@ -642,41 +679,29 @@ export default function EmployeeTimePage() {
         )}
 
         {activeTab === "attendance" && (
-          <div className={attStyles.attendanceSummaryContainer} style={{ width: '100%' }}>
-            <div className={attStyles.attendanceSummaryFilters}>
+          <div className={styles.breakSummaryContainer} style={{ width: "100%" }}>
+            <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
                 value={attFromDate}
                 onChange={e => setAttFromDate(e.target.value)}
-                className={attStyles.attendanceSummaryDate}
+                className={styles.breakSummaryDate}
                 placeholder="From Date"
               />
               <input
                 type="date"
                 value={attToDate}
                 onChange={e => setAttToDate(e.target.value)}
-                className={attStyles.attendanceSummaryDate}
+                className={styles.breakSummaryDate}
                 placeholder="To Date"
               />
-              <button onClick={downloadAttendanceCSV} className={attStyles.attendanceSummaryXLSButton} title="Download XLS">
+              <button onClick={downloadAttendanceCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
                 <FaFileExcel size={20} />
                 <span>Export XLS</span>
               </button>
             </div>
-            <div className={attStyles.attendanceSummaryTableWrapper} style={{
-              width: '100%',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              background: '#fff',
-              borderRadius: 12,
-              boxShadow: '0 2px 8px #e2e8f0',
-              padding: '0',
-              margin: '0',
-              border: '1px solid #e2e8f0',
-              scrollbarWidth: 'thin',
-              WebkitOverflowScrolling: 'touch'
-            }}>
-              <table className={attStyles.attendanceSummaryTable} style={{ minWidth: 1400, width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
+            <div className={styles.breakSummaryTableWrapper}>
+              <table className={styles.breakSummaryTable}>
                 <thead>
                 <tr>
                   <th>Id</th>
@@ -693,12 +718,11 @@ export default function EmployeeTimePage() {
               <tbody>
                 {attendance.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className={attStyles.attendanceSummaryNoRecords}>No records found.</td>
+                    <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                   </tr>
                 ) : (
                   attendance
                     .sort((a, b) => {
-                      // Sort by clock_in descending (latest first)
                       if (!a.clock_in && !b.clock_in) return 0;
                       if (!a.clock_in) return 1;
                       if (!b.clock_in) return -1;
@@ -706,10 +730,17 @@ export default function EmployeeTimePage() {
                     })
                     .map((a, idx) => (
                       <tr key={a.id || idx}>
-                        <td>{a.employee_id || employeeId}</td>
-                        <td>{employeeName}</td>
-                        <td>{a.pseudonym || 'undefined'}</td>
-                        <td>{a.department_name || '-'}</td>
+                        <td className={styles.cellMuted}>{a.employee_id || employeeId}</td>
+                        <td className={styles.nameCol}>
+                          <EmployeeTableNameCell
+                            name={employeeName}
+                            employeeId={employeeId}
+                            photo={getPhoto(employeeId)}
+                            onOpen={() => openBreakDetail(a)}
+                          />
+                        </td>
+                        <td>{displayPseudonym(a)}</td>
+                        <td>{a.department_name || employeeDepartment || "—"}</td>
                         <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
                         <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
                         <td>
@@ -719,15 +750,15 @@ export default function EmployeeTimePage() {
                               {isAutoClockOutRecord(a.auto_clock_out) ? <AutoClockOutBadge /> : null}
                             </>
                           ) : (
-                            <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                            <span className={styles.badgeRunning}>Running</span>
                           )}
                         </td>
                         <td>
                           {a.clock_in && !a.clock_out
-                            ? formatTotalHours(a.clock_in, "") // will use Date.now()
+                            ? formatTotalHours(a.clock_in, "")
                             : formatTotalHours(a.clock_in, a.clock_out)}
                         </td>
-                        <td style={{ color: a.is_late ? "#e74c3c" : "#27ae60", fontWeight: "600" }}>
+                        <td className={a.is_late ? styles.cellExceed : undefined} style={a.is_late ? undefined : { color: "#007a5a", fontWeight: 600 }}>
                           {a.is_late ? `Late ${formatLateTime(a.late_minutes || 0)}` : "On Time"}
                         </td>
                       </tr>
@@ -739,6 +770,7 @@ export default function EmployeeTimePage() {
         </div>
         )}
       </div>
+      {detail ? <EmployeeDetailPopup data={detail} onClose={() => setDetail(null)} /> : null}
     </div>
   );
 }

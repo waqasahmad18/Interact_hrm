@@ -3,6 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
 import styles from "../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../components/EmployeeTableNameCell";
+import {
+  EmployeeDetailPopup,
+  type EmployeeDetailPayload,
+} from "../components/EmployeeDetailPopup";
+import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
+import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
 import { FaFileExcel } from "react-icons/fa";
 import { getDateStringInTimeZone, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
 
@@ -42,6 +49,8 @@ export default function PrayerBreakSummaryPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [now, setNow] = useState(Date.now());
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [detail, setDetail] = useState<EmployeeDetailPayload | null>(null);
+  const { getPhoto } = useEmployeePhotoMap();
 
   useEffect(() => {
     fetch("/api/departments")
@@ -197,10 +206,14 @@ export default function PrayerBreakSummaryPage() {
     }
   };
 
+  const openEmployeeDetail = (row: any) => {
+    void buildEmployeeDetailPayload(row, getPhoto).then(setDetail);
+  };
+
   return (
     <LayoutDashboard>
       <div className={styles.breakSummaryContainer}>
-        <h1 style={{ marginBottom: 16 }}>Prayer Break Summary</h1>
+        <h1 className={styles.pageTitle}>Prayer Break Summary</h1>
         <div className={styles.breakSummaryFilters}>
           <input type="text" placeholder="Search employee..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 180 }} />
           <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 180 }}>
@@ -264,22 +277,30 @@ export default function PrayerBreakSummaryPage() {
               ) : (
                 rows.map((p, idx) => (
                   <tr key={p.id || idx}>
-                    <td>{p.employee_id}</td>
-                    <td>{p.employee_name || ""}</td>
+                    <td className={styles.cellMuted}>{p.employee_id}</td>
+                    <td className={styles.nameCol}>
+                      <EmployeeTableNameCell
+                        key={`${p.employee_id}-${getPhoto(p.employee_id) ?? "none"}`}
+                        name={p.employee_name || ""}
+                        employeeId={p.employee_id}
+                        photo={getPhoto(p.employee_id)}
+                        onOpen={() => openEmployeeDetail(p)}
+                      />
+                    </td>
                     <td>{p.pseudonym || "-"}</td>
                     <td>{p.department_name || "-"}</td>
                     <td>{p.date_display}</td>
                     <td>{p.prayer_start_display}</td>
                     <td>
                       {p.prayer_break_start && !p.prayer_break_end ? (
-                        <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                        <span className={styles.badgeRunning}>Running</span>
                       ) : (
                         p.prayer_end_display
                       )}
                     </td>
                     <td>{p.total_prayer_time}</td>
                     <td>{p.total_prayer_time_today}</td>
-                    <td style={{ color: p.exceed_today ? "#e74c3c" : undefined }}>{p.exceed_today}</td>
+                    <td className={p.exceed_today ? styles.cellExceed : undefined}>{p.exceed_today}</td>
                   </tr>
                 ))
               )}
@@ -287,6 +308,7 @@ export default function PrayerBreakSummaryPage() {
           </table>
         </div>
       </div>
+      {detail ? <EmployeeDetailPopup data={detail} onClose={() => setDetail(null)} /> : null}
     </LayoutDashboard>
   );
 }

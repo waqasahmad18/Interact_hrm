@@ -37,12 +37,16 @@
 
 html {
   background: #F7FAFC !important;
+  overflow-x: clip;
+  overflow-y: auto;
 }
 
 body {
   background: #F7FAFC !important;
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  overflow-x: clip;
+  overflow-y: auto;
 }
 
 /* Hide Next.js development indicator */

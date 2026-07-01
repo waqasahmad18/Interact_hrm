@@ -1,7 +1,9 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "./advance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 export default function AdvancePage() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -17,6 +19,10 @@ export default function AdvancePage() {
   const [amountInputs, setAmountInputs] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState<{ [key: string]: boolean }>({});
   const [successMsg, setSuccessMsg] = useState("");
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  const getFullName = (emp: any) =>
+    `${emp.first_name || ""} ${emp.middle_name || ""} ${emp.last_name || ""}`.replace(/\s+/g, " ").trim();
 
   useEffect(() => {
     setLoading(true);
@@ -127,7 +133,7 @@ export default function AdvancePage() {
   return (
     <LayoutDashboard>
       <div className={styles.breakSummaryContainer} style={{ position: 'relative', maxWidth: 1200, margin: '0 auto' }}>
-        <div className={styles.breakSummaryHeader} style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Advance Salary Records</div>
+        <h1 className={styles.pageTitle}>Advance Salary Records</h1>
         {successMsg && <div style={{ color: 'green', marginBottom: 8 }}>{successMsg}</div>}
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         <div className={styles.breakSummaryFilters} style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
@@ -179,10 +185,29 @@ export default function AdvancePage() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={6} className={styles.breakSummaryNoRecords}>No records found.</td></tr>
               ) : (
-                filtered.map(emp => (
+                filtered.map(emp => {
+                  const fullName = getFullName(emp);
+                  return (
                   <tr key={emp.id}>
                     <td>{emp.id}</td>
-                    <td>{emp.first_name} {emp.middle_name} {emp.last_name}</td>
+                    <td>
+                      <EmployeeTableNameCell
+                        name={fullName}
+                        employeeId={emp.id}
+                        photo={getPhoto(emp.id)}
+                        onOpen={() =>
+                          openFromRow({
+                            employee_id: emp.id,
+                            employee_name: fullName,
+                            first_name: emp.first_name,
+                            middle_name: emp.middle_name,
+                            last_name: emp.last_name,
+                            pseudonym: emp.pseudonym,
+                            department_name: emp.department_name,
+                          })
+                        }
+                      />
+                    </td>
                     <td>{emp.pseudonym || '--'}</td>
                     <td>{emp.department_name || '--'}</td>
                     <td>
@@ -213,12 +238,14 @@ export default function AdvancePage() {
                       </button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

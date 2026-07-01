@@ -2,17 +2,37 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { FaTachometerAlt, FaClock, FaCalendarAlt, FaCoffee, FaUser } from "react-icons/fa";
+import { FaTachometerAlt, FaClock, FaCalendarAlt, FaUser, FaUsers, FaMoneyBillWave, FaHandHoldingUsd } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
+import empStyles from "./emp-shell.module.css";
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
 import { TardyNoteWidget } from "../components/TardyNoteWidget";
-import { preloadFaceRuntime, ensureFaceModelsLoaded } from "../../lib/face-client-engine";
+import { ShellImageUpload } from "../components/ShellImageUpload";
+import {
+  fetchShellBranding,
+  removeCompanyLogo,
+  removeEmployeeAvatar,
+  saveCompanyLogo,
+  saveEmployeeAvatar,
+} from "../shell-branding-api";
+import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
+import { EmployeeAvatar } from "../components/EmployeeAvatar";
+
+function greetingLabel() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 const employeeTabs = [
   { name: "Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
+  { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "Time", path: "/employee-dashboard/time", icon: <FaClock /> },
-  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> }
+  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> },
+  { name: "Request Advance", path: "/employee-dashboard/request-advance", icon: <FaMoneyBillWave /> },
+  { name: "Request Loan", path: "/employee-dashboard/request-loan", icon: <FaHandHoldingUsd /> },
 ];
 
 /** Routes where the clock/break widget stays mounted so Dashboard ↔ Time switches
@@ -26,24 +46,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   const [employeeId, setEmployeeId] = React.useState<string>("");
   const showClockBar = pathname != null && CLOCK_WIDGET_PATHS.has(pathname);
   const isDashboardHome = pathname === "/employee-dashboard";
-
-  const quickActionStyle: React.CSSProperties = {
-    border: "none",
-    borderRadius: 14,
-    padding: "12px 16px",
-    fontSize: "0.9rem",
-    fontWeight: 700,
-    color: "#0f1d40",
-    cursor: "pointer",
-    background: "#f7fafc",
-    boxShadow: "0 8px 24px rgba(15,29,64,0.12)",
-  };
-
-  React.useEffect(() => {
-    if (!showClockBar) return;
-    preloadFaceRuntime();
-    void ensureFaceModelsLoaded();
-  }, [showClockBar]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -87,7 +89,30 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   }, []);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
+  const [employeeAvatar, setEmployeeAvatar] = React.useState<string | null>(null);
+  const [reportsTo, setReportsTo] = React.useState<HierarchyPerson | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    void fetchShellBranding()
+      .then((branding) => {
+        setCompanyLogo(branding.companyLogo);
+        if (employeeId) {
+          setEmployeeAvatar(branding.employeeAvatars[employeeId] ?? null);
+        }
+      })
+      .catch(() => {
+        /* keep placeholder */
+      });
+  }, [employeeId]);
+
+  React.useEffect(() => {
+    if (!employeeId || !isDashboardHome) return;
+    void fetchEmployeeHierarchy(employeeId)
+      .then((data) => setReportsTo(data?.reportsTo ?? null))
+      .catch(() => setReportsTo(null));
+  }, [employeeId, isDashboardHome]);
 
   React.useEffect(() => {
     setSidebarOpen(false);
@@ -108,7 +133,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   return (
     <>
       <div className={styles.topBar}>
-        <div className={styles.topBarLeft}>
+        <div className={styles.topBarSidebarSlot}>
           <span
             className={styles.sidebarMenuIcon}
             role="button"
@@ -121,16 +146,57 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           >
             &#9776;
           </span>
-          <span className={styles.sidebarTitle}>Interact Global</span>
+          <div className={styles.topBarBrandGroup}>
+            <ShellImageUpload
+              variant="logo"
+              image={companyLogo}
+              title="Upload company logo"
+              onImage={(dataUrl) => {
+                const prev = companyLogo;
+                setCompanyLogo(dataUrl);
+                void saveCompanyLogo(dataUrl).catch(() => {
+                  setCompanyLogo(prev);
+                  window.alert("Could not save company logo.");
+                });
+              }}
+              onRemove={() => {
+                const prev = companyLogo;
+                setCompanyLogo(null);
+                void removeCompanyLogo().catch(() => {
+                  setCompanyLogo(prev);
+                  window.alert("Could not remove company logo.");
+                });
+              }}
+            />
+          </div>
         </div>
+        <div className={styles.topBarMain}>
         <div className={styles.topBarRight}>
           <div className={styles.topBarProfile}>
-            {/* If user image exists, show image, else show initials */}
-            {false ? (
-              <span className={styles.topBarProfilePic} style={{backgroundImage: "url('https://ui-avatars.com/api/?name=" + employeeName + "')"}}></span>
-            ) : (
-              <span className={styles.topBarProfileInitials}>{employeeName ? employeeName[0] : "E"}</span>
-            )}
+            <ShellImageUpload
+              variant="avatar"
+              image={employeeAvatar}
+              fallbackInitial={employeeName || "E"}
+              title="Upload profile photo"
+              onImage={(dataUrl) => {
+                if (!employeeId) return;
+                const prev = employeeAvatar;
+                setEmployeeAvatar(dataUrl);
+                void saveEmployeeAvatar(employeeId, dataUrl).catch(() => {
+                  setEmployeeAvatar(prev);
+                  window.alert("Could not save profile photo.");
+                });
+              }}
+              onRemove={() => {
+                if (!employeeId) return;
+                const prev = employeeAvatar;
+                setEmployeeAvatar(null);
+                void removeEmployeeAvatar(employeeId).catch(() => {
+                  setEmployeeAvatar(prev);
+                  window.alert("Could not remove profile photo.");
+                });
+              }}
+            />
             <span className={styles.topBarProfileName}>{employeeName || "Employee"}</span>
             <div className={styles.profileMenuWrapper} ref={menuRef}>
               <button
@@ -138,7 +204,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 onClick={() => setMenuOpen((open) => !open)}
                 aria-label="Open menu"
               >
-                <span style={{ fontSize: "1.7rem", color: "#fff" }}>⋮</span>
+                <span className={styles.profileMenuDots}>⋮</span>
               </button>
               {menuOpen && (
                 <div className={styles.profileMenuDropdown}>
@@ -158,6 +224,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
             </div>
           </div>
         </div>
+        </div>
       </div>
       <div className={styles.layout}>
         {sidebarOpen && (
@@ -168,7 +235,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           />
         )}
         <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
-          <nav className={styles.nav}>
+          <nav className={`${styles.nav} ${styles.navEmployee}`}>
             {employeeTabs.map((tab, idx) => {
               const isActive = pathname === tab.path;
               return (
@@ -187,44 +254,68 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         </aside>
         <div className={styles.contentArea}>
           {isDashboardHome ? (
-            <div
-              style={{
-                background: "linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)",
-                color: "#e8f0ff",
-                padding: "28px 32px 24px",
-                boxShadow: "0 20px 60px rgba(8, 25, 66, 0.35)",
-                width: "100%",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontSize: "0.95rem", opacity: 0.85 }}>Welcome back</div>
-                  <div style={{ fontSize: "1.7rem", fontWeight: 700, marginTop: 6 }}>{employeeName || "Your dashboard"}</div>
-                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <span style={{ background: "rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 14px", fontSize: "0.92rem", color: "#dbe7ff", border: "1px solid rgba(255,255,255,0.12)", display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      Small daily efforts compound into big wins. Keep going.
+            <div className={empStyles.heroStrip}>
+              <div className={empStyles.heroStripInner}>
+                <header className={empStyles.hero}>
+                  <div className={empStyles.heroMain}>
+                    <p className={empStyles.heroKicker}>{greetingLabel()}</p>
+                    <h1 className={empStyles.heroTitle}>{employeeName || "Employee"}</h1>
+                    <span className={empStyles.heroDate}>
+                      {new Date().toLocaleDateString("en-US", {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </span>
                   </div>
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Link href="/employee-dashboard/time" prefetch style={{ ...quickActionStyle, background: "linear-gradient(120deg, #8bf3ff, #5b9bff)", color: "#0b1b40", textDecoration: "none" }}>Time & Attendance</Link>
-                  <Link href="/employee-dashboard/leave" prefetch style={{ ...quickActionStyle, background: "linear-gradient(120deg, #ffd89b, #f7b733)", color: "#3d2600", textDecoration: "none" }}>Leave Center</Link>
-                </div>
+                  {reportsTo ? (
+                    <div className={empStyles.heroManager}>
+                      <EmployeeAvatar
+                        name={reportsTo.name}
+                        initials={reportsTo.initials}
+                        photo={reportsTo.photo}
+                        size="md"
+                      />
+                      <div>
+                        <div className={empStyles.heroManagerLabel}>Reports to</div>
+                        <div className={empStyles.heroManagerName}>{reportsTo.name}</div>
+                        <div className={empStyles.heroManagerRole}>
+                          {reportsTo.role}
+                          {reportsTo.jobTitle ? ` · ${reportsTo.jobTitle}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </header>
               </div>
             </div>
           ) : null}
           {showClockBar && employeeId ? (
-            <div
-              style={{
-                padding: "16px 20px",
-                background: "linear-gradient(135deg, #0f1d40 0%, #122b66 40%, #1853b3 100%)",
-              }}
-            >
-              <ClockBreakPrayerWidget employeeId={employeeId} employeeName={employeeName || "Employee"} />
-              <TardyNoteWidget employeeId={employeeId} />
+            <div className={empStyles.attendanceDock}>
+              <div className={empStyles.attendanceDockInner}>
+                <div className={empStyles.dockCard}>
+                  {isDashboardHome ? (
+                    <div className={empStyles.dockHeader}>
+                      <span className={empStyles.dockTitle}>Today&apos;s shift</span>
+                      <span className={empStyles.dockSub}>Clock in, breaks &amp; prayer</span>
+                    </div>
+                  ) : (
+                    <div className={empStyles.dockHeader}>
+                      <span className={empStyles.dockTitle}>Time &amp; attendance</span>
+                    </div>
+                  )}
+                  <ClockBreakPrayerWidget
+                    employeeId={employeeId}
+                    employeeName={employeeName || "Employee"}
+                    variant="slack"
+                  />
+                  <TardyNoteWidget employeeId={employeeId} variant="slack" />
+                </div>
+              </div>
             </div>
           ) : null}
-          <main className={styles.main}>{children}</main>
+          <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
         </div>
       </div>
     </>

@@ -1,8 +1,11 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "./employee-credentials.module.css";
+import styles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../admin-page.module.css";
 import { FaSave, FaTimes, FaEdit, FaKey, FaEnvelope, FaUser } from "react-icons/fa";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 interface Employee {
   id: number;
@@ -29,6 +32,7 @@ export default function EmployeeCredentialsPage() {
     password: "",
   });
   const [saving, setSaving] = useState(false);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
     fetchEmployees();
@@ -39,7 +43,6 @@ export default function EmployeeCredentialsPage() {
       const res = await fetch("/api/employee-credentials");
       const data = await res.json();
       if (data.success) {
-        // Fetch employee list for department
         const empListRes = await fetch("/api/employee-list");
         const empListData = await empListRes.json();
         const deptMap = new Map();
@@ -48,8 +51,7 @@ export default function EmployeeCredentialsPage() {
             deptMap.set(emp.id, emp.department_name || '-');
           });
         }
-        
-        // Fetch attendance data to get pseudonym
+
         const attendanceRes = await fetch("/api/attendance?fromDate=2020-01-01&toDate=2099-12-31");
         const attendanceData = await attendanceRes.json();
         const pseudonymMap = new Map();
@@ -61,8 +63,7 @@ export default function EmployeeCredentialsPage() {
             }
           });
         }
-        
-        // Merge data into employees
+
         const enrichedEmployees = data.employees.map((emp: Employee) => ({
           ...emp,
           department_name: deptMap.get(emp.id) || '-',
@@ -109,7 +110,6 @@ export default function EmployeeCredentialsPage() {
 
       const data = await res.json();
       if (data.success) {
-        // Update local state
         setEmployees((prev) =>
           prev.map((emp) =>
             emp.id === id
@@ -133,6 +133,9 @@ export default function EmployeeCredentialsPage() {
     }
   };
 
+  const getFullName = (emp: Employee) =>
+    `${emp.first_name || ""} ${emp.last_name || ""}`.trim();
+
   const filteredEmployees = employees.filter(
     (emp) =>
       emp.first_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -145,34 +148,36 @@ export default function EmployeeCredentialsPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.pageContainer}>
-        <div className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>
-            <FaKey style={{ marginRight: "10px" }} />
-            Employee Credentials
-          </h1>
-          <p className={styles.pageSubtitle}>
-            Manage employee login credentials - username, email, and password
-          </p>
-        </div>
+      <div className={adminStyles.page}>
+      <div className={styles.breakSummaryContainer}>
+        <h1 className={styles.pageTitle}>
+          <FaKey style={{ marginRight: 10, verticalAlign: "middle" }} />
+          Employee Credentials
+        </h1>
+        <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 14 }}>
+          Manage employee login credentials — username, email, and password
+        </p>
 
-        <div className={styles.controlsBar}>
+        <div className={styles.breakSummaryFilters}>
           <input
             type="text"
             placeholder="Search by name, username, email, or employee code..."
-            className={styles.searchInput}
+            className={styles.breakSummaryInput}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            style={{ flex: "1 1 280px", minWidth: 220 }}
           />
         </div>
 
-        {loading && <div className={styles.loading}>Loading...</div>}
-        {error && <div className={styles.error}>{error}</div>}
+        {loading && <div className={styles.breakSummaryNoRecords}>Loading...</div>}
+        {error && (
+          <div style={{ color: "#dc2626", marginBottom: 12, fontSize: 14 }}>{error}</div>
+        )}
 
         {!loading && !error && (
-          <div className={styles.tableContainer} style={{ overflowY: "auto", maxHeight: "74vh" }}>
-            <table className={styles.table}>
-              <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
+          <div className={styles.breakSummaryTableWrapper}>
+            <table className={styles.breakSummaryTable}>
+              <thead>
                 <tr>
                   <th>Id</th>
                   <th>Full Name</th>
@@ -193,14 +198,14 @@ export default function EmployeeCredentialsPage() {
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: "center", padding: "20px" }}>
+                    <td colSpan={8} className={styles.breakSummaryNoRecords}>
                       No employees found
                     </td>
                   </tr>
                 ) : (
                   filteredEmployees.map((emp) => {
                     const isEditing = editingId === emp.id;
-                    const fullName = `${emp.first_name || ""} ${emp.last_name || ""}`.trim();
+                    const fullName = getFullName(emp);
 
                     return (
                       <tr key={emp.id}>
@@ -208,7 +213,22 @@ export default function EmployeeCredentialsPage() {
                           <strong>{emp.id}</strong>
                         </td>
                         <td>
-                          <strong>{fullName || "N/A"}</strong>
+                          <EmployeeTableNameCell
+                            name={fullName || "N/A"}
+                            employeeId={emp.id}
+                            photo={getPhoto(emp.id)}
+                            onOpen={() =>
+                              openFromRow({
+                                employee_id: emp.id,
+                                employee_name: fullName,
+                                first_name: emp.first_name,
+                                last_name: emp.last_name,
+                                pseudonym: emp.pseudonym,
+                                department_name: emp.department_name,
+                                email: emp.email_work || emp.email_other,
+                              })
+                            }
+                          />
                         </td>
                         <td>{emp.pseudonym || '-'}</td>
                         <td>{emp.department_name || '-'}</td>
@@ -220,13 +240,12 @@ export default function EmployeeCredentialsPage() {
                               onChange={(e) =>
                                 setEditData({ ...editData, username: e.target.value })
                               }
-                              className={styles.editInput}
+                              className={styles.breakSummaryInput}
                               placeholder="Username"
+                              style={{ width: "100%", minWidth: 120 }}
                             />
                           ) : (
-                            <span className={styles.credentialText}>
-                              {emp.username || <em>Not set</em>}
-                            </span>
+                            <span>{emp.username || <em>Not set</em>}</span>
                           )}
                         </td>
                         <td>
@@ -237,13 +256,12 @@ export default function EmployeeCredentialsPage() {
                               onChange={(e) =>
                                 setEditData({ ...editData, email: e.target.value })
                               }
-                              className={styles.editInput}
+                              className={styles.breakSummaryInput}
                               placeholder="Email"
+                              style={{ width: "100%", minWidth: 160 }}
                             />
                           ) : (
-                            <span className={styles.credentialText}>
-                              {emp.email_work || emp.email_other || <em>Not set</em>}
-                            </span>
+                            <span>{emp.email_work || emp.email_other || <em>Not set</em>}</span>
                           )}
                         </td>
                         <td>
@@ -254,29 +272,32 @@ export default function EmployeeCredentialsPage() {
                               onChange={(e) =>
                                 setEditData({ ...editData, password: e.target.value })
                               }
-                              className={styles.editInput}
+                              className={styles.breakSummaryInput}
                               placeholder="New password (optional)"
+                              style={{ width: "100%", minWidth: 140 }}
                             />
                           ) : (
-                            <span className={styles.passwordPlaceholder}>
+                            <span style={{ color: "#94a3b8" }}>
                               {emp.password || "••••••••"}
                             </span>
                           )}
                         </td>
                         <td>
                           {isEditing ? (
-                            <div className={styles.actionButtons}>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                               <button
                                 onClick={() => handleSave(emp.id)}
-                                className={styles.saveButton}
                                 disabled={saving}
+                                className={styles.breakSummaryXLSButton}
+                                style={{ padding: "6px 12px", fontSize: 12 }}
                               >
                                 <FaSave /> {saving ? "Saving..." : "Save"}
                               </button>
                               <button
                                 onClick={handleCancel}
-                                className={styles.cancelButton}
                                 disabled={saving}
+                                className={styles.breakSummaryInput}
+                                style={{ padding: "6px 12px", fontWeight: 600, cursor: "pointer" }}
                               >
                                 <FaTimes /> Cancel
                               </button>
@@ -284,7 +305,13 @@ export default function EmployeeCredentialsPage() {
                           ) : (
                             <button
                               onClick={() => handleEdit(emp)}
-                              className={styles.editButton}
+                              className={styles.breakSummaryInput}
+                              style={{
+                                padding: "6px 12px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                color: "#611f69",
+                              }}
                             >
                               <FaEdit /> Edit
                             </button>
@@ -299,6 +326,8 @@ export default function EmployeeCredentialsPage() {
           </div>
         )}
       </div>
+      </div>
+      {popup}
     </LayoutDashboard>
   );
 }

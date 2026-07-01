@@ -9,6 +9,11 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../lib/timezone";
+import { EmployeeTableNameCell } from "../components/EmployeeTableNameCell";
+import { EmployeeDetailPopup } from "../components/EmployeeDetailPopup";
+import type { EmployeeDetailPayload } from "../components/EmployeeDetailPopup";
+import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
+import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -61,7 +66,9 @@ export default function BreakSummaryPage() {
   const [fromDate, setFromDate] = useState(getMonthStartDateString());
   const [toDate, setToDate] = useState(getLocalDateString());
   const [now, setNow] = useState(Date.now());
+  const [detail, setDetail] = useState<EmployeeDetailPayload | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const { getPhoto } = useEmployeePhotoMap();
 
   useEffect(() => {
     fetch("/api/departments")
@@ -223,10 +230,14 @@ export default function BreakSummaryPage() {
     }
   };
 
+  const openEmployeeDetail = (row: any) => {
+    void buildEmployeeDetailPayload(row, getPhoto).then(setDetail);
+  };
+
   return (
     <LayoutDashboard>
       <div className={styles.breakSummaryContainer}>
-        <h1 style={{ marginBottom: 16 }}>Break Summary</h1>
+        <h1 className={styles.pageTitle}>Break Summary</h1>
         <div className={styles.breakSummaryFilters}>
           <input
             type="text"
@@ -267,7 +278,7 @@ export default function BreakSummaryPage() {
             <FaFileExcel size={20} />
             <span>Export XLS</span>
           </button>
-          <button onClick={handleImportClick} className={styles.breakSummaryXLSButton} title="Import XLS">
+          <button onClick={handleImportClick} className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`} title="Import XLS">
             <FaFileExcel size={20} />
             <span>Import XLS</span>
           </button>
@@ -306,22 +317,31 @@ export default function BreakSummaryPage() {
               ) : (
                 rows.map((b, idx) => (
                   <tr key={b.id || idx}>
-                    <td>{b.employee_id}</td>
-                    <td>{b.employee_name || ""}</td>
-                    <td>{b.pseudonym || "-"}</td>
-                    <td>{b.department_name || "-"}</td>
+                    <td className={styles.cellMuted}>{b.employee_id}</td>
+                    <td className={styles.nameCol}>
+                      <EmployeeTableNameCell
+                        name={b.employee_name || ""}
+                        employeeId={b.employee_id}
+                        photo={getPhoto(b.employee_id)}
+                        onOpen={() => openEmployeeDetail(b)}
+                      />
+                    </td>
+                    <td>{b.pseudonym || "—"}</td>
+                    <td>{b.department_name || "—"}</td>
                     <td>{b.date_display}</td>
                     <td>{b.break_start_display}</td>
                     <td>
                       {b.break_start && !b.break_end ? (
-                        <span style={{ color: "#e67e22", fontWeight: 600 }}>Running...</span>
+                        <span className={styles.badgeRunning}>Running</span>
                       ) : (
                         b.break_end_display
                       )}
                     </td>
                     <td>{b.total_break_time}</td>
                     <td>{b.total_break_time_today}</td>
-                    <td style={{ color: b.exceed_today ? "#e74c3c" : undefined }}>{b.exceed_today}</td>
+                    <td className={b.exceed_today ? styles.cellExceed : undefined}>
+                      {b.exceed_today || "—"}
+                    </td>
                   </tr>
                 ))
               )}
@@ -329,6 +349,7 @@ export default function BreakSummaryPage() {
           </table>
         </div>
       </div>
+      {detail ? <EmployeeDetailPopup data={detail} onClose={() => setDetail(null)} /> : null}
     </LayoutDashboard>
   );
 }

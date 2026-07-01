@@ -1,0 +1,182 @@
+/* Attendance dock — light integrated card (matches dashboard) */
+
+.heroStrip {
+  flex-shrink: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #eef1f6 0%, #eef1f6 100%);
+  padding: 22px 28px 0;
+}
+
+.heroStripInner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+  padding: 22px 26px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #611f69, #007a5a);
+  border-radius: 18px 0 0 18px;
+}
+
+.heroMain {
+  min-width: 0;
+  padding-left: 6px;
+}
+
+.heroKicker {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #611f69;
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  line-height: 1.15;
+}
+
+.heroDate {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+.heroManager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.heroManagerLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.heroManagerName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.heroManagerRole {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.attendanceDock {
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #eef1f6 0%, #f4f6f9 100%);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  padding: 16px 28px 20px;
+}
+
+.attendanceDockInner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.dockCard {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 16px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+}
+
+.dockHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dockTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.dockSub {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.dockSub::before {
+  content: "·";
+  margin-right: 10px;
+  color: #cbd5e1;
+}
+
+.employeeMain {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .heroStrip {
+    padding: 16px 16px 0;
+  }
+
+  .hero {
+    padding: 18px;
+  }
+
+  .heroTitle {
+    font-size: 22px;
+  }
+
+  .attendanceDock {
+    padding: 14px 16px 16px;
+  }
+
+  .dockCard {
+    padding: 14px 14px 12px;
+    border-radius: 14px;
+  }
+}

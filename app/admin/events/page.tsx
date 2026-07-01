@@ -2,6 +2,8 @@
 import React from "react";
 import LayoutDashboard from "@/app/layout-dashboard";
 import { CompanyPolicySection } from "../company-policy/CompanyPolicySection";
+import styles from "../admin-page.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
 
 interface EventItem {
   id: number;
@@ -216,154 +218,207 @@ export default function AdminEventsPage() {
 
   return (
     <LayoutDashboard>
-      <div style={{ display: "flex", flexDirection: "column", gap: 32, width: "100%", maxWidth: 1200, margin: "0 auto", padding: "32px 0" }}>
-        {/* Widget Settings */}
-        <div style={{ background: "#f7faff", borderRadius: 16, boxShadow: "0 8px 32px rgba(10,31,68,0.10)", padding: 28, marginBottom: 0, border: "1px solid #e6e8f2" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-            <h2 style={{ margin: 0, fontSize: "1.35rem", color: "#1853b3", fontWeight: 700, letterSpacing: 0.5 }}>Widget Settings</h2>
-            {headingSaving && <span style={{ fontSize: "1rem", color: "#6b7b9b" }}>Saving...</span>}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <label style={{ fontSize: "1.05rem", fontWeight: 600, color: "#0f1d40", minWidth: "140px" }}>Widget Heading:</label>
-            <select value={widgetHeading} onChange={handleHeadingChange} disabled={headingSaving} style={{ ...inputStyle, flex: 1, maxWidth: "340px", fontSize: "1.05rem", borderRadius: 10, background: "#fff", border: "1px solid #dbe7ff", boxShadow: "0 2px 8px rgba(10,31,68,0.04)", cursor: headingSaving ? "not-allowed" : "pointer" }}>
-              <option value="Upcoming Events">Upcoming Events</option>
-              <option value="Announcements">Announcements</option>
-            </select>
-          </div>
-        </div>
+      <div className={styles.page}>
+        <div className={styles.inner}>
+          <h1 className={styles.title}>Events & Announcements</h1>
+          <p className={styles.subtitle}>Manage upcoming events, reminders, and widget settings.</p>
 
-        {/* Main Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(340px, 400px) 1fr", gap: 32, width: "100%" }}>
-          {/* Add Event Card */}
-          <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(10,31,68,0.10)", padding: 28, border: "1px solid #e6e8f2" }}>
-            <h2 style={{ margin: 0, fontSize: "1.18rem", color: "#1853b3", fontWeight: 700 }}>Add Event</h2>
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 18 }}>
-              <input required placeholder="Title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={{ ...inputStyle, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} />
-              <textarea placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} style={{ ...inputStyle, minHeight: 80, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} />
-              <label style={labelStyle}>Start At</label>
-              <input required type="datetime-local" value={form.start_at} onChange={e => setForm({ ...form, start_at: e.target.value })} style={{ ...inputStyle, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} />
-              <label style={labelStyle}>End At (optional)</label>
-              <input type="datetime-local" value={form.end_at} onChange={e => setForm({ ...form, end_at: e.target.value })} style={{ ...inputStyle, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} />
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "1.05rem" }}>
-                <input type="checkbox" checked={!!form.is_all_day} onChange={e => setForm({ ...form, is_all_day: e.target.checked })} /> All day
-              </label>
-              <input placeholder="Location (optional)" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ ...inputStyle, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} />
-              <button type="submit" disabled={saving} style={{ ...buttonStyle, fontSize: "1.05rem", borderRadius: 10, background: "linear-gradient(120deg, #1853b3, #8bf3ff)", color: "#fff", fontWeight: 700 }}>{saving ? "Saving..." : "Save Event"}</button>
-            </form>
-          </div>
-
-          {/* Events List Card */}
-          <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(10,31,68,0.10)", padding: 28, border: "1px solid #e6e8f2" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <h2 style={{ margin: 0, fontSize: "1.18rem", color: "#1853b3", fontWeight: 700 }}>{widgetHeading}</h2>
-              {loading && <span style={{ fontSize: "1rem", color: "#6b7b9b" }}>Loading...</span>}
+          <div className={styles.card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h2 className={styles.cardTitle} style={{ margin: 0 }}>Widget Settings</h2>
+              {headingSaving && <span className={styles.muted}>Saving...</span>}
             </div>
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-              {events.length === 0 && <div style={{ color: "#6b7b9b", fontSize: "1.05rem" }}>No events yet.</div>}
-              {events.map(ev => (
-                <div key={ev.id} style={{ border: "1px solid #e6e8f2", borderRadius: 14, padding: 18, background: "#f7faff", boxShadow: "0 6px 18px rgba(10,31,68,0.05)", display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                    <div style={{ fontWeight: 700, color: "#1853b3", fontSize: "1.08rem" }}>{ev.title}</div>
+            <div className={styles.formGrid}>
+              <div className={styles.field}>
+                <label>Widget Heading</label>
+                <select
+                  value={widgetHeading}
+                  onChange={handleHeadingChange}
+                  disabled={headingSaving}
+                  className={styles.select}
+                >
+                  <option value="Upcoming Events">Upcoming Events</option>
+                  <option value="Announcements">Announcements</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 380px) 1fr", gap: 20 }}>
+            <div className={styles.card}>
+              <h2 className={styles.cardTitle}>Add Event</h2>
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div className={styles.field}>
+                  <label>Title</label>
+                  <input
+                    required
+                    placeholder="Title"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    className={styles.input}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>Description</label>
+                  <textarea
+                    placeholder="Description"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className={styles.textareaField}
+                    rows={3}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>Start At</label>
+                  <input
+                    required
+                    type="datetime-local"
+                    value={form.start_at}
+                    onChange={(e) => setForm({ ...form, start_at: e.target.value })}
+                    className={styles.input}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>End At (optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={form.end_at}
+                    onChange={(e) => setForm({ ...form, end_at: e.target.value })}
+                    className={styles.input}
+                  />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!form.is_all_day}
+                    onChange={(e) => setForm({ ...form, is_all_day: e.target.checked })}
+                  />
+                  All day
+                </label>
+                <div className={styles.field}>
+                  <label>Location (optional)</label>
+                  <input
+                    placeholder="Location"
+                    value={form.location}
+                    onChange={(e) => setForm({ ...form, location: e.target.value })}
+                    className={styles.input}
+                  />
+                </div>
+                <button type="submit" disabled={saving} className={styles.btnPrimary}>
+                  {saving ? "Saving..." : "Save Event"}
+                </button>
+              </form>
+            </div>
+
+            <div className={tableStyles.breakSummaryContainer} style={{ marginBottom: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h2 className={tableStyles.pageTitle} style={{ margin: 0 }}>{widgetHeading}</h2>
+                {loading && <span className={styles.muted}>Loading...</span>}
+              </div>
+              <div className={tableStyles.breakSummaryTableWrapper}>
+                <table className={tableStyles.breakSummaryTable} style={{ minWidth: 640 }}>
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Schedule</th>
+                      <th>Location</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className={tableStyles.breakSummaryNoRecords}>
+                          No events yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      events.map((ev) => (
+                        <tr key={ev.id}>
+                          <td>
+                            <div style={{ fontWeight: 700 }}>{ev.title}</div>
+                            {ev.description && (
+                              <div className={tableStyles.cellMuted} style={{ marginTop: 4 }}>
+                                {ev.description}
+                              </div>
+                            )}
+                          </td>
+                          <td className={tableStyles.cellMuted}>
+                            {new Date(ev.start_at).toLocaleString()}
+                            {ev.end_at ? ` – ${new Date(ev.end_at).toLocaleString()}` : ""}
+                            <div style={{ marginTop: 4, fontSize: 12 }}>
+                              {ev.is_all_day ? "All day" : "Timed"}
+                            </div>
+                          </td>
+                          <td className={tableStyles.cellMuted}>{ev.location || "—"}</td>
+                          <td>
+                            <span className={`${styles.badge} ${styles.badgeApproved}`}>{ev.status}</span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(ev.id)}
+                              disabled={deletingId === ev.id}
+                              className={styles.btnReject}
+                              style={{ padding: "6px 12px", fontSize: 12 }}
+                            >
+                              {deletingId === ev.id ? "…" : "Delete"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.card}>
+            <h2 className={styles.cardTitle}>Reminders</h2>
+            <form onSubmit={handleAddReminder} style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+              <input
+                required
+                placeholder="Enter reminder message..."
+                value={reminderMessage}
+                onChange={(e) => setReminderMessage(e.target.value)}
+                className={styles.input}
+                style={{ flex: 1, minWidth: 200 }}
+              />
+              <button type="submit" disabled={reminderSaving} className={styles.btnGreen}>
+                {reminderSaving ? "Adding..." : "Add Reminder"}
+              </button>
+            </form>
+            <div className={styles.requestList}>
+              {reminders.length === 0 && (
+                <div className={styles.empty} style={{ padding: 24 }}>No reminders yet.</div>
+              )}
+              {reminders.map((reminder) => (
+                <div key={reminder.id} className={styles.requestCard}>
+                  <div className={styles.requestBody}>
+                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>{reminder.message}</p>
+                  </div>
+                  <div className={styles.actions}>
                     <button
                       type="button"
-                      onClick={() => handleDelete(ev.id)}
-                      disabled={deletingId === ev.id}
-                      title="Delete event"
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        color: "#c0392b",
-                        cursor: deletingId === ev.id ? "not-allowed" : "pointer",
-                        fontSize: "1.15rem",
-                        padding: 4,
-                      }}
+                      onClick={() => handleDeleteReminder(reminder.id)}
+                      disabled={deletingReminderId === reminder.id}
+                      className={styles.btnReject}
                     >
-                      {deletingId === ev.id ? "…" : "🗑"}
+                      {deletingReminderId === reminder.id ? "…" : "Delete"}
                     </button>
                   </div>
-                  {ev.description && <div style={{ color: "#4a5775", fontSize: "1.05rem", marginTop: 2 }}>{ev.description}</div>}
-                  <div style={{ color: "#6b7b9b", fontSize: "1.01rem", marginTop: 2 }}>
-                    {new Date(ev.start_at).toLocaleString()} {ev.end_at ? ` - ${new Date(ev.end_at).toLocaleString()}` : ""}
-                  </div>
-                  {ev.location && <div style={{ color: "#7b86a3", fontSize: "0.98rem", marginTop: 2 }}>Location: {ev.location}</div>}
-                  <div style={{ color: "#4a8b2c", fontSize: "0.95rem", marginTop: 2 }}>{ev.is_all_day ? "All day" : "Timed"} • {ev.status}</div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Reminders Card */}
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(10,31,68,0.10)", padding: 28, border: "1px solid #e6e8f2", marginTop: 0 }}>
-          <h2 style={{ margin: 0, fontSize: "1.18rem", color: "#1853b3", fontWeight: 700, marginBottom: 18 }}>Reminders</h2>
-          <form onSubmit={handleAddReminder} style={{ display: "flex", gap: 14, marginBottom: 18 }}>
-            <input 
-              required 
-              placeholder="Enter reminder message..." 
-              value={reminderMessage} 
-              onChange={e => setReminderMessage(e.target.value)} 
-              style={{ ...inputStyle, flex: 1, fontSize: "1.05rem", borderRadius: 10, background: "#f7faff" }} 
-            />
-            <button type="submit" disabled={reminderSaving} style={{ ...buttonStyle, marginTop: 0, fontSize: "1.05rem", borderRadius: 10, background: "linear-gradient(120deg, #1853b3, #8bf3ff)", color: "#fff", fontWeight: 700, whiteSpace: "nowrap" }}>
-              {reminderSaving ? "Adding..." : "Add Reminder"}
-            </button>
-          </form>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {reminders.length === 0 && <div style={{ color: "#6b7b9b", fontSize: "1.05rem" }}>No reminders yet.</div>}
-            {reminders.map(reminder => (
-              <div key={reminder.id} style={{ border: "1px solid #e6e8f2", borderRadius: 14, padding: 16, background: "#fef9f3", boxShadow: "0 6px 18px rgba(10,31,68,0.05)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                <div style={{ color: "#4a5775", fontSize: "1.05rem", lineHeight: 1.5 }}>{reminder.message}</div>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteReminder(reminder.id)}
-                  disabled={deletingReminderId === reminder.id}
-                  title="Delete reminder"
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#c0392b",
-                    cursor: deletingReminderId === reminder.id ? "not-allowed" : "pointer",
-                    fontSize: "1.15rem",
-                    padding: 4,
-                  }}
-                >
-                  {deletingReminderId === reminder.id ? "…" : "🗑"}
-                </button>
-              </div>
-            ))}
+          <div className={styles.card}>
+            <CompanyPolicySection />
           </div>
-        </div>
-
-        {/* Company Policy Section Card */}
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(10,31,68,0.10)", padding: 28, border: "1px solid #e6e8f2", marginTop: 0 }}>
-          <CompanyPolicySection />
         </div>
       </div>
     </LayoutDashboard>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #dfe3eb",
-  fontSize: "0.95rem",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: "0.9rem",
-  fontWeight: 600,
-  color: "#0f1d40",
-};
-
-const buttonStyle: React.CSSProperties = {
-  marginTop: 4,
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "none",
-  background: "linear-gradient(120deg, #0052cc, #0b74ff)",
-  color: "#fff",
-  fontWeight: 700,
-  cursor: "pointer",
-};

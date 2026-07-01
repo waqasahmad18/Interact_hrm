@@ -3,6 +3,9 @@
 import React from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "./face-enrollment.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import {
   descriptorToJson,
   ensureFaceModelsLoaded,
@@ -74,6 +77,7 @@ export default function FaceEnrollmentAdminPage() {
   const [listError, setListError] = React.useState<string | null>(null);
   const [listSearch, setListSearch] = React.useState("");
   const [listSearchMode, setListSearchMode] = React.useState<ListSearchMode>("both");
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -762,7 +766,7 @@ export default function FaceEnrollmentAdminPage() {
             <p className={styles.emptyState}>No employees</p>
           ) : (
             <>
-              <div className={styles.tableSearchBar}>
+              <div className={tableStyles.breakSummaryFilters}>
                 <div className={styles.searchModeGroup} role="group" aria-label="Search by">
                   <button
                     type="button"
@@ -796,7 +800,7 @@ export default function FaceEnrollmentAdminPage() {
                 </div>
                 <input
                   type="search"
-                  className={styles.tableSearchInput}
+                  className={tableStyles.breakSummaryInput}
                   placeholder={
                     listSearchMode === "name"
                       ? "Search by name or ID…"
@@ -806,10 +810,11 @@ export default function FaceEnrollmentAdminPage() {
                   }
                   value={listSearch}
                   onChange={(e) => setListSearch(e.target.value)}
+                  style={{ flex: "1 1 220px", minWidth: 180 }}
                 />
               </div>
-              <div className={styles.employeeTableWrap}>
-              <table className={styles.employeeTable}>
+              <div className={tableStyles.breakSummaryTableWrapper}>
+              <table className={tableStyles.breakSummaryTable}>
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -822,7 +827,7 @@ export default function FaceEnrollmentAdminPage() {
                 <tbody>
                   {filteredTableRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className={styles.noSearchResults}>
+                      <td colSpan={5} className={tableStyles.breakSummaryNoRecords}>
                         No employees match your search
                       </td>
                     </tr>
@@ -835,8 +840,20 @@ export default function FaceEnrollmentAdminPage() {
                       style={{ cursor: "pointer" }}
                     >
                       <td>{row.id}</td>
-                      <td>
-                        <strong>{row.name}</strong>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <EmployeeTableNameCell
+                          name={row.name}
+                          employeeId={row.id}
+                          photo={getPhoto(row.id)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: row.id,
+                              employee_name: row.name,
+                              pseudonym: row.pseudonym,
+                              department_name: row.department,
+                            })
+                          }
+                        />
                         {row.pseudonym ? (
                           <div className={styles.empCode}>{row.pseudonym}</div>
                         ) : row.employee_code ? (
@@ -883,6 +900,7 @@ export default function FaceEnrollmentAdminPage() {
           )}
         </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

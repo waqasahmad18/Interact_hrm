@@ -1,0 +1,379 @@
+.page {
+  min-height: 100%;
+  padding: 20px 28px 40px;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.06) 0%, transparent 55%),
+    linear-gradient(180deg, #f4f6f9 0%, #f6f8fb 100%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+}
+
+.inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.title {
+  margin: 0 0 20px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 18px rgba(97, 31, 105, 0.06);
+}
+
+.statCardPurple {
+  border-top: 4px solid #611f69;
+}
+
+.statCardGreen {
+  border-top: 4px solid #007a5a;
+}
+
+.statLabel {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.statValue {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.statSub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.formCard {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 18px;
+  padding: 22px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+}
+
+.formTitle {
+  margin: 0 0 18px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #611f69;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fieldFull {
+  margin-top: 14px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: #611f69;
+  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.fileBtn {
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(97, 31, 105, 0.2);
+}
+
+.fileHint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.fileList {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.submitBtn {
+  margin-top: 18px;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #007a5a 0%, #2eb67d 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 122, 90, 0.22);
+}
+
+.submitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.alertError {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.alertSuccess {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sectionTitle {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.tableWrap {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 16px;
+  overflow: auto;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
+  max-height: 70vh;
+}
+
+.table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(120deg, #611f69 0%, #5b2d8e 45%, #007a5a 100%);
+}
+
+.table th {
+  padding: 12px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+  color: #0f172a;
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background: #faf5ff;
+}
+
+.emptyCell {
+  text-align: center;
+  color: #94a3b8;
+  padding: 28px !important;
+  font-style: italic;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.badgeApproved {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.badgeRejected {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.badgePending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.chipBtn {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f3e8f5;
+  color: #611f69;
+}
+
+.chipBtn:hover {
+  background: #ede9fe;
+}
+
+.docTag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  font-size: 11px;
+  color: #475569;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 26px 24px;
+  width: min(480px, 94vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+}
+
+.modalTitle {
+  margin: 0 0 16px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #611f69;
+}
+
+.modalRow {
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.modalRow b {
+  color: #0f172a;
+}
+
+.modalClose {
+  margin-top: 18px;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.modalClose:hover {
+  background: #e2e8f0;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 16px;
+  }
+
+  .statRow,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+}

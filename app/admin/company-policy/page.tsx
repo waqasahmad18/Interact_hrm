@@ -1,25 +1,7 @@
 "use client";
 import React from "react";
 import LayoutDashboard from "@/app/layout-dashboard";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #dfe3eb",
-  fontSize: "0.95rem",
-};
-
-const buttonStyle: React.CSSProperties = {
-  marginTop: 4,
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "none",
-  background: "linear-gradient(120deg, #0052cc, #0b74ff)",
-  color: "#fff",
-  fontWeight: 700,
-  cursor: "pointer",
-};
+import styles from "../admin-page.module.css";
 
 export default function CompanyPolicyPage() {
   const [policy, setPolicy] = React.useState<any | null>(null);
@@ -84,48 +66,76 @@ export default function CompanyPolicyPage() {
 
   return (
     <LayoutDashboard>
-      <div style={{ marginTop: 16, background: "#fff", borderRadius: 14, boxShadow: "0 10px 28px rgba(10,31,68,0.08)", padding: 18 }}>
-        <h2 style={{ margin: "0 0 12px 0", fontSize: "1.15rem", color: "#0f1d40", fontWeight: 700 }}>Company Policy</h2>
-        {loading ? (
-          <div style={{ color: "#6b7b9b" }}>Loading...</div>
-        ) : editMode ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input
-              placeholder="Heading"
-              value={heading}
-              onChange={e => setHeading(e.target.value)}
-              style={inputStyle}
-            />
-            <textarea
-              placeholder="Description"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              style={{ ...inputStyle, minHeight: 80 }}
-            />
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleSave} disabled={saving} style={buttonStyle}>
-                {saving ? "Saving..." : "Save"}
-              </button>
-              <button onClick={() => setEditMode(false)} style={{ ...buttonStyle, background: "#e6e8f2", color: "#0f1d40" }}>Cancel</button>
-            </div>
+      <div className={styles.page}>
+        <div className={styles.inner}>
+          <h1 className={styles.title}>Company Policy</h1>
+          <p className={styles.subtitle}>Manage the company policy displayed to employees.</p>
+
+          <div className={styles.card}>
+            {loading ? (
+              <p className={styles.muted}>Loading...</p>
+            ) : editMode ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div className={styles.field}>
+                  <label>Heading</label>
+                  <input
+                    className={styles.input}
+                    placeholder="Heading"
+                    value={heading}
+                    onChange={(e) => setHeading(e.target.value)}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>Description</label>
+                  <textarea
+                    className={styles.textareaField}
+                    placeholder="Description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button type="button" onClick={handleSave} disabled={saving} className={styles.btnPrimary}>
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                  <button type="button" onClick={() => setEditMode(false)} className={styles.btnSecondary}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : policy ? (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "1.05rem", marginBottom: 8, color: "#0f172a" }}>
+                  {policy.heading}
+                </div>
+                <p className={styles.muted} style={{ minHeight: 40, margin: "0 0 16px" }}>
+                  {policy.description}
+                </p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button type="button" onClick={() => setEditMode(true)} className={styles.btnPrimary}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className={styles.btnReject}
+                  >
+                    {deleting ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className={styles.muted}>No company policy added yet.</p>
+                <button type="button" onClick={() => setEditMode(true)} className={styles.btnPrimary} style={{ marginTop: 12 }}>
+                  Add Policy
+                </button>
+              </div>
+            )}
           </div>
-        ) : policy ? (
-          <div>
-            <div style={{ color: "#0f1d40", fontWeight: 700, fontSize: "1.05rem", marginBottom: 6 }}>{policy.heading}</div>
-            <div style={{ color: "#4a5775", fontSize: "0.95rem", minHeight: 40 }}>{policy.description}</div>
-            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-              <button onClick={() => setEditMode(true)} style={buttonStyle}>Edit</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ ...buttonStyle, background: "#e6e8f2", color: "#c0392b" }}>
-                {deleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div style={{ color: "#6b7b9b" }}>No company policy added yet.</div>
-            <button onClick={() => setEditMode(true)} style={buttonStyle}>Add Policy</button>
-          </div>
-        )}
+        </div>
       </div>
     </LayoutDashboard>
   );

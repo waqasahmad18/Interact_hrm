@@ -16,6 +16,8 @@ import {
 import Modal from "react-modal";
 import AddEmployeeForm from "../../add-employee/AddEmployeeForm";
 import * as XLSX from "xlsx";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 type SortKey =
   | "id"
@@ -44,6 +46,7 @@ export default function EmployeeListStyledPage() {
   const [showPhone, setShowPhone] = useState(false);
   const [showPersonalEmail, setShowPersonalEmail] = useState(false);
   const [showProfessionalEmail, setShowProfessionalEmail] = useState(false);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
     Modal.setAppElement("body");
@@ -504,7 +507,25 @@ export default function EmployeeListStyledPage() {
                 filtered.map((employee) => (
                   <tr key={employee.id}>
                     <td>{employee.id}</td>
-                    <td>{getEmployeeFullName(employee)}</td>
+                    <td>
+                      <EmployeeTableNameCell
+                        name={getEmployeeFullName(employee)}
+                        employeeId={employee.id}
+                        photo={getPhoto(employee.id)}
+                        onOpen={() =>
+                          openFromRow({
+                            employee_id: employee.id,
+                            employee_name: getEmployeeFullName(employee),
+                            first_name: employee.first_name,
+                            middle_name: employee.middle_name,
+                            last_name: employee.last_name,
+                            pseudonym: employee.pseudonym,
+                            department_name: employee.department_name,
+                            email: employee.professional_email || employee.email_work,
+                          })
+                        }
+                      />
+                    </td>
                     <td>{employee.pseudonym || "-"}</td>
                     <td>{employee.department_name || "-"}</td>
                     <td>
@@ -634,6 +655,7 @@ export default function EmployeeListStyledPage() {
             </div>
           ) : null}
         </Modal>
+        {popup}
       </div>
     </LayoutDashboard>
   );

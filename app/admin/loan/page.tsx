@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../advance/advance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
 import { FaSave, FaTrash } from "react-icons/fa";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 type Employee = {
 	id: number;
@@ -46,6 +48,7 @@ export default function LoanManagementPage() {
 	const [formLoading, setFormLoading] = useState(false);
 	const [formSuccess, setFormSuccess] = useState("");
 	const [savingRowKey, setSavingRowKey] = useState<string>("");
+	const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
 	// Fetch employees and loans from API
 	useEffect(() => {
@@ -206,15 +209,15 @@ export default function LoanManagementPage() {
 	// Helper: Get employee name
 	const getEmployeeName = (id: number) => {
 		const emp = employees.find(e => e.id === id);
-		return emp ? `${emp.first_name} ${emp.last_name}` : id;
+		return emp ? `${emp.first_name} ${emp.last_name}`.trim() : String(id);
 	};
+
+	const getEmployeeRecord = (id: number) => employees.find(e => e.id === id);
 
 	return (
 		<LayoutDashboard>
 			<div className={styles.breakSummaryContainer} style={{ position: "relative", maxWidth: 1200, margin: "0 auto" }}>
-				<div className={styles.breakSummaryHeader} style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>
-					Loan Management
-				</div>
+				<h1 className={styles.pageTitle}>Loan Management</h1>
 				{formSuccess && <div style={{ color: "#38A169", marginBottom: 8 }}>{formSuccess}</div>}
 				{error && <div style={{ color: "#e53e3e", marginBottom: 8 }}>{error}</div>}
 
@@ -311,9 +314,28 @@ export default function LoanManagementPage() {
 							) : loans.length === 0 ? (
 								<tr><td colSpan={7} className={styles.breakSummaryNoRecords}>No loan records found.</td></tr>
 							) : (
-								loans.map((loan) => (
+								loans.map((loan) => {
+									const emp = getEmployeeRecord(loan.employee_id);
+									const empName = getEmployeeName(loan.employee_id);
+									return (
 									<tr key={loan.loan_key ?? `${loan.employee_id}-${loan.month}`}>
-										<td>{getEmployeeName(loan.employee_id)}</td>
+										<td>
+											<EmployeeTableNameCell
+												name={empName}
+												employeeId={loan.employee_id}
+												photo={getPhoto(loan.employee_id)}
+												onOpen={() =>
+													openFromRow({
+														employee_id: loan.employee_id,
+														employee_name: empName,
+														first_name: emp?.first_name,
+														last_name: emp?.last_name,
+														pseudonym: emp?.pseudonym,
+														department_name: emp?.department_name,
+													})
+												}
+											/>
+										</td>
 										<td>{loan.month}</td>
 										<td>{loan.original_amount}</td>
 										<td>
@@ -408,12 +430,14 @@ export default function LoanManagementPage() {
 											</button>
 										</td>
 									</tr>
-								))
+									);
+								})
 							)}
 						</tbody>
 					</table>
 				</div>
 			</div>
+			{popup}
 		</LayoutDashboard>
 	);
 }

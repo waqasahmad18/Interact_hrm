@@ -1,0 +1,179 @@
+.page {
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #eef1f6 0%, #f6f8fb 40%, #f3f5f8 100%);
+  padding: 24px 28px 40px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 20px 24px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #611f69, #007a5a);
+  border-radius: 18px 0 0 18px;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  padding-left: 6px;
+}
+
+.sub {
+  margin: 6px 0 0;
+  padding-left: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #611f69;
+  padding: 6px 14px;
+  background: #f3e8f5;
+  border-radius: 999px;
+}
+
+.managerCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+.managerLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.managerName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.managerMeta {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+
+.memberCard {
+  padding: 20px 16px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+  text-align: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.memberCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+
+.memberAvatar {
+  margin: 0 auto 12px;
+}
+
+.memberName {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+
+.memberRole {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f3e8f5;
+  color: #611f69;
+}
+
+.memberJob {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 8px;
+}
+
+.memberRoleLead {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.memberRoleOfficer {
+  background: #fef3e2;
+  color: #c27803;
+}
+
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  color: #64748b;
+  font-size: 14px;
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+@media (max-width: 640px) {
+  .page { padding: 16px; }
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}

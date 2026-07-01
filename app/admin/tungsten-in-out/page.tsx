@@ -2,8 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../../attendance-summary/attendance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "@/lib/timezone";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 type Row = Record<string, unknown>;
 
@@ -70,14 +72,26 @@ function toTitleCaseHeader(col: string): string {
     .join(" ");
 }
 
-const labelStyle: React.CSSProperties = { fontWeight: 600, color: "#334155", fontSize: 12 };
-const inputStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 6,
-  border: "1px solid #cbd5e1",
-  fontSize: 13,
-  minWidth: 0,
-};
+function getRowEmployeeName(row: Row): string {
+  const first = String(row.first_name ?? "").trim();
+  const last = String(row.last_name ?? "").trim();
+  const combined = `${first} ${last}`.trim();
+  if (combined) return combined;
+  const direct =
+    row.employee_name ?? row.employeeName ?? row.full_name ?? row.name;
+  return direct != null ? String(direct).trim() : "";
+}
+
+function getRowEmployeeId(row: Row): string | number {
+  return (row.pin ?? row.employee_id ?? row.employeeId ?? "") as string | number;
+}
+
+function rowString(row: Row, key: string): string | null {
+  const value = row[key];
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+}
 
 export default function TungstenInOutPage() {
   const fixedPageSize = 100;
@@ -92,6 +106,7 @@ export default function TungstenInOutPage() {
   const [reloadTick, setReloadTick] = useState(0);
   const [applied, setApplied] = useState<AppliedFilters>(defaultFilters);
   const [draft, setDraft] = useState<AppliedFilters>(defaultFilters);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -132,10 +147,10 @@ export default function TungstenInOutPage() {
     fetchData();
   }, [fetchData]);
 
-  // NOTE: keep `imported_at` visible (user wants it).
   const hiddenCols = new Set(["id", "log_id", "event_name", "verify_mode", "device_name", "raw_json"]);
   const visibleColumns = columns.filter((c) => !hiddenCols.has(c));
   const totalPages = Math.max(1, Math.ceil(total / fixedPageSize));
+  const nameColumnKeys = new Set(["employee_name", "full_name", "first_name"]);
 
   const applyFilters = () => {
     setApplied({ ...draft });
@@ -149,166 +164,148 @@ export default function TungstenInOutPage() {
     setPage(1);
   };
 
+  const renderCell = (row: Row, col: string) => {
+    const raw = row[col];
+    const text = fmtCell(col, raw);
+    const isTimeCol = col === "event_time" || col === "imported_at";
+
+    if (nameColumnKeys.has(col)) {
+      const name = getRowEmployeeName(row);
+      const employeeId = getRowEmployeeId(row);
+      if (!name) return text;
+      return (
+        <EmployeeTableNameCell
+          name={name}
+          employeeId={employeeId}
+          photo={employeeId ? getPhoto(employeeId) : undefined}
+          onOpen={() =>
+            openFromRow({
+              employee_id: employeeId,
+              employee_name: name,
+              first_name: rowString(row, "first_name"),
+              last_name: rowString(row, "last_name"),
+              department_name: rowString(row, "dept_name"),
+            })
+          }
+        />
+      );
+    }
+
+    if (col === "last_name" && visibleColumns.includes("first_name")) {
+      return text;
+    }
+
+    return (
+      <span
+        title={
+          col === "raw_json" && typeof raw === "string"
+            ? raw
+            : isTimeCol && raw != null
+              ? String(raw)
+              : text
+        }
+        style={{
+          display: "block",
+          maxWidth: col === "raw_json" ? 320 : isTimeCol ? 220 : 160,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {text}
+      </span>
+    );
+  };
+
   return (
     <LayoutDashboard>
-      <div style={{ padding: "24px 28px", maxWidth: "100%" }}>
-        <h1
-          style={{
-            marginTop: 0,
-            marginBottom: 16,
-            color: "#0f1d40",
-            fontWeight: 700,
-            fontSize: "1.65rem",
-          }}
-        >
-          Tungsten IN/OUT
-        </h1>
+      <div className={styles.breakSummaryContainer}>
+        <h1 className={styles.pageTitle}>Tungsten IN/OUT</h1>
 
-        <div
-          style={{
-            padding: 16,
-            background: "#ffffff",
-            borderRadius: 14,
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 2px 12px rgba(15, 23, 42, 0.06)",
-            marginBottom: 16,
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 12,
-              alignItems: "end",
-            }}
+        <div className={styles.breakSummaryFilters} style={{ alignItems: "flex-end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 200px" }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: "#64748b" }}>Search by name</span>
+            <input
+              type="search"
+              placeholder="First / last name"
+              value={draft.name}
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              className={styles.breakSummaryInput}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 180px" }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: "#64748b" }}>Department</span>
+            <select
+              value={draft.dept}
+              onChange={(e) => setDraft((d) => ({ ...d, dept: e.target.value }))}
+              className={styles.breakSummaryInput}
+            >
+              <option value="">All</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 1 160px" }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: "#64748b" }}>From date</span>
+            <input
+              type="date"
+              value={draft.dateFrom}
+              onChange={(e) => setDraft((d) => ({ ...d, dateFrom: e.target.value }))}
+              className={styles.breakSummaryDate}
+            />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 1 160px" }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: "#64748b" }}>To date</span>
+            <input
+              type="date"
+              value={draft.dateTo}
+              onChange={(e) => setDraft((d) => ({ ...d, dateTo: e.target.value }))}
+              className={styles.breakSummaryDate}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={loading}
+            className={styles.breakSummaryInput}
+            style={{ fontWeight: 700, cursor: loading ? "wait" : "pointer" }}
           >
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={labelStyle}>Search by name</span>
-              <input
-                type="search"
-                placeholder="First / last name"
-                value={draft.name}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-                style={{ ...inputStyle, width: "100%" }}
-              />
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={labelStyle}>Department</span>
-              <select
-                value={draft.dept}
-                onChange={(e) => setDraft((d) => ({ ...d, dept: e.target.value }))}
-                style={{ ...inputStyle, width: "100%", height: 38 }}
-              >
-                <option value="">All</option>
-                {departments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={labelStyle}>From date</span>
-              <input
-                type="date"
-                value={draft.dateFrom}
-                onChange={(e) => setDraft((d) => ({ ...d, dateFrom: e.target.value }))}
-                style={{ ...inputStyle, width: "100%", height: 38 }}
-              />
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={labelStyle}>To date</span>
-              <input
-                type="date"
-                value={draft.dateTo}
-                onChange={(e) => setDraft((d) => ({ ...d, dateTo: e.target.value }))}
-                style={{ ...inputStyle, width: "100%", height: 38 }}
-              />
-            </label>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              marginTop: 14,
-              flexWrap: "wrap",
-            }}
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => setReloadTick((t) => t + 1)}
+            disabled={loading}
+            className={styles.breakSummaryInput}
+            style={{ fontWeight: 700, cursor: loading ? "wait" : "pointer" }}
           >
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={loading}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                color: "#334155",
-                fontWeight: 700,
-                cursor: loading ? "wait" : "pointer",
-              }}
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => setReloadTick((t) => t + 1)}
-              disabled={loading}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                color: "#334155",
-                fontWeight: 700,
-                cursor: loading ? "wait" : "pointer",
-              }}
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={applyFilters}
-              disabled={loading}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 10,
-                border: "none",
-                background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)",
-                color: "#fff",
-                fontWeight: 800,
-                cursor: loading ? "wait" : "pointer",
-                boxShadow: "0 8px 18px rgba(0, 82, 204, 0.20)",
-              }}
-            >
-              Apply
-            </button>
-          </div>
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={applyFilters}
+            disabled={loading}
+            className={styles.breakSummaryXLSButton}
+          >
+            Apply
+          </button>
         </div>
 
         {error && (
-          <div
-            style={{
-              padding: 14,
-              marginBottom: 16,
-              background: "#fef2f2",
-              color: "#b91c1c",
-              borderRadius: 8,
-              whiteSpace: "pre-wrap",
-              fontSize: 14,
-            }}
-          >
+          <div style={{ padding: 14, marginBottom: 16, background: "#fef2f2", color: "#b91c1c", borderRadius: 10, whiteSpace: "pre-wrap", fontSize: 14 }}>
             {error}
           </div>
         )}
 
-        <div style={{ marginBottom: 12, color: "#475569", fontSize: 14 }}>
+        <div style={{ marginBottom: 12, color: "#64748b", fontSize: 14 }}>
           Total: <strong>{total.toLocaleString()}</strong>
           {total > 0 && (
             <>
@@ -318,62 +315,36 @@ export default function TungstenInOutPage() {
           )}
         </div>
 
-        <div
-          className={`${styles.attendanceSummaryTableWrapper} ${styles.timeAttendanceTableWrapper}`}
-          style={{ width: "100%" }}
-        >
-          <table className={`${styles.attendanceSummaryTable} ${styles.timeAttendanceStickyTable}`} style={{ minWidth: 1200 }}>
+        <div className={styles.breakSummaryTableWrapper}>
+          <table className={styles.breakSummaryTable} style={{ minWidth: 1200 }}>
             <thead>
               <tr>
                 {visibleColumns.map((col) => (
-                  <th key={col} style={{ whiteSpace: "nowrap", fontSize: 12 }}>
-                    {toTitleCaseHeader(col)}
-                  </th>
+                  <th key={col}>{toTitleCaseHeader(col)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={Math.max(columns.length, 1)} style={{ padding: 24, textAlign: "center" }}>
+                  <td colSpan={Math.max(visibleColumns.length, 1)} className={styles.breakSummaryNoRecords}>
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={Math.max(columns.length, 1)} style={{ padding: 24, textAlign: "center" }}>
+                  <td colSpan={Math.max(visibleColumns.length, 1)} className={styles.breakSummaryNoRecords}>
                     No records
                   </td>
                 </tr>
               ) : (
                 rows.map((row, idx) => (
                   <tr key={String(row.id ?? idx)}>
-                    {visibleColumns.map((col) => {
-                      const raw = row[col];
-                      const text = fmtCell(col, raw);
-                      const isTimeCol = col === "event_time" || col === "imported_at";
-                      return (
-                        <td
-                          key={col}
-                          style={{
-                            fontSize: 12,
-                            maxWidth: col === "raw_json" ? 320 : isTimeCol ? 220 : 160,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={
-                            col === "raw_json" && typeof raw === "string"
-                              ? raw
-                              : isTimeCol && raw != null
-                                ? String(raw)
-                                : text
-                          }
-                        >
-                          {text}
-                        </td>
-                      );
-                    })}
+                    {visibleColumns.map((col) => (
+                      <td key={col} style={{ fontSize: 12 }}>
+                        {renderCell(row, col)}
+                      </td>
+                    ))}
                   </tr>
                 ))
               )}
@@ -382,18 +353,13 @@ export default function TungstenInOutPage() {
         </div>
 
         {totalPages > 1 && (
-          <div style={{ display: "flex", gap: 10, marginTop: 20, alignItems: "center" }}>
+          <div className={styles.breakSummaryFilters} style={{ marginTop: 16, marginBottom: 0 }}>
             <button
               type="button"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                cursor: page <= 1 ? "not-allowed" : "pointer",
-              }}
+              className={styles.breakSummaryInput}
+              style={{ cursor: page <= 1 ? "not-allowed" : "pointer", fontWeight: 600 }}
             >
               Previous
             </button>
@@ -401,19 +367,15 @@ export default function TungstenInOutPage() {
               type="button"
               disabled={page >= totalPages || loading}
               onClick={() => setPage((p) => p + 1)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                cursor: page >= totalPages ? "not-allowed" : "pointer",
-              }}
+              className={styles.breakSummaryInput}
+              style={{ cursor: page >= totalPages ? "not-allowed" : "pointer", fontWeight: 600 }}
             >
               Next
             </button>
           </div>
         )}
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

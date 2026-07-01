@@ -4,7 +4,9 @@ import React, { useEffect, useState } from "react";
 import { fetchAdvanceSalary } from "./advanceSalaryUtils";
 import { fetchLoanSalary } from "./loanSalaryUtils";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../../attendance-summary/attendance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFileExcel } from "react-icons/fa";
 import * as XLSX from 'xlsx';
 import {
@@ -138,6 +140,7 @@ export default function MonthlyAttendancePage() {
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
   const [commissionsMap, setCommissionsMap] = useState<Record<string, EmployeeCommissionRow>>({});
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   // Fetch departments
   useEffect(() => {
@@ -959,28 +962,26 @@ export default function MonthlyAttendancePage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.attendanceSummaryContainer}>
+      <div className={styles.breakSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#22223B", margin: 0 }}>
-            Monthly Payroll
-          </h1>
-          <p style={{ color: "#4A5568", fontSize: "0.9rem", marginTop: 4 }}>
+          <h1 className={styles.pageTitle}>Monthly Payroll</h1>
+          <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
             View and manage all employee payroll records
           </p>
         </div>
 
-        <div className={styles.attendanceSummaryFilters}>
+        <div className={styles.breakSummaryFilters}>
           <input
             type="text"
             placeholder="Search by name..."
             value={searchName}
             onChange={(e) => setSearchName(e.target.value)}
-            className={styles.attendanceSummaryInput}
+            className={styles.breakSummaryInput}
           />
           <select
             value={selectedDepartment}
             onChange={(e) => setSelectedDepartment(e.target.value)}
-            className={styles.attendanceSummaryInput}
+            className={styles.breakSummaryInput}
           >
             <option value="">All Departments</option>
             {departments.map((dept) => (
@@ -990,12 +991,12 @@ export default function MonthlyAttendancePage() {
             ))}
           </select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ color: '#4A5568', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
+            <label style={{ color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
             <input
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className={styles.attendanceSummaryDate}
+              className={styles.breakSummaryDate}
               style={{ minWidth: '160px' }}
             />
           </div>
@@ -1004,88 +1005,59 @@ export default function MonthlyAttendancePage() {
               fetchAttendance();
               fetchCommissions(selectedMonth);
             }}
-            className={styles.attendanceSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)" }}
+            className={styles.breakSummaryXLSButton}
           >
             Search
           </button>
-          <button onClick={downloadExcel} className={styles.attendanceSummaryXLSButton}>
+          <button onClick={downloadExcel} className={styles.breakSummaryXLSButton}>
             <FaFileExcel /> Export Excel
           </button>
         </div>
 
         {loading ? (
-          <div style={{ padding: 20, color: "#4A5568", textAlign: "center" }}>
+          <div style={{ padding: 20, color: "#64748b", textAlign: "center" }}>
             Loading attendance records...
           </div>
         ) : null}
 
-        {/* Cards summary (hidden, not deleted) */}
-        {/*
-        <div className={styles.attendanceCardsGrid}>
-          {attendanceByEmployee.length === 0 ? (
-            <div className={styles.attendanceSummaryNoRecords}>No attendance records found</div>
-          ) : (
-            attendanceByEmployee.map((employee) => (
-              <div key={employee.employeeId} className={styles.attendanceEmployeeCard}>
-                <div className={styles.attendanceEmployeeHeader}>
-                  <div>
-                    <div className={styles.attendanceEmployeeName}>{employee.employeeName}</div>
-                    <div className={styles.attendanceEmployeeMeta}>
-                      {employee.pseudonym} · {employee.departmentName}
-                    </div>
-                  </div>
-                  <div className={styles.attendanceEmployeeActions}>
-                    <div className={styles.attendanceEmployeeIdProminent}>Emp. ID {employee.employeeId}</div>
-                  </div>
-                </div>
-                <div style={{ padding: 12 }}>
-                  <div><b>T.Unpaid Days (Deduction):</b> {Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</div>
-                  <div><b>T.W Days:</b> {Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</div>
-                  <div><b>O.T Hours:</b> {Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        */}
-
-        <div style={{ marginTop: 40, position: 'relative', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-          <h3 style={{ color: '#22223B', marginBottom: 10 }}>{monthInfo.label && `Payroll for ${monthInfo.label}`}</h3>
-          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '62vh', border: '1px solid #e2e8f0', borderRadius: 8, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-          <table className={styles.payrollStickyHeaderTable} style={{ width: '1900px', tableLayout: 'auto', borderRadius: 8, background: '#fff', color: '#fff', borderCollapse: 'collapse' }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 12 }}>
+        <div style={{ marginTop: 24 }}>
+          <h3 className={styles.pageTitle} style={{ fontSize: "1.1rem", marginBottom: 12 }}>
+            {monthInfo.label && `Payroll for ${monthInfo.label}`}
+          </h3>
+          <div className={styles.breakSummaryTableWrapper}>
+          <table className={styles.breakSummaryTable} style={{ minWidth: 1900 }}>
+            <thead>
               <tr>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '50px' }}>ID</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '140px' }}>Employee Name</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Pseudonym</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Department</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Basic Salary</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>T.W Days</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>T.Unpaid Days</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>O.T Hours</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>O.T Salary</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>6H Train Amt</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>Arrears</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>KPI Add</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Commission</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '160px' }}>Existing Client Incentive</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Trainer Incentive</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Floor Incentive</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '100px' }}>Gross Salary</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Unpaid Days Salary</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '110px' }}>Break Exceed Ded.</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '90px' }}>KPIs Ded.</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Other Ded (fine,etc.)</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Loan/Advance</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Total Deductions</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '140px' }}>Net. Salary before Tax</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '80px' }}>Tax</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Net Salary</th>
-                <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap', width: '120px' }}>Final Salary</th>
+                <th>ID</th>
+                <th>Employee Name</th>
+                <th>Pseudonym</th>
+                <th>Department</th>
+                <th>Basic Salary</th>
+                <th>T.W Days</th>
+                <th>T.Unpaid Days</th>
+                <th>O.T Hours</th>
+                <th>O.T Salary</th>
+                <th>6H Train Amt</th>
+                <th>Arrears</th>
+                <th>KPI Add</th>
+                <th>Commission</th>
+                <th>Existing Client Incentive</th>
+                <th>Trainer Incentive</th>
+                <th>Floor Incentive</th>
+                <th>Gross Salary</th>
+                <th>Unpaid Days Salary</th>
+                <th>Break Exceed Ded.</th>
+                <th>KPIs Ded.</th>
+                <th>Other Ded (fine,etc.)</th>
+                <th>Loan/Advance</th>
+                <th>Total Deductions</th>
+                <th>Net. Salary before Tax</th>
+                <th>Tax</th>
+                <th>Net Salary</th>
+                <th>Final Salary</th>
               </tr>
             </thead>
-            <tbody style={{ background: '#fff', color: '#22223B' }}>
+            <tbody>
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
                   const advSalary = advanceSalaryMap[employee.employeeId];
@@ -1099,45 +1071,60 @@ export default function MonthlyAttendancePage() {
                       ? (hasAdv ? adv : 0) + (hasLoan ? loan : 0)
                       : "--";
                   return (
-                    <tr key={employee.employeeId} style={{ background: '#fff', color: '#22223B' }}>
-                      <td style={{ padding: '10px 8px', width: '50px' }}>{employee.employeeId}</td>
-                      <td style={{ padding: '10px 8px', width: '140px' }}>{employee.employeeName}</td>
-                      <td style={{ padding: '10px 8px', width: '100px' }}>{employee.pseudonym}</td>
-                      <td style={{ padding: '10px 8px', width: '110px' }}>{employee.departmentName}</td>
-                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{employee.basicSalary !== undefined ? formatWithCommas(employee.basicSalary) : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '80px' }}>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '100px', color: '#FF1F1F', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getEmployeeOTSalary(employee))}</td>
-                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "train_6h_amt"))}</td>
-                      <td style={{ padding: '10px 8px', width: '90px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "arrears"))}</td>
-                      <td style={{ padding: '10px 8px', width: '80px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "kpi_add"))}</td>
-                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "commission"))}</td>
-                      <td style={{ padding: '10px 8px', width: '160px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "existing_client_incentive"))}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "trainer_incentive"))}</td>
-                      <td style={{ padding: '10px 8px', width: '110px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "floor_incentive"))}</td>
-                      <td style={{ padding: '10px 8px', width: '100px', color: '#00A651', fontWeight: 600 }}>{formatWithCommas(getEmployeeGrossSalary(employee))}</td>
-                      <td style={{ padding: '10px 8px', width: '110px', color: '#FF1F1F', fontWeight: 600 }}>{formatWithCommas(getUnpaidDaysSalary(employee))}</td>
-                      <td style={{ padding: '10px 8px', width: '110px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '90px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{formatWithCommas(loanAdvanceValue)}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '140px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '80px', color: '#FF1F1F', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ padding: '10px 8px', width: '120px', color: '#00A651', fontWeight: 600 }}>{'--'}</td>
+                    <tr key={employee.employeeId}>
+                      <td className={styles.cellMuted}>{employee.employeeId}</td>
+                      <td>
+                        <EmployeeTableNameCell
+                          name={employee.employeeName}
+                          employeeId={employee.employeeId}
+                          photo={getPhoto(employee.employeeId)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: employee.employeeId,
+                              employee_name: employee.employeeName,
+                              pseudonym: employee.pseudonym,
+                              department_name: employee.departmentName,
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{employee.pseudonym}</td>
+                      <td>{employee.departmentName}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{employee.basicSalary !== undefined ? formatWithCommas(employee.basicSalary) : '--'}</td>
+                      <td>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getEmployeeOTSalary(employee))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "train_6h_amt"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "arrears"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "kpi_add"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "commission"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "existing_client_incentive"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "trainer_incentive"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "floor_incentive"))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getEmployeeGrossSalary(employee))}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(getUnpaidDaysSalary(employee))}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(loanAdvanceValue)}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{'--'}</td>
                     </tr>
                   );
                 })
               ) : (
-                <tr><td colSpan={27} style={{ textAlign: 'center', padding: 16 }}>No records found</td></tr>
+                <tr><td colSpan={27} className={styles.breakSummaryNoRecords}>No records found</td></tr>
               )}
             </tbody>
           </table>
           </div>
         </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

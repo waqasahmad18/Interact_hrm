@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     }
     await ensureAttendanceTable(conn);
     let query = `SELECT pb.*, e.pseudonym, d.name AS department_name,
+      ec.email_work, ec.email_other,
       sa.shift_name, sa.start_time, sa.end_time, sa.assigned_date
       ,(
         SELECT ea.id
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
       ) AS session_clock_in
       FROM prayer_breaks pb
       LEFT JOIN hrm_employees e ON pb.employee_id = e.id
+      LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
       LEFT JOIN shift_assignments sa ON pb.shift_assignment_id = sa.id
@@ -91,6 +93,7 @@ export async function GET(req: NextRequest) {
       ...row,
       employee_name: row.employee_name || "",
       pseudonym: row.pseudonym || "",
+      email: row.email_work || row.email_other || "",
       attendance_session_id: row.attendance_session_id ? Number(row.attendance_session_id) : null,
       session_clock_in: row.session_clock_in ? new Date(row.session_clock_in + 'Z').toISOString() : null,
       prayer_break_start: row.prayer_break_start ? new Date(row.prayer_break_start + 'Z').toISOString() : null,

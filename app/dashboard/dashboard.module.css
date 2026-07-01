@@ -1,263 +1,773 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap');
-
 :root {
-  --bg: radial-gradient(circle at 20% 20%, #eef3ff 0%, #f6fbff 30%, #ffffff 70%);
-  --card: #fff;
-  --text: #0f1d40;
-  --muted: #5b6b8c;
-  --primary: #0b74ff;
-  --primary-dark: #0f3d91;
-  --accent: #8bf3ff;
-  --border: #e6ecf5;
-  --shadow: 0 16px 48px rgba(10, 31, 68, 0.12);
-  --radius: 16px;
-  --font: 'Inter', sans-serif;
+  --slack-bg: #f8f8f8;
+  --slack-card: #ffffff;
+  --slack-purple: #611f69;
+  --slack-purple-light: #f3e8f5;
+  --slack-purple-hover: #4a154b;
+  --slack-blue: #1264a3;
+  --slack-blue-light: #e8f4fc;
+  --slack-green: #2eb67d;
+  --slack-green-light: #e8f8f0;
+  --slack-gold: #e8912d;
+  --slack-text: #1d1c1d;
+  --slack-muted: #616061;
+  --slack-border: #e8e8e8;
+  --slack-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --radius: 12px;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .page {
   width: 100%;
-  min-height: calc(100vh - 72px);
-  background: var(--bg);
-  padding: 16px 20px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  min-height: calc(100vh - 58px);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(97, 31, 105, 0.07), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 95% 0%, rgba(18, 100, 163, 0.06), transparent 50%),
+    var(--slack-bg);
+  padding: 20px 24px 36px;
   font-family: var(--font);
+  color: var(--slack-text);
+  -webkit-font-smoothing: antialiased;
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 16px;
-  background: linear-gradient(125deg, #0f1d40 0%, #0f3d91 55%, #0b74ff 100%);
-  color: #e8f1ff;
-  border-radius: 18px;
-  padding: 22px;
-  box-shadow: var(--shadow);
-  border: 1px solid rgba(255,255,255,0.08);
+.page::before {
+  display: none;
 }
 
-.heroText {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.page > * {
+  position: relative;
+  z-index: 1;
 }
 
-.heroBadge {
+/* ── Header banner ──────────────────────────────────────────── */
+.headerBanner {
+  background: linear-gradient(135deg, rgba(97, 31, 105, 0.06) 0%, rgba(255, 255, 255, 0.9) 45%, rgba(18, 100, 163, 0.05) 100%);
+  border: 1px solid rgba(97, 31, 105, 0.12);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 24px rgba(97, 31, 105, 0.06);
+}
+
+.dateChip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255,255,255,0.14);
-  color: #e8f1ff;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--slack-muted);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--slack-border);
   border-radius: 999px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  width: fit-content;
+  padding: 5px 12px;
+  margin-bottom: 10px;
 }
 
-.heroTitle {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0;
+.dateChipDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--slack-green);
 }
-
-.heroSubtitle {
-  color: rgba(232,241,255,0.82);
-  font-size: 1rem;
-  line-height: 1.5;
-  margin: 0;
-}
-
-.heroActions {
+.header {
   display: flex;
-  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
-.primaryButton {
-  background: linear-gradient(120deg, #8bf3ff, #5b9bff);
-  color: #0b1b40;
+.headerText {
+  flex: 1;
+  min-width: 200px;
+}
+
+.greeting {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--slack-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+}
+
+.title {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 6px;
+  color: var(--slack-text);
+}
+
+.subtitle {
+  font-size: 0.9375rem;
+  color: var(--slack-muted);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 480px;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--slack-purple);
+  color: #fff;
   border: none;
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-weight: 700;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 10px 28px rgba(10,31,68,0.22);
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(97, 31, 105, 0.25);
 }
 
-.ghostButton {
-  background: rgba(255,255,255,0.14);
-  color: #e8f1ff;
-  border: 1px solid rgba(255,255,255,0.28);
-  border-radius: 12px;
-  padding: 12px 16px;
-  font-weight: 700;
-  cursor: pointer;
+.btnPrimary:hover {
+  background: var(--slack-purple-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(97, 31, 105, 0.3);
 }
 
-.heroStats {
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--slack-card);
+  color: var(--slack-text);
+  border: 1px solid var(--slack-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.btnGhost:hover {
+  background: #fafafa;
+  border-color: #d1d1d1;
+  transform: translateY(-1px);
+}
+
+/* ── KPI row ────────────────────────────────────────────────── */
+.kpiRow {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+  margin-bottom: 20px;
 }
 
-.heroStat {
-  background: rgba(255,255,255,0.12);
-  border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 14px;
-  padding: 12px 14px;
+.kpiCard {
+  background: var(--slack-card);
+  border: 1px solid var(--slack-border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-shadow: var(--slack-shadow);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpiCard::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--slack-purple), var(--slack-blue));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.kpiCard:hover::before {
+  opacity: 1;
+}
+
+.kpiCard:nth-child(1) { animation-delay: 0.05s; }
+.kpiCard:nth-child(2) { animation-delay: 0.1s; }
+.kpiCard:nth-child(3) { animation-delay: 0.15s; }
+.kpiCard:nth-child(4) { animation-delay: 0.2s; }
+
+.kpiCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.kpiIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.kpiIconPurple { background: var(--slack-purple-light); color: var(--slack-purple); }
+.kpiIconBlue { background: var(--slack-blue-light); color: var(--slack-blue); }
+.kpiIconGreen { background: var(--slack-green-light); color: var(--slack-green); }
+.kpiIconGold { background: #fef3e2; color: var(--slack-gold); }
+
+.kpiBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.kpiValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--slack-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiLabel {
+  font-size: 0.8125rem;
+  color: var(--slack-muted);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.kpiBadge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f0f0f0;
+  color: var(--slack-muted);
+}
+
+/* ── Main grid ──────────────────────────────────────────────── */
+.mainGrid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.col {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  color: #e8f1ff;
-}
-
-.heroStatValue {
-  font-size: 1.4rem;
-  font-weight: 800;
-}
-
-.heroStatLabel {
-  font-size: 0.95rem;
-  opacity: 0.9;
-}
-
-.heroStatBadge {
-  font-size: 0.85rem;
-  color: #0b1b40;
-  background: #8bf3ff;
-  border-radius: 10px;
-  padding: 4px 8px;
-  width: fit-content;
-  font-weight: 700;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .card {
-  background: var(--card);
+  background: var(--slack-card);
+  border: 1px solid var(--slack-border);
   border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgba(10,31,68,0.08);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  color: var(--text);
+  padding: 18px;
+  box-shadow: var(--slack-shadow);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(97, 31, 105, 0.08);
+  border-color: rgba(97, 31, 105, 0.15);
+}
+
+.cardDelay1 { animation-delay: 0.12s; }
+.cardDelay2 { animation-delay: 0.18s; }
+.cardDelay3 { animation-delay: 0.24s; }
+.cardDelay4 { animation-delay: 0.3s; }
 
 .cardHeader {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cardIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  background: var(--slack-purple-light);
+  color: var(--slack-purple);
 }
 
 .cardTitle {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 0.9375rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--slack-text);
+  letter-spacing: -0.01em;
 }
 
 .pill {
-  padding: 6px 10px;
-  background: #f0f4ff;
-  color: #3052a6;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--slack-green-light);
+  color: #1a7f4e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.quickActions {
+.pillLive::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--slack-green);
+}
+
+.pillMuted {
+  background: #f0f0f0;
+  color: var(--slack-muted);
+}
+
+/* ── Bar chart ──────────────────────────────────────────────── */
+.chartWrap {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.quickChip {
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: #f7f9fc;
-  color: var(--text);
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 6px 16px rgba(10,31,68,0.06);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.quickChip:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(10,31,68,0.10);
-}
-
-.metricsRow {
+/* ── Insight strip ──────────────────────────────────────────── */
+.insightRow {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+  margin-bottom: 18px;
 }
 
-.metricBlock {
-  background: #f7f9fc;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
+.insightChip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--slack-border);
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  color: var(--slack-muted);
+}
+
+.insightChip:nth-child(1) { animation-delay: 0.08s; }
+.insightChip:nth-child(2) { animation-delay: 0.14s; }
+.insightChip:nth-child(3) { animation-delay: 0.2s; }
+
+.insightChip strong {
+  color: var(--slack-purple);
+  font-weight: 700;
+}
+
+.insightIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  background: var(--slack-purple-light);
+  color: var(--slack-purple);
+}
+
+/* ── Chart + donut layout ───────────────────────────────────── */
+.chartRow {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.chartMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.donutPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-left: 1px solid var(--slack-border);
+  min-width: 110px;
+}
+
+.donut {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.6s ease;
+}
+
+.donutHole {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px var(--slack-border);
+}
+
+.donutValue {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--slack-text);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.donutLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--slack-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.donutCaption {
+  font-size: 0.6875rem;
+  color: var(--slack-muted);
+  text-align: center;
+  line-height: 1.35;
+}
+
+.chartBars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  height: 140px;
+  padding: 0 4px;
+  position: relative;
+}
+
+.chartGrid {
+  position: absolute;
+  inset: 0 4px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chartGridLine {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.06) 8%, rgba(0, 0, 0, 0.06) 92%, transparent);
+}
+
+.chartCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 1;
+}
+
+.chartBarTrack {
+  width: 100%;
+  max-width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.chartBar {
+  width: 100%;
+  border-radius: 8px 8px 3px 3px;
+  background: linear-gradient(180deg, #b565b0 0%, var(--slack-purple) 100%);
+  min-height: 4px;
+  transition: height 0.9s cubic-bezier(0.34, 1.2, 0.64, 1), filter 0.2s;
+  cursor: default;
+}
+
+.chartCol:hover .chartBar {
+  filter: brightness(1.08);
+  transform: scaleX(1.05);
+}
+
+.chartBarToday {
+  background: linear-gradient(180deg, #4db3f6 0%, var(--slack-blue) 100%);
+  box-shadow: 0 4px 16px rgba(18, 100, 163, 0.35);
+}
+
+.sparkline {
+  width: 100%;
+  height: 36px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.sparkline path,
+.sparkline polyline {
+  fill: none;
+  stroke: var(--slack-purple);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sparklineLine {
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+}
+
+.sparklineArea {
+  fill: url(#sparkGrad);
+  opacity: 0.15;
+}
+
+/* ── Snapshot with rings ────────────────────────────────────── */
+.snapshotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.snapRing {
+  text-align: center;
+  padding: 12px 8px;
+  border-radius: 10px;
+  background: #fafafa;
+  border: 1px solid var(--slack-border);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.snapRing:hover {
+  background: #fff;
+  transform: translateY(-2px);
+}
+
+.snapRingValue {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--slack-purple);
+  font-variant-numeric: tabular-nums;
+}
+
+.snapRingLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--slack-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.chartLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--slack-muted);
+  text-transform: uppercase;
+}
+
+.chartPct {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--slack-text);
+}
+
+.chartLegend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--slack-border);
+  font-size: 0.75rem;
+  color: var(--slack-muted);
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+/* ── Snapshot bars ──────────────────────────────────────────── */
+.snapshotBars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.snapRow {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 8px 18px rgba(10,31,68,0.05);
 }
 
-.metricValue {
-  font-size: 1.3rem;
-  font-weight: 800;
-  color: var(--text);
+.snapMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8125rem;
 }
 
-.metricLabel {
-  font-size: 0.95rem;
-  color: var(--muted);
+.snapLabel {
+  font-weight: 600;
+  color: var(--slack-text);
 }
 
+.snapValue {
+  font-weight: 700;
+  color: var(--slack-purple);
+}
+
+.snapTrack {
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.snapFill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.9s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+.snapFillPurple { background: linear-gradient(90deg, #9b4d96, var(--slack-purple)); }
+.snapFillBlue { background: linear-gradient(90deg, #3d9ee5, var(--slack-blue)); }
+.snapFillGold { background: linear-gradient(90deg, #f0b429, var(--slack-gold)); }
+
+/* ── Quick actions ──────────────────────────────────────────── */
+.quickGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.quickLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--slack-border);
+  border-radius: 10px;
+  background: #fafafa;
+  color: var(--slack-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.quickLink:hover {
+  background: var(--slack-purple-light);
+  border-color: #d8b4de;
+  transform: translateX(3px);
+  box-shadow: var(--slack-shadow);
+}
+
+.quickLinkIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--slack-card);
+  border: 1px solid var(--slack-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--slack-purple);
+  font-size: 1rem;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.quickLink:hover .quickLinkIcon {
+  background: var(--slack-purple);
+  color: #fff;
+  border-color: var(--slack-purple);
+}
+
+/* ── Lists ──────────────────────────────────────────────────── */
 .list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .listScrollable {
-  max-height: 240px;
+  max-height: 220px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #d1d1d1 transparent;
+}
+
+.listScrollable::-webkit-scrollbar {
+  width: 5px;
+}
+
+.listScrollable::-webkit-scrollbar-thumb {
+  background: #d1d1d1;
+  border-radius: 999px;
 }
 
 .listItem {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #f9fbff;
-  color: var(--text);
-  box-shadow: 0 6px 16px rgba(10,31,68,0.05);
+  padding: 12px 14px;
+  border: 1px solid var(--slack-border);
+  border-radius: 10px;
+  background: #fafafa;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 
 .listItem:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(10,31,68,0.10);
+  background: #fff;
+  border-color: #d1d1d1;
+  transform: translateX(2px);
 }
 
 .listItemNew {
-  animation: pulseGlow 0.8s ease-in-out 0s 3;
+  border-color: var(--slack-purple);
+  background: var(--slack-purple-light);
 }
 
 .listItemTop {
@@ -265,36 +775,190 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .listItemTitle {
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--slack-text);
 }
 
 .listItemMeta {
-  color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.8125rem;
+  color: var(--slack-muted);
 }
 
 .badge {
-  padding: 6px 10px;
-  background: #eef3ff;
-  color: #3052a6;
-  border-radius: 10px;
+  font-size: 0.6875rem;
   font-weight: 700;
-  font-size: 0.9rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fef3e2;
+  color: #b45309;
+  text-transform: uppercase;
 }
 
-@keyframes pulseGlow {
-  0% { box-shadow: 0 0 0 rgba(11,116,255,0.0); background: #f9fbff; }
-  50% { box-shadow: 0 0 18px rgba(11,116,255,0.25); background: #eef6ff; }
-  100% { box-shadow: 0 0 0 rgba(11,116,255,0.0); background: #f9fbff; }
+.badgeReminder {
+  background: #fde8e8;
+  color: #c2252d;
 }
 
-@media (max-width: 960px) {
-  .hero {
+.emptyState {
+  padding: 20px;
+  text-align: center;
+  color: var(--slack-muted);
+  font-size: 0.875rem;
+}
+
+/* ── Recruitment mini bars ──────────────────────────────────── */
+.roleRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--slack-border);
+}
+
+.roleRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.roleHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.roleBar {
+  height: 6px;
+  background: #f0f0f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.roleFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--slack-blue);
+  transition: width 0.8s ease;
+}
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes barGrow {
+  from {
+    opacity: 0;
+    transform: scaleY(0);
+    transform-origin: bottom;
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+    transform-origin: bottom;
+  }
+}
+
+@keyframes barWidth {
+  from { width: 0 !important; }
+}
+
+@keyframes pulseNew {
+  0%, 100% { box-shadow: 0 0 0 rgba(97, 31, 105, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(97, 31, 105, 0.2); }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes donutPop {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes drawLine {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 0.15; }
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .page::before {
+    inset: 58px 0 0 0;
+  }
+
+  .insightRow {
     grid-template-columns: 1fr;
+  }
+
+  .chartRow {
+    flex-direction: column;
+  }
+
+  .donutPanel {
+    border-left: none;
+    border-top: 1px solid var(--slack-border);
+    padding-top: 16px;
+    flex-direction: row;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .snapshotGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .kpiRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px 14px 24px;
+  }
+
+  .title {
+    font-size: 1.35rem;
+  }
+
+  .kpiRow {
+    grid-template-columns: 1fr;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .btnPrimary,
+  .btnGhost {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .chartBars {
+    height: 110px;
   }
 }

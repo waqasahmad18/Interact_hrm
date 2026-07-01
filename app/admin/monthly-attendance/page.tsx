@@ -2,7 +2,9 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../../attendance-summary/attendance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFileExcel } from "react-icons/fa";
 import {
   downloadMonthlyAttendanceExcel,
@@ -243,6 +245,7 @@ export default function MonthlyAttendancePage() {
   const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   const importInputRef = useRef<HTMLInputElement>(null);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const showingImported =
     Boolean(importedSnapshot?.month && importedSnapshot.month === selectedMonth && importedSnapshot.employees.length);
@@ -1298,33 +1301,33 @@ export default function MonthlyAttendancePage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.attendanceSummaryContainer}>
+      <div className={styles.breakSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#22223B", margin: 0 }}>
+          <h1 className={styles.pageTitle}>
             Monthly Attendance {monthInfo.label && `- ${monthInfo.label}`}
           </h1>
-          <p style={{ color: "#4A5568", fontSize: "0.9rem", marginTop: 4 }}>
+          <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
             View and manage all employee attendance records
           </p>
           {showingImported && (
-            <p style={{ color: "#6B46C1", fontSize: "0.85rem", marginTop: 8, fontWeight: 600 }}>
+            <p style={{ color: "#611f69", fontSize: "0.85rem", marginTop: 8, fontWeight: 600 }}>
               Showing imported Excel data for {monthInfo.label} (sheet values as-is)
             </p>
           )}
         </div>
 
-        <div className={styles.attendanceSummaryFilters}>
+        <div className={styles.breakSummaryFilters}>
           <input
             type="text"
             placeholder="Search by name..."
             value={searchName}
             onChange={(e) => setSearchName(e.target.value)}
-            className={styles.attendanceSummaryInput}
+            className={styles.breakSummaryInput}
           />
           <select
             value={selectedDepartment}
             onChange={(e) => setSelectedDepartment(e.target.value)}
-            className={styles.attendanceSummaryInput}
+            className={styles.breakSummaryInput}
           >
             <option value="">All Departments</option>
             {departments.map((dept) => (
@@ -1334,29 +1337,27 @@ export default function MonthlyAttendancePage() {
             ))}
           </select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ color: '#4A5568', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
+            <label style={{ color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
             <input
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className={styles.attendanceSummaryDate}
+              className={styles.breakSummaryDate}
               style={{ minWidth: '160px' }}
             />
           </div>
           <button
             onClick={fetchAttendance}
-            className={styles.attendanceSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)" }}
+            className={styles.breakSummaryXLSButton}
           >
             Search
           </button>
-          <button onClick={downloadExcel} className={styles.attendanceSummaryXLSButton}>
+          <button onClick={downloadExcel} className={styles.breakSummaryXLSButton}>
             <FaFileExcel /> Export Excel
           </button>
           <button
             onClick={handleImportClick}
-            className={styles.attendanceSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #6B46C1 0%, #805AD5 100%)" }}
+            className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`}
           >
             <FaFileExcel /> Import Excel
           </button>
@@ -1369,45 +1370,69 @@ export default function MonthlyAttendancePage() {
           />
           <button
             onClick={downloadDeductionSummary}
-            className={styles.attendanceSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #C53030 0%, #9B2C2C 100%)" }}
+            className={styles.breakSummaryXLSButton}
+            style={{ background: "linear-gradient(135deg, #C53030 0%, #9B2C2C 100%)", boxShadow: "0 4px 14px rgba(197, 48, 48, 0.22)" }}
           >
             <FaFileExcel /> Deduction Summary
           </button>
         </div>
 
         {loading ? (
-          <div style={{ padding: 20, color: "#4A5568", textAlign: "center" }}>
+          <div style={{ padding: 20, color: "#64748b", textAlign: "center" }}>
             Loading attendance records...
           </div>
         ) : (
-          <div className={styles.attendanceCardsGrid}>
+          <div style={{ display: "grid", gap: 20, width: "100%" }}>
             {attendanceByEmployee.length === 0 ? (
-              <div className={styles.attendanceSummaryNoRecords}>No attendance records found</div>
+              <div className={styles.breakSummaryNoRecords}>No attendance records found</div>
             ) : (
               attendanceByEmployee.map((employee) => (
-                <div key={employee.employeeId} className={styles.attendanceEmployeeCard}>
-                  <div className={styles.attendanceEmployeeHeader}>
+                <div
+                  key={employee.employeeId}
+                  style={{
+                    background: "#fff",
+                    borderRadius: 16,
+                    border: "1px solid #e8edf3",
+                    boxShadow: "0 8px 32px rgba(97, 31, 105, 0.08)",
+                    padding: 16,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
                     <div>
-                      <div className={styles.attendanceEmployeeName}>{employee.employeeName}</div>
-                      <div className={styles.attendanceEmployeeMeta}>
+                      <EmployeeTableNameCell
+                        name={employee.employeeName}
+                        employeeId={employee.employeeId}
+                        photo={getPhoto(employee.employeeId)}
+                        onOpen={() =>
+                          openFromRow({
+                            employee_id: employee.employeeId,
+                            employee_name: employee.employeeName,
+                            pseudonym: employee.pseudonym,
+                            department_name: employee.departmentName,
+                          })
+                        }
+                      />
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, paddingLeft: 44 }}>
                         {employee.pseudonym} · {employee.departmentName}
                       </div>
                     </div>
-                    <div className={styles.attendanceEmployeeActions}>
-                      <div className={styles.attendanceEmployeeIdProminent}>Emp. ID {employee.employeeId}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 700, color: "#611f69", fontSize: "1rem" }}>Emp. ID {employee.employeeId}</div>
                       <button
                         title="Export this employee's month record as XLS"
-                        style={{ background: '#27ae60', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        className={styles.breakSummaryXLSButton}
+                        style={{ padding: "6px 12px", fontSize: 12 }}
                         onClick={() => downloadEmployeeExcel(employee)}
                       >
                         <FaFileExcel /> Export XLS
                       </button>
                     </div>
                   </div>
-                  {/* <div className={styles.attendanceMonthTitle}>{monthInfo.label}</div> */}
-                  <div className={styles.attendanceEmployeeTableWrapper}>
-                    <table className={`${styles.attendanceEmployeeTable} ${styles.hideAssignedWH}`}>
+                  <div className={styles.breakSummaryTableWrapper}>
+                    <table className={styles.breakSummaryTable} style={{ minWidth: 1200 }}>
                       <thead>
                         <tr>
                           <th>Day</th>
@@ -1417,11 +1442,11 @@ export default function MonthlyAttendancePage() {
                           <th>Clock Out</th>
                           <th>T.Punch out</th>
                           <th>Total W.H</th>
-                          <th className={styles.colAssignedWH}>Assigned W.H</th>
+                          <th style={{ display: "none" }}>Assigned W.H</th>
                           <th>OverTime</th>
                           <th>Tardy Count</th>
                           <th>Status</th>
-                          <th className={styles.colTardyNote}>Tardy Note</th>
+                          <th style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280 }}>Tardy Note</th>
                           <th>Deduction</th>
                         </tr>
                       </thead>
@@ -1469,13 +1494,13 @@ export default function MonthlyAttendancePage() {
                                   {day.tPunchOut && day.tPunchOut !== "---" ? day.tPunchOut : "---"}
                                 </td>
                                 <td>{day.totalWH}</td>
-                                <td className={styles.colAssignedWH}>{day.assignedWH}</td>
+                                <td style={{ display: "none" }}>{day.assignedWH}</td>
                                 <td>{day.overtime}</td>
                                 <td>{tardyDisplay}</td>
                                 <td style={{ color: uiStatusTextColor(rowStatus), fontWeight: 600 }}>
                                   {rowStatus}
                                 </td>
-                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, rowStatus)}</td>
+                                <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, lineHeight: 1.35, wordBreak: "break-word" }}>{tardyNoteForCell(employee.employeeId, day.dateKey, rowStatus)}</td>
                                 <td>{rowDeduction}</td>
                               </tr>
                             );
@@ -1510,13 +1535,13 @@ export default function MonthlyAttendancePage() {
                                 <td>---</td>
                                 <td>---</td>
                                 <td>---</td>
-                                <td className={styles.colAssignedWH}>---</td>
+                                <td style={{ display: "none" }}>---</td>
                                 <td>---</td>
                                 <td>{meta?.runningLate ? meta.runningLate : ""}</td>
                                 <td style={{ color: uiStatusTextColor(statusLabel), fontWeight: 600 }}>
                                   {normalizeAttendanceStatus(statusLabel)}
                                 </td>
-                                <td className={styles.colTardyNote}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, undefined, dayRecords)}</td>
+                                <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, lineHeight: 1.35, wordBreak: "break-word" }}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, undefined, dayRecords)}</td>
                                 <td>{deduction}</td>
                               </tr>
                             );
@@ -1564,7 +1589,7 @@ export default function MonthlyAttendancePage() {
                                 <td>
                                   {record ? formatHoursMins(record.total_hours) : "---"}
                                 </td>
-                                <td className={styles.colAssignedWH}>
+                                <td style={{ display: "none" }}>
                                   {record
                                     ? formatDurationHM(record.assigned_shift_seconds)
                                     : "---"}
@@ -1581,7 +1606,7 @@ export default function MonthlyAttendancePage() {
                                 >
                                   {recordStatus}
                                 </td>
-                                <td className={styles.colTardyNote}>
+                                <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, lineHeight: 1.35, wordBreak: "break-word" }}>
                                   {tardyNoteForCell(
                                     employee.employeeId,
                                     day.dateKey,
@@ -1637,6 +1662,7 @@ export default function MonthlyAttendancePage() {
           </div>
         )}
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

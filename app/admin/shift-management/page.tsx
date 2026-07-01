@@ -2,6 +2,10 @@
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "./shift-management.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../admin-page.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import {
   FaClock,
   FaCheckCircle,
@@ -80,6 +84,7 @@ export default function ShiftManagementPage() {
   const [overtimeDropdownOpen, setOvertimeDropdownOpen] = useState(false);
   const [overtimeTargetSearch, setOvertimeTargetSearch] = useState("");
   const [updatingOvertimeId, setUpdatingOvertimeId] = useState<number | null>(null);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
     fetchEmployees();
@@ -532,15 +537,18 @@ export default function ShiftManagementPage() {
 
   return (
     <LayoutDashboard>
+      <div className={adminStyles.page}>
       <div className={styles.pageContainer}>
-        <div className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>
-            <FaClock style={{ color: "#667eea" }} />
-            Shift Management
-          </h1>
-          <p className={styles.pageSubtitle}>
-            Assign shifts and timings to employees
-          </p>
+        <div className={adminStyles.pageHeader}>
+          <div>
+            <h1 className={adminStyles.pageHeaderTitle}>
+              <FaClock style={{ marginRight: 10, color: "#611f69", verticalAlign: "middle" }} />
+              Shift Management
+            </h1>
+            <p className={adminStyles.subtitle}>
+              Assign shifts and timings to employees
+            </p>
+          </div>
         </div>
 
         {success && <div className={styles.successMessage}>✓ {success}</div>}
@@ -886,9 +894,9 @@ export default function ShiftManagementPage() {
           </div>
         </div>
 
-        <div className={styles.tableContainer} style={{ marginTop: "20px", overflowY: "auto", maxHeight: "74vh" }}>
-          <table className={styles.employeeTable}>
-            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
+        <div className={tableStyles.breakSummaryTableWrapper} style={{ marginTop: "20px" }}>
+          <table className={tableStyles.breakSummaryTable}>
+            <thead>
               <tr>
                 <th>ID</th>
                 <th>Name</th>
@@ -904,18 +912,38 @@ export default function ShiftManagementPage() {
               <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: "center", padding: "20px" }}>
+                    <td colSpan={9} className={tableStyles.breakSummaryNoRecords}>
                       No employees found
                     </td>
                   </tr>
                 ) : (
                   filteredEmployees.map((emp, idx) => (
                     <tr key={`row-emp-${emp.id}-${idx}`}>
-                      <td className={styles.employeeCode}>
+                      <td className={tableStyles.cellMuted}>
                         {emp.id}
                       </td>
-                      <td className={styles.employeeName}>
-                        {emp.first_name} {emp.last_name}
+                      <td>
+                        {editingId === emp.id ? (
+                          <span>{emp.first_name} {emp.last_name}</span>
+                        ) : (
+                          <EmployeeTableNameCell
+                            name={`${emp.first_name} ${emp.last_name}`.trim()}
+                            employeeId={emp.id}
+                            photo={getPhoto(emp.id)}
+                            onOpen={() =>
+                              openFromRow({
+                                id: emp.id,
+                                first_name: emp.first_name,
+                                last_name: emp.last_name,
+                                pseudonym: emp.pseudonym,
+                                department_name: emp.department_name,
+                                shift_name: emp.shift_name,
+                                start_time: emp.start_time,
+                                end_time: emp.end_time,
+                              })
+                            }
+                          />
+                        )}
                       </td>
                       <td>{emp.pseudonym || '-'}</td>
                       <td>{emp.department_name || '-'}</td>
@@ -1030,6 +1058,8 @@ export default function ShiftManagementPage() {
             </table>
           </div>
       </div>
+      </div>
+      {popup}
     </LayoutDashboard>
   );
 }

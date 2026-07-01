@@ -2,7 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../layout-dashboard";
-import styles from "./attendance-summary.module.css";
+import styles from "../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../components/use-employee-detail-popup";
 import { FaFileExcel } from "react-icons/fa";
 import { compareAttendanceRows } from "../../lib/attendance-sort";
 import {
@@ -100,6 +102,7 @@ export default function AttendanceSummaryPage() {
   const [now, setNow] = useState(Date.now());
   const [importedSnapshot, setImportedSnapshot] = useState<ImportedAttendanceSummarySnapshot | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const filterMonth = fromDate.slice(0, 7);
   const showingImported = Boolean(
@@ -243,16 +246,16 @@ export default function AttendanceSummaryPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.attendanceSummaryContainer}>
-        <h1 style={{ marginBottom: 16 }}>Attendance Summary</h1>
+      <div className={styles.breakSummaryContainer}>
+        <h1 className={styles.pageTitle}>Attendance Summary</h1>
         {showingImported && (
-          <p style={{ color: "#6B46C1", fontSize: "0.85rem", marginBottom: 12, fontWeight: 600 }}>
+          <p style={{ color: "#611f69", fontSize: "0.85rem", marginBottom: 12, fontWeight: 600 }}>
             Showing imported Excel data for {filterMonth} (sheet values as-is)
           </p>
         )}
-        <div className={styles.attendanceSummaryFilters}>
-          <input type="text" placeholder="Search employee..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.attendanceSummaryInput} style={{ width: 220 }} />
-          <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.attendanceSummaryDate} style={{ width: 200 }}>
+        <div className={styles.breakSummaryFilters}>
+          <input type="text" placeholder="Search employee..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.breakSummaryInput} style={{ width: 220 }} />
+          <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 200 }}>
             <option value="">All Departments</option>
             {departments.map((dept: any) => (
               <option key={dept.id} value={dept.name}>{dept.name}</option>
@@ -262,21 +265,21 @@ export default function AttendanceSummaryPage() {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
             placeholder="From Date"
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
             placeholder="To Date"
           />
-          <button onClick={downloadAttendanceCSV} className={styles.attendanceSummaryXLSButton} title="Download XLS">
+          <button onClick={downloadAttendanceCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
             <FaFileExcel size={20} />
             <span>Export XLS</span>
           </button>
-          <button onClick={handleImportClick} className={styles.attendanceSummaryXLSButton} title="Import XLS">
+          <button onClick={handleImportClick} className={styles.breakSummaryXLSButton} title="Import XLS">
             <FaFileExcel size={20} />
             <span>Import XLS</span>
           </button>
@@ -289,8 +292,8 @@ export default function AttendanceSummaryPage() {
           />
         </div>
 
-        <div className={styles.attendanceSummaryTableWrapper}>
-          <table className={styles.attendanceSummaryTable}>
+        <div className={styles.breakSummaryTableWrapper}>
+          <table className={styles.breakSummaryTable}>
             <thead>
               <tr>
                 <th>Id</th>
@@ -307,7 +310,7 @@ export default function AttendanceSummaryPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className={styles.attendanceSummaryNoRecords}>No records found.</td>
+                  <td colSpan={9} className={styles.breakSummaryNoRecords}>No records found.</td>
                 </tr>
               ) : (
                 rows.map((a: any, idx) => {
@@ -318,8 +321,22 @@ export default function AttendanceSummaryPage() {
                       a.clockOut.toLowerCase() === "running";
                     return (
                       <tr key={a.id || idx}>
-                        <td>{a.employeeId}</td>
-                        <td>{a.employeeName}</td>
+                        <td className={styles.cellMuted}>{a.employeeId}</td>
+                        <td>
+                          <EmployeeTableNameCell
+                            name={a.employeeName || ""}
+                            employeeId={a.employeeId}
+                            photo={getPhoto(a.employeeId)}
+                            onOpen={() =>
+                              openFromRow({
+                                employee_id: a.employeeId,
+                                employee_name: a.employeeName,
+                                pseudonym: a.pseudonym,
+                                department_name: a.departmentName,
+                              })
+                            }
+                          />
+                        </td>
                         <td>{a.pseudonym}</td>
                         <td>{a.departmentName}</td>
                         <td>{a.dateDisplay}</td>
@@ -345,8 +362,15 @@ export default function AttendanceSummaryPage() {
                   }
                   return (
                     <tr key={a.id || idx}>
-                      <td>{a.employee_id}</td>
-                      <td>{a.employee_name || ""}</td>
+                      <td className={styles.cellMuted}>{a.employee_id}</td>
+                      <td>
+                        <EmployeeTableNameCell
+                          name={a.employee_name || ""}
+                          employeeId={a.employee_id}
+                          photo={getPhoto(a.employee_id)}
+                          onOpen={() => openFromRow(a)}
+                        />
+                      </td>
                       <td>{a.pseudonym || "-"}</td>
                       <td>{a.department_name || "-"}</td>
                       <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
@@ -377,6 +401,7 @@ export default function AttendanceSummaryPage() {
           </table>
         </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

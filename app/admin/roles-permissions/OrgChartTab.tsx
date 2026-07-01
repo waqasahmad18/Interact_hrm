@@ -2,11 +2,20 @@
 
 import React, { useMemo, useState } from "react";
 import styles from "./system-control-demo.module.css";
-import { childRoles, type RoleDef } from "./system-control-data";
+import {
+  childRoles,
+  deptNameById,
+  deptRootForRole,
+  deptSectionLabel,
+  empNameById,
+  type DemoEmployee,
+  type RoleDef,
+} from "./system-control-data";
 
 type Props = {
   allRoles: RoleDef[];
   customRoles: RoleDef[];
+  employees: DemoEmployee[];
   employeeCountByRole: (roleId: string) => number;
   permCountByRole: (roleId: string) => number;
   totalPermCount: number;
@@ -19,6 +28,11 @@ type Props = {
   onDelete: (roleId: string) => void;
   onManage: (roleId: string) => void;
   onUpdateLevel: (roleId: string, level: number) => void;
+  onUpdateProfilePhoto: (employeeId: string, photo: string) => void;
+  onRemoveProfilePhoto: (employeeId: string) => void;
+  onUpdateRolePhoto: (roleId: string, photo: string) => void;
+  onRemoveRolePhoto: (roleId: string) => void;
+  rolePhotos: Record<string, string>;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (roleId: string) => boolean;
 };
@@ -27,18 +41,35 @@ function accentOf(role: RoleDef | undefined) {
   return role?.accent || "#9333ea";
 }
 
-function tierCardClass(tier: RoleDef["tier"] | undefined, styles: Record<string, string>) {
+function tierFooterClass(tier: RoleDef["tier"] | undefined, styles: Record<string, string>) {
   const map: Record<string, string> = {
-    board: styles.orgCardTierBoard,
-    partner: styles.orgCardTierPartner,
-    director: styles.orgCardTierDirector,
-    manager: styles.orgCardTierManager,
-    lead: styles.orgCardTierLead,
-    staff: styles.orgCardTierStaff,
-    support: styles.orgCardTierSupport,
-    junior: styles.orgCardTierJunior,
+    board: styles.orgCardFooterBoard,
+    partner: styles.orgCardFooterPartner,
+    director: styles.orgCardFooterDirector,
+    manager: styles.orgCardFooterManager,
+    lead: styles.orgCardFooterLead,
+    staff: styles.orgCardFooterStaff,
+    support: styles.orgCardFooterSupport,
+    junior: styles.orgCardFooterJunior,
   };
   return tier ? map[tier] || "" : "";
+}
+
+function deptFooterForRole(allRoles: RoleDef[], role: RoleDef) {
+  const rootId = deptRootForRole(allRoles, role.id);
+  if (rootId) {
+    const root = allRoles.find((r) => r.id === rootId);
+    if (root) {
+      return { label: deptSectionLabel(root.name), color: accentOf(root) };
+    }
+  }
+  if (role.tier === "board") return { label: "Executive Board", color: "#8b5cf6" };
+  return { label: role.scopeLabel, color: accentOf(role) };
+}
+
+function parentRole(allRoles: RoleDef[], role: RoleDef) {
+  if (!role.parentId) return null;
+  return allRoles.find((r) => r.id === role.parentId) ?? null;
 }
 
 /** "Managing Partner — IT & Technology" → "IT & Technology" for dept box headers */
@@ -72,6 +103,51 @@ function IconTrash() {
     </svg>
   );
 }
+function IconTrashSmall() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
+function ProfilePhoto({
+  photo,
+  initialsNode,
+  onRemove,
+  wrapClass,
+  imgClass,
+}: {
+  photo: string | null;
+  initialsNode: React.ReactNode;
+  onRemove?: () => void;
+  wrapClass: string;
+  imgClass: string;
+}) {
+  if (!photo) return <>{initialsNode}</>;
+  return (
+    <span className={wrapClass}>
+      <img src={photo} alt="" className={imgClass} />
+      {onRemove && (
+        <button
+          type="button"
+          className={styles.orgPhotoRemove}
+          title="Remove photo"
+          aria-label="Remove profile photo"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <IconTrashSmall />
+        </button>
+      )}
+    </span>
+  );
+}
 function IconEye({ off }: { off: boolean }) {
   return off ? (
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -91,6 +167,7 @@ function IconEye({ off }: { off: boolean }) {
 export default function OrgChartTab({
   allRoles,
   customRoles,
+  employees,
   employeeCountByRole,
   permCountByRole,
   totalPermCount,
@@ -103,10 +180,23 @@ export default function OrgChartTab({
   onDelete,
   onManage,
   onUpdateLevel,
+  onUpdateProfilePhoto,
+  onRemoveProfilePhoto,
+  onUpdateRolePhoto,
+  onRemoveRolePhoto,
+  rolePhotos,
   isRoleLocked,
   isCustomRole,
 }: Props) {
   const roots = useMemo(() => childRoles(allRoles, null), [allRoles]);
+
+  function primaryEmployee(roleId: string) {
+    return employees.find((e) => e.roleId === roleId) ?? null;
+  }
+
+  function employeesForRole(roleId: string) {
+    return employees.filter((e) => e.roleId === roleId);
+  }
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -133,8 +223,12 @@ export default function OrgChartTab({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // role currently open in the centered edit modal
   const [editId, setEditId] = useState<string | null>(null);
+  // role open in the right-side detail drawer
+  const [panelRoleId, setPanelRoleId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState<string>("");
   const [levelDraft, setLevelDraft] = useState<string>("");
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const dragMovedRef = React.useRef(false);
 
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const treeRef = React.useRef<HTMLDivElement>(null);
@@ -172,6 +266,46 @@ export default function OrgChartTab({
   };
 
   const editing = editId ? allRoles.find((r) => r.id === editId) ?? null : null;
+  const panelRole = panelRoleId ? allRoles.find((r) => r.id === panelRoleId) ?? null : null;
+  const panelEmployee = panelRole ? primaryEmployee(panelRole.id) : null;
+  const filledRoles = allRoles.filter((r) => employeeCountByRole(r.id) > 0).length;
+  const openRoles = allRoles.length - filledRoles;
+
+  function photoForRole(roleId: string, emp: DemoEmployee | null) {
+    if (emp?.profilePhoto) return emp.profilePhoto;
+    return rolePhotos[roleId] ?? null;
+  }
+
+  function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !panelRole) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      if (panelEmployee) {
+        onUpdateProfilePhoto(panelEmployee.id, reader.result);
+      } else {
+        onUpdateRolePhoto(panelRole.id, reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function openPhotoPicker() {
+    if (!panelRole) return;
+    fileInputRef.current?.click();
+  }
+
+  function removePhotoForRole(roleId: string, emp: DemoEmployee | null) {
+    if (emp?.profilePhoto) {
+      onRemoveProfilePhoto(emp.id);
+      return;
+    }
+    if (rolePhotos[roleId]) {
+      onRemoveRolePhoto(roleId);
+    }
+  }
 
   React.useEffect(() => {
     if (editing) {
@@ -307,7 +441,12 @@ export default function OrgChartTab({
     const isDroppingChild = isDropping && dropMode === "child";
     const isDroppingSibling = isDropping && dropMode === "sibling";
     const isDragging = dragId === role.id;
-    const tierClass = tierCardClass(role.tier, styles);
+    const isPanelOpen = panelRoleId === role.id;
+    const emp = primaryEmployee(role.id);
+    const deptFooter = deptFooterForRole(allRoles, role);
+    const footerClass = tierFooterClass(role.tier, styles);
+    const cardPhoto = photoForRole(role.id, emp);
+    const userCount = employeeCountByRole(role.id);
 
     return (
       <li key={role.id} className={styles.orgItem}>
@@ -315,7 +454,8 @@ export default function OrgChartTab({
           data-orgcard=""
           className={[
             styles.orgCard,
-            tierClass,
+            role.tier === "board" ? styles.orgCardBoard : "",
+            isPanelOpen ? styles.orgCardSelected : "",
             isDroppingChild ? styles.orgCardDrop : "",
             isDroppingAbove ? styles.orgCardDropAbove : "",
             isDroppingSibling ? styles.orgCardDropSibling : "",
@@ -329,17 +469,13 @@ export default function OrgChartTab({
           ]
             .filter(Boolean)
             .join(" ")}
-          style={
-            {
-              "--accent": accent,
-            } as React.CSSProperties
-          }
           draggable={!locked}
           onDragStart={(e) => {
             if (locked) {
               e.preventDefault();
               return;
             }
+            dragMovedRef.current = false;
             dragIdRef.current = role.id;
             setDragId(role.id);
             e.dataTransfer.effectAllowed = "move";
@@ -348,6 +484,9 @@ export default function OrgChartTab({
             } catch {
               /* ignore */
             }
+          }}
+          onDrag={() => {
+            dragMovedRef.current = true;
           }}
           onDragEnd={() => {
             dragIdRef.current = null;
@@ -436,7 +575,54 @@ export default function OrgChartTab({
             </>
           )}
 
-          <div className={styles.orgCardLabel}>{role.name}</div>
+          <button
+            type="button"
+            className={styles.orgCardMain}
+            onClick={() => {
+              if (dragMovedRef.current) return;
+              setPanelRoleId(role.id);
+            }}
+          >
+            <span className={styles.orgCardPhoto}>
+              <ProfilePhoto
+                photo={cardPhoto}
+                wrapClass={styles.orgPhotoWrap}
+                imgClass={styles.orgCardPhotoImg}
+                onRemove={() => removePhotoForRole(role.id, emp)}
+                initialsNode={
+                  <span
+                    className={styles.orgCardPhotoInitials}
+                    style={{ background: `${accent}18`, color: accent }}
+                  >
+                    {emp ? emp.initials : initials(role.name)}
+                  </span>
+                }
+              />
+            </span>
+            <span className={styles.orgCardInfo}>
+              {emp ? (
+                <>
+                  <span className={styles.orgCardPersonName}>{emp.name}</span>
+                  <span className={styles.orgCardRoleTitle}>{role.name}</span>
+                </>
+              ) : (
+                <span className={styles.orgCardPersonName}>{role.name}</span>
+              )}
+              {emp?.pseudonym && (
+                <span className={styles.orgCardPill}>{emp.pseudonym}</span>
+              )}
+              {!emp && userCount > 0 && (
+                <span className={styles.orgCardPillMuted}>{userCount} users</span>
+              )}
+            </span>
+          </button>
+
+          <div
+            className={`${styles.orgCardFooter} ${footerClass}`}
+            style={{ background: deptFooter.color }}
+          >
+            {deptFooter.label}
+          </div>
 
           <div className={styles.orgCardActions}>
             <button
@@ -501,6 +687,46 @@ export default function OrgChartTab({
 
   return (
     <div className={styles.orgWrap}>
+      <div className={styles.orgTopBar}>
+        <div className={styles.orgTopStats}>
+          <span>
+            <strong>{allRoles.length}</strong> roles
+          </span>
+          <span className={styles.orgTopDivider}>·</span>
+          <span>
+            <strong>{filledRoles}</strong> filled
+          </span>
+          <span className={styles.orgTopDivider}>·</span>
+          <span>
+            <strong>{openRoles}</strong> open
+          </span>
+        </div>
+        <div className={styles.orgTopActions}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className={styles.orgPhotoInput}
+            onChange={handlePhotoPick}
+          />
+          <button
+            type="button"
+            className={styles.orgPhotoBtn}
+            disabled={!panelRole}
+            title={
+              panelRole
+                ? panelEmployee
+                  ? `Upload photo for ${panelEmployee.name}`
+                  : `Upload photo for ${panelRole.name}`
+                : "Select a role card first"
+            }
+            onClick={openPhotoPicker}
+          >
+            Add profile photo
+          </button>
+        </div>
+      </div>
+
       <div className={styles.orgHintBar}>
         <strong>Drag</strong> a card onto another and aim at an edge — drop near
         the <strong>top</strong> to make it the manager, the{" "}
@@ -734,6 +960,167 @@ export default function OrgChartTab({
             </div>
           </div>
         </div>
+      )}
+
+      {panelRole && (
+        <>
+          <button
+            type="button"
+            className={styles.orgDrawerBackdrop}
+            aria-label="Close details"
+            onClick={() => setPanelRoleId(null)}
+          />
+          <aside className={styles.orgDrawer} aria-label="Role details">
+            <button
+              type="button"
+              className={styles.orgDrawerClose}
+              aria-label="Close"
+              onClick={() => setPanelRoleId(null)}
+            >
+              ×
+            </button>
+
+            <div className={styles.orgDrawerHero}>
+              <span className={styles.orgDrawerAvatar}>
+                <ProfilePhoto
+                  photo={photoForRole(panelRole.id, panelEmployee)}
+                  wrapClass={styles.orgPhotoWrapDrawer}
+                  imgClass={styles.orgDrawerPhotoImg}
+                  onRemove={() =>
+                    removePhotoForRole(panelRole.id, panelEmployee)
+                  }
+                  initialsNode={
+                    <span
+                      style={{
+                        background: `${accentOf(panelRole)}18`,
+                        color: accentOf(panelRole),
+                      }}
+                    >
+                      {panelEmployee
+                        ? panelEmployee.initials
+                        : initials(panelRole.name)}
+                    </span>
+                  }
+                />
+              </span>
+              <h3 className={styles.orgDrawerName}>
+                {panelEmployee?.name ?? panelRole.name}
+              </h3>
+              {panelEmployee && (
+                <p className={styles.orgDrawerTitle}>{panelRole.name}</p>
+              )}
+              {isCustomRole(panelRole.id) && (
+                <span className={styles.orgDrawerBadge}>Custom role</span>
+              )}
+            </div>
+
+            <div className={styles.orgDrawerTabs}>
+              <span className={styles.orgDrawerTabActive}>Details</span>
+            </div>
+
+            <dl className={styles.orgDrawerDetails}>
+              <div className={styles.orgDrawerRow}>
+                <dt>Reports to</dt>
+                <dd>
+                  {parentRole(allRoles, panelRole)?.name ?? "— Top level —"}
+                </dd>
+              </div>
+              <div className={styles.orgDrawerRow}>
+                <dt>Direct reports</dt>
+                <dd>{childRoles(allRoles, panelRole.id).length}</dd>
+              </div>
+              {panelEmployee && (
+                <>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>P.Name</dt>
+                    <dd>{panelEmployee.pseudonym || "—"}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Employee ID</dt>
+                    <dd>{panelEmployee.id}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Department</dt>
+                    <dd>{deptNameById(panelEmployee.departmentId)}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Reports to (person)</dt>
+                    <dd>
+                      {panelEmployee.reportsTo
+                        ? empNameById(employees, panelEmployee.reportsTo) ?? "—"
+                        : "— Top level —"}
+                    </dd>
+                  </div>
+                </>
+              )}
+              <div className={styles.orgDrawerRow}>
+                <dt>Portal</dt>
+                <dd>{panelRole.portal}</dd>
+              </div>
+              <div className={styles.orgDrawerRow}>
+                <dt>Scope</dt>
+                <dd>{panelRole.scopeLabel}</dd>
+              </div>
+              <div className={styles.orgDrawerRow}>
+                <dt>Hierarchy level</dt>
+                <dd>{panelRole.hierarchyLevel}</dd>
+              </div>
+              <div className={styles.orgDrawerRow}>
+                <dt>Users in role</dt>
+                <dd>{employeeCountByRole(panelRole.id)}</dd>
+              </div>
+              <div className={styles.orgDrawerRow}>
+                <dt>Permissions</dt>
+                <dd>
+                  {permCountByRole(panelRole.id)}/{totalPermCount}
+                </dd>
+              </div>
+            </dl>
+
+            {employeesForRole(panelRole.id).length > 1 && (
+              <div className={styles.orgDrawerMore}>
+                <div className={styles.orgDrawerMoreTitle}>Also in this role</div>
+                <ul className={styles.orgDrawerMoreList}>
+                  {employeesForRole(panelRole.id)
+                    .slice(1)
+                    .map((e) => (
+                      <li key={e.id}>{e.name}</li>
+                    ))}
+                </ul>
+              </div>
+            )}
+
+            <div className={styles.orgDrawerActions}>
+              <button
+                type="button"
+                className={styles.btnOutlinePurple}
+                onClick={openPhotoPicker}
+              >
+                Upload profile photo
+              </button>
+              <button
+                type="button"
+                className={styles.btnSolidPurple}
+                onClick={() => {
+                  setEditId(panelRole.id);
+                  setPanelRoleId(null);
+                }}
+              >
+                Edit role
+              </button>
+              <button
+                type="button"
+                className={styles.btnOutlinePurple}
+                onClick={() => {
+                  onManage(panelRole.id);
+                  setPanelRoleId(null);
+                }}
+              >
+                Manage permissions
+              </button>
+            </div>
+          </aside>
+        </>
       )}
     </div>
   );

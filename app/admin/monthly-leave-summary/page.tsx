@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 import { FaFilter, FaSort, FaSortUp, FaSortDown } from "react-icons/fa";
 import LayoutDashboard from "../../layout-dashboard";
 import styles from "../../break-summary/break-summary.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
 export default function MonthlyLeaveSummaryPage() {
   // Sorting logic and helpers must be inside the component
@@ -81,6 +83,7 @@ export default function MonthlyLeaveSummaryPage() {
   const [leaveData, setLeaveData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
     if (!month) return;
@@ -220,7 +223,21 @@ export default function MonthlyLeaveSummaryPage() {
                   .map((row, idx) => (
                     <tr key={idx}>
                       <td>{row.id}</td>
-                      <td>{row.employeeName}</td>
+                      <td>
+                        <EmployeeTableNameCell
+                          name={row.employeeName}
+                          employeeId={row.id}
+                          photo={getPhoto(row.id)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: row.id,
+                              employee_name: row.employeeName,
+                              pseudonym: row.pseudonym,
+                              department_name: row.department,
+                            })
+                          }
+                        />
+                      </td>
                       <td>{row.pseudonym}</td>
                       <td>{row.department}</td>
                       <td>{row.total}</td>
@@ -235,6 +252,7 @@ export default function MonthlyLeaveSummaryPage() {
           </table>
         </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

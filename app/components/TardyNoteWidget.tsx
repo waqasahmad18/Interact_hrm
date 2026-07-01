@@ -10,8 +10,16 @@ import {
   TARDY_NOTE_OTHER_MAX_WORDS,
   type TardyNoteOption,
 } from "@/lib/tardy-note-options";
+import slackStyles from "./tardy-note-slack.module.css";
 
-export function TardyNoteWidget({ employeeId }: { employeeId: string }) {
+export function TardyNoteWidget({
+  employeeId,
+  variant = "default",
+}: {
+  employeeId: string;
+  variant?: "default" | "slack";
+}) {
+  const isSlack = variant === "slack";
   const [visible, setVisible] = useState(false);
   const [selectedCode, setSelectedCode] = useState("");
   const [otherText, setOtherText] = useState("");
@@ -99,6 +107,66 @@ export function TardyNoteWidget({ employeeId }: { employeeId: string }) {
   };
 
   if (!visible) return null;
+
+  if (isSlack) {
+    return (
+      <div className={slackStyles.wrap}>
+        <div className={slackStyles.panel}>
+          <div className={slackStyles.formRow}>
+            <span className={slackStyles.badge}>Late today</span>
+            <select
+              className={slackStyles.select}
+              value={selectedCode}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSelectedCode(next);
+                if (next !== TARDY_NOTE_OTHER_CODE) setOtherText("");
+                setMessage("");
+              }}
+              aria-label="Tardy justification"
+            >
+              <option value="">Add a note…</option>
+              {TARDY_NOTE_OPTIONS.map((opt: TardyNoteOption) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={slackStyles.submit}
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+            >
+              {submitting ? "…" : "Submit"}
+            </button>
+          </div>
+          {isOther ? (
+            <div>
+              <textarea
+                className={slackStyles.textarea}
+                value={otherText}
+                onChange={(e) => {
+                  setOtherText(e.target.value);
+                  setMessage("");
+                }}
+                placeholder="Write your reason here…"
+                rows={3}
+                maxLength={2500}
+                aria-label="Custom tardy reason"
+              />
+              <div
+                className={`${slackStyles.wordCount} ${otherWordCount > TARDY_NOTE_OTHER_MAX_WORDS ? slackStyles.wordCountError : ""}`}
+              >
+                {otherWordCount}/{TARDY_NOTE_OTHER_MAX_WORDS} words
+              </div>
+            </div>
+          ) : null}
+          {message ? <div className={slackStyles.error}>{message}</div> : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

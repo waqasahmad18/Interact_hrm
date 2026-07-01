@@ -1,8 +1,8 @@
 .pageContainer {
-  padding: 30px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-  height: 100%;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  min-height: auto;
 }
 
 .pageHeader {
@@ -34,10 +34,11 @@
   grid-template-columns: 1fr 1fr 1fr 1fr auto;
   gap: 15px;
   margin-bottom: 25px;
-  background: rgba(255, 255, 255, 0.95);
+  background: #fff;
   padding: 20px;
-  border-radius: 15px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  border: 1px solid #e8edf3;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
   align-items: end;
 }
 
@@ -545,11 +546,12 @@
   display: flex;
   gap: 15px;
   align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 20px;
-  border-radius: 15px;
+  background: #fff;
+  padding: 18px 20px;
+  border-radius: 14px;
   margin-bottom: 20px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e8edf3;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
 }
 
 .searchInput {

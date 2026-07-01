@@ -1,0 +1,330 @@
+/* Clock / break / prayer — colored widgets for clear visibility */
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 15px 17px 13px;
+  border-radius: 14px;
+  min-width: 0;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
+}
+
+.cardTitle::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.6);
+}
+
+/* ── Clock in — green ───────────────────────────────────────── */
+.cardClock {
+  background: linear-gradient(160deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1.5px solid #6ee7b7;
+  border-top: 4px solid #007a5a;
+  box-shadow: 0 4px 14px rgba(0, 122, 90, 0.12);
+}
+
+.cardClock:hover {
+  box-shadow: 0 6px 20px rgba(0, 122, 90, 0.18);
+}
+
+.titleClock {
+  color: #065f46;
+}
+
+.titleClock::before {
+  background: #007a5a;
+}
+
+.cardClock .statusTimer {
+  color: #047857;
+}
+
+.cardClock .summaryValue {
+  color: #065f46;
+}
+
+/* ── Break — gold ───────────────────────────────────────────── */
+.cardBreak {
+  background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #fcd34d;
+  border-top: 4px solid #d97706;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.12);
+}
+
+.cardBreak:hover {
+  box-shadow: 0 6px 20px rgba(217, 119, 6, 0.18);
+}
+
+.titleBreak {
+  color: #92400e;
+}
+
+.titleBreak::before {
+  background: #d97706;
+}
+
+.cardBreak .statusTimer,
+.cardBreak .summaryValue {
+  color: #b45309;
+}
+
+/* ── Prayer — purple ────────────────────────────────────────── */
+.cardPrayer {
+  background: linear-gradient(160deg, #faf5ff 0%, #f3e8ff 100%);
+  border: 1.5px solid #d8b4fe;
+  border-top: 4px solid #611f69;
+  box-shadow: 0 4px 14px rgba(97, 31, 105, 0.12);
+}
+
+.cardPrayer:hover {
+  box-shadow: 0 6px 20px rgba(97, 31, 105, 0.18);
+}
+
+.titlePrayer {
+  color: #581c87;
+}
+
+.titlePrayer::before {
+  background: #611f69;
+}
+
+.cardPrayer .statusTimer,
+.cardPrayer .summaryValue {
+  color: #6b21a8;
+}
+
+/* ── Badges ─────────────────────────────────────────────────── */
+.cardBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #007a5a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 122, 90, 0.25);
+}
+
+.cardBadge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.badgeLive {
+  background: #007a5a;
+  color: #fff;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn {
+  width: auto;
+  align-self: flex-start;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.14);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btnClockIn {
+  background: #007a5a;
+  color: #fff;
+}
+
+.btnClockIn:hover:not(:disabled) {
+  background: #006b4f;
+}
+
+.btnClockOut {
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.btnClockOut:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btnBreak {
+  background: #d97706;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+}
+
+.btnBreak:hover:not(:disabled) {
+  background: #b45309;
+}
+
+.btnBreakEnd {
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.btnBreakEnd:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btnPrayer {
+  background: #611f69;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(97, 31, 105, 0.3);
+}
+
+.btnPrayer:hover:not(:disabled) {
+  background: #4a1850;
+}
+
+.btnPrayerEnd {
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.btnPrayerEnd:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* ── Status & summary ───────────────────────────────────────── */
+.statusBox {
+  margin-top: 11px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.statusLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0;
+}
+
+.statusTimer {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.summaryBox {
+  margin-top: 11px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.summaryLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0;
+}
+
+.summaryValue {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryExceed {
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  margin-top: 0;
+  margin-left: 4px;
+}
+
+.clockRing {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 520px) {
+  .card {
+    padding: 13px 14px 11px;
+  }
+
+  .cardHeader {
+    margin-bottom: 10px;
+  }
+}

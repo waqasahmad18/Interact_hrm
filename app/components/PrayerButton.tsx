@@ -2,6 +2,7 @@
 import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
 import { getDateStringInTimeZone } from "../../lib/timezone";
+import slackStyles from "./clock-widgets-slack.module.css";
 import {
   ATTENDANCE_DATA_CHANGED,
   PRAYER_DATA_CHANGED,
@@ -50,6 +51,7 @@ interface PrayerButtonProps {
   bioStatusLoading?: boolean;
   /** Stop server-sync interval after ending prayer (parent refresh uses Map-based intervals). */
   onClearServerPrayerInterval?: () => void;
+  variant?: "default" | "slack";
 }
 
 export function PrayerButton({
@@ -69,7 +71,9 @@ export function PrayerButton({
   runWithVerify,
   bioStatusLoading = false,
   onClearServerPrayerInterval,
+  variant = "default",
 }: PrayerButtonProps) {
+  const isSlack = variant === "slack";
   const [prayerActionPending, setPrayerActionPending] = React.useState(false);
 
   const handlePrayerStart = async (biometricToken: string | null = null) => {
@@ -169,8 +173,18 @@ export function PrayerButton({
   };
 
   return (
-    <div style={{ background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#8e44ad", marginBottom: 10 }}>Prayer Break</div>
+    <div
+      className={isSlack ? `${slackStyles.card} ${slackStyles.cardPrayer}` : undefined}
+      style={isSlack ? undefined : { background: "#f7fafc", borderRadius: 16, boxShadow: "0 2px 8px #e2e8f0", padding: 24, minWidth: 180, display: "flex", flexDirection: "column", alignItems: "center" }}
+    >
+      {isSlack ? (
+        <div className={slackStyles.cardHeader}>
+          <span className={`${slackStyles.cardTitle} ${slackStyles.titlePrayer}`}>Prayer break</span>
+          {isPrayerOn && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>In prayer</span>}
+        </div>
+      ) : (
+        <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#8e44ad", marginBottom: 10 }}>Prayer Break</div>
+      )}
       <button
         onClick={
           isPrayerOn
@@ -184,7 +198,8 @@ export function PrayerButton({
                   : handlePrayerStart()
         }
         disabled={disabled || prayerActionPending || bioStatusLoading}
-        style={{
+        className={isSlack ? `${slackStyles.btn} ${isPrayerOn ? slackStyles.btnPrayerEnd : slackStyles.btnPrayer}` : undefined}
+        style={isSlack ? undefined : {
           background: isPrayerOn ? "#e74c3c" : "#8e44ad",
           color: "#fff",
           border: "none",
@@ -201,17 +216,27 @@ export function PrayerButton({
         {bioStatusLoading ? "Preparing…" : isPrayerOn ? "End Prayer" : "Start Prayer"}
       </button>
       {isPrayerOn && (
-        <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>
-          <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>
-            {prayerTimerPaused ? "⏸ Verifying…" : "🔴 Prayer Running"}
+        isSlack ? (
+          <div className={slackStyles.statusBox}>
+            <div className={`${slackStyles.statusLabel} ${slackStyles.statusPrayer}`}>
+              {prayerTimerPaused ? "Verifying…" : "Prayer running"}
+            </div>
+            <div className={slackStyles.statusTimer}>{formatTime(prayerTimer)}</div>
           </div>
-          <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(prayerTimer)}</div>
-        </div>
+        ) : (
+          <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>
+            <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>
+              {prayerTimerPaused ? "⏸ Verifying…" : "🔴 Prayer Running"}
+            </div>
+            <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(prayerTimer)}</div>
+          </div>
+        )
       )}
       <PrayerTotals
         employeeId={employeeId}
         isPrayerOn={isPrayerOn}
         livePrayerSeconds={prayerTimer}
+        variant={variant}
       />
     </div>
   );
@@ -222,11 +247,14 @@ function PrayerTotals({
   employeeId,
   isPrayerOn = false,
   livePrayerSeconds = 0,
+  variant = "default",
 }: {
   employeeId: string;
   isPrayerOn?: boolean;
   livePrayerSeconds?: number;
+  variant?: "default" | "slack";
 }) {
+  const isSlack = variant === "slack";
   const [completedPrayerSeconds, setCompletedPrayerSeconds] = React.useState(0);
 
   const displayTotalSeconds =
@@ -351,6 +379,23 @@ function PrayerTotals({
     const s = (seconds % 60).toString().padStart(2, "0");
     return `${h}h ${m}m ${s}s`;
   };
+
+  if (isSlack) {
+    return (
+      <div className={slackStyles.summaryBox}>
+        <div className={`${slackStyles.summaryLabel} ${slackStyles.titlePrayer}`}>Today&apos;s total prayer</div>
+        <div
+          className={slackStyles.summaryValue}
+          style={displayTotalSeconds > 1800 ? { color: "#dc2626" } : undefined}
+        >
+          {formatDuration(displayTotalSeconds)}
+        </div>
+        {displayExceedSeconds > 0 && (
+          <div className={slackStyles.summaryExceed}>Exceed: {formatDuration(displayExceedSeconds)}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>

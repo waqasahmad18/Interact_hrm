@@ -477,31 +477,36 @@ export default function AddEmployeeForm({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "60vh", background: "#F7FAFC", gap: "20px", paddingTop: "30px" }}>
-      {/* Employee Sidebar */}
-      <aside className={styles.sidebar} style={{ marginLeft: "20px", paddingTop: "30px" }}>
+    <div className={styles.pageShell}>
+      <aside className={styles.stepNav}>
+        <p className={styles.stepNavTitle}>Onboarding steps</p>
         <nav className={styles.nav}>
           {employeeTabs.map(tab => {
             const isActive = activeTab === tab.name;
             return (
-              <div
+              <button
+                type="button"
                 key={tab.name}
                 onClick={() => setActiveTab(tab.name)}
                 className={isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
               >
-                <span>{tab.name}</span>
-              </div>
+                {tab.name}
+              </button>
             );
           })}
         </nav>
       </aside>
-      {/* Main Form */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", paddingTop: "30px", paddingRight: "30px" }}>
+      <div className={styles.formPanel}>
         <div className={styles.formCard}>
-          <h2 className={styles.heading}>{isEdit ? 'Edit Employee' : 'Add Employee'}</h2>
+          <header className={styles.formHeader}>
+            <h1 className={styles.heading}>{isEdit ? "Edit Employee" : "Add Employee"}</h1>
+            <p className={styles.subheading}>
+              {activeTab} — complete the fields below and save to continue onboarding.
+            </p>
+          </header>
           {activeTab === "Personal Details" && (
             <form className={styles.form} onSubmit={handleSave}>
-              <div className={styles.row} style={{ justifyContent: "center", alignItems: "center" }}>
+              <div className={styles.profileRow}>
                 <div className={styles.profileImg}>
                   <Image src={profileImg || "/avatar.svg"} alt="Profile" width={90} height={90} />
                   <label htmlFor="profileImg" className={styles.uploadBtn}>
@@ -509,35 +514,35 @@ export default function AddEmployeeForm({
                     <input id="profileImg" type="file" accept=".jpg,.png,.gif" style={{ display: "none" }} onChange={handleImageChange} />
                   </label>
                 </div>
-                <div className={styles.note}>
-                  Accepts jpg, png, gif up to 1MB.<br />Recommended dimensions: 200px X 200px
-                </div>
+                <p className={styles.note}>
+                  Accepts jpg, png, gif up to 1MB.<br />Recommended dimensions: 200px × 200px
+                </p>
               </div>
               <div className={styles.row}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>First Name</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>First Name</label>
                   <input className={styles.input} type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Last Name</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Last Name</label>
                   <input className={styles.input} type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pseudo Name</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Pseudo Name</label>
                   <input className={styles.input} type="text" placeholder="Pseudonym" value={middleName} onChange={e => setMiddleName(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employee Id</label>
+                <label className={styles.fieldLabel}>Employee Id</label>
                 <input className={styles.input} type="text" placeholder="Employee Id (auto)" value={employeeId || ''} readOnly />
               </div>
               <div className={styles.row}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Date of Birth</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Date of Birth</label>
                   <input className={styles.input} type="date" placeholder="Date of Birth" value={dob} onChange={e => setDob(e.target.value)} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Gender</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Gender</label>
                   <select className={styles.select} value={gender} onChange={e => setGender(e.target.value)}>
                     <option value="">Gender</option>
                     <option value="male">Male</option>
@@ -545,8 +550,8 @@ export default function AddEmployeeForm({
                     <option value="other">Other</option>
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Marital Status</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Marital Status</label>
                   <select className={styles.select} value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)}>
                     <option value="">Marital Status</option>
                     <option value="single">Single</option>
@@ -556,23 +561,23 @@ export default function AddEmployeeForm({
                 </div>
               </div>
               <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Nationality</label>
+                <label className={styles.fieldLabel}>Nationality</label>
                 <div className={styles.row}>
                   <input className={styles.input} type="text" placeholder="Nationality" value={nationality} onChange={e => setNationality(e.target.value)} />
                 </div>
               </div>
               <div className={styles.row}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>CNIC #</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>CNIC #</label>
                   <input className={styles.input} type="text" placeholder="CNIC #" value={cnicNumber} onChange={e => setCnicNumber(e.target.value)} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>CNIC Address</label>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>CNIC Address</label>
                   <input className={styles.input} type="text" placeholder="CNIC Address" value={cnicAddress} onChange={e => setCnicAddress(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Employment Status</label>
+                <label className={styles.fieldLabel}>Employment Status</label>
                 <select 
                   className={styles.select} 
                   value={employmentStatus} 
@@ -585,7 +590,7 @@ export default function AddEmployeeForm({
                 </select>
               </div>
               <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Role</label>
+                <label className={styles.fieldLabel}>Role</label>
                 <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
                   <option value="">Select Role</option>
                   <option value="BOD/CEO">BOD/CEO</option>
@@ -595,44 +600,44 @@ export default function AddEmployeeForm({
                   <option value="Officer">Officer</option>
                 </select>
               </div>
-              <div className={styles.row} style={{ alignItems: "center" }}>
-                <span style={{ color: "#0052CC", fontWeight: "600", fontSize: "0.95rem" }}>Create Login Details</span>
+              <div className={styles.toggleRow}>
+                <span className={styles.toggleLabel}>Create Login Details</span>
                 <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>
                   <input type="checkbox" checked={createLogin} onChange={e => setCreateLogin(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-                  <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: createLogin ? "#0052CC" : "#E2E8F0", borderRadius: 22, transition: "background 0.2s" }}></span>
-                  <span style={{ position: "absolute", left: createLogin ? 20 : 2, top: 2, width: 18, height: 18, background: "#fff", borderRadius: "50%", boxShadow: "0 1px 4px rgba(0,82,204,0.12)", transition: "left 0.2s" }}></span>
+                  <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: createLogin ? "#611f69" : "#E2E8F0", borderRadius: 22, transition: "background 0.2s" }}></span>
+                  <span style={{ position: "absolute", left: createLogin ? 20 : 2, top: 2, width: 18, height: 18, background: "#fff", borderRadius: "50%", boxShadow: "0 1px 4px rgba(97,31,105,0.15)", transition: "left 0.2s" }}></span>
                 </label>
               </div>
               {createLogin && (
-                <div style={{ background: "#F7FAFC", borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                <div className={styles.loginBox}>
                   <div className={styles.row}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Username*</label>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel}>Username*</label>
                       <input className={styles.input} type="text" placeholder="Username*" value={username} onChange={e => setUsername(e.target.value)} required />
                     </div>
                     <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Status</label>
+                      <div className={styles.field}>
+                        <label className={styles.fieldLabel}>Status</label>
                         <div style={{ display: "flex", gap: 12 }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                             <input type="radio" name="status" value="enabled" checked={status === "enabled"} onChange={() => setStatus("enabled")}/>
-                            <span style={{ color: status === "enabled" ? "#0052CC" : "#888", fontWeight: 500 }}>Enabled</span>
+                            <span className={status === "enabled" ? styles.radioLabelActive : styles.radioLabel}>Enabled</span>
                           </label>
                           <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                             <input type="radio" name="status" value="disabled" checked={status === "disabled"} onChange={() => setStatus("disabled")}/>
-                            <span style={{ color: status === "disabled" ? "#0052CC" : "#888", fontWeight: 500 }}>Disabled</span>
+                            <span className={status === "disabled" ? styles.radioLabelActive : styles.radioLabel}>Disabled</span>
                           </label>
                         </div>
                       </div>
                     </div>
                   </div>
                   <div className={styles.row}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Password*</label>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel}>Password*</label>
                       <input className={styles.input} type="password" placeholder="Password*" value={password} onChange={e => setPassword(e.target.value)} required={!isEdit} />
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Confirm Password*</label>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel}>Confirm Password*</label>
                       <input className={styles.input} type="password" placeholder="Confirm Password*" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required={!isEdit} />
                     </div>
                   </div>
@@ -650,39 +655,38 @@ export default function AddEmployeeForm({
           )}
           {activeTab === "Contact Details" && (
             <div>
-              <h2 className={styles.heading}>Contact Details</h2>
               {employeeId && (
-                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                <div className={styles.employeeBadge}>
                   Employee: {firstName} {lastName} (ID: {employeeId})
                 </div>
               )}
               <form className={styles.form} style={{ width: "100%" }} onSubmit={handleContactSave}>
-                <div style={{ fontWeight: 600, fontSize: "1.1rem", marginBottom: 10 }}>Address</div>
+                <p className={styles.sectionTitle}>Address</p>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Street 1</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Street 1</label>
                     <input className={styles.input} type="text" placeholder="Street 1" value={contactAddress.street1} onChange={e => setContactAddress(a => ({ ...a, street1: e.target.value }))} required />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Street 2</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Street 2</label>
                     <input className={styles.input} type="text" placeholder="Street 2" value={contactAddress.street2} onChange={e => setContactAddress(a => ({ ...a, street2: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>City</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>City</label>
                     <input className={styles.input} type="text" placeholder="City" value={contactAddress.city} onChange={e => setContactAddress(a => ({ ...a, city: e.target.value }))} required />
                   </div>
                 </div>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>State/Province</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>State/Province</label>
                     <input className={styles.input} type="text" placeholder="State/Province" value={contactAddress.state} onChange={e => setContactAddress(a => ({ ...a, state: e.target.value }))} required />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Zip/Postal Code</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Zip/Postal Code</label>
                     <input className={styles.input} type="text" placeholder="Zip/Postal Code" value={contactAddress.zip} onChange={e => setContactAddress(a => ({ ...a, zip: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Country</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Country</label>
                     <select className={styles.select} value={contactAddress.country} onChange={e => setContactAddress(a => ({ ...a, country: e.target.value }))} required>
                       <option value="">-- Select --</option>
                       <option value="Pakistan">Pakistan</option>
@@ -694,109 +698,107 @@ export default function AddEmployeeForm({
                     </select>
                   </div>
                 </div>
-                <div style={{ fontWeight: 600, fontSize: "1.1rem", margin: "18px 0 10px 0" }}>Telephone</div>
+                <p className={styles.sectionTitle}>Telephone</p>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Home</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Home</label>
                     <input className={styles.input} type="text" placeholder="Home" value={contactTelephone.home} onChange={e => setContactTelephone(t => ({ ...t, home: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Mobile</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Mobile</label>
                     <input className={styles.input} type="text" placeholder="Mobile" value={contactTelephone.mobile} onChange={e => setContactTelephone(t => ({ ...t, mobile: e.target.value }))} required />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Work</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Work</label>
                     <input className={styles.input} type="text" placeholder="Work" value={contactTelephone.work} onChange={e => setContactTelephone(t => ({ ...t, work: e.target.value }))} />
                   </div>
                 </div>
-                <div style={{ fontWeight: 600, fontSize: "1.1rem", margin: "18px 0 10px 0" }}>Email</div>
+                <p className={styles.sectionTitle}>Email</p>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Work Email</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Work Email</label>
                     <input className={styles.input} type="email" placeholder="Work Email" value={contactEmail.work} onChange={e => setContactEmail(em => ({ ...em, work: e.target.value }))} required />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Other Email</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Other Email</label>
                     <input className={styles.input} type="email" placeholder="Other Email" value={contactEmail.other} onChange={e => setContactEmail(em => ({ ...em, other: e.target.value }))} />
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
+                <div className={styles.actionsLeft}>
+                  <button type="submit" className={styles.saveBtn}>Save</button>
                 </div>
               </form>
             </div>
           )}
           {activeTab === "Emergency Contacts" && (
             <div>
-              <h2 className={styles.heading}>Emergency Contacts</h2>
               {employeeId && (
-                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                <div className={styles.employeeBadge}>
                   Employee: {firstName} {lastName} (ID: {employeeId})
                 </div>
               )}
               <form className={styles.form} style={{ width: '100%' }} onSubmit={handleEmergencyContactsSave}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>Emergency Contact 1</div>
+                <p className={styles.sectionTitle}>Emergency Contact 1</p>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Name</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Name</label>
                     <input className={styles.input} placeholder="Name" value={emergencyContacts[0].contact_name} onChange={e => handleEmergencyContactsChange(0, 'contact_name', e.target.value)} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Relationship</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Relationship</label>
                     <input className={styles.input} placeholder="Relationship" value={emergencyContacts[0].relationship} onChange={e => handleEmergencyContactsChange(0, 'relationship', e.target.value)} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Phone</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Phone</label>
                     <input className={styles.input} placeholder="Phone" value={emergencyContacts[0].phone} onChange={e => handleEmergencyContactsChange(0, 'phone', e.target.value)} />
                   </div>
                 </div>
-                <div style={{ fontWeight: 600, marginBottom: 8, marginTop: 12 }}>Emergency Contact 2</div>
+                <p className={styles.sectionTitle}>Emergency Contact 2</p>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Name</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Name</label>
                     <input className={styles.input} placeholder="Name" value={emergencyContacts[1].contact_name} onChange={e => handleEmergencyContactsChange(1, 'contact_name', e.target.value)} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Relationship</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Relationship</label>
                     <input className={styles.input} placeholder="Relationship" value={emergencyContacts[1].relationship} onChange={e => handleEmergencyContactsChange(1, 'relationship', e.target.value)} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Phone</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Phone</label>
                     <input className={styles.input} placeholder="Phone" value={emergencyContacts[1].phone} onChange={e => handleEmergencyContactsChange(1, 'phone', e.target.value)} />
                   </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Save</button>
+                <div className={styles.actionsLeft}>
+                  <button type="submit" className={styles.saveBtn}>Save</button>
                 </div>
               </form>
             </div>
           )}
           {activeTab === "Job Details" && (
             <div>
-              <h2 className={styles.heading}>Job Details</h2>
               {employeeId && (
-                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                <div className={styles.employeeBadge}>
                   Employee: {firstName} {lastName} (ID: {employeeId})
                 </div>
               )}
               <form className={styles.form} style={{ width: "100%" }} onSubmit={handleJobDetailsSave}>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Date of Joining</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Date of Joining</label>
                     <input className={styles.input} type="date" placeholder="Date of Joining" value={jobDetails.joinedDate} onChange={e => setJobDetails(j => ({ ...j, joinedDate: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Title</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Job Title</label>
                     <input className={styles.input} type="text" placeholder="Job Title" value={jobDetails.jobTitle} onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))} />
                   </div>
                 </div>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Specification</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Job Specification</label>
                     <input className={styles.input} type="text" placeholder="Job Specification" value={jobDetails.jobSpecification} onChange={e => setJobDetails(j => ({ ...j, jobSpecification: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Job Category</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Job Category</label>
                     <select className={styles.select} value={jobDetails.jobCategory} onChange={e => setJobDetails(j => ({ ...j, jobCategory: e.target.value }))}>
                       <option value="">-- Select --</option>
                       <option value="IT">IT</option>
@@ -810,8 +812,8 @@ export default function AddEmployeeForm({
                   </div>
                 </div>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Department</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Department</label>
                     <select className={styles.select} value={jobDetails.departmentId || ""} onChange={e => setJobDetails(j => ({ ...j, departmentId: e.target.value }))} required>
                       <option value="">-- Select Department --</option>
                       {departments.map(dep => (
@@ -819,37 +821,36 @@ export default function AddEmployeeForm({
                       ))}
                     </select>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Sub Unit</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Sub Unit</label>
                     <input className={styles.input} type="text" placeholder="Sub Unit" value={jobDetails.subUnit} onChange={e => setJobDetails(j => ({ ...j, subUnit: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Location</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Location</label>
                     <input className={styles.input} type="text" placeholder="Location" value={jobDetails.location} onChange={e => setJobDetails(j => ({ ...j, location: e.target.value }))} />
                   </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
+                <div className={styles.actionsLeft}>
+                  <button type="submit" className={styles.saveBtn}>Save</button>
                 </div>
               </form>
             </div>
           )}
           {activeTab === "Salary" && (
             <div>
-              <h2 className={styles.heading}>Add Salary Component</h2>
               {employeeId && (
-                <div style={{fontWeight:600, color:'#0052CC', marginBottom:8}}>
+                <div className={styles.employeeBadge}>
                   Employee: {firstName} {lastName} (ID: {employeeId})
                 </div>
               )}
               <form className={styles.form} style={{ width: "100%" }} onSubmit={handleSalarySave}>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Salary Component*</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Salary Component*</label>
                     <input className={styles.input} type="text" placeholder="Salary Component*" value={salaryDetails.component} onChange={e => setSalaryDetails(s => ({ ...s, component: e.target.value }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pay Grade</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Pay Grade</label>
                     <select className={styles.select} value={salaryDetails.payGrade} onChange={e => setSalaryDetails(s => ({ ...s, payGrade: e.target.value }))}>
                       <option value="">-- Select --</option>
                       <option value="A">A</option>
@@ -857,8 +858,8 @@ export default function AddEmployeeForm({
                       <option value="C">C</option>
                     </select>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Pay Frequency</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Pay Frequency</label>
                     <select className={styles.select} value={salaryDetails.payFrequency} onChange={e => setSalaryDetails(s => ({ ...s, payFrequency: e.target.value }))}>
                       <option value="">-- Select --</option>
                       <option value="Monthly">Monthly</option>
@@ -868,8 +869,8 @@ export default function AddEmployeeForm({
                   </div>
                 </div>
                 <div className={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Currency</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Currency</label>
                     <select className={styles.select} value={salaryDetails.currency} onChange={e => setSalaryDetails(s => ({ ...s, currency: e.target.value }))}>
                       <option value="">-- Select --</option>
                       <option value="PKR">PKR</option>
@@ -878,8 +879,8 @@ export default function AddEmployeeForm({
                       <option value="AED">AED</option>
                     </select>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#0f1d40", fontSize: "0.95rem" }}>Amount*</label>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>Amount*</label>
                     <input className={styles.input} type="number" placeholder="Amount*" value={salaryDetails.amount} onChange={e => setSalaryDetails(s => ({ ...s, amount: e.target.value }))} />
                   </div>
                 </div>
@@ -910,16 +911,15 @@ export default function AddEmployeeForm({
                     </div>
                   </div>
                 )}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 18 }}>
-                  <button type="button" style={{ background: "#fff", color: "#8BC34A", border: "1px solid #8BC34A", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer" }}>Cancel</button>
-                  <button type="submit" style={{ background: "#8BC34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 32px", fontWeight: 600, fontSize: "1.08rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,82,204,0.10)" }}>Save</button>
+                <div className={styles.actions}>
+                  <button type="button" className={styles.cancelBtn}>Cancel</button>
+                  <button type="submit" className={styles.saveBtn}>Save</button>
                 </div>
               </form>
             </div>
           )}
           {activeTab === "Attachments" && (
             <div>
-              <h2 className={styles.heading}>Attachments</h2>
               {employeeId ? (
                 <AttachmentsUploader employeeId={employeeId} />
               ) : (
@@ -927,7 +927,7 @@ export default function AddEmployeeForm({
               )}
             </div>
           )}
-          <div className={styles.note}>* Required</div>
+          <p className={styles.requiredNote}>* Required</p>
         </div>
       </div>
     </div>

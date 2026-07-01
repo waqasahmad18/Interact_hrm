@@ -1,7 +1,9 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "./shift-scheduler.module.css";
+import adminStyles from "../admin-page.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
+import shiftStyles from "./shift-scheduler.module.css";
 import { FaClock, FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from "react-icons/fa";
 
 interface Shift {
@@ -31,14 +33,14 @@ export default function ShiftSchedulerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  
+
   // New shift form state
   const [newShift, setNewShift] = useState({
     shift_name: "",
     clock_in_time: "",
     clock_out_time: "",
     overtime: false,
-    work_days: "Mon-Fri"
+    work_days: "Mon-Fri",
   });
 
   // Edit mode state
@@ -48,7 +50,7 @@ export default function ShiftSchedulerPage() {
     clock_in_time: "",
     clock_out_time: "",
     overtime: false,
-    work_days: ""
+    work_days: "",
   });
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
 
@@ -121,7 +123,7 @@ export default function ShiftSchedulerPage() {
   const renderSortIndicator = (key: SortKey) => {
     const indicator = getSortIndicator(key);
     if (!indicator) return null;
-    return <span className={styles.sortIndicator}>{indicator}</span>;
+    return <span className={shiftStyles.sortIndicator}>{indicator}</span>;
   };
 
   const getAriaSort = (key: SortKey): "ascending" | "descending" | "none" => {
@@ -182,8 +184,8 @@ export default function ShiftSchedulerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newShift,
-          total_hours: totalHours
-        })
+          total_hours: totalHours,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -193,7 +195,7 @@ export default function ShiftSchedulerPage() {
           clock_in_time: "",
           clock_out_time: "",
           overtime: false,
-          work_days: "Mon-Fri"
+          work_days: "Mon-Fri",
         });
         fetchShifts();
         setTimeout(() => setSuccess(""), 3000);
@@ -212,7 +214,7 @@ export default function ShiftSchedulerPage() {
       clock_in_time: shift.shift_in,
       clock_out_time: shift.shift_out,
       overtime: !!shift.overtime_daily,
-      work_days: shift.working_days
+      work_days: shift.working_days,
     });
   };
 
@@ -228,8 +230,8 @@ export default function ShiftSchedulerPage() {
         body: JSON.stringify({
           id: editingId,
           ...editShift,
-          total_hours: totalHours
-        })
+          total_hours: totalHours,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -250,7 +252,7 @@ export default function ShiftSchedulerPage() {
 
     try {
       const res = await fetch(`/api/master-shifts?id=${id}`, {
-        method: "DELETE"
+        method: "DELETE",
       });
       const data = await res.json();
       if (data.success) {
@@ -267,226 +269,213 @@ export default function ShiftSchedulerPage() {
 
   return (
     <LayoutDashboard>
-      <div className={styles.page}>
-        <div className={styles.header} style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18 }}>
-          <div>
-            <h1 className={styles.title} style={{ margin: 0, marginBottom: 6 }}>
-              <FaClock className={styles.titleIcon} />
-              Shift Scheduler
-            </h1>
-            <p className={styles.subtitle} style={{ margin: 0 }}>Create and manage predefined shift schedules</p>
-          </div>
-        </div>
+      <div className={adminStyles.page}>
+        <div className={adminStyles.inner}>
+          <h1 className={adminStyles.title}>
+            <FaClock style={{ marginRight: 10, color: "#611f69" }} />
+            Shift Scheduler
+          </h1>
+          <p className={adminStyles.subtitle}>Create and manage predefined shift schedules</p>
 
-        {error && (
-          <div className={styles.alert} style={{ background: "#fff1f0", color: "#b91c1c", border: "1px solid #f4c7c2" }}>
-            {error}
-          </div>
-        )}
+          {error && <p className={adminStyles.alertError}>{error}</p>}
+          {success && <p className={adminStyles.alertSuccess}>{success}</p>}
 
-        {success && (
-          <div className={styles.alert} style={{ background: "#ecfdf3", color: "#166534", border: "1px solid #b7e4c7" }}>
-            {success}
-          </div>
-        )}
-
-        {/* Create New Shift Form */}
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>Create New Shift</h2>
-          <div className={styles.form}>
-            <div className={styles.row}>
-              <div className={styles.field}>
-                <label className={styles.label}>Shift Name *</label>
+          <div className={adminStyles.card}>
+            <h2 className={adminStyles.cardTitle}>Create New Shift</h2>
+            <div className={adminStyles.formGrid}>
+              <div className={adminStyles.field}>
+                <label>Shift Name *</label>
                 <input
                   type="text"
-                  className={styles.input}
+                  className={adminStyles.input}
                   placeholder="e.g., Morning, Afternoon, Night"
                   value={newShift.shift_name}
-                  onChange={e => setNewShift({ ...newShift, shift_name: e.target.value })}
+                  onChange={(e) => setNewShift({ ...newShift, shift_name: e.target.value })}
                 />
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Clock IN Time *</label>
+              <div className={adminStyles.field}>
+                <label>Clock IN Time *</label>
                 <input
                   type="time"
-                  className={styles.input}
+                  className={adminStyles.input}
                   value={newShift.clock_in_time}
-                  onChange={e => setNewShift({ ...newShift, clock_in_time: e.target.value })}
+                  onChange={(e) => setNewShift({ ...newShift, clock_in_time: e.target.value })}
                 />
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Clock OUT Time *</label>
+              <div className={adminStyles.field}>
+                <label>Clock OUT Time *</label>
                 <input
                   type="time"
-                  className={styles.input}
+                  className={adminStyles.input}
                   value={newShift.clock_out_time}
-                  onChange={e => setNewShift({ ...newShift, clock_out_time: e.target.value })}
+                  onChange={(e) => setNewShift({ ...newShift, clock_out_time: e.target.value })}
                 />
               </div>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.field}>
-                <label className={styles.label}>Work Days</label>
+              <div className={adminStyles.field}>
+                <label>Work Days</label>
                 <input
                   type="text"
-                  className={styles.input}
+                  className={adminStyles.input}
                   placeholder="e.g., Mon-Fri, Mon-Sat"
                   value={newShift.work_days}
-                  onChange={e => setNewShift({ ...newShift, work_days: e.target.value })}
+                  onChange={(e) => setNewShift({ ...newShift, work_days: e.target.value })}
                 />
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>
+              <div className={adminStyles.field}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0 }}>
                   <input
                     type="checkbox"
                     checked={newShift.overtime}
-                    onChange={e => setNewShift({ ...newShift, overtime: e.target.checked })}
-                    style={{ marginRight: 8 }}
+                    onChange={(e) => setNewShift({ ...newShift, overtime: e.target.checked })}
                   />
                   Overtime Applicable
                 </label>
               </div>
             </div>
-
-            <button className={styles.primaryButton} onClick={handleCreateShift}>
+            <button
+              type="button"
+              className={adminStyles.btnPrimary}
+              onClick={handleCreateShift}
+              style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 8 }}
+            >
               <FaPlus /> Create Shift
             </button>
           </div>
-        </div>
 
-        {/* Predefined Shifts Table */}
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>Predefined Shifts</h2>
-          
-          {loading ? (
-            <div className={styles.loading}>Loading shifts...</div>
-          ) : shifts.length === 0 ? (
-            <div className={styles.empty}>No shifts created yet. Create your first shift above.</div>
-          ) : (
-            <div className={styles.tableWrapper}>
-              <table className={`${styles.table} ${editingId !== null ? styles.tableEditing : ""}`}>
-                <thead>
-                  <tr>
-                    <th aria-sort={getAriaSort("name")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("name")}>
-                        Shift Name {renderSortIndicator("name")}
-                      </button>
-                    </th>
-                    <th aria-sort={getAriaSort("shift_in")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("shift_in")}>
-                        Clock IN Time {renderSortIndicator("shift_in")}
-                      </button>
-                    </th>
-                    <th aria-sort={getAriaSort("shift_out")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("shift_out")}>
-                        Clock OUT Time {renderSortIndicator("shift_out")}
-                      </button>
-                    </th>
-                    <th aria-sort={getAriaSort("total_hours")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("total_hours")}>
-                        Total Hours {renderSortIndicator("total_hours")}
-                      </button>
-                    </th>
-                    <th aria-sort={getAriaSort("overtime_daily")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("overtime_daily")}>
-                        Overtime {renderSortIndicator("overtime_daily")}
-                      </button>
-                    </th>
-                    <th aria-sort={getAriaSort("working_days")}>
-                      <button type="button" className={styles.sortHeaderButton} onClick={() => handleSort("working_days")}>
-                        Work Days {renderSortIndicator("working_days")}
-                      </button>
-                    </th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedShifts.map(shift => (
-                    <tr key={shift.id}>
-                      {editingId === shift.id ? (
-                        <>
-                          <td>
-                            <input
-                              type="text"
-                              className={`${styles.input} ${styles.tableInput}`}
-                              value={editShift.shift_name}
-                              onChange={e => setEditShift({ ...editShift, shift_name: e.target.value })}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="time"
-                              className={`${styles.input} ${styles.tableInput}`}
-                              value={editShift.clock_in_time}
-                              onChange={e => setEditShift({ ...editShift, clock_in_time: e.target.value })}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="time"
-                              className={`${styles.input} ${styles.tableInput}`}
-                              value={editShift.clock_out_time}
-                              onChange={e => setEditShift({ ...editShift, clock_out_time: e.target.value })}
-                            />
-                          </td>
-                          <td>{calculateTotalHours(editShift.clock_in_time, editShift.clock_out_time)}h</td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={editShift.overtime}
-                              onChange={e => setEditShift({ ...editShift, overtime: e.target.checked })}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className={`${styles.input} ${styles.tableInput}`}
-                              value={editShift.work_days}
-                              onChange={e => setEditShift({ ...editShift, work_days: e.target.value })}
-                            />
-                          </td>
-                          <td>
-                            <div className={styles.actions}>
-                              <button className={styles.saveButton} onClick={handleSaveEdit}>
-                                <FaSave />
-                              </button>
-                              <button className={styles.cancelButton} onClick={() => setEditingId(null)}>
-                                <FaTimes />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className={styles.shiftName}>{shift.name}</td>
-                          <td>{formatTimeTo12Hour(shift.shift_in)}</td>
-                          <td>{formatTimeTo12Hour(shift.shift_out)}</td>
-                          <td>{calculateTotalHours(shift.shift_in, shift.shift_out)}h</td>
-                          <td>
-                            <span className={shift.overtime_daily ? styles.yes : styles.no}>
-                              {shift.overtime_daily ? "Yes" : "No"}
-                            </span>
-                          </td>
-                          <td>{shift.working_days}</td>
-                          <td>
-                            <div className={styles.actions}>
-                              <button className={styles.editButton} onClick={() => handleEdit(shift)}>
-                                <FaEdit />
-                              </button>
-                              <button className={styles.deleteButton} onClick={() => handleDelete(shift.id)}>
-                                <FaTrash />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      )}
+          <div className={tableStyles.breakSummaryContainer}>
+            <h2 className={tableStyles.pageTitle}>Predefined Shifts</h2>
+
+            {loading ? (
+              <p className={tableStyles.breakSummaryNoRecords}>Loading shifts...</p>
+            ) : shifts.length === 0 ? (
+              <p className={tableStyles.breakSummaryNoRecords}>
+                No shifts created yet. Create your first shift above.
+              </p>
+            ) : (
+              <div className={tableStyles.breakSummaryTableWrapper}>
+                <table className={tableStyles.breakSummaryTable} style={{ minWidth: 980 }}>
+                  <thead>
+                    <tr>
+                      <th aria-sort={getAriaSort("name")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("name")}>
+                          Shift Name {renderSortIndicator("name")}
+                        </button>
+                      </th>
+                      <th aria-sort={getAriaSort("shift_in")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("shift_in")}>
+                          Clock IN {renderSortIndicator("shift_in")}
+                        </button>
+                      </th>
+                      <th aria-sort={getAriaSort("shift_out")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("shift_out")}>
+                          Clock OUT {renderSortIndicator("shift_out")}
+                        </button>
+                      </th>
+                      <th aria-sort={getAriaSort("total_hours")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("total_hours")}>
+                          Total Hours {renderSortIndicator("total_hours")}
+                        </button>
+                      </th>
+                      <th aria-sort={getAriaSort("overtime_daily")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("overtime_daily")}>
+                          Overtime {renderSortIndicator("overtime_daily")}
+                        </button>
+                      </th>
+                      <th aria-sort={getAriaSort("working_days")}>
+                        <button type="button" className={shiftStyles.sortHeaderButton} onClick={() => handleSort("working_days")}>
+                          Work Days {renderSortIndicator("working_days")}
+                        </button>
+                      </th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {sortedShifts.map((shift) => (
+                      <tr key={shift.id}>
+                        {editingId === shift.id ? (
+                          <>
+                            <td>
+                              <input
+                                type="text"
+                                className={adminStyles.input}
+                                value={editShift.shift_name}
+                                onChange={(e) => setEditShift({ ...editShift, shift_name: e.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                className={adminStyles.input}
+                                value={editShift.clock_in_time}
+                                onChange={(e) => setEditShift({ ...editShift, clock_in_time: e.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                className={adminStyles.input}
+                                value={editShift.clock_out_time}
+                                onChange={(e) => setEditShift({ ...editShift, clock_out_time: e.target.value })}
+                              />
+                            </td>
+                            <td>{calculateTotalHours(editShift.clock_in_time, editShift.clock_out_time)}h</td>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={editShift.overtime}
+                                onChange={(e) => setEditShift({ ...editShift, overtime: e.target.checked })}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className={adminStyles.input}
+                                value={editShift.work_days}
+                                onChange={(e) => setEditShift({ ...editShift, work_days: e.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <div className={shiftStyles.actions}>
+                                <button type="button" className={shiftStyles.saveButton} onClick={handleSaveEdit}>
+                                  <FaSave />
+                                </button>
+                                <button type="button" className={shiftStyles.cancelButton} onClick={() => setEditingId(null)}>
+                                  <FaTimes />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ fontWeight: 700, color: "#611f69" }}>{shift.name}</td>
+                            <td>{formatTimeTo12Hour(shift.shift_in)}</td>
+                            <td>{formatTimeTo12Hour(shift.shift_out)}</td>
+                            <td>{calculateTotalHours(shift.shift_in, shift.shift_out)}h</td>
+                            <td>
+                              <span className={shift.overtime_daily ? shiftStyles.yes : shiftStyles.no}>
+                                {shift.overtime_daily ? "Yes" : "No"}
+                              </span>
+                            </td>
+                            <td>{shift.working_days}</td>
+                            <td>
+                              <div className={shiftStyles.actions}>
+                                <button type="button" className={shiftStyles.editButton} onClick={() => handleEdit(shift)}>
+                                  <FaEdit />
+                                </button>
+                                <button type="button" className={shiftStyles.deleteButton} onClick={() => handleDelete(shift.id)}>
+                                  <FaTrash />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </LayoutDashboard>

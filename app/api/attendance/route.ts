@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
         e.pseudonym AS pseudonym,
         e.gender AS gender,
         d.name AS department_name,
+        ec.email_work,
+        ec.email_other,
         sa.shift_name AS shift_name,
         sa.start_time AS shift_start_time,
         sa.end_time AS shift_end_time,
@@ -55,6 +57,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN hrm_employees e ON ea.employee_id = e.id
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
       LEFT JOIN departments d ON j.department_id = d.id
+      LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
       LEFT JOIN shift_assignments sa
         ON sa.employee_id = ea.employee_id
        AND sa.assigned_date = (
@@ -134,6 +137,7 @@ export async function GET(req: NextRequest) {
         late_minutes,
         pseudonym: row.pseudonym || null,
         gender: row.gender || null,
+        email: row.email_work || row.email_other || null,
       };
     });
     

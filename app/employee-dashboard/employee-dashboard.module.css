@@ -1,0 +1,933 @@
+/* Employee dashboard — Nova bento layout */
+
+.page {
+  min-height: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #f4f6f9 0%, #f6f8fb 40%, #f3f5f8 100%);
+  padding: 20px 28px 40px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.inner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+/* ── Stats ribbon — interactive colorful cards ───────────────── */
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.statCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: #fff;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.statCard:hover {
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+
+.statCard:active {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
+}
+
+.statCardPurple {
+  background: linear-gradient(145deg, #7c3aed 0%, #611f69 55%, #4a1850 100%);
+}
+
+.statCardGreen {
+  background: linear-gradient(145deg, #10b981 0%, #007a5a 55%, #065f46 100%);
+}
+
+.statCardGold {
+  background: linear-gradient(145deg, #fbbf24 0%, #d97706 55%, #b45309 100%);
+}
+
+.statCardRed {
+  background: linear-gradient(145deg, #f87171 0%, #dc2626 55%, #b91c1c 100%);
+}
+
+.liveDot {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.35);
+}
+
+.statCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.statIconBubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.ringWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ringArc {
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ringPct {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.statValue {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.statLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  margin-top: 5px;
+}
+
+.statHint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 2px;
+}
+
+.statBar {
+  margin-top: 10px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.statBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: width 0.2s ease;
+}
+
+.statBarFillGold {
+  background: #fff7ed;
+}
+
+.statBarFillRed {
+  background: #fecaca;
+}
+
+/* ── Weekly pulse strip ─────────────────────────────────────── */
+.pulseStrip {
+  position: relative;
+  margin-bottom: 22px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(120deg, #1e1b4b 0%, #312e81 35%, #4c1d95 70%, #611f69 100%);
+  box-shadow: 0 12px 40px rgba(97, 31, 105, 0.25);
+}
+
+.pulseGlow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 80% at 0% 50%, rgba(16, 185, 129, 0.25) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 60% at 100% 30%, rgba(251, 191, 36, 0.2) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.pulseInner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 20px;
+  align-items: center;
+  padding: 20px 22px;
+}
+
+.pulseLabel {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dayPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dayPill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 52px;
+  padding: 10px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.dayPill:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.dayPill_onTime {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.dayPill_tardy {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(220, 38, 38, 0.2);
+}
+
+.dayPill_absent {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0.65;
+}
+
+.dayPillToday {
+  box-shadow: 0 0 0 2px #fbbf24, 0 4px 16px rgba(251, 191, 36, 0.35);
+}
+
+.dayPillLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dayPillHours {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.dayPillLate {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+}
+
+.pulseScore {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.scoreNum {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.03em;
+}
+
+.scoreCaption {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.pulseChips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.pulseChip {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  transition: transform 0.15s;
+}
+
+.pulseChip:hover {
+  transform: translateX(4px);
+}
+
+.pulseChip strong {
+  font-weight: 800;
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.chipGreen { background: rgba(16, 185, 129, 0.35); border: 1px solid rgba(52, 211, 153, 0.4); }
+.chipRed { background: rgba(220, 38, 38, 0.3); border: 1px solid rgba(248, 113, 113, 0.4); }
+.chipPurple { background: rgba(167, 139, 250, 0.3); border: 1px solid rgba(196, 181, 253, 0.4); }
+.chipGold { background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(252, 211, 77, 0.4); }
+
+@media (max-width: 1100px) {
+  .pulseInner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .dayPills {
+    justify-content: center;
+  }
+
+  .pulseScore {
+    flex-direction: row;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .pulseChips {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1100px) {
+  .statRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .statRow {
+    grid-template-columns: 1fr;
+  }
+
+  .dayPill {
+    min-width: 44px;
+    padding: 8px 6px;
+  }
+}
+
+/* ── Bento grid ─────────────────────────────────────────────── */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+  padding: 20px 22px;
+  min-width: 0;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.pillLive {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.bentoChart { grid-column: span 8; }
+.bentoLeave { grid-column: span 4; }
+.bentoCal { grid-column: span 5; }
+.bentoPeople { grid-column: span 3; }
+.bentoActions { grid-column: span 4; }
+.bentoFeed { grid-column: span 8; }
+
+/* ── Chart ──────────────────────────────────────────────────── */
+.chartLegend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 14px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chartArea {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  height: 148px;
+  padding-top: 8px;
+}
+
+.chartCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.chartTrack {
+  width: 100%;
+  max-width: 44px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.chartBar {
+  width: 100%;
+  border-radius: 8px;
+  min-height: 6px;
+  transition: height 0.2s ease;
+}
+
+.barOk { background: linear-gradient(180deg, #34d399, #007a5a); }
+.barLate { background: linear-gradient(180deg, #f87171, #dc2626); }
+.barMiss { background: #e2e8f0; }
+
+.lateDot {
+  position: absolute;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #dc2626;
+}
+
+.chartDay {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.chartDayToday {
+  color: #611f69;
+}
+
+/* ── Leave rings ────────────────────────────────────────────── */
+.leaveStack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.leaveItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.leaveRing {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.leaveRingPurple {
+  background: conic-gradient(#611f69 var(--pct, 0%), #f3e8f5 0);
+  color: #611f69;
+}
+
+.leaveRingPurple::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.leaveRingPurple span {
+  position: relative;
+  z-index: 1;
+}
+
+.leaveRingGold {
+  background: #fef3e2;
+  color: #c27803;
+  border: 3px solid #fcd34d;
+}
+
+.leaveRingGreen {
+  background: #e6f7f1;
+  color: #007a5a;
+  border: 3px solid #6ee7b7;
+}
+
+.leaveInfo {
+  min-width: 0;
+}
+
+.leaveName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.leaveSub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+/* ── Calendar ───────────────────────────────────────────────── */
+.calHead {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.calDays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.calCells {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calCell {
+  aspect-ratio: 1;
+  max-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 10px;
+  color: #334155;
+  position: relative;
+}
+
+.calCell:hover:not(.calToday):not(.calBlank) {
+  background: #f1f5f9;
+}
+
+.calToday {
+  background: #611f69;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(97, 31, 105, 0.35);
+}
+
+.calLate::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #dc2626;
+}
+
+.calBlank {
+  visibility: hidden;
+}
+
+/* ── People ─────────────────────────────────────────────────── */
+.teamLead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.teamLeadLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.teamLeadName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.teamGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.teamMember {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  transition: background 0.12s;
+}
+
+.teamMember:hover {
+  background: #f8fafc;
+}
+
+.teamMemberName {
+  font-size: 10px;
+  font-weight: 500;
+  color: #64748b;
+  text-align: center;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamMore {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #611f69;
+  padding: 6px;
+}
+
+.textLink {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #611f69;
+  cursor: pointer;
+}
+
+.textLink:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* ── Quick actions ──────────────────────────────────────────── */
+.actionGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fafbfc;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.actionBtn:hover {
+  background: #fff;
+  border-color: #c4b5d0;
+  transform: translateX(3px);
+}
+
+.actionIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.actionIconPurple { background: #f3e8f5; color: #611f69; }
+.actionIconGreen { background: #e6f7f1; color: #007a5a; }
+.actionIconGold { background: #fef3e2; color: #c27803; }
+.actionIconBlue { background: #eff6ff; color: #2563eb; }
+
+/* ── Feed split ─────────────────────────────────────────────── */
+.feedSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.feedBlockTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+}
+
+.feedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feedItem {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+
+.feedTitle {
+  font-weight: 600;
+  margin-bottom: 3px;
+  color: #0f172a;
+}
+
+.feedMeta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.empty {
+  font-size: 13px;
+  color: #94a3b8;
+  padding: 12px 0;
+}
+
+/* ── Policy ─────────────────────────────────────────────────── */
+.policyBlock {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.policyItem {
+  margin-bottom: 12px;
+}
+
+.policyHead {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.policyBody {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.policyMore {
+  font-size: 12px;
+  font-weight: 600;
+  color: #611f69;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.modalBg {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 28px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+  position: relative;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+
+.modalClose {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .bentoChart,
+  .bentoLeave,
+  .bentoCal,
+  .bentoPeople,
+  .bentoActions,
+  .bentoFeed {
+    grid-column: span 12;
+  }
+
+  .feedSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 16px;
+  }
+
+  .teamGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

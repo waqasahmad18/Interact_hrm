@@ -1,26 +1,10 @@
-.page {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 4px 24px rgba(0, 82, 204, 0.08);
-  border: 1px solid #e2e8f0;
-  padding: 28px;
-}
-
 .header {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
-}
-
-.title {
-  margin: 0;
-  font-size: 1.65rem;
-  font-weight: 700;
-  color: #0f1d40;
-  letter-spacing: -0.02em;
+  margin-bottom: 20px;
 }
 
 .subtitle {
@@ -49,7 +33,7 @@
 .statChip strong {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f1d40;
+  color: #0f172a;
   line-height: 1.2;
 }
 
@@ -80,24 +64,12 @@
   color: #047857;
 }
 
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: flex-end;
-  margin-bottom: 22px;
-  padding: 18px 20px;
-  background: #f8fafc;
-  border-radius: 14px;
-  border: 1px solid #e2e8f0;
-}
-
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1 1 180px;
-  min-width: 160px;
+  flex: 1 1 160px;
+  min-width: 140px;
 }
 
 .label {
@@ -110,11 +82,13 @@
   display: flex;
   gap: 10px;
   flex: 0 0 auto;
+  align-items: flex-end;
   margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .btnClear {
-  padding: 11px 18px;
+  padding: 10px 18px;
   border-radius: 10px;
   border: 1px solid #cbd5e1;
   background: #fff;
@@ -131,47 +105,25 @@
 }
 
 .btnSearch {
-  padding: 11px 22px;
+  padding: 10px 22px;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, #0052cc 0%, #00b8a9 100%);
+  background: linear-gradient(135deg, #611f69 0%, #007a5a 100%);
   color: #fff;
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 82, 204, 0.25);
+  box-shadow: 0 4px 14px rgba(97, 31, 105, 0.22);
   transition: transform 0.15s, box-shadow 0.2s;
 }
 
 .btnSearch:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 82, 204, 0.35);
-}
-
-.btnExport {
-  padding: 11px 18px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  box-shadow: 0 2px 10px rgba(39, 174, 96, 0.25);
-  transition: transform 0.15s, box-shadow 0.2s;
-}
-
-.btnExport:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(39, 174, 96, 0.35);
+  box-shadow: 0 6px 18px rgba(97, 31, 105, 0.3);
 }
 
 .btnSearch:disabled,
-.btnClear:disabled,
-.btnExport:disabled {
+.btnClear:disabled {
   opacity: 0.65;
   cursor: wait;
 }
@@ -186,64 +138,6 @@
   font-size: 14px;
 }
 
-.tableWrap {
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 12px rgba(0, 82, 204, 0.06);
-}
-
-.table {
-  width: 100%;
-  min-width: 880px;
-  border-collapse: collapse;
-}
-
-.table thead {
-  background: linear-gradient(135deg, #0052cc 0%, #00b8a9 100%);
-}
-
-.table th {
-  padding: 12px 14px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-}
-
-.table td {
-  padding: 11px 14px;
-  font-size: 13px;
-  color: #22223b;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
-}
-
-.table tbody tr:hover td {
-  background: #f7fafc;
-}
-
-.rowH td:first-child {
-  box-shadow: inset 3px 0 0 #3b82f6;
-}
-
-.rowT td:first-child {
-  box-shadow: inset 3px 0 0 #10b981;
-}
-
-.employeeCell {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.detailCell {
-  white-space: normal;
-  max-width: 280px;
-  color: #475569;
-}
-
 .empty {
   text-align: center;
   padding: 40px 16px !important;
@@ -256,13 +150,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 8px;
-  font-size: 12px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
 
 .badgeH {
@@ -280,11 +175,4 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-
-.footer {
-  margin-top: 14px;
-  font-size: 13px;
-  color: #94a3b8;
-  text-align: right;
 }

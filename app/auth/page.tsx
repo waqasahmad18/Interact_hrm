@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaUser, FaShieldAlt, FaBolt, FaUsers } from "react-icons/fa";
 import {
   loadSavedLogins,
   persistSavedLogin,
@@ -128,16 +128,58 @@ export default function LoginPage() {
             </h1>
             <h2 className={styles.brandSub}>HRM PLATFORM</h2>
           </div>
-          <p className={styles.brandText}>Secure, Fast And Smart Employee Management.</p>
+          <p className={styles.brandText}>
+            Secure, fast, and smart employee management for modern teams.
+          </p>
+          <ul className={styles.featureList}>
+            <li className={styles.featureItem}>
+              <span className={styles.featureIcon}>
+                <FaShieldAlt />
+              </span>
+              <div className={styles.featureCopy}>
+                <strong>Enterprise security</strong>
+                <span>Encrypted sessions & role-based access</span>
+              </div>
+            </li>
+            <li className={styles.featureItem}>
+              <span className={styles.featureIcon}>
+                <FaBolt />
+              </span>
+              <div className={styles.featureCopy}>
+                <strong>Real-time sync</strong>
+                <span>Attendance, leave & payroll live</span>
+              </div>
+            </li>
+            <li className={styles.featureItem}>
+              <span className={styles.featureIcon}>
+                <FaUsers />
+              </span>
+              <div className={styles.featureCopy}>
+                <strong>Team-first design</strong>
+                <span>Built for HR, managers & employees</span>
+              </div>
+            </li>
+          </ul>
         </div>
       </section>
 
       <section className={styles.rightPanel}>
         <div className={`${styles.formWrap} ${hasSavedPanel ? styles.formWrapWithSaved : ""}`}>
-          <Image src="/logo1.png" alt="Interact Logo" width={96} height={96} className={styles.logoImage} />
-          <h3 className={styles.formTitle}>Sign in to continue</h3>
+          <div className={styles.loginCard}>
+            <div className={styles.logoWrap}>
+              <Image
+                src="/logo1.png"
+                alt="Interact Global"
+                width={110}
+                height={90}
+                className={styles.logoImage}
+                priority
+              />
+            </div>
+            <h3 className={styles.formTitle}>Sign in to continue</h3>
+            <p className={styles.formSubtitle}>Enter your credentials to access the HRM workspace</p>
 
-          <div className={styles.formRow}>
+            <div className={styles.formRow}>
             <form className={styles.form} onSubmit={handleSubmit} method="post" autoComplete="on">
               <input
                 type="text"
@@ -218,9 +260,10 @@ export default function LoginPage() {
                 </div>
               </aside>
             ) : null}
-          </div>
+            </div>
 
-          {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={styles.error}>{error}</div>}
+          </div>
 
           <div className={styles.rightFooter}>
             Powered by{" "}

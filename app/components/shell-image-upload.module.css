@@ -1,0 +1,283 @@
+.wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.wrapLogo {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 6px;
+}
+
+.input {
+  display: none;
+}
+
+.btn {
+  position: relative;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.btn:hover {
+  box-shadow: 0 0 0 2px rgba(97, 31, 105, 0.25);
+}
+
+.btn:focus-visible {
+  outline: 2px solid #611f69;
+  outline-offset: 2px;
+}
+
+.logo {
+  width: min(238px, 100%);
+  height: 50px;
+  border-radius: 8px;
+}
+
+.logo .image {
+  object-fit: contain;
+  background: transparent;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.avatarFrame {
+  position: relative;
+  cursor: default;
+}
+
+.avatarPreviewBtn {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border-radius: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatarPreviewBtn:hover {
+  transform: scale(1.03);
+}
+
+.avatarPreviewBtn:focus-visible {
+  outline: 2px solid #611f69;
+  outline-offset: 2px;
+}
+
+.editBtn {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: #611f69;
+  color: #fff;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.avatarFrame:hover .editBtn {
+  display: flex;
+}
+
+.editBtn:hover {
+  background: #4a1850;
+}
+
+.editBtn:focus-visible {
+  display: flex;
+  outline: 2px solid #611f69;
+  outline-offset: 1px;
+}
+
+.editIcon {
+  width: 10px;
+  height: 10px;
+}
+
+.placeholderLogo {
+  background: linear-gradient(145deg, #611f69 0%, #7c3085 100%);
+  box-shadow: 0 2px 8px rgba(97, 31, 105, 0.3);
+}
+
+.placeholderAvatar {
+  background: #611f69;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.btn:hover .overlay {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ── Avatar round preview lightbox ─────────────────────────── */
+.previewBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.previewDialog {
+  position: relative;
+}
+
+.previewRing {
+  width: min(300px, 78vw);
+  height: min(300px, 78vw);
+  border-radius: 50%;
+  overflow: hidden;
+  border: 5px solid #fff;
+  box-shadow:
+    0 0 0 1px rgba(97, 31, 105, 0.15),
+    0 28px 72px rgba(15, 23, 42, 0.38);
+  background: #611f69;
+}
+
+.previewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.previewPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(4rem, 18vw, 6.5rem);
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  background: linear-gradient(145deg, #611f69 0%, #7c3085 55%, #007a5a 100%);
+}
+
+.previewClose {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.previewClose:hover {
+  background: #611f69;
+  transform: scale(1.06);
+}
+
+.overlayIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.removeBtn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: #c2252d;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 4;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.wrap:hover .removeBtn {
+  display: flex;
+}
+
+@media (max-width: 480px) {
+  .avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .logo {
+    width: min(190px, 58vw);
+    height: 42px;
+  }
+}

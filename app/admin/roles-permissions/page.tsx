@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import FeaturesTab from "./FeaturesTab";
 import NewRoleModal from "./NewRoleModal";
 import OrgChartTab from "./OrgChartTab";
+import {
+  applyStoredEmployeePhotos,
+  fetchOrgChartPhotos,
+  removeOrgChartPhoto,
+  saveOrgChartPhoto,
+} from "./org-chart-photo-api";
 import RolesPermissionsPanel from "./RolesPermissionsPanel";
 import SettingsTab from "./SettingsTab";
 import styles from "./system-control-demo.module.css";
@@ -55,6 +61,23 @@ export default function SystemControlPage() {
   const [twoStepLeave, setTwoStepLeave] = useState(true);
   const [systemControlRoles, setSystemControlRoles] = useState(["exec_board"]);
   const [toast, setToast] = useState("");
+  const [rolePhotos, setRolePhotos] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchOrgChartPhotos()
+      .then(({ employeePhotos, rolePhotos: storedRolePhotos }) => {
+        if (cancelled) return;
+        setEmployees(applyStoredEmployeePhotos(INITIAL_EMPLOYEES, employeePhotos));
+        setRolePhotos(storedRolePhotos);
+      })
+      .catch(() => {
+        /* table may not exist yet — photos stay empty until SQL is run */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [showNewRoleModal, setShowNewRoleModal] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
@@ -442,6 +465,80 @@ export default function SystemControlPage() {
     );
   }
 
+  async function updateEmployeePhoto(empId: string, photo: string) {
+    setEmployees((prev) =>
+      prev.map((e) => (e.id === empId ? { ...e, profilePhoto: photo } : e)),
+    );
+    const emp = employees.find((e) => e.id === empId);
+    try {
+      await saveOrgChartPhoto("employee", empId, photo);
+      showToast(emp ? `Profile photo updated for ${emp.name}` : "Profile photo updated");
+    } catch (err) {
+      setEmployees((prev) =>
+        prev.map((e) =>
+          e.id === empId ? { ...e, profilePhoto: undefined } : e,
+        ),
+      );
+      showToast(err instanceof Error ? err.message : "Failed to save photo");
+    }
+  }
+
+  async function updateRolePhoto(roleId: string, photo: string) {
+    setRolePhotos((prev) => ({ ...prev, [roleId]: photo }));
+    try {
+      await saveOrgChartPhoto("role", roleId, photo);
+      showToast(`Profile photo updated for ${roleMeta(roleId, allRoles).name}`);
+    } catch (err) {
+      setRolePhotos((prev) => {
+        const next = { ...prev };
+        delete next[roleId];
+        return next;
+      });
+      showToast(err instanceof Error ? err.message : "Failed to save photo");
+    }
+  }
+
+  async function removeEmployeePhoto(empId: string) {
+    const prevPhoto = employees.find((e) => e.id === empId)?.profilePhoto;
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.id === empId ? { ...e, profilePhoto: undefined } : e,
+      ),
+    );
+    const emp = employees.find((e) => e.id === empId);
+    try {
+      await removeOrgChartPhoto("employee", empId);
+      showToast(emp ? `Photo removed for ${emp.name}` : "Photo removed");
+    } catch (err) {
+      if (prevPhoto) {
+        setEmployees((prev) =>
+          prev.map((e) =>
+            e.id === empId ? { ...e, profilePhoto: prevPhoto } : e,
+          ),
+        );
+      }
+      showToast(err instanceof Error ? err.message : "Failed to remove photo");
+    }
+  }
+
+  async function removeRolePhoto(roleId: string) {
+    const prevPhoto = rolePhotos[roleId];
+    setRolePhotos((prev) => {
+      const next = { ...prev };
+      delete next[roleId];
+      return next;
+    });
+    try {
+      await removeOrgChartPhoto("role", roleId);
+      showToast(`Photo removed for ${roleMeta(roleId, allRoles).name}`);
+    } catch (err) {
+      if (prevPhoto) {
+        setRolePhotos((prev) => ({ ...prev, [roleId]: prevPhoto }));
+      }
+      showToast(err instanceof Error ? err.message : "Failed to remove photo");
+    }
+  }
+
   const tabs: { id: TabId; label: string }[] = [
     { id: "roles", label: "Org Chart" },
     { id: "permissions", label: "Permissions" },
@@ -483,6 +580,7 @@ export default function SystemControlPage() {
             <OrgChartTab
               allRoles={allRoles}
               customRoles={customRoles}
+              employees={employees}
               employeeCountByRole={employeeCountByRole}
               permCountByRole={permCountByRole}
               totalPermCount={totalPermCount}
@@ -495,6 +593,11 @@ export default function SystemControlPage() {
               onDelete={requestDeleteRole}
               onManage={manageRolePermissions}
               onUpdateLevel={updateRoleLevel}
+              onUpdateProfilePhoto={updateEmployeePhoto}
+              onRemoveProfilePhoto={removeEmployeePhoto}
+              onUpdateRolePhoto={updateRolePhoto}
+              onRemoveRolePhoto={removeRolePhoto}
+              rolePhotos={rolePhotos}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id, customRoles)}
             />

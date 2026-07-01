@@ -109,23 +109,18 @@
 }
 
 .editBtn {
-  background-color: #3b82f6;
+  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
   color: white;
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
 }
 
 .editBtn:hover {
-  background-color: #2563eb;
-}
-
-.editBtn:active {
-  background-color: #1d4ed8;
+  opacity: 0.92;
 }
 
 /* Modal Styles */
@@ -239,19 +234,14 @@
 }
 
 .saveBtn {
-  background-color: #10b981;
+  background: linear-gradient(135deg, #007a5a 0%, #2eb67d 100%);
   color: white;
   border: none;
   padding: 0.6rem 1.25rem;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.saveBtn:hover {
-  background-color: #059669;
 }
 
 .saveBtn:disabled {

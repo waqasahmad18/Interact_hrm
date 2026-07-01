@@ -1,7 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import styles from "../../attendance-summary/attendance-summary.module.css";
+import styles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../admin-page.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFileExcel, FaSave, FaEdit, FaTimes, FaPlus } from "react-icons/fa";
 import * as XLSX from 'xlsx';
 import {
@@ -57,6 +60,7 @@ export default function ManageBreaksPage() {
     break_start: null,
     break_end: null
   });
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   // Fetch all employees
   useEffect(() => {
@@ -378,26 +382,14 @@ export default function ManageBreaksPage() {
 
   return (
     <LayoutDashboard>
-      <div style={{ padding: "20px" }}>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h1 style={{ color: "#0052CC", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "0.3px", margin: 0 }}>
-            Manage Breaks
-          </h1>
+      <div className={adminStyles.page}>
+        <div className={styles.breakSummaryContainer}>
+        <div className={adminStyles.pageHeader}>
+          <h1 className={adminStyles.pageHeaderTitle}>Manage Breaks</h1>
           <button
+            type="button"
             onClick={() => setShowAddForm(!showAddForm)}
-            style={{
-              background: "linear-gradient(135deg, #0052CC 0%, #00B8A9 100%)",
-              color: "#fff",
-              border: "none",
-              padding: "10px 20px",
-              borderRadius: "8px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "14px",
-              fontWeight: "600"
-            }}
+            className={adminStyles.btnGreen}
           >
             <FaPlus /> Add New Break
           </button>
@@ -532,19 +524,19 @@ export default function ManageBreaksPage() {
         )}
 
         {/* Filters */}
-        <div className={styles.attendanceSummaryFilters}>
+        <div className={styles.breakSummaryFilters}>
           <input
             type="text"
             placeholder="Search employee name..."
             value={searchName}
             onChange={e => setSearchName(e.target.value)}
-            className={styles.attendanceSummaryInput}
+            className={styles.breakSummaryInput}
             style={{ width: 220 }}
           />
           <select
             value={selectedDepartment}
             onChange={e => setSelectedDepartment(e.target.value)}
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
             style={{ width: 180 }}
           >
             <option value="">All Departments</option>
@@ -555,7 +547,7 @@ export default function ManageBreaksPage() {
           <select
             value={selectedBreakType}
             onChange={e => setSelectedBreakType(e.target.value)}
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
             style={{ width: 150 }}
           >
             <option value="">All Break Types</option>
@@ -567,29 +559,29 @@ export default function ManageBreaksPage() {
             value={fromDate}
             onChange={e => setFromDate(e.target.value)}
             placeholder="From Date"
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
           />
           <input
             type="date"
             value={toDate}
             onChange={e => setToDate(e.target.value)}
             placeholder="To Date"
-            className={styles.attendanceSummaryDate}
+            className={styles.breakSummaryDate}
           />
-          <button onClick={downloadExcel} className={styles.attendanceSummaryXLSButton} title="Download Excel">
+          <button onClick={downloadExcel} className={styles.breakSummaryXLSButton} title="Download Excel">
             <FaFileExcel size={20} />
             <span>Export Excel</span>
           </button>
         </div>
 
         {/* Table */}
-        <div className={`${styles.attendanceSummaryTableWrapper} ${styles.manageBreaksTableWrapper}`}>
+        <div className={styles.breakSummaryTableWrapper}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
               Loading...
             </div>
           ) : (
-            <table className={`${styles.attendanceSummaryTable} ${styles.manageBreaksStickyTable}`}>
+            <table className={styles.breakSummaryTable}>
               <thead>
                 <tr>
                   <th>Id</th>
@@ -607,7 +599,7 @@ export default function ManageBreaksPage() {
               <tbody>
                 {breaks.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className={styles.attendanceSummaryNoRecords}>
+                    <td colSpan={10} className={styles.breakSummaryNoRecords}>
                       No records found.
                     </td>
                   </tr>
@@ -624,7 +616,12 @@ export default function ManageBreaksPage() {
                             style={{ width: "100%", padding: "4px", fontSize: "13px" }}
                           />
                         ) : (
-                          b.employee_name
+                          <EmployeeTableNameCell
+                            name={b.employee_name}
+                            employeeId={b.employee_id}
+                            photo={getPhoto(b.employee_id)}
+                            onOpen={() => openFromRow(b)}
+                          />
                         )}
                       </td>
                       <td>{b.pseudonym || '-'}</td>
@@ -777,7 +774,9 @@ export default function ManageBreaksPage() {
         <div style={{ marginTop: "20px", fontSize: "14px", color: "#718096" }}>
           Total Records: {breaks.length}
         </div>
+        </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }

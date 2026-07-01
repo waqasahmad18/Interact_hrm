@@ -2,8 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import summaryStyles from "../../attendance-summary/attendance-summary.module.css";
+import tableStyles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../../admin/admin-page.module.css";
 import reportStyles from "./employee-report.module.css";
+import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
+import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import {
   formatDateOnly,
   monthRangeFromMonth,
@@ -59,6 +62,8 @@ type ReportTableRow = {
   hrmClockOut: string;
   tungstenPunchOut: string;
   department: string;
+  shiftStartTime?: string | null;
+  shiftEndTime?: string | null;
 };
 type ShiftAssignmentRow = {
   employeeName: string;
@@ -306,6 +311,8 @@ export default function EmployeeReportPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shiftAssignments, setShiftAssignments] = useState<ShiftAssignmentRow[]>([]);
+  const [employeeIdByName, setEmployeeIdByName] = useState<Record<string, string>>({});
+  const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -347,6 +354,16 @@ export default function EmployeeReportPage() {
         empListData.success && empListData.employees
           ? hrmMapFromEmployees(empListData.employees)
           : new Map();
+      const idByName: Record<string, string> = {};
+      if (empListData.success && Array.isArray(empListData.employees)) {
+        for (const emp of empListData.employees) {
+          const name = `${String(emp.first_name || "").trim()} ${String(emp.last_name || "").trim()}`.trim();
+          if (name && emp.id != null) {
+            idByName[normalizeName(name)] = String(emp.id);
+          }
+        }
+      }
+      setEmployeeIdByName(idByName);
       if (shiftData.success && Array.isArray(shiftData.employees)) {
         const parsed: ShiftAssignmentRow[] = shiftData.employees
           .map((x: Record<string, unknown>) => {
@@ -588,6 +605,12 @@ export default function EmployeeReportPage() {
 
       sessions.forEach((session, i) => {
         if (!rowInAppliedScope(session.sessionDate, applied)) return;
+        const shift = getApplicableShift(
+          employee.employeeName,
+          session.sessionDate,
+          assignmentsByName,
+        );
+        const cinOnDay = employee.hrmIns.find((r) => r.date === session.sessionDate);
         result.push({
           key: `${normalizeName(employee.employeeName)}__${session.sessionDate}__${i + 1}`,
           date: session.sessionDate,
@@ -597,6 +620,8 @@ export default function EmployeeReportPage() {
           hrmClockOut: session.hrmClockOut,
           tungstenPunchOut: session.tungstenPunchOut,
           department: employee.department,
+          shiftStartTime: shift?.startTime ?? cinOnDay?.shiftStartTime ?? null,
+          shiftEndTime: shift?.endTime ?? cinOnDay?.shiftEndTime ?? null,
         });
       });
     }
@@ -659,10 +684,11 @@ export default function EmployeeReportPage() {
 
   return (
     <LayoutDashboard>
-      <div className={reportStyles.page}>
+      <div className={adminStyles.page}>
+        <div className={tableStyles.breakSummaryContainer}>
         <div className={reportStyles.header}>
           <div>
-            <h1 className={reportStyles.title}>Employee Report</h1>
+            <h1 className={tableStyles.pageTitle}>Employee Report</h1>
             <p className={reportStyles.subtitle}>{subtitle}</p>
           </div>
           {showStats && (
@@ -683,13 +709,13 @@ export default function EmployeeReportPage() {
           )}
         </div>
 
-        <div className={reportStyles.filters}>
+        <div className={tableStyles.breakSummaryFilters}>
           <label className={reportStyles.field}>
             <span className={reportStyles.label}>View</span>
             <select
               value={filterMode}
               onChange={(e) => setFilterMode(e.target.value as FilterMode)}
-              className={summaryStyles.attendanceSummaryDate}
+              className={tableStyles.breakSummaryDate}
             >
               <option value="day">Single day</option>
               <option value="month">Full month</option>
@@ -703,7 +729,7 @@ export default function EmployeeReportPage() {
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-              className={summaryStyles.attendanceSummaryInput}
+              className={tableStyles.breakSummaryInput}
             />
           </label>
           <label className={reportStyles.field}>
@@ -711,7 +737,7 @@ export default function EmployeeReportPage() {
             <select
               value={draftDept}
               onChange={(e) => setDraftDept(e.target.value)}
-              className={summaryStyles.attendanceSummaryDate}
+              className={tableStyles.breakSummaryDate}
             >
               <option value="">All departments</option>
               {departments.map((d) => (
@@ -728,7 +754,7 @@ export default function EmployeeReportPage() {
                 type="date"
                 value={draftDate}
                 onChange={(e) => setDraftDate(e.target.value)}
-                className={summaryStyles.attendanceSummaryDate}
+                className={tableStyles.breakSummaryDate}
               />
             </label>
           ) : (
@@ -738,7 +764,7 @@ export default function EmployeeReportPage() {
                 type="month"
                 value={draftMonth}
                 onChange={(e) => setDraftMonth(e.target.value)}
-                className={summaryStyles.attendanceSummaryDate}
+                className={tableStyles.breakSummaryDate}
               />
             </label>
           )}
@@ -747,7 +773,7 @@ export default function EmployeeReportPage() {
               type="button"
               onClick={downloadExcel}
               disabled={loading || exporting || tableRows.length === 0}
-              className={reportStyles.btnExport}
+              className={tableStyles.breakSummaryXLSButton}
             >
               <FaFileExcel /> {exporting ? "Exporting…" : "Export XLS"}
             </button>
@@ -762,12 +788,12 @@ export default function EmployeeReportPage() {
 
         {error && <p className={reportStyles.error}>{error}</p>}
 
-        <div className={reportStyles.tableWrap}>
-          <table className={reportStyles.table}>
+        <div className={tableStyles.breakSummaryTableWrapper}>
+          <table className={tableStyles.breakSummaryTable}>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Employee Name</th>
+                <th className={tableStyles.nameCol}>Employee Name</th>
                 <th>Tungsten Punch In</th>
                 <th>HRM Clock In</th>
                 <th>HRM Clock Out</th>
@@ -790,10 +816,27 @@ export default function EmployeeReportPage() {
                   </td>
                 </tr>
               ) : (
-                tableRows.map((r) => (
+                tableRows.map((r) => {
+                  const employeeId = employeeIdByName[normalizeName(r.employeeName)] || "";
+                  return (
                   <tr key={r.key}>
                     <td>{r.date}</td>
-                    <td className={reportStyles.employeeCell}>{r.employeeName}</td>
+                    <td className={tableStyles.nameCol}>
+                      <EmployeeTableNameCell
+                        name={r.employeeName}
+                        employeeId={employeeId || r.employeeName}
+                        photo={getPhoto(employeeId || null)}
+                        onOpen={() =>
+                          openFromRow({
+                            employee_id: employeeId || undefined,
+                            employee_name: r.employeeName,
+                            department_name: r.department,
+                            shift_start_time: r.shiftStartTime,
+                            shift_end_time: r.shiftEndTime,
+                          })
+                        }
+                      />
+                    </td>
                     <td>
                       {r.tungstenPunchIn !== "-" ? (
                         <span className={reportStyles.timeWithBadge}>
@@ -836,13 +879,16 @@ export default function EmployeeReportPage() {
                     </td>
                     <td>{r.department}</td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
+        </div>
       </div>
+      {popup}
     </LayoutDashboard>
   );
 }
