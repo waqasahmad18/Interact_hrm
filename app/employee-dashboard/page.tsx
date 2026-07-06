@@ -6,14 +6,21 @@ import {
   FaClock,
   FaCalendarAlt,
   FaUsers,
-  FaMoneyBillWave,
-  FaHandHoldingUsd,
+  FaTicketAlt,
 } from "react-icons/fa";
 import {
   getDateStringInTimeZone,
   getParts,
   SERVER_TIMEZONE,
 } from "../../lib/timezone";
+import type { TicketCategory } from "../../lib/ticket-catalog";
+import {
+  getLastAdminMessage,
+  hasUnreadAdminReply,
+  loadTicketSeenMap,
+  saveTicketSeen,
+  type TicketThreadMessage,
+} from "../../lib/ticket-thread";
 import { ATTENDANCE_DATA_CHANGED } from "../../lib/ui-sync/breakPrayerDataRefresh";
 import styles from "./employee-dashboard.module.css";
 import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
@@ -44,6 +51,21 @@ type LeaveBalance = {
   bereavement: number;
   bereavementAllowance: number;
 };
+
+type TicketWidgetRow = {
+  id: number;
+  ticket_number: string;
+  subject: string | null;
+  status: string;
+  category: TicketCategory;
+  ticket_type: string;
+  messages?: TicketThreadMessage[];
+  updated_at: string;
+};
+
+function ticketStatusLabel(status: string) {
+  return status.replace("_", " ");
+}
 
 function last5Weekdays(): Date[] {
   const out: Date[] = [];
@@ -255,6 +277,12 @@ export default function EmployeeDashboardPage() {
   >([]);
   const [reportsTo, setReportsTo] = React.useState<HierarchyPerson | null>(null);
   const [teamMembers, setTeamMembers] = React.useState<HierarchyPerson[]>([]);
+  const [tickets, setTickets] = React.useState<TicketWidgetRow[]>([]);
+  const [loadingTickets, setLoadingTickets] = React.useState(false);
+  const [ticketPulseIds, setTicketPulseIds] = React.useState<number[]>([]);
+  const [ticketSeenMap, setTicketSeenMap] = React.useState<Record<number, string>>({});
+  const ticketsRef = React.useRef<TicketWidgetRow[]>([]);
+  const ticketTimerRef = React.useRef<number | null>(null);
 
   const todayParts = React.useMemo(() => {
     const parts = getParts(calendarNow, SERVER_TIMEZONE);
@@ -295,7 +323,56 @@ export default function EmployeeDashboardPage() {
     const empId =
       localStorage.getItem("employeeId") || localStorage.getItem("loginId") || "";
     setEmployeeId(empId);
+    if (empId) setTicketSeenMap(loadTicketSeenMap(empId));
   }, []);
+
+  const fetchTickets = React.useCallback(async (opts?: { silent?: boolean }) => {
+    if (!employeeId) return;
+    try {
+      if (!opts?.silent) setLoadingTickets(true);
+      const res = await fetch(
+        `/api/employee-tickets?employeeId=${encodeURIComponent(employeeId)}&limit=20&ts=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data?.success) {
+        const next: TicketWidgetRow[] = data.tickets || [];
+        const prev = ticketsRef.current;
+        const pulseIds: number[] = [];
+        next.forEach((t) => {
+          const lastAdmin = getLastAdminMessage(t.messages ?? []);
+          const prevTicket = prev.find((p) => p.id === t.id);
+          const prevAdmin = prevTicket ? getLastAdminMessage(prevTicket.messages ?? []) : null;
+          if (lastAdmin && (!prevAdmin || prevAdmin.id !== lastAdmin.id)) {
+            pulseIds.push(t.id);
+          }
+        });
+        setTickets(next);
+        ticketsRef.current = next;
+        if (pulseIds.length) {
+          setTicketPulseIds(pulseIds);
+          if (ticketTimerRef.current) window.clearTimeout(ticketTimerRef.current);
+          ticketTimerRef.current = window.setTimeout(() => setTicketPulseIds([]), 3500);
+        }
+      }
+    } catch (err) {
+      console.error("tickets fetch", err);
+    } finally {
+      if (!opts?.silent) setLoadingTickets(false);
+    }
+  }, [employeeId]);
+
+  const openTicketPage = React.useCallback(
+    (ticket: TicketWidgetRow) => {
+      const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
+      if (lastAdmin && employeeId) {
+        saveTicketSeen(employeeId, ticket.id, lastAdmin.id);
+        setTicketSeenMap((prev) => ({ ...prev, [ticket.id]: lastAdmin.id }));
+      }
+      router.push(`/employee-dashboard/generate-ticket?open=${ticket.id}`);
+    },
+    [employeeId, router]
+  );
 
   const fetchAttendance = React.useCallback(async () => {
     if (!employeeId) return;
@@ -360,12 +437,13 @@ export default function EmployeeDashboardPage() {
     if (!employeeId) return;
     fetchAttendance();
     fetchLeaveBalance();
+    void fetchTickets();
     void fetchEmployeeHierarchy(employeeId).then((data) => {
       if (!data) return;
       setReportsTo(data.reportsTo);
       setTeamMembers(data.teamMembers);
     });
-  }, [employeeId, fetchAttendance, fetchLeaveBalance]);
+  }, [employeeId, fetchAttendance, fetchLeaveBalance, fetchTickets]);
 
   React.useEffect(() => {
     fetchEvents();
@@ -379,12 +457,15 @@ export default function EmployeeDashboardPage() {
         if (msg?.type === "events_updated") fetchEvents();
         if (msg?.type === "reminders_updated") fetchReminders();
         if (msg?.type === "leave_update") fetchLeaveBalance();
+        if (msg?.type === "ticket_update" || msg?.type === "ticket_created") {
+          void fetchTickets({ silent: true });
+        }
       } catch {
         /* ignore */
       }
     };
     return () => ws.close();
-  }, [fetchEvents, fetchReminders, fetchLeaveBalance]);
+  }, [fetchEvents, fetchReminders, fetchLeaveBalance, fetchTickets]);
 
   React.useEffect(() => {
     const lastFetchRef = { at: 0 };
@@ -484,6 +565,28 @@ export default function EmployeeDashboardPage() {
   const casualPct = Math.min(100, Math.round((leaveBalance.casual / 15) * 100));
   const punctualPct = Math.max(0, 100 - monthTardies * 25);
 
+  const newReplyCount = React.useMemo(
+    () => tickets.filter((t) => hasUnreadAdminReply(t.id, t.messages, ticketSeenMap)).length,
+    [tickets, ticketSeenMap]
+  );
+
+  const ticketWidgetItems = React.useMemo(() => {
+    return [...tickets]
+      .filter((t) => {
+        const unread = hasUnreadAdminReply(t.id, t.messages, ticketSeenMap);
+        const open = !["resolved", "rejected", "closed"].includes(t.status);
+        const hasAdminReply = Boolean(getLastAdminMessage(t.messages ?? []));
+        return unread || (open && hasAdminReply) || (open && t.status === "pending");
+      })
+      .sort((a, b) => {
+        const aUnread = hasUnreadAdminReply(a.id, a.messages, ticketSeenMap) ? 1 : 0;
+        const bUnread = hasUnreadAdminReply(b.id, b.messages, ticketSeenMap) ? 1 : 0;
+        if (bUnread !== aUnread) return bUnread - aUnread;
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      })
+      .slice(0, 3);
+  }, [tickets, ticketSeenMap]);
+
   const weekStats = React.useMemo(() => {
     let onTime = 0;
     let late = 0;
@@ -542,7 +645,7 @@ export default function EmployeeDashboardPage() {
           <button
             type="button"
             className={`${styles.statCard} ${styles.statCardGreen}`}
-            onClick={() => router.push("/employee-dashboard/leave")}
+            onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
           >
             <div className={styles.statCardTop}>
               <span className={styles.statIconBubble}><FaCalendarAlt /></span>
@@ -563,7 +666,7 @@ export default function EmployeeDashboardPage() {
           <button
             type="button"
             className={`${styles.statCard} ${styles.statCardGold}`}
-            onClick={() => router.push("/employee-dashboard/leave")}
+            onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
           >
             <div className={styles.statCardTop}>
               <span className={styles.statIconBubble}><FaCalendarAlt /></span>
@@ -803,27 +906,88 @@ export default function EmployeeDashboardPage() {
                 <span className={`${styles.actionIcon} ${styles.actionIconGreen}`}><FaClock /></span>
                 Time &amp; attendance
               </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/leave")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconGold}`}><FaCalendarAlt /></span>
-                Request leave
+              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/generate-ticket")}>
+                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaTicketAlt /></span>
+                Generate ticket
               </button>
               <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/my-team")}>
                 <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaUsers /></span>
                 My team
-              </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/request-advance")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconGreen}`}><FaMoneyBillWave /></span>
-                Request advance
-              </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/request-loan")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconGold}`}><FaHandHoldingUsd /></span>
-                Request loan
               </button>
             </div>
           </article>
 
           <article className={`${styles.card} ${styles.bentoFeed}`}>
             <div className={styles.feedSplit}>
+              <div className={styles.ticketWidget}>
+                <div className={styles.ticketWidgetHead}>
+                  <div className={styles.ticketWidgetTitleRow}>
+                    <span className={styles.ticketWidgetIcon}>
+                      <FaTicketAlt />
+                    </span>
+                    <h3 className={styles.ticketWidgetTitle}>My tickets</h3>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.ticketWidgetViewAll}
+                    onClick={() => router.push("/employee-dashboard/generate-ticket")}
+                  >
+                    View all
+                  </button>
+                </div>
+                <span
+                  className={`${styles.ticketCountPill} ${
+                    newReplyCount > 0 ? styles.ticketCountPillLive : ""
+                  }`}
+                >
+                  {loadingTickets
+                    ? "Loading…"
+                    : newReplyCount > 0
+                      ? `${newReplyCount} new ${newReplyCount === 1 ? "reply" : "replies"}`
+                      : `${ticketWidgetItems.length} active`}
+                </span>
+                <ul className={styles.ticketList}>
+                  {ticketWidgetItems.length === 0 ? (
+                    <li
+                      className={styles.ticketListItem}
+                      onClick={() => router.push("/employee-dashboard/generate-ticket")}
+                    >
+                      <div className={styles.ticketEmpty}>No pending responses</div>
+                    </li>
+                  ) : (
+                    ticketWidgetItems.map((ticket) => {
+                      const unread = hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
+                      const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
+                      return (
+                        <li
+                          key={ticket.id}
+                          className={`${styles.ticketListItem} ${
+                            ticketPulseIds.includes(ticket.id) || unread
+                              ? styles.ticketListItemNew
+                              : ""
+                          }`}
+                          onClick={() => openTicketPage(ticket)}
+                        >
+                          <div className={styles.ticketListTop}>
+                            <span className={styles.ticketListTitle}>{ticket.ticket_number}</span>
+                            <span
+                              className={`${styles.ticketBadge} ${
+                                unread ? styles.ticketBadgeNew : styles.ticketBadgeStatus
+                              }`}
+                            >
+                              {unread ? "New reply" : ticketStatusLabel(ticket.status)}
+                            </span>
+                          </div>
+                          <div className={styles.ticketListMeta}>{ticket.subject}</div>
+                          {lastAdmin ? (
+                            <div className={styles.ticketListPreview}>Admin: {lastAdmin.body}</div>
+                          ) : null}
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
               <div>
                 <h3 className={styles.feedBlockTitle}>Reminders</h3>
                 {reminders.length === 0 ? (

@@ -12,7 +12,12 @@ export async function GET(req: NextRequest) {
 
     // Fetch employee data from hrm_employees
     const [empRows]: any = await pool.query(
-      'SELECT id, employee_code, first_name, last_name, pseudonym, cnic_number, cnic_address, employment_status FROM hrm_employees WHERE employee_code = ? OR id = ?',
+      `SELECT e.id, e.employee_code, e.first_name, e.last_name, e.pseudonym,
+              e.cnic_number, e.cnic_address, e.employment_status, d.name AS department_name
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       WHERE e.employee_code = ? OR e.id = ?`,
       [employeeId, employeeId]
     );
 
@@ -59,6 +64,7 @@ export async function GET(req: NextRequest) {
         first_name: employee.first_name,
         last_name: employee.last_name,
         pseudonym: employee.pseudonym,
+        department_name: employee.department_name || '',
         cnic_number: employee.cnic_number,
         cnic_address: employee.cnic_address,
         employment_status: employee.employment_status,

@@ -1,3 +1,7 @@
+import { NextRequest, NextResponse } from "next/server";
+import { query } from "../../../lib/db";
+import { broadcastWsEvent } from "@/lib/ws-broadcast";
+
 // POST: Submit a new leave request
 export async function POST(req: NextRequest) {
   try {
@@ -10,24 +14,12 @@ export async function POST(req: NextRequest) {
       "INSERT INTO employee_leaves (employee_id, employee_name, leave_category, start_date, end_date, total_days, reason, status, document_paths, requested_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NOW(), NOW())",
       [employee_id, employee_name || '', leave_category, start_date, end_date, total_days, reason || '', JSON.stringify(document_paths || [])]
     );
-    // WebSocket broadcast (if available)
-    try {
-      const wsApi = globalThis as any;
-      if (wsApi?.wss) {
-        wsApi.wss.clients.forEach((client: any) => {
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({ type: "leave_update" }));
-          }
-        });
-      }
-    } catch {}
+    broadcastWsEvent({ type: "leave_update" });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) });
   }
 }
-import { NextRequest, NextResponse } from "next/server";
-import { query } from "../../../lib/db";
 
 // GET: Fetch all leave requests
 export async function GET(req: NextRequest) {

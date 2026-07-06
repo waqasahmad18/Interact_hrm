@@ -1,0 +1,27 @@
+-- Employee ticketing system (Generate Ticket → Admin inbox)
+CREATE TABLE IF NOT EXISTS employee_tickets (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ticket_number VARCHAR(32) NOT NULL,
+  employee_id VARCHAR(64) NOT NULL,
+  employee_name VARCHAR(255) NOT NULL,
+  category ENUM('ESS', 'IT', 'HR', 'ADMIN', 'OPERATIONS') NOT NULL,
+  ticket_type VARCHAR(64) NOT NULL,
+  is_custom TINYINT(1) NOT NULL DEFAULT 0,
+  subject VARCHAR(255) NULL,
+  description TEXT NULL,
+  form_data JSON NULL,
+  priority ENUM('low', 'normal', 'high', 'urgent') NOT NULL DEFAULT 'normal',
+  status ENUM('pending', 'in_progress', 'resolved', 'rejected', 'closed') NOT NULL DEFAULT 'pending',
+  admin_remark TEXT NULL,
+  messages JSON NULL,
+  resolved_at TIMESTAMP NULL DEFAULT NULL,
+  requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ticket_number (ticket_number),
+  KEY idx_et_status (status),
+  KEY idx_et_category (category),
+  KEY idx_et_employee (employee_id),
+  KEY idx_et_requested (requested_at),
+  KEY idx_et_category_status (category, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

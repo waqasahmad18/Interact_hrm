@@ -1,7 +1,19 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  FaKey,
+  FaEnvelope,
+  FaUser,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaIdBadge,
+  FaBriefcase,
+  FaAddressCard,
+} from "react-icons/fa";
+import { EmployeeAvatar } from "../../components/EmployeeAvatar";
+import { employeeInitials } from "../../../lib/employee-photo-shared";
 import styles from "./my-info.module.css";
-import { FaKey, FaEnvelope, FaUser, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 
 export default function MyInfoPage() {
   const [data, setData] = useState<any>(null);
@@ -15,14 +27,18 @@ export default function MyInfoPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [credentials, setCredentials] = useState<{ id: number | null; username: string; email: string; currentPassword: string }>(
-    { id: null, username: "", email: "", currentPassword: "" }
-  );
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<{
+    id: number | null;
+    username: string;
+    email: string;
+    currentPassword: string;
+  }>({ id: null, username: "", email: "", currentPassword: "" });
 
   useEffect(() => {
-    // Get employee ID from session/localStorage
-    const employeeId = localStorage.getItem("employeeId") || sessionStorage.getItem("employeeId");
-    
+    const employeeId =
+      localStorage.getItem("employeeId") || sessionStorage.getItem("employeeId");
+
     if (!employeeId) {
       setError("Employee ID not found. Please login again.");
       setLoading(false);
@@ -30,28 +46,34 @@ export default function MyInfoPage() {
     }
 
     Promise.all([
-      fetch(`/api/my-info?employeeId=${employeeId}`).then(res => res.json()),
-      fetch(`/api/employee_jobs?employeeId=${employeeId}`).then(res => res.json())
+      fetch(`/api/my-info?employeeId=${employeeId}`).then((res) => res.json()),
+      fetch(`/api/employee_jobs?employeeId=${employeeId}`).then((res) => res.json()),
+      fetch(`/api/employee-profile?employeeId=${encodeURIComponent(employeeId)}`)
+        .then((res) => res.json())
+        .catch(() => ({ success: false })),
     ])
-      .then(([resultInfo, resultJob]) => {
+      .then(([resultInfo, resultJob, profile]) => {
         if (resultInfo.success) {
           setData(resultInfo.data);
         } else {
           setError(resultInfo.error || "Failed to fetch data");
         }
-        
+
         if (resultJob.success && resultJob.job) {
           setJobDetails(resultJob.job);
         }
-        
+
+        if (profile?.success && profile.photo) {
+          setPhoto(profile.photo);
+        }
+
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         setError("Failed to fetch data: " + String(err));
         setLoading(false);
       });
 
-    // Load credentials
     loadCredentials();
   }, []);
 
@@ -80,15 +102,18 @@ export default function MyInfoPage() {
       }
 
       const contact = await fetchContact(employeeId);
-      const email = contact?.email_work || contact?.email_other || (loginId.includes("@") ? loginId : "");
+      const email =
+        contact?.email_work ||
+        contact?.email_other ||
+        (loginId.includes("@") ? loginId : "");
 
       setCredentials({
         id: employeeId,
         username: employee.username || loginId,
         email,
-        currentPassword: employee.password || ""
+        currentPassword: employee.password || "",
       });
-    } catch (err) {
+    } catch {
       setCredentialsError("Failed to load your credentials. Please refresh and try again.");
     } finally {
       setCredentialsLoading(false);
@@ -96,17 +121,23 @@ export default function MyInfoPage() {
   }
 
   async function fetchEmployee(loginId: string): Promise<any> {
-    const queryParam = loginId.includes("@") ? `email=${encodeURIComponent(loginId)}` : `username=${encodeURIComponent(loginId)}`;
+    const queryParam = loginId.includes("@")
+      ? `email=${encodeURIComponent(loginId)}`
+      : `username=${encodeURIComponent(loginId)}`;
 
     try {
       const [primary, fallback] = await Promise.all([
-        fetch(`/api/hrm_employees?${queryParam}`).then(res => res.json()).catch(() => ({ success: false })),
-        fetch(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`).then(res => res.json()).catch(() => ({ success: false }))
+        fetch(`/api/hrm_employees?${queryParam}`)
+          .then((res) => res.json())
+          .catch(() => ({ success: false })),
+        fetch(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`)
+          .then((res) => res.json())
+          .catch(() => ({ success: false })),
       ]);
 
       const data = primary.success ? primary : fallback;
       return data.success ? data.employee : null;
-    } catch (err) {
+    } catch {
       return null;
     }
   }
@@ -116,7 +147,7 @@ export default function MyInfoPage() {
       const res = await fetch(`/api/employee_contacts?employeeId=${employeeId}`);
       const data = await res.json();
       return data.success ? data.contact : null;
-    } catch (err) {
+    } catch {
       return null;
     }
   }
@@ -144,7 +175,7 @@ export default function MyInfoPage() {
       const res = await fetch("/api/employee-credentials", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: credentials.id, password: newPassword })
+        body: JSON.stringify({ id: credentials.id, password: newPassword }),
       });
       const data = await res.json();
       if (data.success) {
@@ -155,191 +186,236 @@ export default function MyInfoPage() {
       } else {
         setCredentialsError(data.error || "Unable to update password.");
       }
-    } catch (err) {
+    } catch {
       setCredentialsError("Unable to update password. Please try again.");
     } finally {
       setSaving(false);
     }
   }
 
+  const fullName = `${data?.first_name || ""} ${data?.last_name || ""}`.trim() || "Employee";
+
+  const profileSubtitle = useMemo(() => {
+    const parts = [
+      (jobDetails?.job_title || "").trim(),
+      (data?.pseudonym || "").trim(),
+      (data?.department_name || "").trim(),
+    ].filter(Boolean);
+    return parts.length ? parts.join(" · ") : "Employee profile";
+  }, [jobDetails?.job_title, data?.pseudonym, data?.department_name]);
+
+  const statusClass = (status: string) => {
+    if (status === "Permanent") return styles.permanent;
+    if (status === "Probation") return styles.probation;
+    return styles.otherStatus;
+  };
+
   if (loading) {
     return (
-      <div className={styles.container}>
-        <div className={styles.loading}>Loading your information...</div>
+      <div className={styles.page}>
+        <div className={styles.loading}>Loading your information…</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className={styles.container}>
-        <div className={styles.error}>{error}</div>
+      <div className={styles.page}>
+        <div className={styles.errorState}>{error}</div>
       </div>
     );
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>My Information</h1>
-        <p className={styles.subtitle}>Your personal and contact details</p>
-      </div>
-
-      <div className={styles.card}>
-        {/* Shift Timing Section */}
-        {/* First Line: Employee ID & Pseudonym */}
-        <div className={styles.topRow}>
-          <div className={styles.badge}>
-            <span className={styles.badgeLabel}>Employee ID</span>
-            <span className={styles.badgeValue}>{data?.employee_id || 'N/A'}</span>
+    <div className={styles.page}>
+      <div className={styles.inner}>
+        <header className={styles.header}>
+          <div>
+            <h1 className={styles.title}>My Info</h1>
+            <p className={styles.subtitle}>Personal, job, and account details</p>
           </div>
-          {data?.pseudonym && (
-            <div className={styles.badge}>
-              <span className={styles.badgeLabel}>Pseudo Name</span>
-              <span className={styles.badgeValue}>{data.pseudonym}</span>
-            </div>
-          )}
+        </header>
+
+        <div className={styles.profileCard}>
+          <EmployeeAvatar
+            name={fullName}
+            initials={employeeInitials(fullName)}
+            photo={photo}
+            size="lg"
+          />
+          <div className={styles.profileMeta}>
+            <div className={styles.profileName}>{fullName}</div>
+            <div className={styles.profileSub}>{profileSubtitle}</div>
+          </div>
         </div>
 
-        {/* Personal Information Section */}
-        <div className={styles.section}>
-           <h2 className={styles.sectionTitle}>Personal Information</h2>
-           <div className={styles.grid}>
+        <section className={styles.card}>
+          <h2 className={styles.sectionTitle}>
+            <span className={styles.sectionIcon}>
+              <FaIdBadge />
+            </span>
+            Personal information
+          </h2>
+          <div className={styles.grid}>
             <div className={styles.field}>
-              <label className={styles.label}>Full Name</label>
-              <div className={styles.value}>{`${data?.first_name || ''} ${data?.last_name || ''}`}</div>
+              <label className={styles.label}>Full name</label>
+              <div className={styles.value}>{fullName}</div>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>CNIC Number</label>
-              <div className={styles.value}>{data?.cnic_number || 'Not Provided'}</div>
+              <label className={styles.label}>CNIC number</label>
+              <div className={styles.value}>{data?.cnic_number || "Not provided"}</div>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>CNIC Address</label>
-              <div className={styles.value}>{data?.cnic_address || 'Not Provided'}</div>
+              <label className={styles.label}>CNIC address</label>
+              <div className={styles.value}>{data?.cnic_address || "Not provided"}</div>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>Shift Timing</label>
-              <div className={styles.value}>{data?.shift_timing || 'Not Assigned'}</div>
+              <label className={styles.label}>Shift timing</label>
+              <div className={styles.value}>{data?.shift_timing || "Not assigned"}</div>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>Working Days</label>
+              <label className={styles.label}>Working days</label>
               <div className={styles.value}>Monday to Friday</div>
             </div>
             <div className={styles.field}>
-              <label className={styles.label}>Employment Status</label>
-              <div className={`${styles.value} ${styles.status}`}>
-                <span className={data?.employment_status === 'Permanent' ? styles.permanent : styles.probation}>
-                  {data?.employment_status || 'Not Set'}
+              <label className={styles.label}>Employment status</label>
+              <div className={styles.value}>
+                <span
+                  className={`${styles.statusPill} ${statusClass(data?.employment_status || "")}`}
+                >
+                  {data?.employment_status || "Not set"}
                 </span>
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Job Details Section */}
-        {jobDetails && (
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>Job Details</h2>
+        {jobDetails ? (
+          <section className={styles.card}>
+            <h2 className={styles.sectionTitle}>
+              <span className={styles.sectionIcon}>
+                <FaBriefcase />
+              </span>
+              Job details
+            </h2>
             <div className={styles.grid}>
               <div className={styles.field}>
-                <label className={styles.label}>Date of Joining</label>
+                <label className={styles.label}>Date of joining</label>
                 <div className={styles.value}>
-                  {jobDetails.joined_date ? new Date(jobDetails.joined_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Set'}
+                  {jobDetails.joined_date
+                    ? new Date(jobDetails.joined_date).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    : "Not set"}
                 </div>
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Job Title</label>
-                <div className={styles.value}>{jobDetails.job_title || 'Not Set'}</div>
+                <label className={styles.label}>Job title</label>
+                <div className={styles.value}>{jobDetails.job_title || "Not set"}</div>
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Job Category</label>
-                <div className={styles.value}>{jobDetails.job_category || 'Not Set'}</div>
+                <label className={styles.label}>Job category</label>
+                <div className={styles.value}>{jobDetails.job_category || "Not set"}</div>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Location</label>
-                <div className={styles.value}>{jobDetails.location || 'Not Set'}</div>
+                <div className={styles.value}>{jobDetails.location || "Not set"}</div>
               </div>
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
 
-        {/* Contact Information Section */}
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Contact Information</h2>
+        <section className={styles.card}>
+          <h2 className={styles.sectionTitle}>
+            <span className={styles.sectionIcon}>
+              <FaAddressCard />
+            </span>
+            Contact information
+          </h2>
           <div className={styles.grid}>
             <div className={styles.field}>
-              <label className={styles.label}>Work Email</label>
+              <label className={styles.label}>Work email</label>
               <div className={styles.value}>
                 {data?.email_work ? (
                   <a href={`mailto:${data.email_work}`} className={styles.link}>
                     {data.email_work}
                   </a>
                 ) : (
-                  'Not Provided'
+                  "Not provided"
                 )}
               </div>
             </div>
-
             <div className={styles.field}>
-              <label className={styles.label}>Other Email</label>
+              <label className={styles.label}>Other email</label>
               <div className={styles.value}>
                 {data?.email_other ? (
                   <a href={`mailto:${data.email_other}`} className={styles.link}>
                     {data.email_other}
                   </a>
                 ) : (
-                  'Not Provided'
+                  "Not provided"
                 )}
               </div>
             </div>
-
             <div className={styles.field}>
-              <label className={styles.label}>Phone Number</label>
+              <label className={styles.label}>Phone number</label>
               <div className={styles.value}>
                 {data?.phone_mobile ? (
                   <a href={`tel:${data.phone_mobile}`} className={styles.link}>
                     {data.phone_mobile}
                   </a>
                 ) : (
-                  'Not Provided'
+                  "Not provided"
                 )}
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Credentials Section */}
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>My Credentials</h2>
-          
+        <section className={styles.card}>
+          <h2 className={styles.sectionTitle}>
+            <span className={styles.sectionIcon}>
+              <FaKey />
+            </span>
+            My credentials
+          </h2>
+
           {credentialsLoading ? (
-            <div className={styles.credentialsLoading}>Loading credentials...</div>
+            <div className={styles.credentialsLoading}>Loading credentials…</div>
           ) : (
             <>
-              {credentialsError && (
-                <div className={styles.credentialsError}>
+              {credentialsError ? (
+                <div className={styles.alertError}>
                   <FaExclamationTriangle />
                   <span>{credentialsError}</span>
                 </div>
-              )}
-              {success && (
-                <div className={styles.credentialsSuccess}>
+              ) : null}
+              {success ? (
+                <div className={styles.alertSuccess}>
                   <FaCheckCircle />
                   <span>{success}</span>
                 </div>
-              )}
+              ) : null}
 
-              <div className={styles.credentialsGrid}>
+              <div className={styles.grid}>
                 <div className={styles.field}>
-                  <label className={styles.label}><FaUser /> Username</label>
+                  <label className={styles.label}>
+                    <FaUser /> Username
+                  </label>
                   <div className={styles.value}>{credentials.username || "Not set"}</div>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}><FaEnvelope /> Email</label>
+                  <label className={styles.label}>
+                    <FaEnvelope /> Email
+                  </label>
                   <div className={styles.value}>{credentials.email || "Not available"}</div>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}><FaKey /> Current Password</label>
+                  <label className={styles.label}>
+                    <FaKey /> Current password
+                  </label>
                   <div className={styles.passwordDisplay}>
                     <span>{showPassword ? credentials.currentPassword : "••••••••"}</span>
                     <button
@@ -356,39 +432,45 @@ export default function MyInfoPage() {
               <form className={styles.credentialsForm} onSubmit={handlePasswordUpdate}>
                 <div className={styles.formRow}>
                   <div className={styles.fieldGroup}>
-                    <label className={styles.label} htmlFor="newPassword">New Password</label>
+                    <label className={styles.label} htmlFor="newPassword">
+                      New password
+                    </label>
                     <input
                       id="newPassword"
                       name="newPassword"
                       type="password"
-                      className={styles.credentialsInput}
+                      className={styles.input}
                       placeholder="Enter a new password"
                       value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
+                      onChange={(e) => setNewPassword(e.target.value)}
                     />
                   </div>
                   <div className={styles.fieldGroup}>
-                    <label className={styles.label} htmlFor="confirmPassword">Confirm Password</label>
+                    <label className={styles.label} htmlFor="confirmPassword">
+                      Confirm password
+                    </label>
                     <input
                       id="confirmPassword"
                       name="confirmPassword"
                       type="password"
-                      className={styles.credentialsInput}
+                      className={styles.input}
                       placeholder="Re-enter the new password"
                       value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
                     />
                   </div>
                 </div>
-                <p className={styles.hint}>Username and email are read-only. Use this form to set a new password for your account.</p>
-
-                <button type="submit" className={styles.updateButton} disabled={saving}>
-                  {saving ? "Updating..." : "Update Password"}
+                <p className={styles.hint}>
+                  Username and email are read-only. Use this form to set a new password for your
+                  account.
+                </p>
+                <button type="submit" className={styles.submitBtn} disabled={saving}>
+                  {saving ? "Updating…" : "Update password"}
                 </button>
               </form>
             </>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

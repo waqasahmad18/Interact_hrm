@@ -32,7 +32,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, username, email, password } = body;
+    const { id, username, email, password, currentPassword } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -51,6 +51,21 @@ export async function PATCH(req: NextRequest) {
 
     // Update password in hrm_employees table if provided (plain text)
     if (password !== undefined && password !== "") {
+      if (currentPassword !== undefined) {
+        const [rows] = (await query(
+          `SELECT password FROM hrm_employees WHERE id = ? LIMIT 1`,
+          [id]
+        )) as [{ password?: string }[], unknown];
+        const stored = Array.isArray(rows) && rows[0]?.password != null
+          ? String(rows[0].password)
+          : "";
+        if (String(currentPassword) !== stored) {
+          return NextResponse.json(
+            { success: false, error: "Current password is incorrect" },
+            { status: 400 }
+          );
+        }
+      }
       await query(
         `UPDATE hrm_employees SET password = ? WHERE id = ?`,
         [password, id]

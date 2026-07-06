@@ -11,7 +11,6 @@ export default function handler(req: any, res: any) {
     res.socket.server.wss = wss;
     wss.on('connection', (ws: any) => {
       ws.on('message', (message: any) => {
-        // Broadcast received message to all clients
         wss?.clients.forEach((client: any) => {
           if (client !== ws && client.readyState === WebSocket.OPEN) {
             client.send(message);
@@ -20,6 +19,7 @@ export default function handler(req: any, res: any) {
       });
     });
   }
+  (globalThis as { __hrmWss?: WsServer }).__hrmWss = res.socket.server.wss;
   res.end();
 }
 

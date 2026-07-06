@@ -44,27 +44,62 @@
 }
 
 .tabRow {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.ticketToolbar {
   display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.previewToastBtn {
+  border: 1px solid #e8912d;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #fff7ed;
+  color: #c2410c;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.previewToastBtn:hover {
+  background: #ffedd5;
+  box-shadow: 0 2px 8px rgba(232, 145, 45, 0.2);
 }
 
 .tabBtn {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: #fff;
+  background: transparent;
   color: #64748b;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  line-height: 1.2;
+}
+
+.tabBtn:hover:not(.tabBtnActive) {
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .tabBtnActive {
-  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
-  color: #fff;
-  border-color: transparent;
+  background: #fff;
+  color: #611f69;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .requestList {
@@ -82,6 +117,16 @@
   border-radius: 16px;
   padding: 16px 18px;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+.requestCardClickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.requestCardClickable:hover {
+  border-color: #d8b4e2;
+  box-shadow: 0 6px 20px rgba(97, 31, 105, 0.08);
 }
 
 .requestBody {
@@ -108,6 +153,11 @@
 .badgePending {
   background: #fff7ed;
   color: #c2410c;
+}
+
+.badgeInProgress {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .badgeApproved {
@@ -153,6 +203,17 @@
   color: #fff;
 }
 
+.btnClosed {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .btnReject {
   border: none;
   border-radius: 10px;
@@ -188,6 +249,78 @@
   padding: 24px;
   width: min(420px, 94vw);
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+}
+
+.modalWide {
+  width: min(560px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.chatSection {
+  margin-bottom: 14px;
+}
+
+.chatSectionLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chatComposer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.chatComposerDisabled {
+  opacity: 0.72;
+  pointer-events: none;
+  user-select: none;
+}
+
+.chatComposerDisabled .ticketClosedNotice {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chatSendRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ticketClosedNotice {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.modalCloseBtn {
+  width: 100%;
+  margin-bottom: 14px;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
+  color: #fff;
+  font-family: inherit;
+}
+
+.modalCloseBtn:hover {
+  opacity: 0.92;
 }
 
 .modalTitle {
@@ -258,6 +391,14 @@
   outline: none;
   border-color: #611f69;
   box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+}
+
+.textareaField:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  box-shadow: none;
 }
 
 .btnPrimary {

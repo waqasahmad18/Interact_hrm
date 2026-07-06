@@ -15,6 +15,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 type EmployeeDirectoryCache = {
   at: number;
   byId: Map<string, EmployeeDirectoryEntry>;
+  byCode: Map<string, EmployeeDirectoryEntry>;
   byName: Map<string, EmployeeDirectoryEntry>;
 };
 
@@ -61,6 +62,7 @@ export async function fetchEmployeeDirectoryMaps() {
 
   inflight = (async () => {
     const byId = new Map<string, EmployeeDirectoryEntry>();
+    const byCode = new Map<string, EmployeeDirectoryEntry>();
     const byName = new Map<string, EmployeeDirectoryEntry>();
 
     try {
@@ -100,6 +102,8 @@ export async function fetchEmployeeDirectoryMaps() {
             shift?.end
           );
           byId.set(id, entry);
+          const code = String(emp.employee_code ?? "").trim();
+          if (code) byCode.set(code, entry);
           if (entry.name) byName.set(normalizeName(entry.name), entry);
         }
       }
@@ -107,7 +111,7 @@ export async function fetchEmployeeDirectoryMaps() {
       /* keep partial/empty maps */
     }
 
-    cache = { at: Date.now(), byId, byName };
+    cache = { at: Date.now(), byId, byCode, byName };
     return cache;
   })();
 
@@ -127,6 +131,7 @@ export async function lookupEmployeeDirectory(
 
   const id = employeeId !== null && employeeId !== undefined ? String(employeeId).trim() : "";
   if (id && maps.byId.has(id)) return maps.byId.get(id)!;
+  if (id && maps.byCode.has(id)) return maps.byCode.get(id)!;
 
   const nameKey = employeeName ? normalizeName(employeeName) : "";
   if (nameKey && maps.byName.has(nameKey)) return maps.byName.get(nameKey)!;

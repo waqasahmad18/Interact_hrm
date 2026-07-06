@@ -48,16 +48,8 @@ export async function ensureFinancialRequestsTable() {
   }
 }
 
+import { broadcastWsEvent } from "@/lib/ws-broadcast";
+
 export function broadcastFinancialRequestUpdate() {
-  try {
-    const wsApi = globalThis as { wss?: { clients: Iterable<{ readyState: number; send: (m: string) => void }> } };
-    if (!wsApi?.wss) return;
-    for (const client of wsApi.wss.clients) {
-      if (client.readyState === 1) {
-        client.send(JSON.stringify({ type: "financial_request_update" }));
-      }
-    }
-  } catch {
-    /* optional realtime */
-  }
+  broadcastWsEvent({ type: "financial_request_update" });
 }

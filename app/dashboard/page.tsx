@@ -19,20 +19,28 @@ import {
   FaSun,
   FaHourglassHalf,
   FaGift,
-  FaMoneyBillWave,
+  FaDollarSign,
+  FaTicketAlt,
 } from "react-icons/fa";
+
+import { categoryLabel, ticketTypeLabel, type TicketCategory } from "../../lib/ticket-catalog";
+
+type Ticket = {
+  id: number;
+  ticket_number: string;
+  employee_name: string;
+  category: TicketCategory;
+  ticket_type: string;
+  subject: string | null;
+  status: string;
+  requested_at: string;
+};
 
 const quickLinks = [
   { label: "Add Employee", action: "/add-employee", icon: <FaUserPlus /> },
   { label: "Leave Requests", action: "/leave", icon: <FaCalendarAlt /> },
-  { label: "Payroll Requests", action: "/admin/financial-requests", icon: <FaMoneyBillWave /> },
+  { label: "Ticket Inbox", action: "/admin/tickets", icon: <FaTicketAlt /> },
   { label: "Recruitment", action: "/recruitment", icon: <FaBriefcase /> },
-];
-
-const recruitment = [
-  { role: "Software Engineer", candidates: 2 },
-  { role: "HR Manager", candidates: 1 },
-  { role: "Accountant", candidates: 1 },
 ];
 
 type Leave = {
@@ -159,6 +167,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const [leaves, setLeaves] = React.useState<Leave[]>([]);
   const [financialRequests, setFinancialRequests] = React.useState<FinancialRequest[]>([]);
+  const [tickets, setTickets] = React.useState<Ticket[]>([]);
+  const [loadingTickets, setLoadingTickets] = React.useState(false);
+  const [ticketPulseIds, setTicketPulseIds] = React.useState<number[]>([]);
   const [loadingLeaves, setLoadingLeaves] = React.useState(false);
   const [loadingFinancial, setLoadingFinancial] = React.useState(false);
   const [pulseIds, setPulseIds] = React.useState<number[]>([]);
@@ -187,8 +198,10 @@ export default function DashboardPage() {
   const [birthdays, setBirthdays] = React.useState<string[]>([]);
   const leavesRef = React.useRef<Leave[]>([]);
   const finRef = React.useRef<FinancialRequest[]>([]);
+  const ticketsRef = React.useRef<Ticket[]>([]);
   const timerRef = React.useRef<number | null>(null);
   const finTimerRef = React.useRef<number | null>(null);
+  const ticketTimerRef = React.useRef<number | null>(null);
 
   const pendingLeaves = React.useMemo(
     () => leaves.filter((l) => (l.status || "").toLowerCase() === "pending"),
@@ -200,7 +213,10 @@ export default function DashboardPage() {
     [financialRequests],
   );
 
-  const maxRecruitment = Math.max(...recruitment.map((r) => r.candidates), 1);
+  const pendingTickets = React.useMemo(
+    () => tickets.filter((t) => (t.status || "").toLowerCase() === "pending"),
+    [tickets],
+  );
   const snapshotTotal = Math.max(
     employeeSnapshot.active + employeeSnapshot.onLeave + employeeSnapshot.probation,
     1,
@@ -259,6 +275,32 @@ export default function DashboardPage() {
       console.error("financial requests fetch", err);
     } finally {
       setLoadingFinancial(false);
+    }
+  }, []);
+
+  const fetchTickets = React.useCallback(async (opts?: { silent?: boolean }) => {
+    try {
+      if (!opts?.silent) setLoadingTickets(true);
+      const res = await fetch("/api/employee-tickets?status=pending&limit=20", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data?.success) {
+        const next: Ticket[] = data.tickets || [];
+        const prevIds = new Set(ticketsRef.current.map((t) => t.id));
+        const newOnes = next.filter((t) => !prevIds.has(t.id)).map((t) => t.id);
+        setTickets(next);
+        ticketsRef.current = next;
+        if (newOnes.length) {
+          setTicketPulseIds(newOnes);
+          if (ticketTimerRef.current) window.clearTimeout(ticketTimerRef.current);
+          ticketTimerRef.current = window.setTimeout(() => setTicketPulseIds([]), 3500);
+        }
+      }
+    } catch (err) {
+      console.error("tickets fetch", err);
+    } finally {
+      if (!opts?.silent) setLoadingTickets(false);
     }
   }, []);
 
@@ -559,6 +601,7 @@ export default function DashboardPage() {
   React.useEffect(() => {
     fetchLeaves();
     fetchFinancialRequests();
+    fetchTickets();
     fetchEmployeeCount();
     fetchTodayAttendance();
     fetchWeeklyAttendance();
@@ -589,6 +632,9 @@ export default function DashboardPage() {
         if (msg?.type === "financial_request_update") {
           fetchFinancialRequests();
         }
+        if (msg?.type === "ticket_update" || msg?.type === "ticket_created") {
+          void fetchTickets({ silent: true });
+        }
       } catch {
         /* ignore */
       }
@@ -598,10 +644,12 @@ export default function DashboardPage() {
       clearInterval(dataInterval);
       if (timerRef.current) window.clearTimeout(timerRef.current);
       if (finTimerRef.current) window.clearTimeout(finTimerRef.current);
+      if (ticketTimerRef.current) window.clearTimeout(ticketTimerRef.current);
     };
   }, [
     fetchLeaves,
     fetchFinancialRequests,
+    fetchTickets,
     fetchEmployeeCount,
     fetchTodayAttendance,
     fetchWeeklyAttendance,
@@ -666,7 +714,16 @@ export default function DashboardPage() {
           </div>
           <div className={styles.insightChip}>
             <span className={styles.insightIcon}>
-              <FaMoneyBillWave />
+              <FaTicketAlt />
+            </span>
+            <span>
+              <strong>{pendingTickets.length}</strong> support ticket
+              {pendingTickets.length === 1 ? "" : "s"} pending
+            </span>
+          </div>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaDollarSign />
             </span>
             <span>
               <strong>{pendingFinancial.length}</strong> payroll request
@@ -897,28 +954,46 @@ export default function DashboardPage() {
               <div className={styles.cardHeader}>
                 <div className={styles.cardTitleRow}>
                   <span className={styles.cardIcon}>
-                    <FaBriefcase />
+                    <FaTicketAlt />
                   </span>
-                  <h2 className={styles.cardTitle}>Recruitment pipeline</h2>
+                  <h2 className={styles.cardTitle}>Support tickets</h2>
                 </div>
-                <span className={`${styles.pill} ${styles.pillMuted}`}>3 open</span>
+                <span className={`${styles.pill} ${styles.pillLive}`}>
+                  {loadingTickets ? "…" : `${pendingTickets.length} pending`}
+                </span>
               </div>
-              {recruitment.map((item) => (
-                <div key={item.role} className={styles.roleRow}>
-                  <div className={styles.roleHeader}>
-                    <span>{item.role}</span>
-                    <span>{item.candidates} candidates</span>
-                  </div>
-                  <div className={styles.roleBar}>
-                    <div
-                      className={styles.roleFill}
-                      style={{
-                        width: `${(item.candidates / maxRecruitment) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {pendingTickets.length === 0 && (
+                  <li
+                    className={styles.listItem}
+                    onClick={() => router.push("/admin/tickets")}
+                  >
+                    <div className={styles.listItemTitle}>No pending tickets</div>
+                    <div className={styles.listItemMeta}>Open ticket inbox</div>
+                  </li>
+                )}
+                {pendingTickets.slice(0, 5).map((ticket) => (
+                  <li
+                    key={ticket.id}
+                    className={`${styles.listItem} ${ticketPulseIds.includes(ticket.id) ? styles.listItemNew : ""}`}
+                    onClick={() => router.push("/admin/tickets")}
+                  >
+                    <div className={styles.listItemTop}>
+                      <span className={styles.listItemTitle}>
+                        {ticket.ticket_number}
+                      </span>
+                      <span className={styles.badge}>Pending</span>
+                    </div>
+                    <div className={styles.listItemMeta}>
+                      {ticket.employee_name} · {ticket.subject}
+                    </div>
+                    <div className={styles.listItemMeta} style={{ marginTop: 4 }}>
+                      {categoryLabel(ticket.category)} ·{" "}
+                      {ticketTypeLabel(ticket.category, ticket.ticket_type)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </section>
           </div>
 
@@ -994,7 +1069,7 @@ export default function DashboardPage() {
               <div className={styles.cardHeader}>
                 <div className={styles.cardTitleRow}>
                   <span className={styles.cardIcon}>
-                    <FaMoneyBillWave />
+                    <FaDollarSign />
                   </span>
                   <h2 className={styles.cardTitle}>Payroll requests</h2>
                 </div>

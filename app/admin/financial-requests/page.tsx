@@ -113,14 +113,14 @@ export default function AdminFinancialRequestsPage() {
             <button
               type="button"
               onClick={() => setFilter("pending")}
-              className={filter === "pending" ? adminStyles.tabBtnActive : adminStyles.tabBtn}
+              className={`${adminStyles.tabBtn} ${filter === "pending" ? adminStyles.tabBtnActive : ""}`}
             >
               Pending
             </button>
             <button
               type="button"
               onClick={() => setFilter("all")}
-              className={filter === "all" ? adminStyles.tabBtnActive : adminStyles.tabBtn}
+              className={`${adminStyles.tabBtn} ${filter === "all" ? adminStyles.tabBtnActive : ""}`}
             >
               All
             </button>

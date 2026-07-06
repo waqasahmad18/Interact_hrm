@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
-import { FaTachometerAlt, FaClock, FaCalendarAlt, FaUser, FaUsers, FaMoneyBillWave, FaHandHoldingUsd } from "react-icons/fa";
+import { usePathname } from "next/navigation";
+import { FaTachometerAlt, FaClock, FaUser, FaUsers, FaTicketAlt } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 import empStyles from "./emp-shell.module.css";
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
@@ -17,6 +17,7 @@ import {
 } from "../shell-branding-api";
 import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
+import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
 
 function greetingLabel() {
   const h = new Date().getHours();
@@ -30,9 +31,7 @@ const employeeTabs = [
   { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "Time", path: "/employee-dashboard/time", icon: <FaClock /> },
-  { name: "Leave", path: "/employee-dashboard/leave", icon: <FaCalendarAlt /> },
-  { name: "Request Advance", path: "/employee-dashboard/request-advance", icon: <FaMoneyBillWave /> },
-  { name: "Request Loan", path: "/employee-dashboard/request-loan", icon: <FaHandHoldingUsd /> },
+  { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
 ];
 
 /** Routes where the clock/break widget stays mounted so Dashboard ↔ Time switches
@@ -40,7 +39,6 @@ const employeeTabs = [
 const CLOCK_WIDGET_PATHS = new Set(["/employee-dashboard", "/employee-dashboard/time"]);
 
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const [employeeName, setEmployeeName] = React.useState<string>("");
   const [employeeId, setEmployeeId] = React.useState<string>("");
@@ -87,13 +85,10 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       setEmployeeName("Employee");
     });
   }, []);
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
   const [employeeAvatar, setEmployeeAvatar] = React.useState<string | null>(null);
   const [reportsTo, setReportsTo] = React.useState<HierarchyPerson | null>(null);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-
   React.useEffect(() => {
     void fetchShellBranding()
       .then((branding) => {
@@ -117,18 +112,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   React.useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
-
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    if (menuOpen) {
-      window.addEventListener("mousedown", handleClickOutside);
-      return () => window.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [menuOpen]);
 
   return (
     <>
@@ -198,30 +181,10 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
               }}
             />
             <span className={styles.topBarProfileName}>{employeeName || "Employee"}</span>
-            <div className={styles.profileMenuWrapper} ref={menuRef}>
-              <button
-                className={styles.profileMenuButton}
-                onClick={() => setMenuOpen((open) => !open)}
-                aria-label="Open menu"
-              >
-                <span className={styles.profileMenuDots}>⋮</span>
-              </button>
-              {menuOpen && (
-                <div className={styles.profileMenuDropdown}>
-                  <button
-                    className={styles.logoutButton}
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        localStorage.removeItem("loginId");
-                      }
-                      router.push("/auth");
-                    }}
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
+            <EmployeeProfileMenu
+              employeeId={employeeId}
+              onAvatarUpdated={(dataUrl) => setEmployeeAvatar(dataUrl)}
+            />
           </div>
         </div>
         </div>
