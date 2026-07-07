@@ -39,7 +39,7 @@ type DayChart = {
   label: string;
   dateKey: string;
   hours: number;
-  status: "onTime" | "tardy" | "absent";
+  status: "onTime" | "tardy" | "absent" | "pending";
   lateMinutes: number;
   isToday: boolean;
 };
@@ -67,31 +67,58 @@ function ticketStatusLabel(status: string) {
   return status.replace("_", " ");
 }
 
-function last5Weekdays(): Date[] {
-  const out: Date[] = [];
-  const d = new Date();
-  while (out.length < 5) {
-    const day = d.getDay();
-    if (day !== 0 && day !== 6) out.unshift(new Date(d));
-    d.setDate(d.getDate() - 1);
+function addDaysToDateKey(dateKey: string, daysToAdd: number) {
+  const [yearStr, monthStr, dayStr] = dateKey.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!year || !month || !day) return dateKey;
+  const utc = new Date(Date.UTC(year, month - 1, day + daysToAdd));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
+}
+
+function weekdayIndexKarachi(dateKey: string): number {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  if (!y || !m || !d) return -1;
+  const instant = new Date(Date.UTC(y, m - 1, d, 7, 0, 0));
+  const label = new Intl.DateTimeFormat("en-US", {
+    timeZone: SERVER_TIMEZONE,
+    weekday: "short",
+  }).format(instant);
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(label);
+}
+
+/** Last 5 weekdays ending on anchorKey (Karachi), oldest → newest. */
+function last5WeekdayKeys(anchorKey: string): string[] {
+  const collected: string[] = [];
+  let cur = anchorKey;
+  while (collected.length < 5) {
+    const wd = weekdayIndexKarachi(cur);
+    if (wd !== 0 && wd !== 6) collected.push(cur);
+    cur = addDaysToDateKey(cur, -1);
   }
-  return out;
+  return collected.reverse();
 }
 
-function dayLabel(d: Date) {
-  return d.toLocaleDateString("en-US", { weekday: "short" });
-}
-
-function dateKey(d: Date) {
-  return getDateStringInTimeZone(d, SERVER_TIMEZONE);
+function dayLabelFromKey(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  if (!y || !m || !d) return dateKey;
+  const instant = new Date(Date.UTC(y, m - 1, d, 7, 0, 0));
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: SERVER_TIMEZONE,
+    weekday: "short",
+  }).format(instant);
 }
 
 function recordDateKey(record: AttendanceRow) {
+  if (record.clock_in) {
+    const fromClock = getDateStringInTimeZone(record.clock_in, SERVER_TIMEZONE);
+    if (fromClock) return fromClock;
+  }
   if (record.date) {
     const m = /^\d{4}-\d{2}-\d{2}/.exec(String(record.date));
     if (m) return m[0];
   }
-  if (record.clock_in) return getDateStringInTimeZone(record.clock_in, SERVER_TIMEZONE);
   return "";
 }
 
@@ -377,8 +404,10 @@ export default function EmployeeDashboardPage() {
   const fetchAttendance = React.useCallback(async () => {
     if (!employeeId) return;
     try {
+      const today = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+      const monthStart = `${today.slice(0, 7)}-01`;
       const res = await fetch(
-        `/api/attendance?employeeId=${employeeId}&ts=${Date.now()}`,
+        `/api/attendance?employeeId=${encodeURIComponent(employeeId)}&fromDate=${monthStart}&toDate=${today}&ts=${Date.now()}`,
         { cache: "no-store" }
       );
       const data = await res.json();
@@ -491,20 +520,27 @@ export default function EmployeeDashboardPage() {
     return map;
   }, [attendance]);
 
-  const weekDays = React.useMemo(() => last5Weekdays(), [todayKey]);
+  const weekDayKeys = React.useMemo(() => last5WeekdayKeys(todayKey), [todayKey]);
 
   const weekChart: DayChart[] = React.useMemo(() => {
-    return weekDays.map((d) => {
-      const key = dateKey(d);
+    return weekDayKeys.map((key) => {
       const record = attendanceByDate.get(key);
       const isToday = key === todayKey;
       if (!record?.clock_in) {
-        return { label: dayLabel(d), dateKey: key, hours: 0, status: "absent", lateMinutes: 0, isToday };
+        const status = isToday ? "pending" : "absent";
+        return {
+          label: dayLabelFromKey(key),
+          dateKey: key,
+          hours: 0,
+          status,
+          lateMinutes: 0,
+          isToday,
+        };
       }
       const hours = workHours(record);
       const status = record.is_late ? "tardy" : "onTime";
       return {
-        label: dayLabel(d),
+        label: dayLabelFromKey(key),
         dateKey: key,
         hours,
         status,
@@ -512,7 +548,7 @@ export default function EmployeeDashboardPage() {
         isToday,
       };
     });
-  }, [weekDays, attendanceByDate, todayKey]);
+  }, [weekDayKeys, attendanceByDate, todayKey]);
 
   const maxChartHours = Math.max(8, ...weekChart.map((d) => d.hours), 1);
 
@@ -602,7 +638,7 @@ export default function EmployeeDashboardPage() {
         late++;
         totalHours += d.hours;
         present++;
-      } else {
+      } else if (d.status === "absent") {
         absent++;
       }
     });
@@ -722,7 +758,11 @@ export default function EmployeeDashboardPage() {
                   >
                     <span className={styles.dayPillLabel}>{day.label}</span>
                     <span className={styles.dayPillHours}>
-                      {day.hours > 0 ? `${Math.round(day.hours)}h` : "—"}
+                      {day.hours > 0
+                        ? `${Math.round(day.hours)}h`
+                        : day.status === "pending"
+                          ? "…"
+                          : "—"}
                     </span>
                     {day.status === "tardy" && <span className={styles.dayPillLate} />}
                   </button>
@@ -776,7 +816,9 @@ export default function EmployeeDashboardPage() {
                 const pct =
                   day.status === "absent"
                     ? 10
-                    : Math.max(14, (day.hours / maxChartHours) * 100);
+                    : day.status === "pending"
+                      ? 8
+                      : Math.max(14, (day.hours / maxChartHours) * 100);
                 return (
                   <div key={day.dateKey} className={styles.chartCol}>
                     <div className={styles.chartTrack}>
@@ -787,9 +829,18 @@ export default function EmployeeDashboardPage() {
                             ? styles.barLate
                             : day.status === "onTime"
                               ? styles.barOk
-                              : styles.barMiss
+                              : day.status === "pending"
+                                ? styles.barPending
+                                : styles.barMiss
                         }`}
                         style={{ height: `${pct}%` }}
+                        title={
+                          day.status === "pending"
+                            ? "Not clocked in yet today"
+                            : day.status === "absent"
+                              ? "No attendance recorded"
+                              : `${Math.round(day.hours * 10) / 10}h`
+                        }
                       />
                     </div>
                     <span className={`${styles.chartDay} ${day.isToday ? styles.chartDayToday : ""}`}>

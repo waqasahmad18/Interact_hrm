@@ -110,6 +110,9 @@ function addDaysToDateKey(dateKey: string, daysToAdd: number) {
   return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** Extra work beyond assigned shift before OT is shown/counted (1 hour). */
+const OVERTIME_MIN_SECONDS = 60 * 60;
+
 export default function MonthlyAttendancePage() {
     // Calculate total working days for the month (excluding leaves and off days)
     function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
@@ -159,8 +162,8 @@ export default function MonthlyAttendancePage() {
   function calculateOvertime(totalSeconds: number, assignedShiftSeconds: number | null): number | null {
     if (!assignedShiftSeconds || assignedShiftSeconds <= 0) return null;
     const overtime = totalSeconds - assignedShiftSeconds;
-    // Only count/show overtime if >= 45 minutes (2700 seconds)
-    if (overtime >= 2700) return overtime;
+    // Only count/show overtime if >= 1 hour beyond assigned shift
+    if (overtime >= OVERTIME_MIN_SECONDS) return overtime;
     return null;
   }
 
@@ -1287,8 +1290,8 @@ export default function MonthlyAttendancePage() {
     let totalSeconds = 0;
     Object.values(emp.byDate).forEach((records) => {
       (records as any[]).forEach((record) => {
-        // Only add overtime if >= 45 min (2700 sec)
-        if (record.overtime && typeof record.overtime === "number" && record.overtime >= 2700) {
+        // Only add overtime if >= 1 hour beyond assigned shift
+        if (record.overtime && typeof record.overtime === "number" && record.overtime >= OVERTIME_MIN_SECONDS) {
           totalSeconds += record.overtime;
         }
       });

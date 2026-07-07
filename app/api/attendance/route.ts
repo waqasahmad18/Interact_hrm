@@ -68,14 +68,17 @@ export async function GET(req: NextRequest) {
        )
     `;
     if (employeeId) {
-      // If date is provided, filter by that specific date; otherwise return all records
       if (date) {
         [rows] = await conn.execute(
           `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) = ? ORDER BY ea.clock_in DESC`,
           [employeeId, date]
         );
+      } else if (fromDate && toDate) {
+        [rows] = await conn.execute(
+          `${baseQuery} WHERE ea.employee_id = ? AND DATE(ea.date) BETWEEN ? AND ? ORDER BY ea.clock_in DESC`,
+          [employeeId, fromDate, toDate]
+        );
       } else {
-        // Return all records for this employee, regardless of date, so UI can check for any open record
         [rows] = await conn.execute(
           `${baseQuery} WHERE ea.employee_id = ? ORDER BY ea.clock_in DESC`,
           [employeeId]

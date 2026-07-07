@@ -250,6 +250,11 @@
   opacity: 0.65;
 }
 
+.dayPill_pending {
+  border-color: rgba(167, 139, 250, 0.55);
+  background: rgba(167, 139, 250, 0.12);
+}
+
 .dayPillToday {
   box-shadow: 0 0 0 2px #fbbf24, 0 4px 16px rgba(251, 191, 36, 0.35);
 }
@@ -491,6 +496,16 @@
 .barOk { background: linear-gradient(180deg, #34d399, #007a5a); }
 .barLate { background: linear-gradient(180deg, #f87171, #dc2626); }
 .barMiss { background: #e2e8f0; }
+.barPending {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f8fafc,
+    #f8fafc 4px,
+    #e8edf5 4px,
+    #e8edf5 8px
+  );
+  border: 1px dashed #c4b5fd;
+}
 
 .lateDot {
   position: absolute;
