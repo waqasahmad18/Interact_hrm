@@ -1,6 +1,9 @@
 -- 001 — Employee documents + Formats Library (form templates & assignments)
 -- Circular FKs between documents <-> assignments, so disable FK checks while creating.
 -- All CREATE ... IF NOT EXISTS so this is safe on DBs where tables already exist.
+-- NOTE: no FKs to external tables (departments / hrm_employees) — their index
+-- layout varies per environment and would break CREATE. We keep the *_id columns
+-- + indexes; referential integrity for those is handled in app code.
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -25,8 +28,7 @@ CREATE TABLE IF NOT EXISTS `hrm_form_templates` (
   KEY `idx_hft_scope` (`scope`),
   KEY `idx_hft_department` (`department_id`),
   KEY `idx_hft_category` (`category`),
-  KEY `idx_hft_active` (`is_active`),
-  CONSTRAINT `fk_hft_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  KEY `idx_hft_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `hrm_form_assignments` (
@@ -50,7 +52,6 @@ CREATE TABLE IF NOT EXISTS `hrm_form_assignments` (
   KEY `idx_hfa_submitted` (`submitted_at`),
   KEY `idx_hfa_emp_status` (`employee_id`,`status`),
   KEY `fk_hfa_result_document` (`result_document_id`),
-  CONSTRAINT `fk_hfa_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_hfa_result_document` FOREIGN KEY (`result_document_id`) REFERENCES `hrm_employee_documents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_hfa_template` FOREIGN KEY (`template_id`) REFERENCES `hrm_form_templates` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -82,7 +83,6 @@ CREATE TABLE IF NOT EXISTS `hrm_employee_documents` (
   KEY `idx_hed_deleted` (`deleted_at`),
   KEY `idx_hed_emp_folder` (`employee_id`,`folder_type`,`deleted_at`),
   CONSTRAINT `fk_hed_assignment` FOREIGN KEY (`assignment_id`) REFERENCES `hrm_form_assignments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_hed_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_hed_template` FOREIGN KEY (`template_id`) REFERENCES `hrm_form_templates` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
