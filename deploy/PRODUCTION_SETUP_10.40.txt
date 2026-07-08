@@ -1,0 +1,196 @@
+================================================================================
+ INTERACT HRM — PRODUCTION (MAIN HRM / 10.40) AUTO-DEPLOY SETUP
+ Same configuration we did on STAGING (10.6) today, to be repeated on 10.40.
+================================================================================
+
+GOAL
+  Push code from localhost  ->  production server auto pulls, applies DB
+  migrations, builds, and restarts. No manual server access, no manual SQL.
+
+ENVIRONMENT MAPPING (fixed)
+  STAGING     : remote name on server = "origin"        (waqasahmad18/Interact_hrm.git)   server 10.6.x.x
+  PRODUCTION  : remote name on server = "interactgdev"  (interactgdev-dev/Interact_hrm2.git) server 10.40.x.x
+  Deploy branch is always: main
+
+  NOTE: On 10.40, confirm the remote name with `git remote -v`. Below we assume
+  it is "interactgdev". If it is called "origin" there, use REMOTE=origin instead.
+
+--------------------------------------------------------------------------------
+ STEP 0 — PREREQUISITES (verify tools exist)
+--------------------------------------------------------------------------------
+  which node npm pm2 git flock md5sum
+  # All should resolve (usually /usr/bin/...). If pm2 missing:  npm i -g pm2
+  # If flock/md5sum missing:  apt-get install -y util-linux coreutils
+
+--------------------------------------------------------------------------------
+ STEP 1 — LOCATE / CONFIRM THE GIT CHECKOUT (APP_DIR)
+--------------------------------------------------------------------------------
+  # The app directory MUST be a git checkout (contain a .git folder).
+  cd /root/interact-hrm2         # <-- adjust to the real production app path
+  git rev-parse --show-toplevel  # should print the app dir, not an error
+  git remote -v                  # note the remote name for interactgdev-dev/Interact_hrm2.git
+
+  # If the app folder is NOT a git repo yet (like /var/www/... on staging was):
+  #   cd <app_dir>
+  #   git init
+  #   git remote add interactgdev https://github.com/interactgdev-dev/Interact_hrm2.git
+  #   git fetch interactgdev main
+  #   git reset --hard interactgdev/main    # brings code to latest (keeps untracked files)
+
+--------------------------------------------------------------------------------
+ STEP 2 — .env.local WITH PRODUCTION DB CREDENTIALS (REQUIRED)
+--------------------------------------------------------------------------------
+  # Migrations + app read DB creds from .env.local in the app dir.
+  # Create/verify it exists with the PRODUCTION database values:
+  #   DB_HOST=localhost
+  #   DB_PORT=3306
+  #   DB_USER=<prod user>
+  #   DB_PASSWORD=<prod password>
+  #   DB_NAME=<prod db name>
+  # (On Linux the app connects via the MySQL unix socket /var/run/mysqld/mysqld.sock;
+  #  the runner does the same automatically.)
+  cat .env.local | grep DB_    # confirm the DB_* lines are correct
+
+--------------------------------------------------------------------------------
+ STEP 3 — BRING CODE TO LATEST + FIRST BUILD
+--------------------------------------------------------------------------------
+  cd <app_dir>
+  git fetch interactgdev main
+  git reset --hard interactgdev/main
+  npm ci                        # first install (uses package-lock.json)
+  node scripts/run-migrations.mjs   # FIRST-TIME: creates ALL tables from migrations/
+  npm run build                 # let it finish fully — do NOT Ctrl+C
+
+  # Verify migrations recorded:
+  #   mysql -u <user> <db> -e "SELECT filename FROM schema_migrations;"
+
+--------------------------------------------------------------------------------
+ STEP 4 — START APP UNDER PM2 (port 3000)
+--------------------------------------------------------------------------------
+  # Stop any old manual `next start` first:
+  pkill -f "next start"; pkill -f "next-server"; sleep 2
+
+  cd <app_dir>
+  pm2 start npm --name interact-hrm -- start
+  pm2 save
+  pm2 startup systemd           # run the command it prints (enables pm2 on boot)
+  pm2 list                      # interact-hrm should be "online"
+
+--------------------------------------------------------------------------------
+ STEP 5 — AUTO-DEPLOY via SYSTEMD SERVICE + TIMER (runs every minute)
+--------------------------------------------------------------------------------
+  # IMPORTANT: ExecStart uses "bash <script>" so it does NOT depend on the
+  # file's execute bit (this avoids the 203/EXEC "Permission denied" error).
+  # (The +x bit is also committed in git, but bash makes it bulletproof.)
+
+  cat > /etc/systemd/system/interact-hrm-deploy.service <<'EOF'
+[Unit]
+Description=Interact HRM auto-deploy (production: interactgdev/main)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=PATH=/usr/bin:/bin
+Environment=PM2_HOME=/root/.pm2
+Environment=APP_DIR=/root/interact-hrm2
+Environment=REMOTE=interactgdev
+Environment=BRANCH=main
+Environment=PM2_NAME=interact-hrm
+ExecStart=/usr/bin/bash /root/interact-hrm2/deploy/deploy.sh
+EOF
+
+  cat > /etc/systemd/system/interact-hrm-deploy.timer <<'EOF'
+[Unit]
+Description=Run Interact HRM auto-deploy every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  # >>> Adjust APP_DIR / REMOTE above if they differ on 10.40 <<<
+
+  systemctl daemon-reload
+  systemctl enable --now interact-hrm-deploy.timer
+  systemctl list-timers | grep interact-hrm       # should be listed / scheduled
+
+--------------------------------------------------------------------------------
+ STEP 6 — VERIFY AUTO-DEPLOY WORKS
+--------------------------------------------------------------------------------
+  # Force one run (same as the timer) and check:
+  systemctl start interact-hrm-deploy.service
+  systemctl status interact-hrm-deploy.service --no-pager | tail -6   # expect status=0/SUCCESS
+  tail -n 30 <app_dir>/deploy/deploy.log
+  journalctl -u interact-hrm-deploy.service -n 20 --no-pager
+
+  # From now on: push to interactgdev/main from localhost and the server
+  # auto-updates within ~1 minute.
+
+================================================================================
+ WHAT deploy.sh DOES EACH RUN (deploy/deploy.sh, already in repo)
+================================================================================
+  1. git fetch <REMOTE> main  -> if no new commit, exit quietly
+  2. git reset --hard <REMOTE>/main
+  3. npm ci   ONLY if package-lock.json changed (else skipped)
+  4. node scripts/run-migrations.mjs   (applies only NEW migrations/*.sql)
+  5. npm run build
+  6. pm2 restart interact-hrm  (or pm2 start on first run)
+  Lock file /tmp/interact-hrm-deploy.lock prevents overlapping runs.
+
+================================================================================
+ DATABASE MIGRATIONS — HOW TO ADD A NEW TABLE/COLUMN (no manual SQL anywhere)
+================================================================================
+  1. Create file:  migrations/00N_description.sql
+       - Use  CREATE TABLE IF NOT EXISTS ...  (and guarded ALTERs).
+       - Do NOT add foreign keys to external tables (departments / hrm_employees):
+         their index layout differs per environment and breaks CREATE.
+         Keep the *_id columns + KEY indexes; enforce integrity in app code.
+  2. Local test:   npm run migrate     (updates local XAMPP DB)
+  3. Push:         git push interactgdev main
+  4. Server applies it automatically on next deploy; each file runs once per DB
+     (tracked in the schema_migrations table).
+
+================================================================================
+ PUSH COMMANDS (from localhost)
+================================================================================
+  Staging (10.6)      :  git push waqas main
+  Production (10.40)   :  git push interactgdev main
+  Normal flow: push to staging first, test, then push same main to production.
+
+================================================================================
+ TROUBLESHOOTING (issues we hit on staging today)
+================================================================================
+  - systemd "203/EXEC ... Permission denied" on deploy.sh
+        -> Caused by missing execute bit. Fixed by (a) bash ExecStart (above)
+           and (b) exec bit committed in git. If ever needed:
+           chmod +x <app_dir>/deploy/deploy.sh
+
+  - "crontab: command not found"
+        -> We use a systemd timer instead of cron (see STEP 5). No cron needed.
+
+  - Upload shows SUCCESS but list is empty ("Table ... doesn't exist")
+        -> A required table was missing. Run:  node scripts/run-migrations.mjs
+           (all My Files tables are in migrations 001 + 003).
+
+  - Next.js "InvariantError: Expected clientReferenceManifest"
+        -> A build was interrupted (Ctrl+C). Clean rebuild:
+           rm -rf .next && npm run build   (let it finish)
+
+  - Deploy seems stuck at an old commit
+        -> Check: git rev-parse --short origin/main  (or interactgdev/main)
+           and journalctl -u interact-hrm-deploy.service for errors.
+
+================================================================================
+ STAGING FACTS (reference — box name "ighrm")
+================================================================================
+  APP_DIR   = /root/interact-hrm2   (NOT /var/www/interact-hrm — that had no .git)
+  REMOTE    = origin                (waqasahmad18/Interact_hrm.git)
+  PM2 name  = interact-hrm  (port 3000),  pm2 startup = systemd (pm2-root)
+  Auto-deploy = systemd timer interact-hrm-deploy.timer (+ .service), every 1 min
+  Tools in /usr/bin: node npm pm2 git flock md5sum
+================================================================================
