@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FaTachometerAlt, FaClock, FaUser, FaUsers, FaTicketAlt } from "react-icons/fa";
+import { FaTachometerAlt, FaClock, FaUser, FaUsers, FaTicketAlt, FaFlask } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 import empStyles from "./emp-shell.module.css";
 import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
@@ -33,6 +33,7 @@ const employeeTabs = [
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "Time", path: "/employee-dashboard/time", icon: <FaClock /> },
   { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
+  { name: "Dummy Test", path: "/employee-dashboard/dummy-test", icon: <FaFlask /> },
 ];
 
 /** Routes where the clock/break widget stays mounted so Dashboard ↔ Time switches
