@@ -223,7 +223,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 <header className={empStyles.hero}>
                   <div className={empStyles.heroMain}>
                     <p className={empStyles.heroKicker}>{greetingLabel()}</p>
-                    <h1 className={empStyles.heroTitle}>{employeeName || "Employee"} test</h1>
+                    <h1 className={empStyles.heroTitle}>{employeeName || "Employee"}</h1>
                     <span className={empStyles.heroDate}>
                       {new Date().toLocaleDateString("en-US", {
                         weekday: "long",
