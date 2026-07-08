@@ -6,6 +6,7 @@ import {
   deleteProfilePicture,
   getProfilePicturePath,
   getAllProfilePictureRows,
+  profilePictureServeUrl,
   upsertProfilePicture,
   type ProfilePictureSubjectType,
 } from "@/lib/profile-pictures-table";
@@ -95,7 +96,8 @@ export async function POST(req: NextRequest) {
     await upsertProfilePicture(subjectType, subjectId, relPath, mime, file.size);
     if (oldPath && oldPath !== relPath) await unlinkPublicFile(oldPath);
 
-    return NextResponse.json({ success: true, url: relPath });
+    // Serve via the API route, not the static /uploads path (see file/[name]/route.ts).
+    return NextResponse.json({ success: true, url: profilePictureServeUrl(relPath) });
   } catch (err) {
     return NextResponse.json(
       { success: false, error: err instanceof Error ? err.message : "Failed to save picture" },

@@ -15,6 +15,17 @@ export type ProfilePictureRow = {
   file_path: string;
 };
 
+/**
+ * Turn a stored disk path (e.g. `/uploads/profile-pictures/uuid.jpg`) into a URL
+ * that is served by an API route. Next.js production only serves files that were
+ * in `public/` at build time — files uploaded at runtime 404 — so we stream them
+ * through `/api/profile-picture/file/<name>` instead of linking the static path.
+ */
+export function profilePictureServeUrl(filePath: string): string {
+  const name = filePath.split("/").filter(Boolean).pop() ?? "";
+  return `/api/profile-picture/file/${encodeURIComponent(name)}`;
+}
+
 export async function upsertProfilePicture(
   subjectType: ProfilePictureSubjectType,
   subjectId: string,

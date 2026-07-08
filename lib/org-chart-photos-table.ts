@@ -1,6 +1,6 @@
 import { pool } from "@/lib/db";
 import { SHELL_SUBJECT_IDS } from "@/lib/shell-branding-constants";
-import { getAllProfilePictureRows } from "@/lib/profile-pictures-table";
+import { getAllProfilePictureRows, profilePictureServeUrl } from "@/lib/profile-pictures-table";
 
 export const ORG_CHART_PHOTOS_TABLE = "hrm_org_chart_photos";
 
@@ -91,7 +91,7 @@ export async function getAllOrgChartPhotos(): Promise<{
     ...profileRows.map((p) => ({
       subject_type: p.subject_type as OrgChartPhotoSubjectType,
       subject_id: p.subject_id,
-      photo_data: p.file_path,
+      photo_data: profilePictureServeUrl(p.file_path),
     })),
   ];
 
