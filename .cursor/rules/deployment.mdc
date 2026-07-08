@@ -27,8 +27,18 @@ On each server, `deploy/deploy.sh` runs every 1 min and:
 1. `git fetch` + compare — skip if no new commit.
 2. `git reset --hard <remote>/main`.
 3. `npm install` **only if** `package-lock.json` changed (not every time).
-4. `npm run build`.
-5. Restart app (PM2: `pm2 restart interact-hrm`).
+4. **DB migrations** — `node scripts/run-migrations.mjs`.
+5. `npm run build`.
+6. Restart app (PM2: `pm2 restart interact-hrm`).
+
+## DB migrations (auto schema updates)
+
+New tables/columns must NOT be created by hand on servers. Instead:
+- Add a numbered file `migrations/NNN_description.sql` (e.g. `002_add_x.sql`).
+- Use `CREATE TABLE IF NOT EXISTS` / guarded `ALTER` so it's safe to run anywhere.
+- Commit + push — `deploy.sh` runs `run-migrations.mjs` which applies only new files and records them in the `schema_migrations` table (each runs once per DB).
+- Runner reuses lib/db env (`DB_*`, unix socket on Linux), loading `.env.local`/`.env` from the app dir.
+- Manual run: `npm run migrate`.
 
 Each server's checkout tracks the remote for its environment (staging server ← staging repo, production server ← production repo).
 

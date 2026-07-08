@@ -60,6 +60,9 @@ else
   log "Dependencies unchanged — skipping install."
 fi
 
+log "Running DB migrations…"
+node "$APP_DIR/scripts/run-migrations.mjs" >>"$LOG_FILE" 2>&1
+
 log "Building…"
 npm run build >>"$LOG_FILE" 2>&1
 
