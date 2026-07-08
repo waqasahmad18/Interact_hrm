@@ -30,8 +30,7 @@ CREATE TABLE IF NOT EXISTS `breaks` (
   `break_duration` int(11) DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `fk_breaks_employee_id` (`employee_id`),
-  KEY `idx_shift_assignment_id` (`shift_assignment_id`),
-  CONSTRAINT `fk_breaks_employee_id` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
+  KEY `idx_shift_assignment_id` (`shift_assignment_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `calendar_day_overrides` (
@@ -82,8 +81,7 @@ CREATE TABLE IF NOT EXISTS `employee_attachments` (
   `file_size` bigint(20) NOT NULL,
   `uploaded_at` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  KEY `employee_id` (`employee_id`),
-  CONSTRAINT `employee_attachments_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  KEY `employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_attendance` (
@@ -122,8 +120,7 @@ CREATE TABLE IF NOT EXISTS `employee_commissions` (
   UNIQUE KEY `employee_month_unique` (`employee_id`,`month`),
   KEY `idx_month` (`month`),
   KEY `idx_year_month` (`year`,`month_number`),
-  KEY `idx_employee_year` (`employee_id`,`year`,`month_number`),
-  CONSTRAINT `fk_employee_commissions_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `idx_employee_year` (`employee_id`,`year`,`month_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_contacts` (
@@ -141,9 +138,7 @@ CREATE TABLE IF NOT EXISTS `employee_contacts` (
   `email_work` varchar(100) DEFAULT NULL,
   `email_other` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `fk_contacts_hrm_employee` (`employee_id`),
-  CONSTRAINT `fk_contacts_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_contacts_hrm_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  KEY `fk_contacts_hrm_employee` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_details` (
@@ -157,8 +152,7 @@ CREATE TABLE IF NOT EXISTS `employee_details` (
   `salary` text DEFAULT NULL,
   `report_to` text DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `employee_id` (`employee_id`),
-  CONSTRAINT `employee_details_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`)
+  KEY `employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_emergency_contacts` (
@@ -168,9 +162,7 @@ CREATE TABLE IF NOT EXISTS `employee_emergency_contacts` (
   `relationship` varchar(50) DEFAULT NULL,
   `phone` varchar(30) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `fk_emergency_hrm_employee` (`employee_id`),
-  CONSTRAINT `fk_emergency_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_emergency_hrm_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  KEY `fk_emergency_hrm_employee` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_face_enrollment` (
@@ -222,10 +214,7 @@ CREATE TABLE IF NOT EXISTS `employee_jobs` (
   `department_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `fk_jobs_hrm_employee` (`employee_id`),
-  KEY `department_id` (`department_id`),
-  CONSTRAINT `employee_jobs_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`),
-  CONSTRAINT `fk_jobs_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_jobs_hrm_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  KEY `department_id` (`department_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_leave_allowances` (
@@ -240,8 +229,7 @@ CREATE TABLE IF NOT EXISTS `employee_leave_allowances` (
   `annual_balance_adjustment` int(11) DEFAULT 0,
   `bereavement_balance_adjustment` int(11) DEFAULT 0,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_employee` (`employee_id`),
-  CONSTRAINT `employee_leave_allowances_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  UNIQUE KEY `unique_employee` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_leaves` (
@@ -260,8 +248,7 @@ CREATE TABLE IF NOT EXISTS `employee_leaves` (
   `requested_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  KEY `employee_id` (`employee_id`),
-  CONSTRAINT `employee_leaves_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`)
+  KEY `employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_salaries` (
@@ -279,9 +266,7 @@ CREATE TABLE IF NOT EXISTS `employee_salaries` (
   `routing_number` varchar(50) DEFAULT NULL,
   `deposit_amount` decimal(18,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `fk_salaries_hrm_employee` (`employee_id`),
-  CONSTRAINT `fk_salaries_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_salaries_hrm_employee` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  KEY `fk_salaries_hrm_employee` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `employee_tickets` (
@@ -474,8 +459,7 @@ CREATE TABLE IF NOT EXISTS `prayer_breaks` (
   `exceed_minutes` int(11) DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `fk_prayer_breaks_employee_id` (`employee_id`),
-  KEY `idx_shift_assignment_id` (`shift_assignment_id`),
-  CONSTRAINT `fk_prayer_breaks_employee_id` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
+  KEY `idx_shift_assignment_id` (`shift_assignment_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `reminders` (
@@ -499,8 +483,7 @@ CREATE TABLE IF NOT EXISTS `shift_assignments` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `allow_overtime` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_employee_date` (`employee_id`,`assigned_date`),
-  CONSTRAINT `shift_assignments_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `hrm_employees` (`id`) ON DELETE CASCADE
+  UNIQUE KEY `unique_employee_date` (`employee_id`,`assigned_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `shift_effective_dates` (
@@ -528,8 +511,7 @@ CREATE TABLE IF NOT EXISTS `shift_late_early_relaxation` (
   `no_late_without_special` int(11) DEFAULT 0,
   `day_to_deduct` varchar(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `shift_id` (`shift_id`),
-  CONSTRAINT `shift_late_early_relaxation_ibfk_1` FOREIGN KEY (`shift_id`) REFERENCES `shifts` (`id`)
+  KEY `shift_id` (`shift_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `shift_late_sitting_overtime` (
@@ -540,8 +522,7 @@ CREATE TABLE IF NOT EXISTS `shift_late_sitting_overtime` (
   `overtime_per_month` int(11) DEFAULT 0,
   `overtime_per_day` int(11) DEFAULT 0,
   PRIMARY KEY (`id`),
-  KEY `shift_id` (`shift_id`),
-  CONSTRAINT `shift_late_sitting_overtime_ibfk_1` FOREIGN KEY (`shift_id`) REFERENCES `shifts` (`id`)
+  KEY `shift_id` (`shift_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `shift_leave_settings` (
@@ -555,8 +536,7 @@ CREATE TABLE IF NOT EXISTS `shift_leave_settings` (
   `half_day_value` decimal(4,2) DEFAULT NULL,
   `short_day_value` decimal(4,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `shift_id` (`shift_id`),
-  CONSTRAINT `shift_leave_settings_ibfk_1` FOREIGN KEY (`shift_id`) REFERENCES `shifts` (`id`)
+  KEY `shift_id` (`shift_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `shift_working_days` (
@@ -570,8 +550,7 @@ CREATE TABLE IF NOT EXISTS `shift_working_days` (
   `saturday` tinyint(1) DEFAULT 0,
   `sunday` tinyint(1) DEFAULT 0,
   PRIMARY KEY (`id`),
-  KEY `shift_id` (`shift_id`),
-  CONSTRAINT `shift_working_days_ibfk_1` FOREIGN KEY (`shift_id`) REFERENCES `shifts` (`id`)
+  KEY `shift_id` (`shift_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `shifts` (
