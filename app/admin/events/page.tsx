@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { showAppConfirm } from "@/lib/app-confirm";
 import LayoutDashboard from "@/app/layout-dashboard";
 import { CompanyPolicySection } from "../company-policy/CompanyPolicySection";
 import styles from "../admin-page.module.css";
@@ -177,7 +178,11 @@ export default function AdminEventsPage() {
   }
 
   async function handleDeleteReminder(id: number) {
-    const ok = window.confirm("Delete this reminder?");
+    const ok = await showAppConfirm({
+      message: "Delete this reminder?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
     if (!ok) return;
     try {
       setDeletingReminderId(id);
@@ -197,7 +202,11 @@ export default function AdminEventsPage() {
   }
 
   async function handleDelete(id: number) {
-    const ok = window.confirm("Delete this event?");
+    const ok = await showAppConfirm({
+      message: "Delete this event?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
     if (!ok) return;
     try {
       setDeletingId(id);

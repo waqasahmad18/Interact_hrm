@@ -6,6 +6,7 @@ import adminStyles from "../admin-page.module.css";
 import { FaSave, FaTimes, FaEdit, FaKey, FaEnvelope, FaUser } from "react-icons/fa";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { toastError } from "@/lib/app-toast";
 
 interface Employee {
   id: number;
@@ -124,10 +125,10 @@ export default function EmployeeCredentialsPage() {
         setEditingId(null);
         setEditData({ username: "", email: "", password: "" });
       } else {
-        alert("Failed to update: " + (data.error || "Unknown error"));
+        toastError("Failed to update: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      alert("Failed to update credentials");
+      toastError("Failed to update credentials");
     } finally {
       setSaving(false);
     }

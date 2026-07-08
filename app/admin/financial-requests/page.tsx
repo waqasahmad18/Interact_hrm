@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { toastError } from "@/lib/app-toast";
 
 type FinancialRequest = {
   id: number;
@@ -83,10 +84,10 @@ export default function AdminFinancialRequestsPage() {
         setRejectRemark("");
         void fetchRequests();
       } else {
-        window.alert(data.error || "Action failed");
+        toastError(data.error || "Action failed");
       }
     } catch {
-      window.alert("Action failed");
+      toastError("Action failed");
     } finally {
       setProcessing(false);
     }

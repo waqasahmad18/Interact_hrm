@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import styles from "./add-employee.module.css";
 import AttachmentsUploader from "./AttachmentsUploader";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 const employeeTabs = [
   { name: "Personal Details" },
@@ -59,7 +60,7 @@ export default function AddEmployeeForm({
   const handleEmergencyContactsSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId) {
-      alert('Please save Personal Details first.');
+      toastInfo('Please save Personal Details first.');
       return;
     }
     try {
@@ -70,13 +71,13 @@ export default function AddEmployeeForm({
       });
       const data = await res.json();
       if (data.success) {
-        alert('Emergency contacts saved!');
+        toastSuccess('Emergency contacts saved!');
         setActiveTab('Job Details');
       } else {
-        alert('Save failed: ' + (data.error || 'Unknown'));
+        toastError('Save failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
-      alert('Save failed: ' + String(err));
+      toastError('Save failed: ' + String(err));
     }
   };
 
@@ -84,7 +85,7 @@ export default function AddEmployeeForm({
   const handleContactSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId) {
-      alert('Please save Personal Details first.');
+      toastInfo('Please save Personal Details first.');
       return;
     }
     try {
@@ -108,13 +109,13 @@ export default function AddEmployeeForm({
       });
       const data = await res.json();
       if (data.success) {
-        alert('Contact details saved!');
+        toastSuccess('Contact details saved!');
         setActiveTab('Emergency Contacts');
       } else {
-        alert('Save failed: ' + (data.error || 'Unknown'));
+        toastError('Save failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
-      alert('Save failed: ' + String(err));
+      toastError('Save failed: ' + String(err));
     }
   };
 
@@ -135,7 +136,7 @@ export default function AddEmployeeForm({
   const handleJobDetailsSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId) {
-      alert('Please save Personal Details first.');
+      toastInfo('Please save Personal Details first.');
       return;
     }
     try {
@@ -157,13 +158,13 @@ export default function AddEmployeeForm({
       });
       const data = await res.json();
       if (data.success) {
-        alert('Job details saved!');
+        toastSuccess('Job details saved!');
         setActiveTab('Salary');
       } else {
-        alert('Save failed: ' + (data.error || 'Unknown'));
+        toastError('Save failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
-      alert('Save failed: ' + String(err));
+      toastError('Save failed: ' + String(err));
     }
   };
 
@@ -171,7 +172,7 @@ export default function AddEmployeeForm({
   const handleSalarySave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId) {
-      alert('Please save Personal Details first.');
+      toastInfo('Please save Personal Details first.');
       return;
     }
     try {
@@ -185,14 +186,14 @@ export default function AddEmployeeForm({
       });
       const data = await res.json();
       if (data.success) {
-        alert('Salary details saved!');
+        toastSuccess('Salary details saved!');
         setActiveTab('Attachments');
         if (onSaved) onSaved();
       } else {
-        alert('Save failed: ' + (data.error || 'Unknown'));
+        toastError('Save failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
-      alert('Save failed: ' + String(err));
+      toastError('Save failed: ' + String(err));
     }
   };
 
@@ -419,7 +420,7 @@ export default function AddEmployeeForm({
         };
         reader.readAsDataURL(file);
       } else {
-        alert("File size must be less than 1MB");
+        toastInfo("File size must be less than 1MB");
       }
     }
   };
@@ -427,7 +428,7 @@ export default function AddEmployeeForm({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (createLogin && password !== confirmPassword) {
-      alert('Password and Confirm Password do not match');
+      toastError('Password and Confirm Password do not match');
       return;
     }
     // Do not require employeeId before save; it will be set after backend returns it
@@ -463,16 +464,16 @@ export default function AddEmployeeForm({
     let hrmData = await hrmRes.json();
     if (!hrmData.success) {
       if (hrmData.error) {
-        alert('Save failed: ' + hrmData.error);
+        toastError('Save failed: ' + hrmData.error);
       } else {
-        alert('Save failed: Unknown');
+        toastError('Save failed: Unknown');
       }
       return;
     }
     if (!isEdit && hrmData.id) {
       setEmployeeId(hrmData.id.toString());
     }
-    alert(isEdit ? 'Employee updated.' : 'Employee saved.');
+    toastSuccess(isEdit ? 'Employee updated.' : 'Employee saved.');
     setActiveTab('Contact Details');
   }
 

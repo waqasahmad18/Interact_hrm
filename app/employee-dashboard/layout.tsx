@@ -18,6 +18,7 @@ import {
 import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
 import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
+import { toastError } from "@/lib/app-toast";
 
 function greetingLabel() {
   const h = new Date().getHours();
@@ -139,7 +140,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 setCompanyLogo(dataUrl);
                 void saveCompanyLogo(dataUrl).catch(() => {
                   setCompanyLogo(prev);
-                  window.alert("Could not save company logo.");
+                  toastError("Could not save company logo.");
                 });
               }}
               onRemove={() => {
@@ -147,7 +148,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 setCompanyLogo(null);
                 void removeCompanyLogo().catch(() => {
                   setCompanyLogo(prev);
-                  window.alert("Could not remove company logo.");
+                  toastError("Could not remove company logo.");
                 });
               }}
             />
@@ -167,7 +168,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 setEmployeeAvatar(dataUrl);
                 void saveEmployeeAvatar(employeeId, dataUrl).catch(() => {
                   setEmployeeAvatar(prev);
-                  window.alert("Could not save profile photo.");
+                  toastError("Could not save profile photo.");
                 });
               }}
               onRemove={() => {
@@ -176,7 +177,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 setEmployeeAvatar(null);
                 void removeEmployeeAvatar(employeeId).catch(() => {
                   setEmployeeAvatar(prev);
-                  window.alert("Could not remove profile photo.");
+                  toastError("Could not remove profile photo.");
                 });
               }}
             />

@@ -13,6 +13,7 @@ import {
   scanVideoFrame,
 } from "@/lib/face-client-engine";
 import { enrollmentPhotoApiUrl } from "@/lib/enrollment-photo-url";
+import { FaceScanViewport } from "@/app/components/FaceScanHud";
 import { FaToggleOff, FaToggleOn } from "react-icons/fa";
 
 type EmployeeOption = {
@@ -388,7 +389,7 @@ export default function FaceEnrollmentAdminPage() {
       if (scan.status !== "ok") {
         setError(
           source === "webcam"
-            ? "No face detected. Center your face in the green circle, hold still, and try again."
+            ? "No face detected. Look at the camera, hold still, and try again."
             : "No face detected. Use a front-facing photo with one face, better lighting, and try again."
         );
         setBusy(false);
@@ -487,7 +488,7 @@ export default function FaceEnrollmentAdminPage() {
       return;
     }
     if (scan.status !== "ok") {
-      setError("No face detected. Center your face in the green circle, hold still, and try again.");
+      setError("No face detected. Look at the camera, hold still, and try again.");
       setBusy(false);
       return;
     }
@@ -676,25 +677,35 @@ export default function FaceEnrollmentAdminPage() {
                     (e.g. nginx + SSL). Code cannot override this.
                   </p>
                 ) : null}
-                <div className={styles.videoWrap}>
-                  <video
-                    ref={videoRef}
-                    className={styles.video}
-                    playsInline
-                    muted
-                    autoPlay
-                    onLoadedMetadata={(e) => {
-                      const v = e.currentTarget;
-                      if (v.videoWidth > 0) setCameraReady(true);
-                    }}
-                  />
-                  {!cameraReady && (
-                    <div className={styles.videoPlaceholder}>
-                      {busy ? "Please wait…" : "Starting camera…"}
-                    </div>
-                  )}
-                  {cameraReady && <div className={styles.scanRing} aria-hidden="true" />}
-                </div>
+                <FaceScanViewport
+                  videoRef={videoRef}
+                  className={styles.enrollScanViewport}
+                  autoPlay
+                  mode={
+                    busy
+                      ? "capturing"
+                      : !cameraReady || !modelsReady
+                        ? "initializing"
+                        : "scanning"
+                  }
+                  statusLine={
+                    busy
+                      ? "SAVING BIOMETRIC SAMPLE"
+                      : cameraReady && modelsReady
+                        ? "READY TO CAPTURE"
+                        : "INITIALIZING SENSORS"
+                  }
+                  subjectName={
+                    employeeName || (selectedEmployee ? displayName(selectedEmployee) : undefined)
+                  }
+                  subjectId={selectedEmployee?.employee_code || employeeId || undefined}
+                  captureCurrent={photos.length}
+                  captureTotal={service?.recommendedMax ?? 5}
+                  loadingLabel={
+                    busy ? "Please wait…" : !cameraReady ? "Starting camera…" : "Loading face engine…"
+                  }
+                  onVideoLoaded={() => setCameraReady(true)}
+                />
                 <canvas ref={canvasRef} style={{ display: "none" }} />
                 <div className={styles.actions}>
                   <button

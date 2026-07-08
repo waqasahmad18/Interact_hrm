@@ -14,6 +14,8 @@ import {
 import { EmployeeAvatar } from "../../components/EmployeeAvatar";
 import { employeeInitials } from "../../../lib/employee-photo-shared";
 import styles from "./my-info.module.css";
+import filesStyles from "./my-files.module.css";
+import { MyFilesTab } from "./MyFilesTab";
 
 export default function MyInfoPage() {
   const [data, setData] = useState<any>(null);
@@ -28,6 +30,8 @@ export default function MyInfoPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"profile" | "myfiles">("profile");
+  const [storedEmployeeId, setStoredEmployeeId] = useState("");
   const [credentials, setCredentials] = useState<{
     id: number | null;
     username: string;
@@ -38,6 +42,7 @@ export default function MyInfoPage() {
   useEffect(() => {
     const employeeId =
       localStorage.getItem("employeeId") || sessionStorage.getItem("employeeId");
+    if (employeeId) setStoredEmployeeId(employeeId);
 
     if (!employeeId) {
       setError("Employee ID not found. Please login again.");
@@ -113,6 +118,7 @@ export default function MyInfoPage() {
         email,
         currentPassword: employee.password || "",
       });
+      setStoredEmployeeId(String(employeeId));
     } catch {
       setCredentialsError("Failed to load your credentials. Please refresh and try again.");
     } finally {
@@ -232,9 +238,33 @@ export default function MyInfoPage() {
         <header className={styles.header}>
           <div>
             <h1 className={styles.title}>My Info</h1>
-            <p className={styles.subtitle}>Personal, job, and account details</p>
+            <p className={styles.subtitle}>Personal details and your employee file folder</p>
           </div>
         </header>
+
+        <div className={filesStyles.tabs}>
+          <button
+            type="button"
+            className={`${filesStyles.tab} ${activeTab === "profile" ? filesStyles.tabActive : ""}`}
+            onClick={() => setActiveTab("profile")}
+          >
+            Profile
+          </button>
+          <button
+            type="button"
+            className={`${filesStyles.tab} ${activeTab === "myfiles" ? filesStyles.tabActive : ""}`}
+            onClick={() => setActiveTab("myfiles")}
+          >
+            My Files
+          </button>
+        </div>
+
+        {activeTab === "myfiles" ? (
+          <section className={styles.card}>
+            <MyFilesTab employeeId={storedEmployeeId || String(credentials.id || "")} />
+          </section>
+        ) : (
+        <>
 
         <div className={styles.profileCard}>
           <EmployeeAvatar
@@ -471,6 +501,8 @@ export default function MyInfoPage() {
             </>
           )}
         </section>
+        </>
+        )}
       </div>
     </div>
   );

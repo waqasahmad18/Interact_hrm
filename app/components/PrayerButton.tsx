@@ -8,6 +8,7 @@ import {
   PRAYER_DATA_CHANGED,
   notifyPrayerDataChanged,
 } from "../../lib/ui-sync/breakPrayerDataRefresh";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 /** When clocked in across midnight, breaks/prayers fall on multiple calendar days; use session range, not date=today only. */
 function buildPrayerBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -98,6 +99,7 @@ export function PrayerButton({
         setPrayerStart(startTime);
         notifyPrayerDataChanged();
         onPrayerStateChanged();
+        toastSuccess("Prayer break started.", "Prayer break");
       } else if (
         res.status === 403 &&
         String(data.error || "").toLowerCase().includes("face verification") &&
@@ -105,11 +107,11 @@ export function PrayerButton({
       ) {
         runWithVerify("prayer_start", (token) => handlePrayerStart(token));
       } else {
-        alert(data.error || "Failed to start prayer break");
+        toastError(data.error || "Failed to start prayer break");
       }
     } catch (err) {
       console.error(err);
-      alert("Error starting prayer break");
+      toastError("Error starting prayer break");
     } finally {
       setPrayerActionPending(false);
     }
@@ -138,6 +140,7 @@ export function PrayerButton({
         onClearServerPrayerInterval?.();
         notifyPrayerDataChanged();
         onPrayerStateChanged();
+        toastSuccess("Prayer break ended.", "Prayer break");
       } else if (
         res.status === 403 &&
         String(data.error || "").toLowerCase().includes("face verification") &&
@@ -149,13 +152,13 @@ export function PrayerButton({
       } else {
         prayerEndAtRef.current = null;
         resumePrayerTimerAfterVerify();
-        alert(data.error || "Failed to end prayer break");
+        toastError(data.error || "Failed to end prayer break");
       }
     } catch (err) {
       console.error(err);
       prayerEndAtRef.current = null;
       resumePrayerTimerAfterVerify();
-      alert("Error ending prayer break");
+      toastError("Error ending prayer break");
     } finally {
       setPrayerActionPending(false);
     }

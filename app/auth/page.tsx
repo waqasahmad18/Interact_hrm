@@ -50,16 +50,26 @@ export default function LoginPage() {
       setError("");
       setLoading(true);
       const id = rawLoginId.trim().toLowerCase();
-      const validAdmin =
-        (id === "admin@interact.com" || id === "interactadmin" || id === "admin") &&
-        rawPassword === "interact123";
+      const isAdminId =
+        id === "admin@interact.com" || id === "interactadmin" || id === "admin";
 
-      if (validAdmin) {
-        if (typeof window !== "undefined") {
-          localStorage.setItem("loginId", rawLoginId);
+      if (isAdminId) {
+        const adminRes = await fetch("/api/admin-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loginId: rawLoginId, password: rawPassword }),
+        });
+        const adminData = await adminRes.json();
+        if (adminData.success) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("loginId", rawLoginId);
+          }
+          await persistCredentials(rawLoginId, rawPassword);
+          router.push("/dashboard");
+          setLoading(false);
+          return;
         }
-        await persistCredentials(rawLoginId, rawPassword);
-        router.push("/dashboard");
+        setError(adminData.error || "Invalid admin credentials.");
         setLoading(false);
         return;
       }

@@ -8,6 +8,7 @@ import { categoryLabel, ticketTypeLabel, type TicketCategory } from "../../../li
 import { isTicketClosed } from "../../../lib/ticket-status";
 import { previewTicketToastOnPage } from "../../../lib/ticket-toast-demo";
 import type { TicketThreadMessage } from "../../../lib/ticket-thread";
+import { toastError, toastInfo } from "@/lib/app-toast";
 
 type Ticket = {
   id: number;
@@ -94,10 +95,10 @@ export default function AdminTicketsPage() {
         }
         void fetchTickets();
       } else {
-        window.alert(data.error || "Action failed");
+        toastError(data.error || "Action failed");
       }
     } catch {
-      window.alert("Action failed");
+      toastError("Action failed");
     } finally {
       setProcessing(false);
     }
@@ -110,7 +111,7 @@ export default function AdminTicketsPage() {
   const handleSendReply = (id: number) => {
     if (selected && isTicketClosed(selected.status)) return;
     if (!reply.trim()) {
-      window.alert("Please type a reply first.");
+      toastInfo("Please type a reply first.");
       return;
     }
     void patchTicket(id);

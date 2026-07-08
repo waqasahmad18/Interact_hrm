@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import styles from "../../add-employee/add-employee.module.css";
 import { useRouter, usePathname } from "next/navigation";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 const employeeTabs = [
   { name: "Employee List", path: "/employee-list" },
@@ -74,9 +75,9 @@ export default function PersonalDetailsPage() {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (data.success) alert('Personal details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
+      if (data.success) toastSuccess('Personal details saved'); else toastError('Save failed: ' + (data.error || 'Unknown'));
     } catch (err) {
-      alert('Save failed: ' + String(err));
+      toastError('Save failed: ' + String(err));
     }
   }
 

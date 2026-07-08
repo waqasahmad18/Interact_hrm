@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { showAppConfirm } from "@/lib/app-confirm";
 import LateEarlyRelaxationForm from "./LateEarlyRelaxationForm";
 import LateSittingOvertimeForm from "./LateSittingOvertimeForm";
 import WorkingDaysForm from "./WorkingDaysForm";
@@ -73,7 +74,12 @@ export default function MasterShiftsTable() {
 
   // Delete shift
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this shift?")) return;
+    const ok = await showAppConfirm({
+      message: "Are you sure you want to delete this shift?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     await fetch(`/api/shifts?id=${id}`, { method: "DELETE" });
     setShifts((prev) => prev.filter((s) => s.id !== id));
   };

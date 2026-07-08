@@ -1,6 +1,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import styles from "./add-employee.module.css";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 export default function AttachmentsUploader({ employeeId }: { employeeId: string }) {
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
@@ -29,7 +30,7 @@ export default function AttachmentsUploader({ employeeId }: { employeeId: string
     e.preventDefault();
     // Allow saving without attachments - skip if no files
     if (fileList.length === 0) {
-      alert('No attachments to upload. Redirecting to employee list.');
+      toastInfo('No attachments to upload. Redirecting to employee list.');
       router.push('/admin/employee-list');
       return;
     }
@@ -43,11 +44,11 @@ export default function AttachmentsUploader({ employeeId }: { employeeId: string
     });
     setUploading(false);
     if (res.ok) {
-      alert('Attachments uploaded successfully!');
+      toastSuccess('Attachments uploaded successfully!');
       router.push('/admin/employee-list');
     } else {
       const data = await res.json();
-      alert('Upload failed: ' + (data.error || 'Unknown error'));
+      toastError('Upload failed: ' + (data.error || 'Unknown error'));
     }
   };
 

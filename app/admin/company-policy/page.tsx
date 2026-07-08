@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { showAppConfirm } from "@/lib/app-confirm";
 import LayoutDashboard from "@/app/layout-dashboard";
 import styles from "../admin-page.module.css";
 
@@ -51,7 +52,12 @@ export default function CompanyPolicyPage() {
 
   async function handleDelete() {
     if (!policy?.id) return;
-    if (!window.confirm("Delete this company policy?")) return;
+    const ok = await showAppConfirm({
+      message: "Delete this company policy?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     setDeleting(true);
     await fetch("/api/company-policies", {
       method: "DELETE",

@@ -195,6 +195,13 @@
   color: #4a5775;
 }
 
+.enrollScanViewport {
+  margin-bottom: 12px;
+  max-height: 320px;
+  border-radius: 12px;
+  border: 2px solid #fbcfe8;
+}
+
 .videoWrap {
   position: relative;
   aspect-ratio: 4/3;

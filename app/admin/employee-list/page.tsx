@@ -18,6 +18,8 @@ import AddEmployeeForm from "../../add-employee/AddEmployeeForm";
 import * as XLSX from "xlsx";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { toastError } from "@/lib/app-toast";
+import { showAppConfirm } from "@/lib/app-confirm";
 
 type SortKey =
   | "id"
@@ -100,12 +102,17 @@ export default function EmployeeListStyledPage() {
           employee.id === id ? { ...employee, status: currentStatus } : employee
         )
       );
-      alert("Status update failed: " + (data.error || "Unknown error"));
+      toastError("Status update failed: " + (data.error || "Unknown error"));
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this employee?")) return;
+    const ok = await showAppConfirm({
+      message: "Are you sure you want to delete this employee?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     const res = await fetch("/api/employee-list", {
       method: "DELETE",
@@ -118,7 +125,7 @@ export default function EmployeeListStyledPage() {
     if (data.success) {
       setEmployees((prev) => prev.filter((employee) => employee.id !== id));
     } else {
-      alert("Delete failed: " + (data.error || "Unknown error"));
+      toastError("Delete failed: " + (data.error || "Unknown error"));
     }
   };
 

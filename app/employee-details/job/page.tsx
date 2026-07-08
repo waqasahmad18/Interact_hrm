@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import styles from "../../add-employee/add-employee.module.css";
 import { useRouter, usePathname } from "next/navigation";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 const employeeTabs = [
 	{ name: "Employee List", path: "/employee-list" },
@@ -30,7 +31,7 @@ export default function JobPage() {
 	async function handleSave(e: React.FormEvent) {
 		e.preventDefault();
 		const eid = window.prompt('Enter Employee ID to save job details for (employee_id):');
-		if (!eid) { alert('Employee ID is required'); return; }
+		if (!eid) { toastInfo('Employee ID is required'); return; }
 		const payload = { details: { employeeId: eid, job } };
 		try {
 			// Example placeholder for saving job details
@@ -40,8 +41,8 @@ export default function JobPage() {
 				body: JSON.stringify(payload)
 			});
 			const data = await res.json();
-			if (data.success) alert('Job details saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
-		} catch (err) { alert('Save failed: ' + String(err)); }
+			if (data.success) toastSuccess('Job details saved'); else toastError('Save failed: ' + (data.error || 'Unknown'));
+		} catch (err) { toastError('Save failed: ' + String(err)); }
 	}
 
 	return (

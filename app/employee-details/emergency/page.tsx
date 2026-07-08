@@ -2,6 +2,7 @@
 import React from "react";
 import styles from "../../add-employee/add-employee.module.css";
 import { useRouter, usePathname } from "next/navigation";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 const employeeTabs = [
   { name: "Employee List", path: "/employee-list" },
@@ -24,7 +25,7 @@ export default function EmergencyContactsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     const eid = window.prompt('Enter Employee ID to save emergency contacts for (employee_id):');
-    if (!eid) { alert('Employee ID is required'); return; }
+    if (!eid) { toastInfo('Employee ID is required'); return; }
     const payload = { details: { employeeId: eid, emergency: contacts } };
     try {
       // Example placeholder for saving emergency contacts
@@ -34,8 +35,8 @@ export default function EmergencyContactsPage() {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (data.success) alert('Emergency contacts saved'); else alert('Save failed: ' + (data.error || 'Unknown'));
-    } catch (err) { alert('Save failed: ' + String(err)); }
+      if (data.success) toastSuccess('Emergency contacts saved'); else toastError('Save failed: ' + (data.error || 'Unknown'));
+    } catch (err) { toastError('Save failed: ' + String(err)); }
   }
 
   return (

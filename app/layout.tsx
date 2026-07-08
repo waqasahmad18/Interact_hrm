@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { TicketToastHost } from "./components/TicketToastHost";
+import { AppToastHost } from "./components/AppToastHost";
+import { AppConfirmHost } from "./components/AppConfirmHost";
 
 export const metadata: Metadata = {
   title: "Interact HRM",
@@ -20,6 +22,8 @@ export default function RootLayout({
       <body className="antialiased" suppressHydrationWarning style={{ background: "#F7FAFC" }}>
         {children}
         <TicketToastHost />
+        <AppToastHost />
+        <AppConfirmHost />
       </body>
     </html>
   );

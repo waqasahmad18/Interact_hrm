@@ -6,6 +6,7 @@ import styles from "../../break-summary/break-summary.module.css";
 import { FaFileExcel, FaUpload, FaDownload } from "react-icons/fa";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { toastError, toastInfo } from "@/lib/app-toast";
 
 export default function CommissionsPage() {
   const [commissionsData, setCommissionsData] = useState<any[]>([]);
@@ -47,7 +48,7 @@ export default function CommissionsPage() {
 
   const handleDownloadTemplate = async () => {
     if (!selectedMonth) {
-      alert("Please select a month first");
+      toastInfo("Please select a month first");
       return;
     }
 
@@ -69,7 +70,7 @@ export default function CommissionsPage() {
       document.body.removeChild(a);
     } catch (error) {
       console.error("Error downloading template:", error);
-      alert("Failed to download template");
+      toastError("Failed to download template");
     }
   };
 
@@ -78,7 +79,7 @@ export default function CommissionsPage() {
     if (!file) return;
 
     if (!selectedMonth) {
-      alert("Please select a month first");
+      toastInfo("Please select a month first");
       return;
     }
 

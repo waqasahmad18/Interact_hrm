@@ -1,0 +1,41 @@
+---
+description: Git remote to environment mapping and deploy/push behavior for Interact HRM
+alwaysApply: true
+---
+
+# Deployment Remotes & Push Behavior
+
+Two environments, each mapped to a GitHub remote. Deploy branch is always `main`.
+
+| Environment | Trigger words from user | Git remote | Repo | Server |
+|-------------|-------------------------|-----------|------|--------|
+| **STAGING** (test first) | "staging", "10.6" | `waqas` | `waqasahmad18/Interact_hrm.git` | `10.6.x.x` |
+| **MAIN HRM** (production) | "main hrm", "production", "10.40" | `interactgdev` | `interactgdev-dev/Interact_hrm2.git` | `10.40.x.x` |
+
+## How to act when the user asks to push
+
+- User says **"staging par push"** or **"10.6 par push"** → run `git push waqas main`.
+- User says **"main HRM par push"** / **"production"** / **"10.40 par push"** → run `git push interactgdev main`.
+- Never guess the other remote — the mapping above is fixed. Always confirm the target env in the reply (e.g. "Pushed to STAGING (waqas → 10.6)").
+- Normal flow: push to **staging first**, user tests, then on success push the same `main` to **production**.
+
+## Server auto-deploy (both Ubuntu servers)
+
+Servers are on private IPs, so they **pull from GitHub** (outbound) via a polling script — GitHub webhooks / Actions cannot reach them inbound.
+
+On each server, `deploy/deploy.sh` runs every 1 min and:
+1. `git fetch` + compare — skip if no new commit.
+2. `git reset --hard <remote>/main`.
+3. `npm install` **only if** `package-lock.json` changed (not every time).
+4. `npm run build`.
+5. Restart app (PM2: `pm2 restart interact-hrm`).
+
+Each server's checkout tracks the remote for its environment (staging server ← staging repo, production server ← production repo).
+
+## Live server facts (staging = ighrm)
+
+- App dir / git checkout: `/root/interact-hrm2` (NOT `/var/www/interact-hrm`, which has no `.git`).
+- On this box the **staging repo remote is named `origin`** (`waqasahmad18/Interact_hrm.git`); `interactgdev` also exists. So deploy uses `REMOTE=origin` here.
+- App runs under **PM2** as `interact-hrm` (port 3000); `pm2 save` + `pm2 startup` (systemd `pm2-root`) done.
+- **No `cron`/`crontab` installed** — auto-deploy is driven by a **systemd timer** `interact-hrm-deploy.timer` (+ `.service`) that runs `deploy/deploy.sh` every minute. Tools live in `/usr/bin`.
+- Git identity on localhost set to Waqas Rafique <vickyksr2218@gmail.com> (repo-local).

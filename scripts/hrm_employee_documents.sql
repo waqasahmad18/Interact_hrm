@@ -1,0 +1,2 @@
+-- Employee My Files + Formats Library (reference — run if tables not created yet)
+-- See chat / docs for full schema with seed data.

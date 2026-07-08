@@ -9,6 +9,8 @@ import {
   ensureFaceModelsLoaded,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
+import { FaceScanViewport, type FaceScanMode } from "@/app/components/FaceScanHud";
+import modalStyles from "./face-verify-modal.module.css";
 
 type Props = {
   open: boolean;
@@ -27,6 +29,31 @@ const RETRY_AFTER_FAIL_MS = 200;
 // match is far more reliable — and harder to fool — than a single snapshot.
 // This is a big accuracy gain that costs almost nothing (pure math).
 const REQUIRED_PROBES = 3;
+
+function resolveScanMode(input: {
+  verifySuccess: boolean;
+  multipleFaces: boolean;
+  verifying: boolean;
+  cameraReady: boolean;
+  modelsReady: boolean;
+  status: string;
+  guidance: string | null;
+}): FaceScanMode {
+  if (input.verifySuccess) return "success";
+  if (input.multipleFaces) return "blocked";
+  if (input.verifying) return "verifying";
+  if (!input.cameraReady || !input.modelsReady) return "initializing";
+  if (
+    input.status.startsWith("Adjust") ||
+    input.guidance?.includes("Center") ||
+    input.guidance?.includes("Too close") ||
+    input.guidance?.includes("Too far")
+  ) {
+    return "adjust";
+  }
+  if (input.status.startsWith("Capturing")) return "capturing";
+  return "scanning";
+}
 
 export function FaceVerifyModal({
   open,
@@ -54,6 +81,8 @@ export function FaceVerifyModal({
   const [verifying, setVerifying] = React.useState(false);
   const [multipleFaces, setMultipleFaces] = React.useState(false);
   const [guidance, setGuidance] = React.useState<string | null>(null);
+  const [verifySuccess, setVerifySuccess] = React.useState(false);
+  const verifySuccessRef = React.useRef(false);
 
   const stopCamera = React.useCallback(() => {
     if (rafRef.current !== null) {
@@ -84,7 +113,14 @@ export function FaceVerifyModal({
   }, []);
 
   const submitScan = React.useCallback(async () => {
-    if (busyRef.current || scanInFlightRef.current || !employeeId || !modelsReady || !cameraReady) {
+    if (
+      busyRef.current ||
+      scanInFlightRef.current ||
+      verifySuccessRef.current ||
+      !employeeId ||
+      !modelsReady ||
+      !cameraReady
+    ) {
       return;
     }
 
@@ -200,8 +236,16 @@ export function FaceVerifyModal({
         const data = await res.json();
 
         if (data.success && data.biometric_token) {
-          stopCamera();
-          onVerified(data.biometric_token);
+          const token = data.biometric_token;
+          verifySuccessRef.current = true;
+          setVerifySuccess(true);
+          setError(null);
+          setGuidance("Face verified successfully.");
+          setStatus("Verified");
+          window.setTimeout(() => {
+            stopCamera();
+            onVerified(token);
+          }, 750);
           return;
         }
 
@@ -243,6 +287,8 @@ export function FaceVerifyModal({
       setError(null);
       setMultipleFaces(false);
       setGuidance(null);
+      verifySuccessRef.current = false;
+      setVerifySuccess(false);
       singleFaceStreakRef.current = 0;
       multiFaceStreakRef.current = 0;
       probeBufferRef.current = [];
@@ -335,74 +381,45 @@ export function FaceVerifyModal({
 
   if (!open) return null;
 
-  const ringColor = multipleFaces
-    ? "#e74c3c"
-    : verifying
-      ? "#f39c12"
-      : cameraReady && modelsReady
-        ? "#27ae60"
-        : "#dfe6e9";
+  const captureMatch = status.match(/\((\d+)\/(\d+)\)/);
+  const captureCurrent = captureMatch ? Number(captureMatch[1]) : 0;
+  const captureTotal = captureMatch ? Number(captureMatch[2]) : REQUIRED_PROBES;
+  const scanMode = resolveScanMode({
+    verifySuccess,
+    multipleFaces,
+    verifying,
+    cameraReady,
+    modelsReady,
+    status,
+    guidance,
+  });
+  const hudStatus =
+    verifySuccess
+      ? "VERIFICATION COMPLETE"
+      : status === "Look at the camera — scanning automatically…"
+        ? "SCANNING FACE"
+        : status.replace(/…/g, "").toUpperCase();
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 10000,
-      }}
-    >
-      <style>{`
-        @keyframes fvm-pulse {
-          0%, 100% { box-shadow: 0 0 0 3px ${ringColor}, 0 0 12px rgba(39,174,96,0.35); }
-          50% { box-shadow: 0 0 0 3px ${ringColor}, 0 0 22px rgba(39,174,96,0.55); }
-        }
-        .fvm-video-ring {
-          animation: fvm-pulse 2.4s ease-in-out infinite;
-        }
-      `}</style>
-
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 18,
-          padding: "28px 24px",
-          width: "min(420px, 92vw)",
-          textAlign: "center",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: "1.2rem", marginBottom: 6, color: "#2d3436" }}>
-          Face Verification
-        </div>
-        <div style={{ fontSize: "0.95rem", color: "#636e72", marginBottom: 8 }}>
+    <div className={modalStyles.overlay}>
+      <div className={[modalStyles.modal, verifySuccess ? modalStyles.modalSuccess : ""].filter(Boolean).join(" ")}>
+        <div className={modalStyles.title}>Face Verification</div>
+        <div
+          className={[modalStyles.subtitle, verifySuccess ? modalStyles.subtitleSuccess : ""]
+            .filter(Boolean)
+            .join(" ")}
+        >
           Verify to <strong>{actionLabel}</strong>
         </div>
-        <div style={{ fontSize: "0.88rem", color: "#2d3436", marginBottom: 16, lineHeight: 1.4 }}>
+        <div className={modalStyles.employeeLine}>
           <strong>{employeeName || "Employee"}</strong>
           {employeeId ? ` · ID ${employeeId}` : ""}
         </div>
 
         {multipleFaces && (
-          <div
-            style={{
-              background: "#fdecea",
-              border: "2px solid #e74c3c",
-              borderRadius: 10,
-              padding: "12px 14px",
-              marginBottom: 14,
-              color: "#c0392b",
-              fontWeight: 700,
-              fontSize: "0.95rem",
-              lineHeight: 1.45,
-            }}
-            role="alert"
-          >
+          <div className={modalStyles.alertBlocked} role="alert">
             Multiple faces in the frame
-            <div style={{ fontWeight: 500, fontSize: "0.85rem", marginTop: 4 }}>
+            <div className={modalStyles.alertBlockedDetail}>
               {actionLabel} is blocked. Only one person should be visible — remove others from
               camera view.
             </div>
@@ -410,81 +427,50 @@ export function FaceVerifyModal({
         )}
 
         <div
-          className={cameraReady && modelsReady && !verifying && !multipleFaces ? "fvm-video-ring" : undefined}
-          style={{
-            position: "relative",
-            margin: "0 auto 14px",
-            width: 280,
-            height: 210,
-            borderRadius: 12,
-            overflow: "hidden",
-            background: "#111",
-            boxShadow: `0 0 0 3px ${ringColor}`,
-            transition: "box-shadow 0.4s ease",
-          }}
+          className={[modalStyles.scanWrap, verifySuccess ? modalStyles.scanWrapSuccess : ""]
+            .filter(Boolean)
+            .join(" ")}
         >
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }}
+          <FaceScanViewport
+            videoRef={videoRef}
+            mode={scanMode}
+            statusLine={hudStatus}
+            subjectName={employeeName || undefined}
+            subjectId={employeeId || undefined}
+            captureCurrent={captureCurrent}
+            captureTotal={captureTotal}
+            loadingLabel={
+              !cameraReady ? "Starting camera…" : !modelsReady ? "Loading face engine…" : undefined
+            }
+            aspectRatio="4 / 3"
           />
-          {verifying && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(0,0,0,0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: "0.95rem",
-              }}
-            >
-              Verifying…
-            </div>
-          )}
+        </div>
+
+        <div
+          className={[modalStyles.statusLine, verifySuccess ? modalStyles.statusLineSuccess : ""]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {status}
         </div>
 
         {guidance && !error && (
           <div
-            style={{
-              fontSize: "0.86rem",
-              color: multipleFaces ? "#c0392b" : "#2563eb",
-              background: multipleFaces ? "#fdecea" : "#eef4ff",
-              border: `1px solid ${multipleFaces ? "#f5c6c0" : "#cfe0ff"}`,
-              borderRadius: 8,
-              padding: "8px 12px",
-              marginBottom: 10,
-              lineHeight: 1.4,
-              fontWeight: 500,
-            }}
+            className={[
+              modalStyles.guidance,
+              multipleFaces ? modalStyles.guidanceBlocked : "",
+              verifySuccess ? modalStyles.guidanceSuccess : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             {guidance}
           </div>
         )}
-        {error && !multipleFaces && (
-          <div style={{ fontSize: "0.88rem", color: "#e74c3c", marginBottom: 10, lineHeight: 1.4 }}>
-            {error}
-          </div>
-        )}
+        {error && !multipleFaces && <div className={modalStyles.error}>{error}</div>}
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              borderRadius: 8,
-              padding: "10px 20px",
-              fontWeight: 600,
-              background: "#dfe6e9",
-              color: "#2d3436",
-              cursor: "pointer",
-            }}
-          >
+        <div className={modalStyles.actions}>
+          <button type="button" onClick={onClose} className={modalStyles.cancelBtn}>
             Cancel
           </button>
         </div>

@@ -30,3 +30,13 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# large reference ML repos (not part of the app)
+/insightface-master/
+/timm-face-main/
+
+# runtime user uploads (per-server data, not source)
+/public/uploads/
+
+# deploy runtime log
+/deploy/deploy.log

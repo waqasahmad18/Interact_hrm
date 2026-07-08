@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./auth/auth.module.css";
+import { toastError } from "@/lib/app-toast";
 
 import Image from "next/image";
 
@@ -22,7 +23,7 @@ export default function LoginPage() {
       router.push("/admin");
     } else {
       setError(`Login failed for: ${loginId}`);
-      alert(`Login failed for: ${loginId}\nPassword: ${password}`);
+      toastError(`Login failed for: ${loginId}`);
     }
   };
 

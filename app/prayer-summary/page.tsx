@@ -12,6 +12,7 @@ import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
 import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
 import { FaFileExcel } from "react-icons/fa";
 import { getDateStringInTimeZone, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -189,9 +190,9 @@ export default function PrayerBreakSummaryPage() {
       const res = await fetch("/api/import-hrm-excel", { method: "POST", body: form });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || "Import failed");
+        toastError(data.error || "Import failed");
       } else {
-        alert(`Imported ${data.imported} prayer break rows`);
+        toastSuccess(`Imported ${data.imported} prayer break rows`);
         const params = new URLSearchParams();
         if (fromDate) params.append("fromDate", fromDate);
         if (toDate) params.append("toDate", toDate);
@@ -200,7 +201,7 @@ export default function PrayerBreakSummaryPage() {
         setPrayerBreaks(refreshed.success ? refreshed.prayer_breaks || [] : []);
       }
     } catch (err) {
-      alert(String(err));
+      toastError(String(err));
     } finally {
       e.target.value = "";
     }

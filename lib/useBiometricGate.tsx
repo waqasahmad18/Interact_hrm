@@ -4,6 +4,7 @@ import React from "react";
 import type { BiometricAction } from "@/lib/face-types";
 import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
 import { ensureFaceModelsLoaded, preloadFaceRuntime } from "@/lib/face-client-engine";
+import { toastInfo } from "@/lib/app-toast";
 
 type PendingAction = {
   action: BiometricAction;
@@ -128,7 +129,7 @@ export function useBiometricGate(
   const runWithVerify = React.useCallback(
     (action: BiometricAction, callback: (biometricToken: string | null) => void | Promise<void>) => {
       if (bioStatus.loading) {
-        alert("Face verification is loading. Please wait a moment.");
+        toastInfo("Face verification is loading. Please wait a moment.");
         return;
       }
 
@@ -147,11 +148,11 @@ export function useBiometricGate(
 
       if (!bioStatus.enrolled) {
         if (bioStatus.needsDescriptorRefresh || bioStatus.enrollmentCount >= 3) {
-          alert(
+          toastInfo(
             "Your photos are saved but face profiles need a one-time refresh. Ask HR to open Admin → Face Enrollment, select your name — it will auto-update in a few seconds."
           );
         } else {
-          alert(
+          toastInfo(
             `Your face is not enrolled (${bioStatus.descriptorCount}/3 profiles). Ask HR at Admin → Face Enrollment to add 3+ clear front-face photos.`
           );
         }

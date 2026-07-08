@@ -30,6 +30,7 @@ import {
 } from "../../lib/ui-sync/breakPrayerDataRefresh";
 import { useBiometricGate, type VerifyModalCloseReason } from "../../lib/useBiometricGate";
 import type { BiometricAction } from "@/lib/face-types";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
 function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -457,10 +458,11 @@ export function ClockBreakPrayerWidget({
   const handleClockIn = async (biometricToken: string | null = null) => {
     const id = String(employeeId || "").trim();
     if (!id || clockActionPending) {
-      alert(
+      toastInfo(
         id
           ? "Please wait, clock action is in progress."
           : "Employee ID not loaded. Please refresh the page or log in again.",
+        "Please wait"
       );
       return;
     }
@@ -501,13 +503,14 @@ export function ClockBreakPrayerWidget({
           setPrayerStart
         );
         notifyAttendanceDataChanged();
+        toastSuccess("You are now clocked in.", "Clock in successful");
       } else if (res.status === 403 && isBiometricGateError(data.error)) {
         runWithVerify("clock_in", (token) => handleClockIn(token));
       } else {
-        alert(data.error || "Failed to clock in. Please try again.");
+        toastError(data.error || "Failed to clock in. Please try again.");
       }
     } catch (error) {
-      alert("Error while clocking in. Please try again.");
+      toastError("Error while clocking in. Please try again.");
     } finally {
       setClockActionPending(false);
     }
@@ -580,6 +583,7 @@ export function ClockBreakPrayerWidget({
           setPrayerStart
         );
         notifyAttendanceDataChanged();
+        toastSuccess("You have been clocked out.", "Clock out successful");
       } else if (res.status === 403 && isBiometricGateError(data.error)) {
         runWithVerify("clock_out", (token) => performClockOut(token));
       } else {
@@ -610,7 +614,7 @@ export function ClockBreakPrayerWidget({
 
   const handleBreakStart = async (biometricToken: string | null = null) => {
     if (!employeeId || !isClockedIn || breakActionPending) {
-      alert("Clock in first");
+      toastInfo("Please clock in first.", "Clock in required");
       return;
     }
     const startTime = new Date();
@@ -637,13 +641,14 @@ export function ClockBreakPrayerWidget({
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
         notifyBreakDataChanged();
+        toastSuccess("Your break has started.", "Break started");
       } else if (res.status === 403 && isBiometricGateError(data.error)) {
         runWithVerify("break_start", (token) => handleBreakStart(token));
       } else {
-        alert(data.error || "Failed to start break.");
+        toastError(data.error || "Failed to start break.");
       }
     } catch (error) {
-      alert("Error starting break.");
+      toastError("Error starting break.");
     } finally {
       setBreakActionPending(false);
     }
@@ -651,7 +656,7 @@ export function ClockBreakPrayerWidget({
 
   const handleBreakEnd = async (biometricToken: string | null = null) => {
     if (!employeeId || !isOnBreak || breakActionPending) {
-      alert("No ongoing break found.");
+      toastInfo("No ongoing break found.", "Break");
       return;
     }
     const endTime = breakEndAtRef.current ?? new Date();
@@ -676,6 +681,7 @@ export function ClockBreakPrayerWidget({
         setLoadingBreak(false);
         forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
         notifyBreakDataChanged();
+        toastSuccess("Your break has ended.", "Break ended");
       } else if (res.status === 403 && isBiometricGateError(data.error)) {
         if (!breakEndAtRef.current) breakEndAtRef.current = new Date();
         pauseBreakTimerForVerify();
@@ -683,12 +689,12 @@ export function ClockBreakPrayerWidget({
       } else {
         breakEndAtRef.current = null;
         resumeBreakTimerAfterVerify();
-        alert(data.error || "Failed to end break.");
+        toastError(data.error || "Failed to end break.");
       }
     } catch (error) {
       breakEndAtRef.current = null;
       resumeBreakTimerAfterVerify();
-      alert("Error ending break.");
+      toastError("Error ending break.");
     } finally {
       setBreakActionPending(false);
     }

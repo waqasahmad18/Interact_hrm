@@ -8,6 +8,7 @@ import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 interface Employee {
   id: number;
@@ -91,10 +92,10 @@ export default function ManageLeavesPage() {
         }));
         setEmployees(enrichedEmployees);
       } else {
-        alert("Failed to fetch employees: " + data.error);
+        toastError("Failed to fetch employees: " + data.error);
       }
     } catch (error) {
-      alert("Error fetching employees: " + String(error));
+      toastError("Error fetching employees: " + String(error));
     } finally {
       setLoading(false);
     }
@@ -125,15 +126,15 @@ export default function ManageLeavesPage() {
 
       const data = await res.json();
       if (data.success) {
-        alert("Leave balance updated successfully!");
+        toastSuccess("Leave balance updated successfully!");
         setShowModal(false);
         setEditingEmployee(null);
         fetchEmployees();
       } else {
-        alert("Failed to update: " + data.error);
+        toastError("Failed to update: " + data.error);
       }
     } catch (error) {
-      alert("Error updating: " + String(error));
+      toastError("Error updating: " + String(error));
     } finally {
       setSaving(false);
     }

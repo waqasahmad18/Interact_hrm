@@ -52,6 +52,7 @@ import {
 } from "../../../lib/tungsten-punch-pairing";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 type MonthlyAttendanceEmployeeRow = {
   employeeId: string;
@@ -425,19 +426,19 @@ export default function MonthlyAttendancePage() {
       const buffer = await file.arrayBuffer();
       const snapshot = parseMonthlyAttendanceWorkbook(buffer);
       if (!snapshot.employees.length) {
-        alert("No employee sheets found. Use monthly attendance export format (one tab per employee).");
+        toastInfo("No employee sheets found. Use monthly attendance export format (one tab per employee).");
         return;
       }
       if (!snapshot.month) {
-        alert("Could not detect month from file dates.");
+        toastError("Could not detect month from file dates.");
         return;
       }
       saveImportedMonthlySnapshot(snapshot);
       setImportedSnapshot(snapshot);
       setSelectedMonth(snapshot.month);
-      alert(`Loaded ${snapshot.employees.length} employees for ${snapshot.month}. Select that month to view.`);
+      toastSuccess(`Loaded ${snapshot.employees.length} employees for ${snapshot.month}. Select that month to view.`);
     } catch (err) {
-      alert(String(err));
+      toastError(String(err));
     } finally {
       e.target.value = "";
     }
@@ -899,7 +900,7 @@ export default function MonthlyAttendancePage() {
 
   async function downloadExcel() {
     if (attendanceByEmployee.length === 0) {
-      alert("No employees to export");
+      toastInfo("No employees to export");
       return;
     }
 
@@ -1123,7 +1124,7 @@ export default function MonthlyAttendancePage() {
 
   async function downloadDeductionSummary() {
     if (attendanceByEmployee.length === 0) {
-      alert("No employees to export");
+      toastInfo("No employees to export");
       return;
     }
 

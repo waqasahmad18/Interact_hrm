@@ -4,6 +4,8 @@ import React from "react";
 import { createPortal } from "react-dom";
 import styles from "./shell-image-upload.module.css";
 import { readImageFileAsDataUrl } from "../../lib/shell-branding-storage";
+import { PROFILE_IMAGE_ACCEPT } from "@/lib/document-constants";
+import { toastError } from "@/lib/app-toast";
 
 type Props = {
   variant: "logo" | "avatar";
@@ -89,7 +91,7 @@ export function ShellImageUpload({
       onImage(dataUrl);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed.";
-      window.alert(msg);
+      toastError(msg);
     }
   }
 
@@ -177,7 +179,7 @@ export function ShellImageUpload({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept={variant === "avatar" ? PROFILE_IMAGE_ACCEPT : "image/png,image/jpeg,image/jpg,image/webp"}
           className={styles.input}
           onChange={handleChange}
         />

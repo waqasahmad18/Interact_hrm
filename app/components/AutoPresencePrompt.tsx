@@ -3,6 +3,7 @@
 import React from "react";
 import { AUTO_PRESENCE_POPUP_MS } from "@/lib/shift-timing";
 import styles from "./AutoPresencePrompt.module.css";
+import { toastError } from "@/lib/app-toast";
 
 const deadlineStorageKey = (employeeId: string, attendanceId: number) =>
   `auto_presence_deadline_${employeeId}_${attendanceId}`;
@@ -68,11 +69,11 @@ export function AutoPresencePrompt({
         onClockedOutRef.current();
       } else {
         firedRef.current = false;
-        alert(data.error || "Auto clock out failed");
+        toastError(data.error || "Auto clock out failed");
       }
     } catch {
       firedRef.current = false;
-      alert("Auto clock out failed. Please try again.");
+      toastError("Auto clock out failed. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -166,10 +167,10 @@ export function AutoPresencePrompt({
         clearPopupState(attendanceIdRef.current);
         await pollPresence();
       } else {
-        alert(data.error || "Could not save response");
+        toastError(data.error || "Could not save response");
       }
     } catch {
-      alert("Network error. Please try again.");
+      toastError("Network error. Please try again.");
     } finally {
       setBusy(false);
     }

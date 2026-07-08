@@ -3,10 +3,12 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { FaCamera, FaKey, FaSignOutAlt } from "react-icons/fa";
+import { PROFILE_IMAGE_ACCEPT } from "@/lib/document-constants";
 import { readImageFileAsDataUrl } from "../../../lib/shell-branding-storage";
 import { saveEmployeeAvatar } from "../../shell-branding-api";
 import { UpdatePasswordModal } from "./UpdatePasswordModal";
 import styles from "./employee-profile-menu.module.css";
+import { toastError } from "@/lib/app-toast";
 
 type Props = {
   employeeId: string;
@@ -63,7 +65,7 @@ export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
       onAvatarUpdated(dataUrl);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not save profile photo.";
-      window.alert(msg);
+      toastError(msg);
     } finally {
       setUploadingPhoto(false);
     }
@@ -125,7 +127,7 @@ export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
         <input
           ref={photoInputRef}
           type="file"
-          accept="image/*"
+          accept={PROFILE_IMAGE_ACCEPT}
           className={styles.hiddenInput}
           onChange={handlePhotoChange}
           aria-hidden

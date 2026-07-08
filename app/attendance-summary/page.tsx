@@ -17,6 +17,7 @@ import {
 import { getDateStringInTimeZone, getParts, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
 import { AutoClockOutBadge } from "../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../lib/attendance-auto-clock-out";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -225,20 +226,20 @@ export default function AttendanceSummaryPage() {
       const buffer = await file.arrayBuffer();
       const snapshot = parseAttendanceSummaryWorkbook(buffer);
       if (!snapshot.rows.length) {
-        alert("No rows found. Use attendance summary format (Id, Full Name, Date, Clock In, Clock Out, etc.).");
+        toastInfo("No rows found. Use attendance summary format (Id, Full Name, Date, Clock In, Clock Out, etc.).");
         return;
       }
       if (!snapshot.month) {
-        alert("Could not detect month from file dates.");
+        toastError("Could not detect month from file dates.");
         return;
       }
       saveImportedAttendanceSummarySnapshot(snapshot);
       setImportedSnapshot(snapshot);
       setFromDate(snapshot.fromDate);
       setToDate(snapshot.toDate);
-      alert(`Loaded ${snapshot.rows.length} rows for ${snapshot.month}. Date filter set to imported range.`);
+      toastSuccess(`Loaded ${snapshot.rows.length} rows for ${snapshot.month}. Date filter set to imported range.`);
     } catch (err) {
-      alert(String(err));
+      toastError(String(err));
     } finally {
       e.target.value = "";
     }

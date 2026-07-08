@@ -14,6 +14,7 @@ import { EmployeeDetailPopup } from "../components/EmployeeDetailPopup";
 import type { EmployeeDetailPayload } from "../components/EmployeeDetailPopup";
 import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
 import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -213,9 +214,9 @@ export default function BreakSummaryPage() {
       const res = await fetch("/api/import-hrm-excel", { method: "POST", body: form });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || "Import failed");
+        toastError(data.error || "Import failed");
       } else {
-        alert(`Imported ${data.imported} break rows`);
+        toastSuccess(`Imported ${data.imported} break rows`);
         const params = new URLSearchParams();
         if (fromDate) params.append("fromDate", fromDate);
         if (toDate) params.append("toDate", toDate);
@@ -224,7 +225,7 @@ export default function BreakSummaryPage() {
         setBreaks(refreshed.success ? refreshed.breaks || [] : []);
       }
     } catch (err) {
-      alert(String(err));
+      toastError(String(err));
     } finally {
       e.target.value = "";
     }

@@ -16,6 +16,7 @@ import {
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
 import { compareAttendanceRows } from "../../../lib/attendance-sort";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -216,22 +217,22 @@ export default function ManageAttendancePage() {
       const data = await response.json();
       
       if (data.success) {
-        alert("Attendance updated successfully!");
+        toastSuccess("Attendance updated successfully!");
         toggleEdit(record.id!);
         fetchAttendance(); // Refresh to get latest data with late calculation
       } else {
-        alert("Error updating attendance: " + data.error);
+        toastError("Error updating attendance: " + data.error);
       }
     } catch (error) {
       console.error("Error saving attendance:", error);
-      alert("Error saving attendance");
+      toastError("Error saving attendance");
     }
   };
 
   // Add new attendance record
   const addNewRecord = async () => {
     if (!newRecord.employee_id || !newRecord.date) {
-      alert("Please select employee and date");
+      toastInfo("Please select employee and date");
       return;
     }
 
@@ -256,7 +257,7 @@ export default function ManageAttendancePage() {
       const data = await response.json();
       
       if (data.success) {
-        alert("Attendance added successfully!");
+        toastSuccess("Attendance added successfully!");
         setShowAddForm(false);
         setNewRecord({
           employee_id: "",
@@ -266,11 +267,11 @@ export default function ManageAttendancePage() {
         });
         fetchAttendance();
       } else {
-        alert("Error adding attendance: " + data.error);
+        toastError("Error adding attendance: " + data.error);
       }
     } catch (error) {
       console.error("Error adding attendance:", error);
-      alert("Error adding attendance");
+      toastError("Error adding attendance");
     }
   };
 
@@ -288,14 +289,14 @@ export default function ManageAttendancePage() {
       const data = await response.json();
       
       if (data.success) {
-        alert("Attendance deleted successfully!");
+        toastSuccess("Attendance deleted successfully!");
         fetchAttendance();
       } else {
-        alert("Error deleting attendance: " + data.error);
+        toastError("Error deleting attendance: " + data.error);
       }
     } catch (error) {
       console.error("Error deleting attendance:", error);
-      alert("Error deleting attendance");
+      toastError("Error deleting attendance");
     }
   };
 

@@ -4,16 +4,17 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { EmployeeAvatar } from "./components/EmployeeAvatar";
+import { AdminProfileMenu } from "./components/AdminProfileMenu";
 import { ShellImageUpload } from "./components/ShellImageUpload";
 import {
 	fetchShellBranding,
-	removeAdminAvatar,
 	removeCompanyLogo,
-	saveAdminAvatar,
 	saveCompanyLogo,
 } from "./shell-branding-api";
+import { toastError } from "@/lib/app-toast";
 
 /** Sub-menu row ~44–48px; full height so items are not clipped inside scrollable nav */
 function sidebarDropdownMaxHeightPx(itemCount: number) {
@@ -57,6 +58,8 @@ const sidebarLinks = [
 			},
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
 			{ name: "Ticket Inbox", path: "/admin/tickets", icon: <FaTicketAlt /> },
+			{ name: "Employee Files", path: "/admin/employee-files", icon: <FaFolderOpen /> },
+			{ name: "Formats Library", path: "/admin/formats-library", icon: <FaFileAlt /> },
 			{
 				name: "Onboard",
 				icon: <FaUserPlus />,
@@ -101,7 +104,6 @@ const sidebarLinks = [
 ];
 
 export default function LayoutDashboard({ children }: { children: React.ReactNode }) {
-	const [menuOpen, setMenuOpen] = React.useState(false);
 	const [attendanceDropdownOpen, setAttendanceDropdownOpen] = React.useState(false);
 	const [onboardDropdownOpen, setOnboardDropdownOpen] = React.useState(false);
 	const [ptoDropdownOpen, setPtoDropdownOpen] = React.useState(false);
@@ -110,7 +112,6 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
 	const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
 	const [adminAvatar, setAdminAvatar] = React.useState<string | null>(null);
-	const menuRef = React.useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
 	const isTimePage = pathname === "/time";
@@ -139,18 +140,6 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 		}
 	}, [pathname]);
 
-	React.useEffect(() => {
-		function handleClickOutside(event: MouseEvent) {
-			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-				setMenuOpen(false);
-			}
-		}
-		if (menuOpen) {
-			window.addEventListener("mousedown", handleClickOutside);
-			return () => window.removeEventListener("mousedown", handleClickOutside);
-		}
-	}, [menuOpen]);
-
 	return (
 		<>
 			<div className={styles.topBar}>
@@ -177,7 +166,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 								setCompanyLogo(dataUrl);
 								void saveCompanyLogo(dataUrl).catch(() => {
 									setCompanyLogo(prev);
-									window.alert("Could not save company logo.");
+									toastError("Could not save company logo.");
 								});
 							}}
 							onRemove={() => {
@@ -185,7 +174,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 								setCompanyLogo(null);
 								void removeCompanyLogo().catch(() => {
 									setCompanyLogo(prev);
-									window.alert("Could not remove company logo.");
+									toastError("Could not remove company logo.");
 								});
 							}}
 						/>
@@ -194,53 +183,14 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 				<div className={styles.topBarMain}>
 				<div className={styles.topBarRight}>
 					<div className={styles.topBarProfile}>
-						<ShellImageUpload
-							variant="avatar"
-							image={adminAvatar}
-							fallbackInitial="A"
-							title="Upload profile photo"
-							onImage={(dataUrl) => {
-								const prev = adminAvatar;
-								setAdminAvatar(dataUrl);
-								void saveAdminAvatar(dataUrl).catch(() => {
-									setAdminAvatar(prev);
-									window.alert("Could not save profile photo.");
-								});
-							}}
-							onRemove={() => {
-								const prev = adminAvatar;
-								setAdminAvatar(null);
-								void removeAdminAvatar().catch(() => {
-									setAdminAvatar(prev);
-									window.alert("Could not remove profile photo.");
-								});
-							}}
+						<EmployeeAvatar
+							name="Admin"
+							initials="A"
+							photo={adminAvatar}
+							size="md"
 						/>
 						<span className={styles.topBarProfileName}>Admin</span>
-						<div className={styles.profileMenuWrapper} ref={menuRef}>
-							<button
-								className={styles.profileMenuButton}
-								onClick={() => setMenuOpen((open) => !open)}
-								aria-label="Open menu"
-							>
-								<span className={styles.profileMenuDots}>⋮</span>
-							</button>
-							{menuOpen && (
-								<div className={styles.profileMenuDropdown}>
-									<button
-										className={styles.logoutButton}
-										onClick={() => {
-											if (typeof window !== "undefined") {
-												localStorage.removeItem("loginId");
-											}
-											router.push("/auth");
-										}}
-									>
-										Logout
-									</button>
-								</div>
-							)}
-						</div>
+						<AdminProfileMenu onAvatarUpdated={(dataUrl) => setAdminAvatar(dataUrl)} />
 					</div>
 				</div>
 				</div>

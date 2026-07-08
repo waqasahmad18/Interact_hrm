@@ -13,6 +13,7 @@ import {
   getDateStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
+import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 // Helper to format duration
 function formatDuration(seconds: number) {
@@ -244,22 +245,22 @@ export default function ManageBreaksPage() {
       const data = await response.json();
       
       if (data.success) {
-        alert(`${record.break_type === 'break' ? 'Break' : 'Prayer Break'} updated successfully!`);
+        toastSuccess(`${record.break_type === 'break' ? 'Break' : 'Prayer Break'} updated successfully!`);
         toggleEdit(record.id!);
         fetchBreaks(); // Refresh to get latest data
       } else {
-        alert("Error updating break: " + data.error);
+        toastError("Error updating break: " + data.error);
       }
     } catch (error) {
       console.error("Error saving break:", error);
-      alert("Error saving break");
+      toastError("Error saving break");
     }
   };
 
   // Add new break record
   const addNewRecord = async () => {
     if (!newRecord.employee_id || !newRecord.date) {
-      alert("Please select employee and date");
+      toastInfo("Please select employee and date");
       return;
     }
 
@@ -293,7 +294,7 @@ export default function ManageBreaksPage() {
       const data = await response.json();
       
       if (data.success) {
-        alert(`${newRecord.break_type === 'break' ? 'Break' : 'Prayer Break'} added successfully!`);
+        toastSuccess(`${newRecord.break_type === 'break' ? 'Break' : 'Prayer Break'} added successfully!`);
         setShowAddForm(false);
         setNewRecord({
           employee_id: "",
@@ -304,11 +305,11 @@ export default function ManageBreaksPage() {
         });
         fetchBreaks();
       } else {
-        alert("Error adding break: " + data.error);
+        toastError("Error adding break: " + data.error);
       }
     } catch (error) {
       console.error("Error adding break:", error);
-      alert("Error adding break");
+      toastError("Error adding break");
     }
   };
 
@@ -327,14 +328,14 @@ export default function ManageBreaksPage() {
       const data = await response.json();
       
       if (data.success) {
-        alert(`${record.break_type === 'break' ? 'Break' : 'Prayer Break'} deleted successfully!`);
+        toastSuccess(`${record.break_type === 'break' ? 'Break' : 'Prayer Break'} deleted successfully!`);
         fetchBreaks();
       } else {
-        alert("Error deleting break: " + data.error);
+        toastError("Error deleting break: " + data.error);
       }
     } catch (error) {
       console.error("Error deleting break:", error);
-      alert("Error deleting break");
+      toastError("Error deleting break");
     }
   };
 

@@ -22,6 +22,7 @@ import {
   SERVER_TIMEZONE,
 } from "@/lib/timezone";
 import { FaFileExcel } from "react-icons/fa";
+import { toastInfo } from "@/lib/app-toast";
 import {
   buildPinProfilesFromRows,
   hrmMapFromEmployees,
@@ -637,7 +638,7 @@ export default function EmployeeReportPage() {
 
   async function downloadExcel() {
     if (tableRows.length === 0) {
-      alert("No records to export");
+      toastInfo("No records to export");
       return;
     }
     setExporting(true);

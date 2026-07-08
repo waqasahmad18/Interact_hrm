@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { showAppConfirm } from "@/lib/app-confirm";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -69,7 +70,12 @@ export function CompanyPolicySection() {
 
   async function handleDelete(id: number) {
     if (!id) return;
-    if (!window.confirm("Delete this company policy?")) return;
+    const ok = await showAppConfirm({
+      message: "Delete this company policy?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     setDeleting(true);
     await fetch("/api/company-policies", {
       method: "DELETE",
