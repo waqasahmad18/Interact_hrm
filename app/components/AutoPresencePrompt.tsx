@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { FaRegClock } from "react-icons/fa";
 import { AUTO_PRESENCE_POPUP_MS } from "@/lib/shift-timing";
 import styles from "./AutoPresencePrompt.module.css";
 import { toastError } from "@/lib/app-toast";
@@ -212,7 +213,7 @@ export function AutoPresencePrompt({
     <div className={styles.overlay}>
       <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="auto-presence-title">
         <div className={styles.iconWrap} aria-hidden="true">
-          ⏱
+          <FaRegClock />
         </div>
         <div id="auto-presence-title" className={styles.title}>
           Still working?

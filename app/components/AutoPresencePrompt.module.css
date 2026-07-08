@@ -1,105 +1,180 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 29, 64, 0.42);
+  background: rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  backdrop-filter: blur(2px);
+  padding: 20px;
+  backdrop-filter: blur(3px);
+  animation: fadeIn 0.18s ease;
 }
 
 .modal {
-  background: #fff;
-  border-radius: 22px;
-  padding: 32px 36px 28px;
-  max-width: 440px;
-  width: 90%;
-  box-shadow: 0 24px 64px rgba(30, 78, 170, 0.18);
+  position: relative;
+  background: linear-gradient(135deg, #ffffff 0%, #fdfaff 55%, #f5fbf8 100%);
+  border-radius: 20px;
+  padding: 30px 34px 26px;
+  max-width: 430px;
+  width: 100%;
+  border: 1px solid #e8d9ef;
+  box-shadow:
+    0 24px 60px rgba(97, 31, 105, 0.20),
+    0 6px 16px rgba(15, 23, 42, 0.08);
   text-align: center;
-  border: 1px solid #e7e7ff;
   font-family: "Inter", system-ui, sans-serif;
+  overflow: hidden;
+  animation: popIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* thin brand accent strip at the very top of the card */
+.modal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #611f69 0%, #8e44ad 50%, #007a5a 100%);
 }
 
 .iconWrap {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 16px;
+  position: relative;
+  width: 62px;
+  height: 62px;
+  margin: 6px auto 18px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e8f4ff 0%, #f0f7ff 100%);
-  border: 1px solid #d6e8ff;
+  background: linear-gradient(135deg, #f3e8f6 0%, #eef7f3 100%);
+  border: 1px solid #e8d9ef;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+  color: #611f69;
+}
+
+/* soft pulsing ring for a lively, friendly feel */
+.iconWrap::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(97, 31, 105, 0.28);
+  animation: pulseRing 1.8s ease-out infinite;
 }
 
 .title {
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: #1853b3;
-  margin-bottom: 12px;
+  font-weight: 800;
+  font-size: 1.28rem;
+  color: #611f69;
+  margin-bottom: 10px;
   letter-spacing: 0.2px;
 }
 
 .message {
-  color: #4a5775;
+  color: #475569;
   margin-bottom: 20px;
   line-height: 1.6;
-  font-size: 0.98rem;
+  font-size: 0.96rem;
+}
+
+.message strong {
+  color: #611f69;
+  font-weight: 700;
 }
 
 .timerWrap {
-  background: linear-gradient(135deg, #f7fafc 0%, #edf4ff 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 14px 20px;
+  background: linear-gradient(135deg, #fdf6ff 0%, #f4fbf8 100%);
+  border: 1px solid #ecdcf1;
+  border-radius: 16px;
+  padding: 15px 20px;
   margin-bottom: 22px;
 }
 
 .timerLabel {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #4a5775;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #7c6a86;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   margin-bottom: 6px;
 }
 
 .timer {
-  font-size: 2rem;
+  font-size: 2.1rem;
   font-weight: 800;
-  color: #e67e22;
+  color: #ea580c;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .ackButton {
-  background: linear-gradient(120deg, #27ae60, #2ecc71);
+  background: linear-gradient(120deg, #007a5a 0%, #04a171 100%);
   color: #fff;
   border: none;
-  border-radius: 12px;
-  padding: 13px 28px;
-  font-size: 1rem;
+  border-radius: 14px;
+  padding: 14px 28px;
+  font-size: 1.02rem;
   font-weight: 700;
   cursor: pointer;
   width: 100%;
-  box-shadow: 0 4px 16px rgba(39, 174, 96, 0.25);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 8px 20px rgba(0, 122, 90, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
 .ackButton:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.32);
+  box-shadow: 0 10px 26px rgba(0, 122, 90, 0.34);
+  filter: brightness(1.03);
+}
+
+.ackButton:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .ackButton:disabled {
   cursor: wait;
-  opacity: 0.75;
+  opacity: 0.7;
 }
 
 .hint {
   margin-top: 14px;
-  font-size: 0.82rem;
-  color: #718096;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
 }
