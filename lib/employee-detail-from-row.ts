@@ -17,6 +17,9 @@ export type EmployeeRowLike = {
   email?: string | null;
   email_work?: string | null;
   email_other?: string | null;
+  phone?: string | null;
+  phone_mobile?: string | null;
+  contact_number?: string | null;
   shift_name?: string | null;
   start_time?: string | null;
   end_time?: string | null;
@@ -38,6 +41,13 @@ export function resolveEmployeeId(row: EmployeeRowLike): string | number {
 
 function pickEmail(row: EmployeeRowLike) {
   const fromRow = (row.email || row.email_work || row.email_other || "").trim();
+  return fromRow || null;
+}
+
+function pickPhone(row: EmployeeRowLike) {
+  const fromRow = (row.phone_mobile || row.phone || row.contact_number || "")
+    .toString()
+    .trim();
   return fromRow || null;
 }
 
@@ -64,6 +74,7 @@ export async function buildEmployeeDetailPayload(
     pseudonym: row.pseudonym?.trim() || directory?.pseudonym || null,
     department: row.department_name?.trim() || row.department?.trim() || directory?.department || null,
     email: pickEmail(row) || directory?.email || null,
+    phone: pickPhone(row) || directory?.phone || null,
     photo: getPhoto(resolvedId),
     shiftName: null,
     shiftStart: pickShiftStart(row) || directory?.shiftStart || null,

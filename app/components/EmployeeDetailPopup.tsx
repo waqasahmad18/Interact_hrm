@@ -12,6 +12,7 @@ export type EmployeeDetailPayload = {
   pseudonym?: string | null;
   department?: string | null;
   email?: string | null;
+  phone?: string | null;
   photo?: string | null;
   shiftName?: string | null;
   shiftStart?: string | null;
@@ -104,6 +105,18 @@ export function EmployeeDetailPopup({
             <div className={styles.detailRow}>
               <span className={styles.label}>Email</span>
               <span className={`${styles.value} ${styles.valueEmail}`}>{display(data.email)}</span>
+            </div>
+            <div className={styles.detailRow}>
+              <span className={styles.label}>Contact</span>
+              <span className={styles.value}>
+                {data.phone?.trim() ? (
+                  <a href={`tel:${data.phone.trim()}`} className={styles.valueEmail}>
+                    {data.phone.trim()}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </span>
             </div>
             <div className={styles.detailRow}>
               <span className={styles.label}>Shift</span>

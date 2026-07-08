@@ -6,6 +6,7 @@ export type EmployeeDirectoryEntry = {
   pseudonym: string | null;
   department: string | null;
   email: string | null;
+  phone: string | null;
   shiftStart: string | null;
   shiftEnd: string | null;
 };
@@ -34,6 +35,7 @@ function buildEntry(
   department: string | null | undefined,
   emailWork: string | null | undefined,
   emailOther: string | null | undefined,
+  phone: string | null | undefined,
   shiftStart: string | null | undefined,
   shiftEnd: string | null | undefined
 ): EmployeeDirectoryEntry {
@@ -44,6 +46,7 @@ function buildEntry(
     pseudonym: pseudonym?.trim() || null,
     department: department?.trim() || null,
     email,
+    phone: phone?.toString().trim() || null,
     shiftStart: shiftStart?.trim() || null,
     shiftEnd: shiftEnd?.trim() || null,
   };
@@ -98,6 +101,7 @@ export async function fetchEmployeeDirectoryMaps() {
             emp.department_name,
             emp.email_work,
             emp.email_other,
+            emp.phone_mobile,
             shift?.start,
             shift?.end
           );
