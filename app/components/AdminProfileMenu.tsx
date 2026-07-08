@@ -4,7 +4,6 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { FaCamera, FaKey, FaSignOutAlt } from "react-icons/fa";
 import { PROFILE_IMAGE_ACCEPT } from "@/lib/document-constants";
-import { readImageFileAsDataUrl } from "@/lib/shell-branding-storage";
 import { saveAdminAvatar } from "@/app/shell-branding-api";
 import { toastError } from "@/lib/app-toast";
 import { AdminUpdatePasswordModal } from "./AdminUpdatePasswordModal";
@@ -46,9 +45,8 @@ export function AdminProfileMenu({ onAvatarUpdated }: Props) {
     if (!file) return;
     setUploadingPhoto(true);
     try {
-      const dataUrl = await readImageFileAsDataUrl(file);
-      await saveAdminAvatar(dataUrl);
-      onAvatarUpdated(dataUrl);
+      const url = await saveAdminAvatar(file);
+      onAvatarUpdated(url);
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Could not save profile photo.");
     } finally {

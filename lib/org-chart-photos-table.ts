@@ -1,5 +1,6 @@
 import { pool } from "@/lib/db";
 import { SHELL_SUBJECT_IDS } from "@/lib/shell-branding-constants";
+import { getAllProfilePictureRows } from "@/lib/profile-pictures-table";
 
 export const ORG_CHART_PHOTOS_TABLE = "hrm_org_chart_photos";
 
@@ -78,11 +79,23 @@ export async function getAllOrgChartPhotos(): Promise<{
     employeeAvatars: {} as Record<string, string>,
   };
 
-  for (const row of rows as Array<{
-    subject_type: OrgChartPhotoSubjectType;
-    subject_id: string;
-    photo_data: string;
-  }>) {
+  // New file-based profile pictures take precedence over legacy base64 rows,
+  // so append them AFTER the org_chart rows (they overwrite in the maps below).
+  const profileRows = await getAllProfilePictureRows();
+  const combined = [
+    ...(rows as Array<{
+      subject_type: OrgChartPhotoSubjectType;
+      subject_id: string;
+      photo_data: string;
+    }>),
+    ...profileRows.map((p) => ({
+      subject_type: p.subject_type as OrgChartPhotoSubjectType,
+      subject_id: p.subject_id,
+      photo_data: p.file_path,
+    })),
+  ];
+
+  for (const row of combined) {
     if (row.subject_type === "employee") {
       employeePhotos[row.subject_id] = row.photo_data;
     } else if (row.subject_type === "role") {

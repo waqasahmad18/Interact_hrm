@@ -161,10 +161,10 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 							variant="logo"
 							image={companyLogo}
 							title="Upload company logo"
-							onImage={(dataUrl) => {
+							onImage={(dataUrl, file) => {
 								const prev = companyLogo;
 								setCompanyLogo(dataUrl);
-								void saveCompanyLogo(dataUrl).catch(() => {
+								void saveCompanyLogo(file).catch(() => {
 									setCompanyLogo(prev);
 									toastError("Could not save company logo.");
 								});

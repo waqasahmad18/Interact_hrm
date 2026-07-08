@@ -12,7 +12,8 @@ type Props = {
   image: string | null;
   fallbackInitial?: string;
   title?: string;
-  onImage: (dataUrl: string) => void;
+  /** dataUrl = light preview for instant UI, file = original for HD upload. */
+  onImage: (dataUrl: string, file: File) => void;
   onRemove?: () => void;
 };
 
@@ -87,8 +88,9 @@ export function ShellImageUpload({
     e.target.value = "";
     if (!file) return;
     try {
-      const dataUrl = await readImageFileAsDataUrl(file);
-      onImage(dataUrl);
+      // Small preview only — the original HD file is uploaded as-is below.
+      const previewUrl = await readImageFileAsDataUrl(file, { maxDim: 512, quality: 0.85 });
+      onImage(previewUrl, file);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed.";
       toastError(msg);

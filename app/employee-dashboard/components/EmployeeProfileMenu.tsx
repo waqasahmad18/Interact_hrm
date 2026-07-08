@@ -4,7 +4,6 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { FaCamera, FaKey, FaSignOutAlt } from "react-icons/fa";
 import { PROFILE_IMAGE_ACCEPT } from "@/lib/document-constants";
-import { readImageFileAsDataUrl } from "../../../lib/shell-branding-storage";
 import { saveEmployeeAvatar } from "../../shell-branding-api";
 import { UpdatePasswordModal } from "./UpdatePasswordModal";
 import styles from "./employee-profile-menu.module.css";
@@ -60,9 +59,8 @@ export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
 
     setUploadingPhoto(true);
     try {
-      const dataUrl = await readImageFileAsDataUrl(file);
-      await saveEmployeeAvatar(employeeId, dataUrl);
-      onAvatarUpdated(dataUrl);
+      const url = await saveEmployeeAvatar(employeeId, file);
+      onAvatarUpdated(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not save profile photo.";
       toastError(msg);

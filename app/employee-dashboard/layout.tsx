@@ -135,10 +135,10 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
               variant="logo"
               image={companyLogo}
               title="Upload company logo"
-              onImage={(dataUrl) => {
+              onImage={(dataUrl, file) => {
                 const prev = companyLogo;
                 setCompanyLogo(dataUrl);
-                void saveCompanyLogo(dataUrl).catch(() => {
+                void saveCompanyLogo(file).catch(() => {
                   setCompanyLogo(prev);
                   toastError("Could not save company logo.");
                 });
@@ -162,11 +162,11 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
               image={employeeAvatar}
               fallbackInitial={employeeName || "E"}
               title="Upload profile photo"
-              onImage={(dataUrl) => {
+              onImage={(dataUrl, file) => {
                 if (!employeeId) return;
                 const prev = employeeAvatar;
                 setEmployeeAvatar(dataUrl);
-                void saveEmployeeAvatar(employeeId, dataUrl).catch(() => {
+                void saveEmployeeAvatar(employeeId, file).catch(() => {
                   setEmployeeAvatar(prev);
                   toastError("Could not save profile photo.");
                 });
