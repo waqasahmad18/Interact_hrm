@@ -824,8 +824,8 @@ export default function FaceEnrollmentAdminPage() {
                   style={{ flex: "1 1 220px", minWidth: 180 }}
                 />
               </div>
-              <div className={tableStyles.breakSummaryTableWrapper}>
-              <table className={tableStyles.breakSummaryTable}>
+              <div className={`${tableStyles.breakSummaryTableWrapper} ${styles.enrollCompactWrapper}`}>
+              <table className={`${tableStyles.breakSummaryTable} ${styles.enrollCompactTable}`}>
                 <thead>
                   <tr>
                     <th>ID</th>

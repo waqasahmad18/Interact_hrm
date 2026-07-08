@@ -420,7 +420,7 @@
 .empCode {
   font-size: 0.75rem;
   color: #8a97b0;
-  margin-top: 2px;
+  margin-top: 13px;
 }
 
 .toggleCell {
@@ -476,4 +476,16 @@
   color: #8a97b0;
   margin: 0;
   padding: 12px 0;
+}
+
+/* This page has few columns, so override the shared table's wide min-width
+   (meant for many-column summaries). Fill the container width but drop the
+   forced 1280px so columns are not spread with huge gaps. */
+.enrollCompactWrapper {
+  width: 100% !important;
+}
+
+.enrollCompactTable {
+  min-width: 680px !important;
+  width: 100% !important;
 }
