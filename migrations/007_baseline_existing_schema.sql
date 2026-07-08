@@ -494,7 +494,7 @@ CREATE TABLE IF NOT EXISTS `shift_assignments` (
   `shift_name` varchar(100) NOT NULL,
   `start_time` time NOT NULL,
   `end_time` time NOT NULL,
-  `assigned_date` date NOT NULL DEFAULT curdate(),
+  `assigned_date` date NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `allow_overtime` tinyint(1) DEFAULT 1,
