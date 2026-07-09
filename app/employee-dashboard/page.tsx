@@ -22,6 +22,7 @@ import {
   type TicketThreadMessage,
 } from "../../lib/ticket-thread";
 import { ATTENDANCE_DATA_CHANGED } from "../../lib/ui-sync/breakPrayerDataRefresh";
+import { formatDashboardHoursOnly } from "../../lib/attendance-display";
 import styles from "./employee-dashboard.module.css";
 import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
@@ -39,7 +40,7 @@ type DayChart = {
   label: string;
   dateKey: string;
   hours: number;
-  status: "onTime" | "tardy" | "absent" | "pending";
+  status: "onTime" | "tardy" | "absent" | "pending" | "upcoming";
   lateMinutes: number;
   isToday: boolean;
 };
@@ -88,16 +89,13 @@ function weekdayIndexKarachi(dateKey: string): number {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(label);
 }
 
-/** Last 5 weekdays ending on anchorKey (Karachi), oldest → newest. */
-function last5WeekdayKeys(anchorKey: string): string[] {
-  const collected: string[] = [];
-  let cur = anchorKey;
-  while (collected.length < 5) {
-    const wd = weekdayIndexKarachi(cur);
-    if (wd !== 0 && wd !== 6) collected.push(cur);
-    cur = addDaysToDateKey(cur, -1);
-  }
-  return collected.reverse();
+/** Mon → Fri of the work week containing anchorKey (Karachi). */
+function workWeekMonFriKeys(anchorKey: string): string[] {
+  const wd = weekdayIndexKarachi(anchorKey);
+  if (wd < 0) return [];
+  const daysFromMonday = wd === 0 ? 6 : wd - 1;
+  const monday = addDaysToDateKey(anchorKey, -daysFromMonday);
+  return Array.from({ length: 5 }, (_, i) => addDaysToDateKey(monday, i));
 }
 
 function dayLabelFromKey(dateKey: string) {
@@ -406,8 +404,10 @@ export default function EmployeeDashboardPage() {
     try {
       const today = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
       const monthStart = `${today.slice(0, 7)}-01`;
+      const weekMonday = workWeekMonFriKeys(today)[0] ?? monthStart;
+      const fromDate = monthStart < weekMonday ? monthStart : weekMonday;
       const res = await fetch(
-        `/api/attendance?employeeId=${encodeURIComponent(employeeId)}&fromDate=${monthStart}&toDate=${today}&ts=${Date.now()}`,
+        `/api/attendance?employeeId=${encodeURIComponent(employeeId)}&fromDate=${fromDate}&toDate=${today}&ts=${Date.now()}`,
         { cache: "no-store" }
       );
       const data = await res.json();
@@ -497,11 +497,7 @@ export default function EmployeeDashboardPage() {
   }, [fetchEvents, fetchReminders, fetchLeaveBalance, fetchTickets]);
 
   React.useEffect(() => {
-    const lastFetchRef = { at: 0 };
     const onAttendance = () => {
-      const now = Date.now();
-      if (now - lastFetchRef.at < 8000) return;
-      lastFetchRef.at = now;
       fetchAttendance();
     };
     window.addEventListener(ATTENDANCE_DATA_CHANGED, onAttendance);
@@ -520,14 +516,35 @@ export default function EmployeeDashboardPage() {
     return map;
   }, [attendance]);
 
-  const weekDayKeys = React.useMemo(() => last5WeekdayKeys(todayKey), [todayKey]);
+  const weekDayKeys = React.useMemo(() => workWeekMonFriKeys(todayKey), [todayKey]);
+
+  const todayRecord = attendanceByDate.get(todayKey);
+  const isClockedIn = Boolean(todayRecord?.clock_in && !todayRecord?.clock_out);
+
+  // Tick every second while clocked in so hours match the live clock widget.
+  const [liveTick, setLiveTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!isClockedIn) return;
+    const id = setInterval(() => setLiveTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [isClockedIn]);
 
   const weekChart: DayChart[] = React.useMemo(() => {
     return weekDayKeys.map((key) => {
-      const record = attendanceByDate.get(key);
       const isToday = key === todayKey;
+      if (key > todayKey) {
+        return {
+          label: dayLabelFromKey(key),
+          dateKey: key,
+          hours: 0,
+          status: "upcoming" as const,
+          lateMinutes: 0,
+          isToday,
+        };
+      }
+      const record = attendanceByDate.get(key);
       if (!record?.clock_in) {
-        const status = isToday ? "pending" : "absent";
+        const status = isToday ? ("pending" as const) : ("absent" as const);
         return {
           label: dayLabelFromKey(key),
           dateKey: key,
@@ -538,7 +555,7 @@ export default function EmployeeDashboardPage() {
         };
       }
       const hours = workHours(record);
-      const status = record.is_late ? "tardy" : "onTime";
+      const status = record.is_late ? ("tardy" as const) : ("onTime" as const);
       return {
         label: dayLabelFromKey(key),
         dateKey: key,
@@ -548,12 +565,13 @@ export default function EmployeeDashboardPage() {
         isToday,
       };
     });
-  }, [weekDayKeys, attendanceByDate, todayKey]);
+  }, [weekDayKeys, attendanceByDate, todayKey, liveTick]);
 
   const maxChartHours = Math.max(8, ...weekChart.map((d) => d.hours), 1);
 
-  const todayRecord = attendanceByDate.get(todayKey);
-  const todayHours = todayRecord ? workHours(todayRecord) : 0;
+  const todayHours = React.useMemo(() => {
+    return todayRecord ? workHours(todayRecord) : 0;
+  }, [todayRecord, liveTick]);
   const todayStatus = !todayRecord?.clock_in
     ? "Not clocked in"
     : todayRecord.is_late
@@ -630,6 +648,7 @@ export default function EmployeeDashboardPage() {
     let totalHours = 0;
     let present = 0;
     weekChart.forEach((d) => {
+      if (d.status === "upcoming") return;
       if (d.status === "onTime") {
         onTime++;
         totalHours += d.hours;
@@ -650,8 +669,6 @@ export default function EmployeeDashboardPage() {
     return { onTime, late, absent, weekScore, avgHours };
   }, [weekChart]);
 
-  const isClockedIn = Boolean(todayRecord?.clock_in && !todayRecord?.clock_out);
-
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
@@ -669,7 +686,7 @@ export default function EmployeeDashboardPage() {
               </ProgressRing>
             </div>
             <div className={styles.statValue}>
-              <StatValue value={`${Math.round(todayHours)}h`} />
+              <StatValue value={formatDashboardHoursOnly(todayHours)} />
             </div>
             <div className={styles.statLabel}>Hours today</div>
             <div className={styles.statHint}>{todayStatus}</div>
@@ -746,7 +763,7 @@ export default function EmployeeDashboardPage() {
           <div className={styles.pulseGlow} aria-hidden />
           <div className={styles.pulseInner}>
             <div className={styles.pulseWeek}>
-              <p className={styles.pulseLabel}>This week · tap a day</p>
+              <p className={styles.pulseLabel}>Mon – Fri · tap a day</p>
               <div className={styles.dayPills}>
                 {weekChart.map((day) => (
                   <button
@@ -759,8 +776,8 @@ export default function EmployeeDashboardPage() {
                     <span className={styles.dayPillLabel}>{day.label}</span>
                     <span className={styles.dayPillHours}>
                       {day.hours > 0
-                        ? `${Math.round(day.hours)}h`
-                        : day.status === "pending"
+                        ? formatDashboardHoursOnly(day.hours)
+                        : day.status === "pending" || day.status === "upcoming"
                           ? "…"
                           : "—"}
                     </span>
@@ -785,7 +802,7 @@ export default function EmployeeDashboardPage() {
                 <strong>{weekStats.late}</strong> late
               </div>
               <div className={`${styles.pulseChip} ${styles.chipPurple}`}>
-                <strong>{Math.round(weekStats.avgHours)}h</strong> avg / day
+                <strong>{formatDashboardHoursOnly(weekStats.avgHours)}</strong> avg / day
               </div>
               <div className={`${styles.pulseChip} ${styles.chipGold}`}>
                 <strong>{leaveBalance.bereavement}</strong> bereavement left
@@ -816,11 +833,24 @@ export default function EmployeeDashboardPage() {
                 const pct =
                   day.status === "absent"
                     ? 10
-                    : day.status === "pending"
-                      ? 8
-                      : Math.max(14, (day.hours / maxChartHours) * 100);
+                    : day.status === "upcoming"
+                      ? 5
+                      : day.status === "pending"
+                        ? 8
+                        : day.hours > 0
+                          ? Math.max(6, (day.hours / maxChartHours) * 100)
+                          : 6;
+                const hoursLabel =
+                  day.status === "onTime" || day.status === "tardy"
+                    ? formatDashboardHoursOnly(day.hours)
+                    : "";
                 return (
                   <div key={day.dateKey} className={styles.chartCol}>
+                    {hoursLabel ? (
+                      <span className={styles.chartHours}>{hoursLabel}</span>
+                    ) : (
+                      <span className={styles.chartHoursEmpty} aria-hidden> </span>
+                    )}
                     <div className={styles.chartTrack}>
                       {day.status === "tardy" && <span className={styles.lateDot} />}
                       <div
@@ -831,15 +861,19 @@ export default function EmployeeDashboardPage() {
                               ? styles.barOk
                               : day.status === "pending"
                                 ? styles.barPending
-                                : styles.barMiss
+                                : day.status === "upcoming"
+                                  ? styles.barUpcoming
+                                  : styles.barMiss
                         }`}
                         style={{ height: `${pct}%` }}
                         title={
                           day.status === "pending"
                             ? "Not clocked in yet today"
-                            : day.status === "absent"
-                              ? "No attendance recorded"
-                              : `${Math.round(day.hours * 10) / 10}h`
+                            : day.status === "upcoming"
+                              ? "Upcoming workday"
+                              : day.status === "absent"
+                                ? "No attendance recorded"
+                                : formatDashboardHoursOnly(day.hours)
                         }
                       />
                     </div>
@@ -887,84 +921,6 @@ export default function EmployeeDashboardPage() {
                   <div className={styles.leaveSub}>available</div>
                 </div>
               </div>
-            </div>
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoCal}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>{monthName}</h2>
-              <span className={styles.pill}>Late days marked</span>
-            </div>
-            <div className={styles.calDays}>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d}>{d}</div>
-              ))}
-            </div>
-            <div className={styles.calCells}>
-              {calendarSlots.map((slot, idx) => {
-                if (!slot) return <div key={idx} className={`${styles.calCell} ${styles.calBlank}`} />;
-                return (
-                  <div
-                    key={idx}
-                    className={`${styles.calCell} ${slot.isToday ? styles.calToday : ""} ${slot.isTardy && !slot.isToday ? styles.calLate : ""}`}
-                  >
-                    {slot.day}
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoPeople}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>People</h2>
-              <button type="button" className={styles.textLink} onClick={() => router.push("/employee-dashboard/my-team")}>
-                View all
-              </button>
-            </div>
-            {reportsTo ? (
-              <div className={styles.teamLead}>
-                <EmployeeAvatar name={reportsTo.name} initials={reportsTo.initials} photo={reportsTo.photo} size="sm" />
-                <div>
-                  <div className={styles.teamLeadLabel}>Reports to</div>
-                  <div className={styles.teamLeadName}>{reportsTo.name}</div>
-                </div>
-              </div>
-            ) : null}
-            {teamMembers.length > 0 ? (
-              <div className={styles.teamGrid}>
-                {teamMembers.slice(0, 6).map((m) => (
-                  <div key={m.id} className={styles.teamMember} title={m.name}>
-                    <EmployeeAvatar name={m.name} initials={m.initials} photo={m.photo} size="sm" />
-                    <span className={styles.teamMemberName}>{m.name.split(" ")[0]}</span>
-                  </div>
-                ))}
-                {teamMembers.length > 6 && (
-                  <span className={styles.teamMore}>+{teamMembers.length - 6} more</span>
-                )}
-              </div>
-            ) : (
-              <p className={styles.muted}>No direct reports</p>
-            )}
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoActions}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>Quick actions</h2>
-            </div>
-            <div className={styles.actionGrid}>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/time")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconGreen}`}><FaClock /></span>
-                Time &amp; attendance
-              </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/generate-ticket")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaTicketAlt /></span>
-                Generate ticket
-              </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/my-team")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaUsers /></span>
-                My team
-              </button>
             </div>
           </article>
 
@@ -1068,6 +1024,84 @@ export default function EmployeeDashboardPage() {
               </div>
             </div>
             <CompanyPolicyWidget />
+          </article>
+
+          <article className={`${styles.card} ${styles.bentoCal}`}>
+            <div className={styles.cardHead}>
+              <h2 className={styles.cardTitle}>{monthName}</h2>
+              <span className={styles.pill}>Late days marked</span>
+            </div>
+            <div className={styles.calDays}>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                <div key={d}>{d}</div>
+              ))}
+            </div>
+            <div className={styles.calCells}>
+              {calendarSlots.map((slot, idx) => {
+                if (!slot) return <div key={idx} className={`${styles.calCell} ${styles.calBlank}`} />;
+                return (
+                  <div
+                    key={idx}
+                    className={`${styles.calCell} ${slot.isToday ? styles.calToday : ""} ${slot.isTardy && !slot.isToday ? styles.calLate : ""}`}
+                  >
+                    {slot.day}
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+
+          <article className={`${styles.card} ${styles.bentoPeople}`}>
+            <div className={styles.cardHead}>
+              <h2 className={styles.cardTitle}>People</h2>
+              <button type="button" className={styles.textLink} onClick={() => router.push("/employee-dashboard/my-team")}>
+                View all
+              </button>
+            </div>
+            {reportsTo ? (
+              <div className={styles.teamLead}>
+                <EmployeeAvatar name={reportsTo.name} initials={reportsTo.initials} photo={reportsTo.photo} size="sm" />
+                <div>
+                  <div className={styles.teamLeadLabel}>Reports to</div>
+                  <div className={styles.teamLeadName}>{reportsTo.name}</div>
+                </div>
+              </div>
+            ) : null}
+            {teamMembers.length > 0 ? (
+              <div className={styles.teamGrid}>
+                {teamMembers.slice(0, 6).map((m) => (
+                  <div key={m.id} className={styles.teamMember} title={m.name}>
+                    <EmployeeAvatar name={m.name} initials={m.initials} photo={m.photo} size="sm" />
+                    <span className={styles.teamMemberName}>{m.name.split(" ")[0]}</span>
+                  </div>
+                ))}
+                {teamMembers.length > 6 && (
+                  <span className={styles.teamMore}>+{teamMembers.length - 6} more</span>
+                )}
+              </div>
+            ) : (
+              <p className={styles.muted}>No direct reports</p>
+            )}
+          </article>
+
+          <article className={`${styles.card} ${styles.bentoActions}`}>
+            <div className={styles.cardHead}>
+              <h2 className={styles.cardTitle}>Quick actions</h2>
+            </div>
+            <div className={styles.actionGrid}>
+              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/time")}>
+                <span className={`${styles.actionIcon} ${styles.actionIconGreen}`}><FaClock /></span>
+                Time &amp; attendance
+              </button>
+              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/generate-ticket")}>
+                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaTicketAlt /></span>
+                Generate ticket
+              </button>
+              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/my-team")}>
+                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaUsers /></span>
+                My team
+              </button>
+            </div>
           </article>
         </div>
       </div>

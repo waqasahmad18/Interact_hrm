@@ -1,7 +1,15 @@
+.viewportShell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
 .viewport {
   position: relative;
   overflow: hidden;
   background: #f8fafc;
+  border-radius: 12px;
 }
 
 .video {
@@ -13,9 +21,6 @@
 }
 
 .hud {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
   pointer-events: none;
   font-family: "Segoe UI", system-ui, sans-serif;
   --scan-color: rgb(236, 72, 153);
@@ -31,20 +36,16 @@
   --scan-progress: 1;
 }
 
-.hudBottom {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
+.hudPanel {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid #e8edf5;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
 }
 
 .hudStatus {
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -55,7 +56,7 @@
 
 .hudSubject {
   margin-top: 6px;
-  font-size: 0.58rem;
+  font-size: 0.62rem;
   line-height: 1.35;
   color: #64748b;
   display: flex;
@@ -64,7 +65,7 @@
 }
 
 .progressTrack {
-  height: 3px;
+  height: 4px;
   border-radius: 999px;
   background: #f1f5f9;
   overflow: hidden;

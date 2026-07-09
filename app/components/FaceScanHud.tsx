@@ -70,7 +70,6 @@ export function FaceScanHud({
     .filter(Boolean)
     .join(" ");
 
-  const showStatus = mode !== "initializing";
   const progressWidth = Math.round(progress * 100);
 
   const defaultStatus =
@@ -87,43 +86,30 @@ export function FaceScanHud({
               : "SCANNING";
 
   return (
-    <>
-      {mode === "initializing" && (
-        <div className={styles.loadingPanel}>
-          <div className={styles.loadingLabel}>{loadingLabel}</div>
-        </div>
-      )}
-
-      <div
-        className={hudClass}
-        style={{ "--scan-color": scanColor, "--scan-progress": progress } as React.CSSProperties}
-      >
-        {mode === "success" && <div className={styles.successVeil} />}
-        {mode === "blocked" && <div className={styles.blockedVeil} />}
-
-        {showStatus && (
-          <div className={styles.hudBottom}>
-            <div className={styles.hudStatus}>{statusLine || defaultStatus}</div>
-            {mode !== "blocked" && mode !== "success" && (
-              <div className={styles.progressTrack}>
-                <div className={styles.progressFill} style={{ width: `${progressWidth}%` }} />
-              </div>
-            )}
-            {mode === "success" && (
-              <div className={styles.successCheck} aria-hidden="true">
-                ✓
-              </div>
-            )}
-            {(subjectName || subjectId) && mode !== "success" && (
-              <div className={styles.hudSubject}>
-                {subjectName ? <span>{subjectName}</span> : null}
-                {subjectId ? <span>ID {subjectId}</span> : null}
-              </div>
-            )}
+    <div
+      className={hudClass}
+      style={{ "--scan-color": scanColor, "--scan-progress": progress } as React.CSSProperties}
+    >
+      <div className={styles.hudPanel}>
+        <div className={styles.hudStatus}>{statusLine || defaultStatus}</div>
+        {mode !== "blocked" && mode !== "success" && (
+          <div className={styles.progressTrack}>
+            <div className={styles.progressFill} style={{ width: `${progressWidth}%` }} />
+          </div>
+        )}
+        {mode === "success" && (
+          <div className={styles.successCheck} aria-hidden="true">
+            ✓
+          </div>
+        )}
+        {(subjectName || subjectId) && mode !== "success" && (
+          <div className={styles.hudSubject}>
+            {subjectName ? <span>{subjectName}</span> : null}
+            {subjectId ? <span>ID {subjectId}</span> : null}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -141,25 +127,35 @@ export function FaceScanViewport({
   aspectRatio = "4 / 3",
   autoPlay = false,
   onVideoLoaded,
+  mode,
+  loadingLabel = "Initializing sensors…",
   ...hudProps
 }: FaceScanViewportProps) {
   return (
-    <div
-      className={[styles.viewport, className].filter(Boolean).join(" ")}
-      style={{ aspectRatio }}
-    >
-      <video
-        ref={videoRef}
-        className={styles.video}
-        playsInline
-        muted
-        autoPlay={autoPlay}
-        onLoadedMetadata={(e) => {
-          const v = e.currentTarget;
-          if (v.videoWidth > 0) onVideoLoaded?.();
-        }}
-      />
-      <FaceScanHud {...hudProps} />
+    <div className={[styles.viewportShell, className].filter(Boolean).join(" ")}>
+      <div className={styles.viewport} style={{ aspectRatio }}>
+        <video
+          ref={videoRef}
+          className={styles.video}
+          playsInline
+          muted
+          autoPlay={autoPlay}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth > 0) onVideoLoaded?.();
+          }}
+        />
+        {mode === "initializing" && (
+          <div className={styles.loadingPanel}>
+            <div className={styles.loadingLabel}>{loadingLabel}</div>
+          </div>
+        )}
+        {mode === "success" && <div className={styles.successVeil} />}
+        {mode === "blocked" && <div className={styles.blockedVeil} />}
+      </div>
+      {mode !== "initializing" && (
+        <FaceScanHud mode={mode} loadingLabel={loadingLabel} {...hudProps} />
+      )}
     </div>
   );
 }

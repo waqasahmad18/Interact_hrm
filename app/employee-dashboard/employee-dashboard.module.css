@@ -255,6 +255,12 @@
   background: rgba(167, 139, 250, 0.12);
 }
 
+.dayPill_upcoming {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.5;
+}
+
 .dayPillToday {
   box-shadow: 0 0 0 2px #fbbf24, 0 4px 16px rgba(251, 191, 36, 0.35);
 }
@@ -468,9 +474,22 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   height: 100%;
   justify-content: flex-end;
+}
+
+.chartHours {
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1;
+  min-height: 12px;
+}
+
+.chartHoursEmpty {
+  min-height: 12px;
+  display: block;
 }
 
 .chartTrack {
@@ -505,6 +524,12 @@
     #e8edf5 8px
   );
   border: 1px dashed #c4b5fd;
+}
+
+.barUpcoming {
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  opacity: 0.7;
 }
 
 .lateDot {
