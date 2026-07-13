@@ -13,7 +13,18 @@ namespace InteractPresence;
 public sealed class HrmFacePresenceChecker
 {
     private readonly AppSettings _settings;
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+    private static readonly HttpClient Http = CreateHttp();
+
+    private static HttpClient CreateHttp()
+    {
+        // Staging nginx often uses a self-signed cert on :8443.
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        };
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+    }
 
     public HrmFacePresenceChecker(AppSettings settings)
     {
@@ -88,7 +99,7 @@ public sealed class HrmFacePresenceChecker
                 {
                     CameraOk = false,
                     FacePresent = false,
-                    Error = "Could not create presence session. Is npm run dev running?",
+                    Error = "Could not create presence session. Is HRM reachable at HrmBaseUrl?",
                     Code = "error",
                 };
             }
@@ -157,6 +168,8 @@ public sealed class HrmFacePresenceChecker
                 $"--window-position={left},{top} " +
                 "--disable-features=TranslateUI " +
                 "--no-first-run --no-default-browser-check " +
+                // Staging self-signed HTTPS (192.168.10.6:8443) — allow camera page to load
+                "--ignore-certificate-errors --allow-insecure-localhost " +
                 $"--app=\"{pageUrl}\"";
 
             proc = Process.Start(new ProcessStartInfo
