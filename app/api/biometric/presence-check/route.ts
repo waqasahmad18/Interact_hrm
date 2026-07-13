@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       success: true,
       verified: result.verified,
       atSeat: result.verified,
-      code: result.code ?? (result.verified ? "ok" : "mismatch"),
+      code: result.verified ? "ok" : result.code,
       similarity: result.similarity,
       error: result.verified ? null : result.reason,
     });
