@@ -1,0 +1,162 @@
+================================================================================
+IDLE TRACKING / "ARE YOU THERE?" — SCENARIO SUMMARY & ACHIEVABILITY
+Interact HRM — R&D Notes
+Date: 10 July 2026
+================================================================================
+
+--------------------------------------------------------------------------------
+1. IS DOCUMENT MEIN SCENARIO KYA HAI?
+--------------------------------------------------------------------------------
+
+Ye browser idle NAHI hai.
+Ye Windows Desktop Application ka plan hai (DR Clock jaisa), jo POORI PC par
+mouse/keyboard track karega — chahe employee Excel, CRM, browser, ya kisi
+bhi doosri app mein kaam kar raha ho.
+
+Camera / webcam: bilkul use NAHI hoga.
+
+
+--------------------------------------------------------------------------------
+2. SIMPLE FLOW
+--------------------------------------------------------------------------------
+
+  Employee PC par kaam kar raha hai (koi bhi app)
+          |
+          v
+  10 min koi mouse/keyboard nahi  -->  Popup: "Are you there?"
+          |                              (5 min countdown, always on top)
+          |
+          +-- "I'm Here" dabaya     -->  log: Unavailable on Seat (confirmed)
+          |                              idle timer reset
+          |
+          +-- 5 min jawab nahi      -->  popup band
+                                         log: Unavailable on Seat (timeout)
+                                         (screen lock OPTIONAL — alag setting)
+                                         idle timer reset
+
+
+--------------------------------------------------------------------------------
+3. STATE MACHINE
+--------------------------------------------------------------------------------
+
+  State              | Matlab
+  -------------------+----------------------------------------------------------
+  Active             | Input aa rahi hai — normal
+  Idle-Warning       | 10 min idle → popup + 5 min countdown
+  Resolved (A)       | "I'm Here" click → log + wapas Active
+  Timeout (B)        | Timer zero → log + wapas Active
+
+IMPORTANT RULE:
+  Sirf "I'm Here" BUTTON popup band karta hai.
+  Doosri app mein mouse move se auto-dismiss NAHI hota
+  (kyunki wo unrelated activity ho sakti hai).
+
+
+--------------------------------------------------------------------------------
+4. BACKEND / REPORTING
+--------------------------------------------------------------------------------
+
+Har event TimeAndAttendance (ya similar) table mein save hoga:
+
+  - EmployeeId
+  - Status = 'Unavailable on Seat'
+  - StartTime
+  - EndTime
+  - DurationSeconds
+  - ConfirmedByUser (true = I'm Here clicked, false = timeout)
+
+Agar network fail ho: desktop app locally queue kare + baad mein retry
+(discard mat karo).
+
+
+--------------------------------------------------------------------------------
+5. EDGE CASES (DOCUMENT MEIN MENTIONED)
+--------------------------------------------------------------------------------
+
+  - App crash / close: recovery/resume ya data loss policy decide karni hai
+  - Windows sleep / lock: "Unavailable on Seat" vs "Offline" alag log
+  - Multi-monitor: topmost popup active monitor / cursor wale screen par
+
+
+--------------------------------------------------------------------------------
+6. KYA YE ACHIEVABLE HAI?
+--------------------------------------------------------------------------------
+
+HAAN — FULLY ACHIEVABLE.
+
+Lekin ye browser HRM se NAHI banega.
+Iske liye alag Windows Desktop App chahiye.
+
+
+  Requirement                              | Achievable? | Notes
+  -----------------------------------------+-------------+----------------------
+  OS-level idle (Excel/CRM/browser sab)    | YES         | Windows GetLastInputInfo
+                                           |             | (C# WPF) — no admin
+  Topmost popup over other apps            | YES         | Topmost / always-on-top
+  10 min idle → 5 min countdown            | YES         | Timer + state machine
+  Only button dismisses popup              | YES         | Explicit design
+  Log "Unavailable on Seat"                | YES         | Local queue + API POST
+  Optional LockWorkStation                 | YES         | Separate config flag
+  Sleep/lock edge cases                    | YES         | Offline vs Unavailable
+  Multi-monitor popup                      | YES         | Cursor/active monitor
+  Offline retry if API fails               | YES         | Local queue + retry
+
+
+--------------------------------------------------------------------------------
+7. STACK RECOMMENDATION (EK HI STACK)
+--------------------------------------------------------------------------------
+
+Preferred: C# WPF + GetLastInputInfo
+
+  - Native Windows API, reliable
+  - Standard user permissions (admin elevate zaroori nahi idle detection ke liye)
+  - Electron / nut-js se kam antivirus false-positives
+  - Backend: existing Interact HRM Node/Next API ko POST se call kar sakte ho
+    (desktop app C# ho, API alag stack ho sakti hai — ye mix allowed hai
+     jab desktop aur server alag processes hon)
+
+
+--------------------------------------------------------------------------------
+8. CURRENT BROWSER HRM SE FARQ
+--------------------------------------------------------------------------------
+
+  |                        | Browser HRM idle      | Ye desktop app
+  |------------------------+-----------------------+---------------------------
+  | Scope                  | Sirf HRM browser tab  | Poori Windows PC
+  | Excel/CRM mein kaam    | False idle possible   | Real activity count hoti hai
+  | Install                | Nahi                  | Har employee PC par install
+  | Admin alert            | WebSocket toast       | Same API + toast possible
+
+Pehle wali baat (HRM tab idle → admin notify) = PARTIAL solution.
+Ye document = FULL professional solution (desk se uth kar chale bina break —
+OS-level catch).
+
+
+--------------------------------------------------------------------------------
+9. SHORT VERDICT
+--------------------------------------------------------------------------------
+
+SCENARIO:
+  10 min global idle
+  → topmost "Are you there?" popup
+  → 5 min countdown
+  → "I'm Here" YA timeout
+  → dono cases mein "Unavailable on Seat" log
+  → idle timer reset
+  → screen lock OPTIONAL (alag setting)
+
+ACHIEVABLE:
+  HAAN — Windows desktop app se (prefer C# WPF + GetLastInputInfo).
+  Browser-only se ye level NAHI milta.
+
+
+--------------------------------------------------------------------------------
+10. SUGGESTED NEXT STEPS (OPTIONAL)
+--------------------------------------------------------------------------------
+
+  A) Pehle C# WPF skeleton: idle detection + topmost popup + local log
+  B) Ya pehle HRM mein API + SQL table add karein, phir desktop app connect
+
+================================================================================
+END OF DOCUMENT
+================================================================================

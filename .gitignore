@@ -40,3 +40,8 @@ Thumbs.db
 
 # deploy runtime log
 /deploy/deploy.log
+
+# desktop presence agent build output
+/desktop-presence-agent/**/bin/
+/desktop-presence-agent/**/obj/
+/desktop-presence-agent/**/*.user

@@ -128,23 +128,33 @@ async function warmUpInference(): Promise<void> {
   }
 }
 
-export async function ensureFaceModelsLoaded(): Promise<void> {
+export async function ensureFaceModelsLoaded(opts?: {
+  /** WebView2 often returns garbage face embeddings on WebGL — CPU is slower but reliable. */
+  preferCpu?: boolean;
+}): Promise<void> {
   if (typeof window === "undefined") return;
   if (modelsLoaded) return;
   if (loadPromise) return loadPromise;
 
   preloadFaceRuntime();
 
+  const preferCpu = Boolean(opts?.preferCpu);
+
   loadPromise = (async () => {
     await initFaceRuntime();
     if (!tf || !faceapi) return;
 
-    try {
-      await tf.setBackend("webgl");
-      await tf.ready();
-    } catch {
+    if (preferCpu) {
       await tf.setBackend("cpu");
       await tf.ready();
+    } else {
+      try {
+        await tf.setBackend("webgl");
+        await tf.ready();
+      } catch {
+        await tf.setBackend("cpu");
+        await tf.ready();
+      }
     }
 
     await Promise.all([
@@ -155,8 +165,6 @@ export async function ensureFaceModelsLoaded(): Promise<void> {
 
     modelsLoaded = true;
 
-    // Shader warm-up is expensive on the main thread — run when idle so the
-    // first button click after a tab reopen does not freeze the UI.
     const runWarmUp = () => void warmUpInference();
     if (typeof requestIdleCallback !== "undefined") {
       requestIdleCallback(runWarmUp, { timeout: 4000 });

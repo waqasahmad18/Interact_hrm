@@ -1,0 +1,165 @@
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace InteractPresence;
+
+/// <summary>
+/// Posts unavailable-on-seat events to Interact HRM.
+/// On failure, queues locally for retry (do not discard).
+/// </summary>
+public sealed class HrmApiClient
+{
+    private readonly AppSettings _settings;
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly string _queuePath;
+
+    public HrmApiClient(AppSettings settings)
+    {
+        _settings = settings;
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "InteractPresence");
+        Directory.CreateDirectory(dir);
+        _queuePath = Path.Combine(dir, "pending-events.json");
+    }
+
+    public async Task PostUnavailableOnSeatAsync(UnavailableEvent evt, CancellationToken ct = default)
+    {
+        try
+        {
+            // Endpoint will be added on HRM side later. Until then we queue + log.
+            var url = $"{_settings.HrmBaseUrl.TrimEnd('/')}/api/presence/unavailable";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrWhiteSpace(_settings.AuthToken))
+                req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_settings.AuthToken}");
+            req.Content = JsonContent.Create(evt);
+
+            var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode)
+                Enqueue(evt);
+        }
+        catch
+        {
+            Enqueue(evt);
+        }
+    }
+
+    public async Task FlushQueueAsync(CancellationToken ct = default)
+    {
+        var list = LoadQueue();
+        if (list.Count == 0) return;
+
+        var remaining = new List<UnavailableEvent>();
+        foreach (var evt in list)
+        {
+            try
+            {
+                var url = $"{_settings.HrmBaseUrl.TrimEnd('/')}/api/presence/unavailable";
+                using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                if (!string.IsNullOrWhiteSpace(_settings.AuthToken))
+                    req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_settings.AuthToken}");
+                req.Content = JsonContent.Create(evt);
+                var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
+                if (!res.IsSuccessStatusCode)
+                    remaining.Add(evt);
+            }
+            catch
+            {
+                remaining.Add(evt);
+            }
+        }
+        SaveQueue(remaining);
+    }
+
+    public async Task<bool> TryApplyPresenceSettingsAsync(AppSettings target, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"{_settings.HrmBaseUrl.TrimEnd('/')}/api/presence-settings";
+            using var res = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode) return false;
+            var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("success", out var ok) || !ok.GetBoolean()) return false;
+            if (!root.TryGetProperty("settings", out var s)) return false;
+
+            var changed = false;
+            if (s.TryGetProperty("presenceEnabled", out var pe) && pe.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                var v = pe.GetBoolean();
+                if (target.PresenceEnabled != v) { target.PresenceEnabled = v; changed = true; }
+            }
+            if (s.TryGetProperty("cameraVerificationEnabled", out var cv) && cv.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                var v = cv.GetBoolean();
+                if (target.CameraVerificationEnabled != v) { target.CameraVerificationEnabled = v; changed = true; }
+            }
+            if (s.TryGetProperty("idleWarningSeconds", out var idle) && idle.TryGetInt32(out var idleSec))
+            {
+                idleSec = Math.Max(5, idleSec);
+                if (target.IdleWarningSeconds != idleSec) { target.IdleWarningSeconds = idleSec; changed = true; }
+            }
+            if (s.TryGetProperty("popupCountdownSeconds", out var pop) && pop.TryGetInt32(out var popSec))
+            {
+                popSec = Math.Max(5, popSec);
+                if (target.PopupCountdownSeconds != popSec) { target.PopupCountdownSeconds = popSec; changed = true; }
+            }
+            if (s.TryGetProperty("recheckWhileIdleSeconds", out var re) && re.TryGetInt32(out var reSec))
+            {
+                reSec = Math.Max(30, reSec);
+                if (target.RecheckWhileIdleSeconds != reSec) { target.RecheckWhileIdleSeconds = reSec; changed = true; }
+            }
+
+            if (changed)
+            {
+                try { target.Save(); } catch { /* ignore */ }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void Enqueue(UnavailableEvent evt)
+    {
+        var list = LoadQueue();
+        list.Add(evt);
+        SaveQueue(list);
+    }
+
+    private List<UnavailableEvent> LoadQueue()
+    {
+        try
+        {
+            if (!File.Exists(_queuePath)) return new List<UnavailableEvent>();
+            var json = File.ReadAllText(_queuePath);
+            return JsonSerializer.Deserialize<List<UnavailableEvent>>(json) ?? new List<UnavailableEvent>();
+        }
+        catch
+        {
+            return new List<UnavailableEvent>();
+        }
+    }
+
+    private void SaveQueue(List<UnavailableEvent> list)
+    {
+        var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(_queuePath, json);
+    }
+}
+
+public sealed class UnavailableEvent
+{
+    public string EmployeeId { get; set; } = "";
+    public string? EmployeeName { get; set; }
+    public string Status { get; set; } = "Unavailable on Seat";
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public int DurationSeconds { get; set; }
+    public bool ConfirmedByUser { get; set; }
+}
