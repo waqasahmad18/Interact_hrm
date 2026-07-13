@@ -12,12 +12,19 @@ namespace InteractPresence;
 public sealed class HrmApiClient
 {
     private readonly AppSettings _settings;
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _http;
     private readonly string _queuePath;
 
     public HrmApiClient(AppSettings settings)
     {
         _settings = settings;
+        // Staging often uses self-signed HTTPS (e.g. 192.168.10.6:8443).
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        };
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "InteractPresence");

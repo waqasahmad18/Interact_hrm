@@ -27,6 +27,11 @@ public sealed class TrayHost : IDisposable
         menu.Items.Add("Status: starting…", null, null).Name = "status";
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Set Employee ID…", null, (_, _) => PromptEmployeeId());
+        menu.Items.Add("Set HRM URL…", null, (_, _) => PromptHrmUrl());
+        menu.Items.Add("Use Staging HRM", null, (_, _) =>
+            SetHrmUrl("https://192.168.10.6:8443"));
+        menu.Items.Add("Use Localhost HRM", null, (_, _) =>
+            SetHrmUrl("http://localhost:3000"));
         menu.Items.Add("Test success toast", null, (_, _) =>
             DesktopNotify.Success("Verification successful — you are present."));
         menu.Items.Add("Test fail toast", null, (_, _) =>
@@ -85,6 +90,25 @@ public sealed class TrayHost : IDisposable
         if (string.IsNullOrWhiteSpace(input)) return;
         _settings.EmployeeId = input.Trim();
         _settings.Save();
+    }
+
+    private void PromptHrmUrl()
+    {
+        var input = SimplePrompt.Ask(
+            "Interact Presence",
+            "HRM base URL:\n• Staging: https://192.168.10.6:8443\n• Local: http://localhost:3000",
+            _settings.HrmBaseUrl ?? "");
+        if (string.IsNullOrWhiteSpace(input)) return;
+        SetHrmUrl(input.Trim());
+    }
+
+    private void SetHrmUrl(string url)
+    {
+        var cleaned = url.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(cleaned)) return;
+        _settings.HrmBaseUrl = cleaned;
+        _settings.Save();
+        DesktopNotify.Success($"HRM pointed at: {cleaned}");
     }
 
     public void Dispose()

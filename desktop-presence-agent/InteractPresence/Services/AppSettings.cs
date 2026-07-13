@@ -5,7 +5,7 @@ namespace InteractPresence;
 
 public sealed class AppSettings
 {
-    public string HrmBaseUrl { get; set; } = "http://localhost:3000";
+    public string HrmBaseUrl { get; set; } = "https://192.168.10.6:8443";
     public string? EmployeeId { get; set; }
     public string? EmployeeName { get; set; }
     public string? AuthToken { get; set; }
