@@ -119,6 +119,15 @@ public sealed class HrmApiClient
                 reSec = Math.Max(30, reSec);
                 if (target.RecheckWhileIdleSeconds != reSec) { target.RecheckWhileIdleSeconds = reSec; changed = true; }
             }
+            if (s.TryGetProperty("agentExitPassword", out var pw) && pw.ValueKind == JsonValueKind.String)
+            {
+                var v = (pw.GetString() ?? "").Trim();
+                if (v.Length >= 4 && !string.Equals(target.AgentExitPassword, v, StringComparison.Ordinal))
+                {
+                    target.AgentExitPassword = v;
+                    changed = true;
+                }
+            }
 
             if (changed)
             {

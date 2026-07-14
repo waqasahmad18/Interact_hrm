@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import React from "react";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import LayoutDashboard from "../../layout-dashboard";
 import adminStyles from "../admin-page.module.css";
 import styles from "./presence-idle.module.css";
@@ -12,6 +13,7 @@ type PresenceSettings = {
   popupCountdownSeconds: number;
   cameraVerificationEnabled: boolean;
   recheckWhileIdleSeconds: number;
+  agentExitPassword: string;
 };
 
 function splitSeconds(total: number) {
@@ -120,13 +122,23 @@ export default function PresenceIdleSettingsPage() {
   const [countdownSeconds, setCountdownSeconds] = React.useState(0);
   const [recheckMinutes, setRecheckMinutes] = React.useState(2);
   const [recheckSeconds, setRecheckSeconds] = React.useState(0);
+  const [showExitPassword, setShowExitPassword] = React.useState(false);
+  const [agentVersion, setAgentVersion] = React.useState("0.4.0");
+  const [agentHasBinary, setAgentHasBinary] = React.useState(false);
+  const [agentUpdatedAt, setAgentUpdatedAt] = React.useState<string | null>(null);
+  const [agentFile, setAgentFile] = React.useState<File | null>(null);
+  const [publishingAgent, setPublishingAgent] = React.useState(false);
+  const [readingVersion, setReadingVersion] = React.useState(false);
 
   const idleTotal = combineSeconds(idleMinutes, idleSeconds);
   const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
   const recheckTotal = combineSeconds(recheckMinutes, recheckSeconds);
 
   const applySettings = React.useCallback((s: PresenceSettings) => {
-    setSettings(s);
+    setSettings({
+      ...s,
+      agentExitPassword: s.agentExitPassword?.trim() || "InteractAdmin",
+    });
     const idle = splitSeconds(s.idleWarningSeconds);
     setIdleMinutes(idle.minutes);
     setIdleSeconds(idle.seconds);
@@ -141,13 +153,26 @@ export default function PresenceIdleSettingsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/presence-settings");
-      const data = await res.json();
+      const [settingsRes, agentRes] = await Promise.all([
+        fetch("/api/admin/presence-settings"),
+        fetch("/api/admin/presence-agent"),
+      ]);
+      const data = await settingsRes.json();
       if (!data.success || !data.settings) {
         toastError(data.error || "Could not load presence settings");
         return;
       }
       applySettings(data.settings as PresenceSettings);
+
+      const agentData = await agentRes.json();
+      if (agentData.success && agentData.release) {
+        const v = String(agentData.release.version || "").trim();
+        setAgentVersion(v && v !== "0.0.0" ? v : "0.4.0");
+        setAgentHasBinary(!!agentData.release.hasBinary);
+        setAgentUpdatedAt(agentData.release.updatedAt || null);
+      } else {
+        setAgentVersion("0.4.0");
+      }
     } catch {
       toastError("Network error loading settings");
     } finally {
@@ -181,6 +206,7 @@ export default function PresenceIdleSettingsPage() {
         idleWarningSeconds: Math.max(5, idleTotal),
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
+        agentExitPassword: settings.agentExitPassword,
       };
       const res = await fetch("/api/admin/presence-settings", {
         method: "PUT",
@@ -198,6 +224,71 @@ export default function PresenceIdleSettingsPage() {
       toastError("Network error saving settings");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onAgentFileChosen(file: File | null) {
+    setAgentFile(file);
+    if (!file) return;
+    setReadingVersion(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const res = await fetch("/api/admin/presence-agent/inspect", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!data.success || !data.version) {
+        toastError(data.error || "Could not read version from exe");
+        return;
+      }
+      setAgentVersion(data.version);
+      toastSuccess(`Version auto-filled from exe: ${data.version}`);
+    } catch {
+      toastError("Could not read version from exe");
+    } finally {
+      setReadingVersion(false);
+    }
+  }
+
+  async function publishAgent() {
+    const ver = agentVersion.trim();
+    if (!ver || ver === "0.0.0" || !/^\d+\.\d+(\.\d+)?(\.\d+)?$/.test(ver)) {
+      toastError("Set a valid version first (e.g. 0.4.0 or 0.4.1)");
+      return;
+    }
+    if (!agentFile && !agentHasBinary) {
+      toastError("Choose InteractPresence.exe before publishing");
+      return;
+    }
+    setPublishingAgent(true);
+    try {
+      const form = new FormData();
+      form.set("version", agentVersion.trim());
+      if (agentFile) form.set("file", agentFile);
+      const res = await fetch("/api/admin/presence-agent", {
+        method: "PUT",
+        body: form,
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Publish failed");
+        return;
+      }
+      setAgentVersion(data.release.version);
+      setAgentHasBinary(!!data.release.hasBinary);
+      setAgentUpdatedAt(data.release.updatedAt || null);
+      setAgentFile(null);
+      toastSuccess(
+        data.release.hasBinary
+          ? `Agent ${data.release.version} published. Running agents update within ~15 min.`
+          : `Version ${data.release.version} saved — upload .exe to enable downloads.`
+      );
+    } catch {
+      toastError("Network error publishing agent");
+    } finally {
+      setPublishingAgent(false);
     }
   }
 
@@ -295,6 +386,97 @@ export default function PresenceIdleSettingsPage() {
                     onMinutes={setRecheckMinutes}
                     onSeconds={setRecheckSeconds}
                   />
+
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>Agent exit password (admin only)</h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      Employees cannot Exit the tray agent without this password.
+                      Agents sync it from HRM about every 30 seconds. Default if unset:{" "}
+                      <code>InteractAdmin</code>. PC restart pe agent auto-start hota hai.
+                    </p>
+                    <div className={styles.durationRow}>
+                      <div className={styles.field} style={{ minWidth: 280 }}>
+                        <label htmlFor="agent-exit-password">Exit password</label>
+                        <div className={styles.passwordWrap}>
+                          <input
+                            id="agent-exit-password"
+                            type={showExitPassword ? "text" : "password"}
+                            autoComplete="new-password"
+                            value={settings.agentExitPassword}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                agentExitPassword: e.target.value,
+                              })
+                            }
+                            className={styles.passwordInput}
+                          />
+                          <button
+                            type="button"
+                            className={styles.passwordToggle}
+                            onClick={() => setShowExitPassword((v) => !v)}
+                            aria-label={showExitPassword ? "Hide password" : "Show password"}
+                            title={showExitPassword ? "Hide" : "Show"}
+                          >
+                            {showExitPassword ? <FaEyeSlash /> : <FaEye />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>Agent auto-update (publish)</h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      Choose <code>InteractPresence.exe</code> — <strong>version auto-fills</strong> from
+                      the file. Then click Publish. Running agents self-update when version is higher.
+                      Build path:{" "}
+                      <code>desktop-presence-agent/InteractPresence/bin/Release/net8.0-windows/</code>
+                    </p>
+                    <div className={styles.durationRow}>
+                      <div className={styles.field} style={{ minWidth: 140 }}>
+                        <label htmlFor="agent-version">Version (from exe)</label>
+                        <input
+                          id="agent-version"
+                          type="text"
+                          value={readingVersion ? "Reading…" : agentVersion}
+                          readOnly
+                          title="Auto-filled when you choose the .exe"
+                          style={{ width: 140, background: "#f8fafc" }}
+                        />
+                      </div>
+                      <div className={styles.field} style={{ minWidth: 260, flex: 1 }}>
+                        <label htmlFor="agent-exe">InteractPresence.exe</label>
+                        <input
+                          id="agent-exe"
+                          type="file"
+                          accept=".exe"
+                          disabled={readingVersion || publishingAgent}
+                          onChange={(e) =>
+                            void onAgentFileChosen(e.target.files?.[0] ?? null)
+                          }
+                        />
+                      </div>
+                    </div>
+                    <p className={styles.tip} style={{ marginTop: 8 }}>
+                      Published:{" "}
+                      <strong>{agentHasBinary ? `yes (${agentVersion})` : "no binary yet"}</strong>
+                      {agentUpdatedAt
+                        ? ` · file ${new Date(agentUpdatedAt).toLocaleString()}`
+                        : ""}
+                      {agentFile ? ` · selected: ${agentFile.name}` : ""}
+                    </p>
+                    <div className={styles.actions} style={{ borderTop: "none", paddingTop: 0 }}>
+                      <button
+                        type="button"
+                        className={adminStyles.btnGreen}
+                        disabled={publishingAgent || !agentVersion.trim()}
+                        onClick={() => void publishAgent()}
+                      >
+                        {publishingAgent ? "Publishing…" : "Publish agent update"}
+                      </button>
+                    </div>
+                  </div>
 
                   <div className={styles.actions}>
                     <button

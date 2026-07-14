@@ -61,10 +61,11 @@ public sealed class PresenceController : IDisposable
                 ? $"Active — idle {_settings.IdleWarningSeconds}s; camera={(_settings.CameraVerificationEnabled ? "on" : "off")}"
                 : "Presence disabled by admin (waiting for settings)");
         _ = _api.FlushQueueAsync();
-        // Immediate settings pull
+        // Immediate settings pull + update check
         _ = Task.Run(async () =>
         {
             await _api.TryApplyPresenceSettingsAsync(_settings).ConfigureAwait(false);
+            await AgentUpdater.CheckAndUpdateAsync(_settings).ConfigureAwait(false);
         });
     }
 
@@ -161,14 +162,17 @@ public sealed class PresenceController : IDisposable
             try
             {
                 var applied = await _api.TryApplyPresenceSettingsAsync(_settings).ConfigureAwait(false);
-                if (!applied) return;
-                await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+                if (applied)
                 {
-                    StatusChanged?.Invoke(
-                        $"Settings synced — idle {_settings.IdleWarningSeconds}s, " +
-                        $"camera={(_settings.CameraVerificationEnabled ? "on" : "off")}, " +
-                        $"enabled={_settings.PresenceEnabled}");
-                });
+                    await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        StatusChanged?.Invoke(
+                            $"Settings synced — idle {_settings.IdleWarningSeconds}s, " +
+                            $"camera={(_settings.CameraVerificationEnabled ? "on" : "off")}, " +
+                            $"enabled={_settings.PresenceEnabled}");
+                    });
+                }
+                await AgentUpdater.CheckAndUpdateAsync(_settings).ConfigureAwait(false);
             }
             catch
             {

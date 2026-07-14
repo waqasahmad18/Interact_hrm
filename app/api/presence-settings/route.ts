@@ -18,6 +18,7 @@ export async function GET() {
         popupCountdownSeconds: settings.popupCountdownSeconds,
         cameraVerificationEnabled: settings.cameraVerificationEnabled,
         recheckWhileIdleSeconds: settings.recheckWhileIdleSeconds,
+        agentExitPassword: settings.agentExitPassword,
       },
     });
   } catch (err) {

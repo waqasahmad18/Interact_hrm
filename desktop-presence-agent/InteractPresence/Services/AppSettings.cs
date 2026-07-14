@@ -36,6 +36,12 @@ public sealed class AppSettings
     /// </summary>
     public bool CameraVerificationEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Password required to Exit (and to disable auto-start). Synced from HRM admin.
+    /// Default matches HRM DEFAULT_PRESENCE_SETTINGS.agentExitPassword.
+    /// </summary>
+    public string AgentExitPassword { get; set; } = "InteractAdmin";
+
     private static string SettingsPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

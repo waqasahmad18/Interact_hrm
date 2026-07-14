@@ -17,6 +17,11 @@ export type PresenceSettings = {
   cameraVerificationEnabled: boolean;
   /** After seated match, wait this long before another check while still idle */
   recheckWhileIdleSeconds: number;
+  /**
+   * Password required to Exit the desktop agent from the tray.
+   * Synced to agents; only admins should know this value.
+   */
+  agentExitPassword: string;
 };
 
 export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
@@ -25,6 +30,7 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   popupCountdownSeconds: 60,
   cameraVerificationEnabled: true,
   recheckWhileIdleSeconds: 120,
+  agentExitPassword: "InteractAdmin",
 };
 
 const KEYS = {
@@ -33,6 +39,7 @@ const KEYS = {
   popupCountdownSeconds: "presence_popup_countdown_seconds",
   cameraVerificationEnabled: "presence_camera_verification_enabled",
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
+  agentExitPassword: "presence_agent_exit_password",
 } as const;
 
 async function getRaw(key: string): Promise<string | null> {
@@ -82,12 +89,14 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     popupCountdownSeconds,
     cameraVerificationEnabled,
     recheckWhileIdleSeconds,
+    agentExitPassword,
   ] = await Promise.all([
     getRaw(KEYS.presenceEnabled),
     getRaw(KEYS.idleWarningSeconds),
     getRaw(KEYS.popupCountdownSeconds),
     getRaw(KEYS.cameraVerificationEnabled),
     getRaw(KEYS.recheckWhileIdleSeconds),
+    getRaw(KEYS.agentExitPassword),
   ]);
 
   return {
@@ -109,7 +118,15 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       30,
       7200
     ),
+    agentExitPassword: sanitizeExitPassword(agentExitPassword, d.agentExitPassword),
   };
+}
+
+function sanitizeExitPassword(raw: string | null, fallback: string): string {
+  const v = (raw ?? "").trim();
+  if (v.length < 4) return fallback;
+  if (v.length > 64) return v.slice(0, 64);
+  return v;
 }
 
 export async function savePresenceSettings(
@@ -145,6 +162,12 @@ export async function savePresenceSettings(
       30,
       7200
     ),
+    agentExitPassword: sanitizeExitPassword(
+      typeof input.agentExitPassword === "string"
+        ? input.agentExitPassword
+        : current.agentExitPassword,
+      current.agentExitPassword
+    ),
   };
 
   await Promise.all([
@@ -156,6 +179,7 @@ export async function savePresenceSettings(
       next.cameraVerificationEnabled ? "true" : "false"
     ),
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
+    setRaw(KEYS.agentExitPassword, next.agentExitPassword),
   ]);
 
   return next;

@@ -51,6 +51,10 @@ export async function PUT(req: NextRequest) {
           : typeof body.recheckWhileIdleSeconds === "string"
             ? parseInt(body.recheckWhileIdleSeconds, 10)
             : undefined,
+      agentExitPassword:
+        typeof body.agentExitPassword === "string"
+          ? body.agentExitPassword
+          : undefined,
     });
     return NextResponse.json({ success: true, settings });
   } catch (err) {
