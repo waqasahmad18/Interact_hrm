@@ -55,6 +55,9 @@ export async function PUT(req: NextRequest) {
         typeof body.agentExitPassword === "string"
           ? body.agentExitPassword
           : undefined,
+      enabledEmployeeIds: Array.isArray(body.enabledEmployeeIds)
+        ? (body.enabledEmployeeIds as unknown[]).map((v) => String(v))
+        : undefined,
     });
     return NextResponse.json({ success: true, settings });
   } catch (err) {

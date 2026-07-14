@@ -61,6 +61,33 @@ export async function setEmployeeFaceVerificationEnabled(
   }
 }
 
+/** Bulk Active / Inactive for face verification. */
+export async function setEmployeesFaceVerificationEnabled(
+  employeeIds: Array<string | number>,
+  enabled: boolean
+): Promise<number> {
+  await ensureFaceVerificationColumn();
+  const ids = [
+    ...new Set(
+      employeeIds
+        .map((v) => String(v ?? "").trim())
+        .filter((v) => v.length > 0 && /^\d+$/.test(v))
+    ),
+  ];
+  if (ids.length === 0) return 0;
+
+  const placeholders = ids.map(() => "?").join(",");
+  try {
+    const [result] = await pool.execute(
+      `UPDATE hrm_employees SET face_verification_enabled = ? WHERE id IN (${placeholders})`,
+      [enabled ? 1 : 0, ...ids]
+    );
+    return Number((result as { affectedRows?: number }).affectedRows ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export type EmployeeFaceVerificationRow = {
   id: number;
   name: string;

@@ -128,6 +128,28 @@ public sealed class HrmApiClient
                     changed = true;
                 }
             }
+            if (s.TryGetProperty("enabledEmployeeIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var el in ids.EnumerateArray())
+                {
+                    if (el.ValueKind == JsonValueKind.String)
+                    {
+                        var t = (el.GetString() ?? "").Trim();
+                        if (t.Length > 0) list.Add(t);
+                    }
+                    else if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n))
+                    {
+                        list.Add(n.ToString());
+                    }
+                }
+                list = list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (!ListEqualsIgnoreOrder(target.EnabledEmployeeIds, list))
+                {
+                    target.EnabledEmployeeIds = list;
+                    changed = true;
+                }
+            }
 
             if (changed)
             {
@@ -166,6 +188,15 @@ public sealed class HrmApiClient
     {
         var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_queuePath, json);
+    }
+
+    private static bool ListEqualsIgnoreOrder(List<string>? a, List<string>? b)
+    {
+        a ??= new List<string>();
+        b ??= new List<string>();
+        if (a.Count != b.Count) return false;
+        var set = new HashSet<string>(a, StringComparer.OrdinalIgnoreCase);
+        return b.All(x => set.Contains(x));
     }
 }
 

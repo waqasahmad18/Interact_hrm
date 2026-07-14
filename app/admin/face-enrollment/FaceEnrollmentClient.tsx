@@ -15,6 +15,7 @@ import {
 import { enrollmentPhotoApiUrl } from "@/lib/enrollment-photo-url";
 import { FaceScanViewport } from "@/app/components/FaceScanHud";
 import { FaToggleOff, FaToggleOn } from "react-icons/fa";
+import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type EmployeeOption = {
   id: number;
@@ -78,6 +79,8 @@ export default function FaceEnrollmentAdminPage() {
   const [listError, setListError] = React.useState<string | null>(null);
   const [listSearch, setListSearch] = React.useState("");
   const [listSearchMode, setListSearchMode] = React.useState<ListSearchMode>("both");
+  const [deptFilter, setDeptFilter] = React.useState("");
+  const [bulkBusy, setBulkBusy] = React.useState(false);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -541,9 +544,9 @@ export default function FaceEnrollmentAdminPage() {
 
   const filteredTableRows = React.useMemo(() => {
     const q = listSearch.trim().toLowerCase();
-    if (!q) return tableRows;
-
     return tableRows.filter((row) => {
+      if (deptFilter && (row.department || "") !== deptFilter) return false;
+      if (!q) return true;
       const name = row.name.toLowerCase();
       const pseudo = (row.pseudonym || "").toLowerCase();
       const id = String(row.id);
@@ -556,7 +559,50 @@ export default function FaceEnrollmentAdminPage() {
       }
       return name.includes(q) || pseudo.includes(q) || id.includes(q);
     });
-  }, [listSearch, listSearchMode, tableRows]);
+  }, [listSearch, listSearchMode, tableRows, deptFilter]);
+
+  const departmentOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const row of tableRows) {
+      const d = (row.department || "").trim();
+      if (d) set.add(d);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [tableRows]);
+
+  async function setVerificationBulk(enabled: boolean) {
+    if (!globalFaceEnabled || filteredTableRows.length === 0 || bulkBusy) return;
+    const ids = filteredTableRows.map((r) => r.id);
+    setBulkBusy(true);
+    setEmployeeRows((prev) =>
+      prev.map((e) =>
+        ids.includes(e.id) ? { ...e, face_verification_enabled: enabled } : e
+      )
+    );
+    try {
+      const res = await fetch("/api/admin/face-enrollment/employees", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeIds: ids, enabled }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        await loadEmployeeList();
+        toastError(data.error || "Bulk update failed");
+        return;
+      }
+      toastSuccess(
+        enabled
+          ? `Active: ${data.updated ?? ids.length} employees (filtered list)`
+          : `Inactive: ${data.updated ?? ids.length} employees (filtered list)`
+      );
+    } catch {
+      await loadEmployeeList();
+      toastError("Bulk update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const serviceOk = modelsReady && (service?.configured ?? true);
   const canAddPhotos =
@@ -809,6 +855,20 @@ export default function FaceEnrollmentAdminPage() {
                     Both
                   </button>
                 </div>
+                <select
+                  className={tableStyles.breakSummaryInput}
+                  value={deptFilter}
+                  onChange={(e) => setDeptFilter(e.target.value)}
+                  aria-label="Department"
+                  style={{ flex: "0 1 200px", minWidth: 160 }}
+                >
+                  <option value="">All departments</option>
+                  {departmentOptions.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="search"
                   className={tableStyles.breakSummaryInput}
@@ -823,6 +883,24 @@ export default function FaceEnrollmentAdminPage() {
                   onChange={(e) => setListSearch(e.target.value)}
                   style={{ flex: "1 1 220px", minWidth: 180 }}
                 />
+                <button
+                  type="button"
+                  className={styles.searchModeBtn}
+                  disabled={!globalFaceEnabled || bulkBusy || filteredTableRows.length === 0}
+                  onClick={() => void setVerificationBulk(true)}
+                  title="Set Active for filtered rows"
+                >
+                  Active all
+                </button>
+                <button
+                  type="button"
+                  className={styles.searchModeBtn}
+                  disabled={!globalFaceEnabled || bulkBusy || filteredTableRows.length === 0}
+                  onClick={() => void setVerificationBulk(false)}
+                  title="Set Inactive for filtered rows"
+                >
+                  Inactive all
+                </button>
               </div>
               <div className={`${tableStyles.breakSummaryTableWrapper} ${styles.enrollCompactWrapper}`}>
               <table className={`${tableStyles.breakSummaryTable} ${styles.enrollCompactTable}`}>

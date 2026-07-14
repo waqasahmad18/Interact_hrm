@@ -19,6 +19,12 @@ Two environments, each mapped to a GitHub remote. Deploy branch is always `main`
 - Never guess the other remote — the mapping above is fixed. Always confirm the target env in the reply (e.g. "Pushed to STAGING (waqas → 10.6)").
 - Normal flow: push to **staging first**, user tests, then on success push the same `main` to **production**.
 
+## Build policy (before push / local agent)
+
+- **Before every push** (HRM / Next.js code changes): run `npm run build` and only push if it succeeds. Do this even when the agent was not touched.
+- **Desktop agent** (`desktop-presence-agent` / InteractPresence): build + run **only when the current task is agent work**. Do **not** rebuild/run the agent on every HRM change or every push.
+- When agent work is done and user asks to publish/test locally: then build + run the agent as needed.
+
 ## Server auto-deploy (both Ubuntu servers)
 
 Servers are on private IPs, so they **pull from GitHub** (outbound) via a polling script — GitHub webhooks / Actions cannot reach them inbound.

@@ -22,15 +22,21 @@ export type PresenceSettings = {
    * Synced to agents; only admins should know this value.
    */
   agentExitPassword: string;
+  /**
+   * Employee IDs allowed to run presence agent.
+   * Empty array = all employees (when presenceEnabled is true).
+   */
+  enabledEmployeeIds: string[];
 };
 
 export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   presenceEnabled: true,
-  idleWarningSeconds: 1800, // 30 min production-friendly default for admin UI
+  idleWarningSeconds: 1800,
   popupCountdownSeconds: 60,
   cameraVerificationEnabled: true,
   recheckWhileIdleSeconds: 120,
   agentExitPassword: "InteractAdmin",
+  enabledEmployeeIds: [],
 };
 
 const KEYS = {
@@ -40,6 +46,7 @@ const KEYS = {
   cameraVerificationEnabled: "presence_camera_verification_enabled",
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
   agentExitPassword: "presence_agent_exit_password",
+  enabledEmployeeIds: "presence_enabled_employee_ids",
 } as const;
 
 async function getRaw(key: string): Promise<string | null> {
@@ -81,6 +88,35 @@ function parseIntClamped(
   return Math.min(max, Math.max(min, n));
 }
 
+function parseIdList(raw: string | null): string[] {
+  if (raw == null || raw.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return [
+      ...new Set(
+        parsed
+          .map((v) => String(v ?? "").trim())
+          .filter((v) => v.length > 0)
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeIdList(input: unknown): string[] | undefined {
+  if (input === undefined) return undefined;
+  if (!Array.isArray(input)) return [];
+  return [
+    ...new Set(
+      input
+        .map((v) => String(v ?? "").trim())
+        .filter((v) => v.length > 0)
+    ),
+  ];
+}
+
 export async function getPresenceSettings(): Promise<PresenceSettings> {
   const d = DEFAULT_PRESENCE_SETTINGS;
   const [
@@ -90,6 +126,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     cameraVerificationEnabled,
     recheckWhileIdleSeconds,
     agentExitPassword,
+    enabledEmployeeIds,
   ] = await Promise.all([
     getRaw(KEYS.presenceEnabled),
     getRaw(KEYS.idleWarningSeconds),
@@ -97,6 +134,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.cameraVerificationEnabled),
     getRaw(KEYS.recheckWhileIdleSeconds),
     getRaw(KEYS.agentExitPassword),
+    getRaw(KEYS.enabledEmployeeIds),
   ]);
 
   return {
@@ -119,6 +157,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       7200
     ),
     agentExitPassword: sanitizeExitPassword(agentExitPassword, d.agentExitPassword),
+    enabledEmployeeIds: parseIdList(enabledEmployeeIds),
   };
 }
 
@@ -133,15 +172,14 @@ export async function savePresenceSettings(
   input: Partial<PresenceSettings>
 ): Promise<PresenceSettings> {
   const current = await getPresenceSettings();
+  const ids = normalizeIdList(input.enabledEmployeeIds);
   const next: PresenceSettings = {
     presenceEnabled:
       typeof input.presenceEnabled === "boolean"
         ? input.presenceEnabled
         : current.presenceEnabled,
     idleWarningSeconds: parseIntClamped(
-      String(
-        input.idleWarningSeconds ?? current.idleWarningSeconds
-      ),
+      String(input.idleWarningSeconds ?? current.idleWarningSeconds),
       current.idleWarningSeconds,
       10,
       86400
@@ -168,6 +206,7 @@ export async function savePresenceSettings(
         : current.agentExitPassword,
       current.agentExitPassword
     ),
+    enabledEmployeeIds: ids !== undefined ? ids : current.enabledEmployeeIds,
   };
 
   await Promise.all([
@@ -180,6 +219,7 @@ export async function savePresenceSettings(
     ),
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
     setRaw(KEYS.agentExitPassword, next.agentExitPassword),
+    setRaw(KEYS.enabledEmployeeIds, JSON.stringify(next.enabledEmployeeIds)),
   ]);
 
   return next;

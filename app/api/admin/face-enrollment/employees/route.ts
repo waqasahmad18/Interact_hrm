@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   listEmployeesFaceVerification,
   setEmployeeFaceVerificationEnabled,
+  setEmployeesFaceVerificationEnabled,
 } from "@/lib/employee-face-verification";
 import { isFaceVerificationEnabled } from "@/lib/face-matching";
 
@@ -30,11 +31,34 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const body = (await req.json()) as { employeeId?: string | number; enabled?: boolean };
-    const employeeId = String(body.employeeId ?? "").trim();
-    if (!employeeId || typeof body.enabled !== "boolean") {
+    const body = (await req.json()) as {
+      employeeId?: string | number;
+      employeeIds?: Array<string | number>;
+      enabled?: boolean;
+    };
+    if (typeof body.enabled !== "boolean") {
       return NextResponse.json(
-        { success: false, error: "employeeId and enabled (boolean) are required." },
+        { success: false, error: "enabled (boolean) is required." },
+        { status: 400 }
+      );
+    }
+
+    if (Array.isArray(body.employeeIds) && body.employeeIds.length > 0) {
+      const updated = await setEmployeesFaceVerificationEnabled(
+        body.employeeIds,
+        body.enabled
+      );
+      return NextResponse.json({
+        success: true,
+        updated,
+        face_verification_enabled: body.enabled,
+      });
+    }
+
+    const employeeId = String(body.employeeId ?? "").trim();
+    if (!employeeId) {
+      return NextResponse.json(
+        { success: false, error: "employeeId or employeeIds required." },
         { status: 400 }
       );
     }

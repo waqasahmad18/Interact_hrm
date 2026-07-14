@@ -36,13 +36,18 @@ public sealed class AppSettings
     /// </summary>
     public bool CameraVerificationEnabled { get; set; } = true;
 
-    /// <summary>
-    /// Password required to Exit (and to disable auto-start). Synced from HRM admin.
-    /// Default matches HRM DEFAULT_PRESENCE_SETTINGS.agentExitPassword.
-    /// </summary>
-    public string AgentExitPassword { get; set; } = "InteractAdmin";
+  /// <summary>
+  /// Password required to Exit (and to disable auto-start). Synced from HRM admin.
+  /// Default matches HRM DEFAULT_PRESENCE_SETTINGS.agentExitPassword.
+  /// </summary>
+  public string AgentExitPassword { get; set; } = "InteractAdmin";
 
-    private static string SettingsPath =>
+  /// <summary>
+  /// Empty = all employees. Otherwise only these employee IDs may run monitoring.
+  /// </summary>
+  public List<string> EnabledEmployeeIds { get; set; } = new();
+
+  private static string SettingsPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "InteractPresence",

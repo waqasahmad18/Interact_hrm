@@ -93,6 +93,13 @@ public sealed class PresenceController : IDisposable
             return;
         }
 
+        if (!IsEmployeeAllowed())
+        {
+            if (_state == State.IdleWarning) return;
+            StatusChanged?.Invoke("Presence not enabled for this employee (admin list)");
+            return;
+        }
+
         var threshold = TimeSpan.FromSeconds(Math.Max(5, _settings.IdleWarningSeconds));
         var idle = _idle.IsIdleBeyond(threshold);
 
@@ -152,6 +159,15 @@ public sealed class PresenceController : IDisposable
     }
 
     private DateTime _lastSettingsFetch = DateTime.MinValue;
+
+    private bool IsEmployeeAllowed()
+    {
+        var list = _settings.EnabledEmployeeIds;
+        if (list == null || list.Count == 0) return true; // empty = all
+        var id = (_settings.EmployeeId ?? "").Trim();
+        if (string.IsNullOrEmpty(id)) return false;
+        return list.Any(x => string.Equals(x?.Trim(), id, StringComparison.OrdinalIgnoreCase));
+    }
 
     private void MaybeRefreshRemoteSettings()
     {

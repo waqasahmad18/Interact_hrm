@@ -19,6 +19,7 @@ export async function GET() {
         cameraVerificationEnabled: settings.cameraVerificationEnabled,
         recheckWhileIdleSeconds: settings.recheckWhileIdleSeconds,
         agentExitPassword: settings.agentExitPassword,
+        enabledEmployeeIds: settings.enabledEmployeeIds,
       },
     });
   } catch (err) {

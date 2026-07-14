@@ -14,7 +14,18 @@ type PresenceSettings = {
   cameraVerificationEnabled: boolean;
   recheckWhileIdleSeconds: number;
   agentExitPassword: string;
+  enabledEmployeeIds: string[];
 };
+
+type EmpRow = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  employee_code?: string | null;
+  department_name?: string | null;
+};
+
+type DeptRow = { id: number; name?: string; department_name?: string };
 
 function splitSeconds(total: number) {
   const safe = Math.max(0, Math.floor(total || 0));
@@ -129,6 +140,12 @@ export default function PresenceIdleSettingsPage() {
   const [agentFile, setAgentFile] = React.useState<File | null>(null);
   const [publishingAgent, setPublishingAgent] = React.useState(false);
   const [readingVersion, setReadingVersion] = React.useState(false);
+  const [departments, setDepartments] = React.useState<DeptRow[]>([]);
+  const [employees, setEmployees] = React.useState<EmpRow[]>([]);
+  const [deptFilter, setDeptFilter] = React.useState("");
+  const [empSearch, setEmpSearch] = React.useState("");
+  const [empDropdownOpen, setEmpDropdownOpen] = React.useState(false);
+  const empSearchWrapRef = React.useRef<HTMLDivElement | null>(null);
 
   const idleTotal = combineSeconds(idleMinutes, idleSeconds);
   const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
@@ -138,6 +155,9 @@ export default function PresenceIdleSettingsPage() {
     setSettings({
       ...s,
       agentExitPassword: s.agentExitPassword?.trim() || "InteractAdmin",
+      enabledEmployeeIds: Array.isArray(s.enabledEmployeeIds)
+        ? s.enabledEmployeeIds.map(String)
+        : [],
     });
     const idle = splitSeconds(s.idleWarningSeconds);
     setIdleMinutes(idle.minutes);
@@ -148,6 +168,25 @@ export default function PresenceIdleSettingsPage() {
     const recheck = splitSeconds(s.recheckWhileIdleSeconds);
     setRecheckMinutes(recheck.minutes);
     setRecheckSeconds(recheck.seconds);
+  }, []);
+
+  const loadEmployeesAndDepts = React.useCallback(async () => {
+    try {
+      const [deptRes, empRes] = await Promise.all([
+        fetch("/api/departments"),
+        fetch("/api/employee-list"),
+      ]);
+      const deptData = await deptRes.json();
+      const empData = await empRes.json();
+      if (deptData.success && Array.isArray(deptData.departments)) {
+        setDepartments(deptData.departments as DeptRow[]);
+      }
+      if (empData.success && Array.isArray(empData.employees)) {
+        setEmployees(empData.employees as EmpRow[]);
+      }
+    } catch {
+      /* ignore — targeting optional */
+    }
   }, []);
 
   const load = React.useCallback(async () => {
@@ -173,16 +212,27 @@ export default function PresenceIdleSettingsPage() {
       } else {
         setAgentVersion("0.4.0");
       }
+      await loadEmployeesAndDepts();
     } catch {
       toastError("Network error loading settings");
     } finally {
       setLoading(false);
     }
-  }, [applySettings]);
+  }, [applySettings, loadEmployeesAndDepts]);
 
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!empSearchWrapRef.current?.contains(e.target as Node)) {
+        setEmpDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   function setIdleTotal(totalSeconds: number) {
     const parts = splitSeconds(totalSeconds);
@@ -207,6 +257,7 @@ export default function PresenceIdleSettingsPage() {
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
         agentExitPassword: settings.agentExitPassword,
+        enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
       };
       const res = await fetch("/api/admin/presence-settings", {
         method: "PUT",
@@ -294,6 +345,85 @@ export default function PresenceIdleSettingsPage() {
 
   const disabled = !settings?.presenceEnabled;
 
+  const filteredEmployees = React.useMemo(() => {
+    const q = empSearch.trim().toLowerCase();
+    const deptName =
+      deptFilter === ""
+        ? ""
+        : departments.find((d) => String(d.id) === deptFilter)?.name ||
+          departments.find((d) => String(d.id) === deptFilter)?.department_name ||
+          "";
+    return employees.filter((e) => {
+      if (deptFilter) {
+        const en = (e.department_name || "").trim();
+        if (deptName && en !== deptName) return false;
+        // also allow matching by selecting after employee-list filtered only
+        if (!deptName && en !== deptFilter) return false;
+      }
+      if (!q) return true;
+      const name = `${e.first_name || ""} ${e.last_name || ""}`.toLowerCase();
+      const code = String(e.employee_code || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || String(e.id).includes(q);
+    });
+  }, [employees, empSearch, deptFilter, departments]);
+
+  function empLabel(e: EmpRow) {
+    const name =
+      `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`;
+    return name;
+  }
+
+  function empMeta(e: EmpRow) {
+    return [
+      `ID ${e.id}`,
+      e.employee_code || null,
+      e.department_name || null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  const selectedEmployees = React.useMemo(() => {
+    const ids = settings?.enabledEmployeeIds ?? [];
+    if (ids.length === 0) return [];
+    const map = new Map(employees.map((e) => [String(e.id), e]));
+    return ids
+      .map((id) => map.get(id))
+      .filter((e): e is EmpRow => !!e);
+  }, [settings?.enabledEmployeeIds, employees]);
+
+  function addEmployee(id: string) {
+    if (!settings) return;
+    const set = new Set(settings.enabledEmployeeIds);
+    set.add(id);
+    setSettings({ ...settings, enabledEmployeeIds: [...set] });
+    setEmpSearch("");
+    setEmpDropdownOpen(false);
+  }
+
+  function removeEmployee(id: string) {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      enabledEmployeeIds: settings.enabledEmployeeIds.filter((x) => x !== id),
+    });
+  }
+
+  function selectFilteredEmployees() {
+    if (!settings) return;
+    const set = new Set(settings.enabledEmployeeIds);
+    for (const e of filteredEmployees) set.add(String(e.id));
+    setSettings({ ...settings, enabledEmployeeIds: [...set] });
+    setEmpDropdownOpen(false);
+  }
+
+  function clearEmployeeSelection() {
+    if (!settings) return;
+    setSettings({ ...settings, enabledEmployeeIds: [] });
+    setEmpSearch("");
+    setEmpDropdownOpen(false);
+  }
+
   return (
     <LayoutDashboard>
       <div className={adminStyles.page}>
@@ -350,6 +480,129 @@ export default function PresenceIdleSettingsPage() {
                       </span>
                     </span>
                   </label>
+
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>Enable for employees</h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      Empty selection = <strong>all employees</strong>. Search and pick people;
+                      filter by department first if needed. Agent tray Employee ID must match.
+                    </p>
+                    <div className={styles.durationRow} style={{ marginBottom: 10 }}>
+                      <div className={styles.field} style={{ minWidth: 180 }}>
+                        <label htmlFor="presence-dept">Department</label>
+                        <select
+                          id="presence-dept"
+                          value={deptFilter}
+                          disabled={disabled}
+                          onChange={(e) => setDeptFilter(e.target.value)}
+                          className={styles.select}
+                        >
+                          <option value="">All departments</option>
+                          {departments.map((d) => (
+                            <option key={d.id} value={String(d.id)}>
+                              {d.name || d.department_name || `Dept ${d.id}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div
+                        className={styles.field}
+                        style={{ minWidth: 240, flex: 1, position: "relative" }}
+                        ref={empSearchWrapRef}
+                      >
+                        <label htmlFor="presence-emp-search">Search employee</label>
+                        <input
+                          id="presence-emp-search"
+                          type="text"
+                          autoComplete="off"
+                          value={empSearch}
+                          disabled={disabled}
+                          placeholder="Click or type name…"
+                          onFocus={() => setEmpDropdownOpen(true)}
+                          onClick={() => setEmpDropdownOpen(true)}
+                          onChange={(e) => {
+                            setEmpSearch(e.target.value);
+                            setEmpDropdownOpen(true);
+                          }}
+                          style={{ width: "100%", minWidth: 200 }}
+                        />
+                        {empDropdownOpen && !disabled ? (
+                          <div className={styles.empDropdown} role="listbox">
+                            {filteredEmployees.length === 0 ? (
+                              <div className={styles.empDropdownEmpty}>No match</div>
+                            ) : (
+                              filteredEmployees.slice(0, 80).map((e) => {
+                                const id = String(e.id);
+                                const selected =
+                                  (settings?.enabledEmployeeIds.length ?? 0) > 0 &&
+                                  (settings?.enabledEmployeeIds.includes(id) ?? false);
+                                return (
+                                  <button
+                                    key={e.id}
+                                    type="button"
+                                    className={`${styles.empDropdownItem}${
+                                      selected ? ` ${styles.empDropdownItemSelected}` : ""
+                                    }`}
+                                    onClick={() => addEmployee(id)}
+                                  >
+                                    <strong>{empLabel(e)}</strong>
+                                    <span className={styles.empMeta}>{empMeta(e)}</span>
+                                    {selected ? (
+                                      <span className={styles.empAdded}>Added</span>
+                                    ) : null}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={styles.chipRow}>
+                      <button
+                        type="button"
+                        className={styles.chip}
+                        disabled={disabled || filteredEmployees.length === 0}
+                        onClick={selectFilteredEmployees}
+                      >
+                        Add all filtered
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.chip}
+                        disabled={disabled}
+                        onClick={clearEmployeeSelection}
+                      >
+                        Clear (all employees)
+                      </button>
+                      <span className={styles.tip}>
+                        Selected:{" "}
+                        <strong>
+                          {(settings?.enabledEmployeeIds.length ?? 0) === 0
+                            ? "ALL"
+                            : settings?.enabledEmployeeIds.length}
+                        </strong>
+                      </span>
+                    </div>
+                    {(settings?.enabledEmployeeIds.length ?? 0) > 0 ? (
+                      <div className={styles.selectedChips}>
+                        {selectedEmployees.map((e) => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            className={styles.selectedChip}
+                            disabled={disabled}
+                            onClick={() => removeEmployee(String(e.id))}
+                            title="Remove"
+                          >
+                            {empLabel(e)} <span aria-hidden>×</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={styles.tip}>No specific employees — feature applies to everyone.</p>
+                    )}
+                  </div>
 
                   <DurationEditor
                     title='Idle timeout before "Are you there?" popup'
