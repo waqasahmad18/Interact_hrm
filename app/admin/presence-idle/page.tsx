@@ -193,8 +193,8 @@ export default function PresenceIdleSettingsPage() {
     setLoading(true);
     try {
       const [settingsRes, agentRes] = await Promise.all([
-        fetch("/api/admin/presence-settings"),
-        fetch("/api/admin/presence-agent"),
+        fetch("/api/admin/presence-settings", { cache: "no-store" }),
+        fetch("/api/admin/presence-agent", { cache: "no-store" }),
       ]);
       const data = await settingsRes.json();
       if (!data.success || !data.settings) {
@@ -256,13 +256,14 @@ export default function PresenceIdleSettingsPage() {
         idleWarningSeconds: Math.max(5, idleTotal),
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
-        agentExitPassword: settings.agentExitPassword,
+        agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
       };
       const res = await fetch("/api/admin/presence-settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
         body: JSON.stringify(body),
+        cache: "no-store",
       });
       const data = await res.json();
       if (!data.success) {
@@ -270,7 +271,9 @@ export default function PresenceIdleSettingsPage() {
         return;
       }
       applySettings(data.settings as PresenceSettings);
-      toastSuccess("Presence settings saved. Desktop agents pick them up within ~30 seconds.");
+      toastSuccess(
+        "Presence settings saved. Agent must point at THIS host (Staging vs Localhost). It pulls password on next tray action or within ~15s."
+      );
     } catch {
       toastError("Network error saving settings");
     } finally {
@@ -644,8 +647,10 @@ export default function PresenceIdleSettingsPage() {
                     <h3 className={styles.blockTitle}>Agent exit password (admin only)</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
                       Employees cannot Exit the tray agent without this password.
-                      Agents sync it from HRM about every 30 seconds. Default if unset:{" "}
-                      <code>InteractAdmin</code>. PC restart pe agent auto-start hota hai.
+                      Agents sync from the <strong>same host</strong> they point at (Staging
+                      and Localhost passwords are separate). Click Save, then on the agent use
+                      tray → <strong>Sync settings from HRM now</strong> or any admin action.
+                      Default if unset: <code>InteractAdmin</code>.
                     </p>
                     <div className={styles.durationRow}>
                       <div className={styles.field} style={{ minWidth: 280 }}>

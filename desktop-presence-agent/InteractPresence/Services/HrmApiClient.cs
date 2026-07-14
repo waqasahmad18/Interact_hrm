@@ -84,8 +84,13 @@ public sealed class HrmApiClient
     {
         try
         {
-            var url = $"{_settings.HrmBaseUrl.TrimEnd('/')}/api/presence-settings";
-            using var res = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            // Cache-bust so nginx / proxies never serve a stale password.
+            var url =
+                $"{_settings.HrmBaseUrl.TrimEnd('/')}/api/presence-settings?_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("Cache-Control", "no-cache, no-store");
+            req.Headers.TryAddWithoutValidation("Pragma", "no-cache");
+            using var res = await _http.SendAsync(req, ct).ConfigureAwait(false);
             if (!res.IsSuccessStatusCode) return false;
             var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
@@ -122,7 +127,8 @@ public sealed class HrmApiClient
             if (s.TryGetProperty("agentExitPassword", out var pw) && pw.ValueKind == JsonValueKind.String)
             {
                 var v = (pw.GetString() ?? "").Trim();
-                if (v.Length >= 4 && !string.Equals(target.AgentExitPassword, v, StringComparison.Ordinal))
+                if (v.Length >= 4 &&
+                    !string.Equals(target.AgentExitPassword?.Trim(), v, StringComparison.Ordinal))
                 {
                     target.AgentExitPassword = v;
                     changed = true;

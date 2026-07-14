@@ -64,7 +64,7 @@ public sealed class PresenceController : IDisposable
         // Immediate settings pull + update check
         _ = Task.Run(async () =>
         {
-            await _api.TryApplyPresenceSettingsAsync(_settings).ConfigureAwait(false);
+            await ForceSyncSettingsAsync().ConfigureAwait(false);
             await AgentUpdater.CheckAndUpdateAsync(_settings).ConfigureAwait(false);
         });
     }
@@ -159,6 +159,41 @@ public sealed class PresenceController : IDisposable
     }
 
     private DateTime _lastSettingsFetch = DateTime.MinValue;
+    private DateTime _lastSyncFailNotify = DateTime.MinValue;
+
+    /// <summary>Pull admin settings (incl. exit password) from HRM now. Returns false if HRM unreachable.</summary>
+    public async Task<bool> ForceSyncSettingsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            _lastSettingsFetch = DateTime.UtcNow;
+            var applied = await _api.TryApplyPresenceSettingsAsync(_settings, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested) return false;
+            await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+            {
+                if (applied)
+                {
+                    StatusChanged?.Invoke(
+                        $"Settings synced — idle {_settings.IdleWarningSeconds}s, " +
+                        $"camera={(_settings.CameraVerificationEnabled ? "on" : "off")}, " +
+                        $"enabled={_settings.PresenceEnabled} @ {_settings.HrmBaseUrl}");
+                }
+                else
+                {
+                    StatusChanged?.Invoke($"Settings sync FAILED @ {_settings.HrmBaseUrl}");
+                }
+            });
+            return applied;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private bool IsEmployeeAllowed()
     {
@@ -171,7 +206,7 @@ public sealed class PresenceController : IDisposable
 
     private void MaybeRefreshRemoteSettings()
     {
-        if ((DateTime.UtcNow - _lastSettingsFetch).TotalSeconds < 30) return;
+        if ((DateTime.UtcNow - _lastSettingsFetch).TotalSeconds < 15) return;
         _lastSettingsFetch = DateTime.UtcNow;
         _ = Task.Run(async () =>
         {
@@ -186,6 +221,16 @@ public sealed class PresenceController : IDisposable
                             $"Settings synced — idle {_settings.IdleWarningSeconds}s, " +
                             $"camera={(_settings.CameraVerificationEnabled ? "on" : "off")}, " +
                             $"enabled={_settings.PresenceEnabled}");
+                    });
+                }
+                else if ((DateTime.UtcNow - _lastSyncFailNotify).TotalSeconds > 60)
+                {
+                    _lastSyncFailNotify = DateTime.UtcNow;
+                    await WpfApp.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        StatusChanged?.Invoke($"Settings sync FAILED @ {_settings.HrmBaseUrl}");
+                        DesktopNotify.Failed(
+                            $"Cannot reach HRM settings at {_settings.HrmBaseUrl}. Password/settings will not update.");
                     });
                 }
                 await AgentUpdater.CheckAndUpdateAsync(_settings).ConfigureAwait(false);

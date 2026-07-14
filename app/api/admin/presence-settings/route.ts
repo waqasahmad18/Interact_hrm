@@ -5,13 +5,24 @@ import {
 } from "@/lib/presence-settings";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function noStoreJson(body: unknown, init?: { status?: number }) {
+  return NextResponse.json(body, {
+    status: init?.status,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+}
 
 export async function GET() {
   try {
     const settings = await getPresenceSettings();
-    return NextResponse.json({ success: true, settings });
+    return noStoreJson({ success: true, settings });
   } catch (err) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         success: false,
         error: err instanceof Error ? err.message : "Failed to load settings",
@@ -53,15 +64,15 @@ export async function PUT(req: NextRequest) {
             : undefined,
       agentExitPassword:
         typeof body.agentExitPassword === "string"
-          ? body.agentExitPassword
+          ? body.agentExitPassword.trim()
           : undefined,
       enabledEmployeeIds: Array.isArray(body.enabledEmployeeIds)
         ? (body.enabledEmployeeIds as unknown[]).map((v) => String(v))
         : undefined,
     });
-    return NextResponse.json({ success: true, settings });
+    return noStoreJson({ success: true, settings });
   } catch (err) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         success: false,
         error: err instanceof Error ? err.message : "Failed to save settings",
