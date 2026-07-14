@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaPray, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
@@ -92,6 +92,7 @@ const sidebarLinks = [
 			},
 			{ name: "Events", path: "/admin/events", icon: <FaCalendarAlt /> },
 			{ name: "Departments", path: "/admin/departments", icon: <FaBuilding /> },
+			{ name: "Login Carousel", path: "/admin/login-carousel", icon: <FaImages /> },
 			{ name: "System Control", path: "/admin/system-control", icon: <FaCog /> },
 		],
 	},

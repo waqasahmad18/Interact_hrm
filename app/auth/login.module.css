@@ -1,49 +1,198 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 .splitWrap {
+  position: relative;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Left images dominate; form column balanced (not too thin) */
+  grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.72fr);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  background: #1a1d21;
 }
 
-/* ── Left: Slack-style brand panel ──────────────────────────── */
 .leftPanel {
   position: relative;
+  z-index: 1;
   overflow: hidden;
+  min-height: 100vh;
   background: linear-gradient(165deg, #1a1d21 0%, #2d1b33 40%, #4a154b 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 40px;
+  pointer-events: auto;
 }
 
-.leftPanel::before {
-  content: "";
+.topLogo {
   position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 70% 50% at 20% 20%, rgba(97, 31, 105, 0.45), transparent 55%),
-    radial-gradient(ellipse 50% 40% at 85% 80%, rgba(18, 100, 163, 0.2), transparent 50%);
-  pointer-events: none;
+  top: 16px;
+  left: 16px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.leftPanel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
-  opacity: 0.8;
-  pointer-events: none;
+.topLogo:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.topLogoImg {
+  width: auto;
+  height: 72px;
+  object-fit: contain;
+  display: block;
+  background: transparent;
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.28));
 }
 
 .leftContent {
   width: 100%;
-  max-width: 400px;
-  z-index: 1;
+  max-width: 520px;
+  z-index: 2;
+  padding: 48px 40px;
+  color: #fff;
   animation: fadeUp 0.6s ease both;
+}
+
+/* ── Auth left carousel ─────────────────────────────────────── */
+.carouselFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.carouselSlide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition:
+    opacity 0.85s ease,
+    transform 0.85s ease;
+}
+
+.brandSlide {
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 20%, rgba(97, 31, 105, 0.45), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 85% 80%, rgba(18, 100, 163, 0.2), transparent 50%),
+    linear-gradient(165deg, #1a1d21 0%, #2d1b33 40%, #4a154b 100%);
+  pointer-events: auto;
+  justify-content: center;
+  align-items: center;
+}
+
+.brandSlide .leftContent {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+}
+
+.imageSlide {
+  background: transparent;
+  overflow: hidden;
+  /* Transparent top / bottom border inside the frame */
+  padding: 28px 0;
+  box-sizing: border-box;
+}
+
+.carouselImageBleed {
+  /* Soft side fill only — fade out toward top/bottom so gutters stay clear */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(32px) saturate(1.05);
+  transform: scale(1.12);
+  opacity: 0.45;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.55) 18%,
+    rgba(0, 0, 0, 0.55) 82%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.55) 18%,
+    rgba(0, 0, 0, 0.55) 82%,
+    transparent 100%
+  );
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.carouselImage {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  /* Full photo in frame — no top/bottom/left/right chip */
+  object-fit: contain;
+  object-position: center center;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.slideFade {
+  opacity: 0;
+  z-index: 0;
+}
+
+.slideFadeActive {
+  opacity: 1;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.slideZoom {
+  opacity: 0;
+  transform: scale(1.06);
+  z-index: 0;
+}
+
+.slideZoomActive {
+  opacity: 1;
+  transform: scale(1);
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.slideSlide {
+  opacity: 0;
+  transform: translateX(36px);
+  z-index: 0;
+}
+
+.slideSlideActive {
+  opacity: 1;
+  transform: translateX(0);
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .brandLockup {
@@ -67,6 +216,7 @@
   font-weight: 800;
   letter-spacing: -0.03em;
   margin: 0;
+  white-space: nowrap;
 }
 
 .brandSub {
@@ -98,11 +248,45 @@
 }
 
 .brandText {
-  margin: 0 0 28px;
-  font-size: 0.9375rem;
+  margin: 0 0 22px;
+  font-size: 1.05rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.78);
   font-weight: 400;
+  max-width: 28ch;
+  animation: fadeUp 0.65s ease 0.1s both;
+}
+
+.wordStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 8px;
+  margin: 0 0 26px;
+  animation: fadeUp 0.65s ease 0.18s both;
+}
+
+.wordStrip > span:not(.dot) {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.heroFoot {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.48);
+  animation: fadeUp 0.65s ease 0.26s both;
 }
 
 .featureList {
@@ -162,44 +346,57 @@
   color: rgba(255, 255, 255, 0.58);
 }
 
-/* ── Right: login form ───────────────────────────────────────── */
+/* ── Right: narrower glass form column ──────────────────────── */
 .rightPanel {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  padding: 40px 24px;
+  min-height: 100vh;
+  padding: 0;
+  /* Soft fill behind glass (images stay on left only) */
   background:
-    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(97, 31, 105, 0.06), transparent 50%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(18, 100, 163, 0.05), transparent 50%),
-    #f8f8f8;
+    linear-gradient(165deg, rgba(45, 27, 51, 0.55) 0%, rgba(74, 21, 75, 0.4) 100%),
+    #f1f5f9;
 }
 
 .formWrap {
   width: 100%;
-  max-width: 400px;
+  max-width: none;
+  height: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0;
+  padding: 40px clamp(22px, 3.2vw, 36px) 28px;
   animation: fadeUp 0.55s ease 0.08s both;
+  /* Keep glass transparent look */
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .formWrapWithSaved {
-  max-width: 640px;
+  max-width: none;
 }
 
 .loginCard {
   width: 100%;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
-  padding: 32px 28px 28px;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 18px;
+  padding: 32px 26px 28px;
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 12px 40px rgba(97, 31, 105, 0.08);
+    0 1px 2px rgba(255, 255, 255, 0.35) inset,
+    0 12px 32px rgba(15, 23, 42, 0.1);
 }
 
 .logoWrap {
@@ -214,7 +411,9 @@
   height: auto;
   max-width: 120px;
   max-height: 100px;
-  filter: drop-shadow(0 4px 12px rgba(97, 31, 105, 0.12));
+  background: transparent;
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
   transition: transform 0.3s ease;
 }
 
@@ -223,19 +422,24 @@
 }
 
 .formTitle {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #1d1c1d;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #111827;
   text-align: center;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .formSubtitle {
-  font-size: 0.8125rem;
-  color: #616061;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
   text-align: center;
   margin: 0 0 22px;
+  line-height: 1.4;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .formRow {
@@ -265,17 +469,17 @@
   box-sizing: border-box;
   padding: 11px 14px;
   border-radius: 10px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid #d1d5db;
   font-size: 0.9375rem;
-  background: #fafafa;
-  color: #1d1c1d;
-  font-weight: 500;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font-weight: 600;
   font-family: inherit;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .input:hover {
-  border-color: #d1d1d1;
+  border-color: #9ca3af;
   background: #fff;
 }
 
@@ -283,12 +487,12 @@
   border-color: #611f69;
   outline: none;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.12);
+  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.14);
 }
 
 .input::placeholder {
-  color: #8b8b8b;
-  font-weight: 400;
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .passwordWrapper {
@@ -331,12 +535,13 @@
 }
 
 .remember {
-  color: #616061;
+  color: #111827;
   display: flex;
   gap: 8px;
   align-items: center;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .remember input {
@@ -347,15 +552,16 @@
 }
 
 .linkBtn {
-  color: #1264a3;
-  font-weight: 600;
+  color: #0b4f86;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
   transition: color 0.15s;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .linkBtn:hover {
-  color: #611f69;
+  color: #4a154b;
   text-decoration: underline;
 }
 
@@ -420,14 +626,16 @@
 
 .rightFooter {
   margin-top: 20px;
-  color: #8b8b8b;
-  font-size: 0.75rem;
+  color: #1e293b;
+  font-size: 0.8rem;
+  font-weight: 600;
   text-align: center;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
 }
 
 .rightFooter a {
-  color: #611f69;
-  font-weight: 600;
+  color: #4a154b;
+  font-weight: 800;
   text-decoration: none;
 }
 
@@ -436,8 +644,9 @@
 }
 
 .rightFooter em {
-  color: #b0b0b0;
+  color: #334155;
   font-style: normal;
+  font-weight: 700;
   margin-left: 4px;
 }
 
@@ -445,10 +654,12 @@
 .savedPanel {
   flex: 0 0 210px;
   max-width: 210px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   overflow: hidden;
   animation: fadeUp 0.3s ease both;
 }
@@ -537,12 +748,17 @@
   }
 
   .leftPanel {
-    min-height: auto;
-    padding: 36px 24px;
+    min-height: 42vh;
   }
 
   .leftContent {
-    max-width: 480px;
+    max-width: min(520px, 92vw);
+    padding: 36px 24px;
+  }
+
+  .brandTitle {
+    font-size: clamp(1.85rem, 7vw, 2.75rem);
+    white-space: nowrap;
   }
 
   .featureList {
@@ -550,11 +766,23 @@
   }
 
   .rightPanel {
-    padding: 28px 20px 36px;
+    min-height: 58vh;
+  }
+
+  .formWrap {
+    min-height: 58vh;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.35);
+    padding: 28px 20px 24px;
+    background: rgba(255, 255, 255, 0.28);
   }
 
   .formWrapWithSaved {
-    max-width: 420px;
+    max-width: none;
+  }
+
+  .loginCard {
+    max-width: 400px;
   }
 
   .formRow {
@@ -566,6 +794,15 @@
     max-width: 100%;
     width: 100%;
   }
+
+  .topLogo {
+    top: 12px;
+    left: 12px;
+  }
+
+  .topLogoImg {
+    height: 56px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -575,7 +812,8 @@
   }
 
   .formTitle {
-    font-size: 1.125rem;
+    font-size: 1.25rem;
+    white-space: nowrap;
   }
 
   .rowBetween {
