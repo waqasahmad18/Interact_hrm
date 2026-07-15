@@ -284,8 +284,8 @@ function computeLate(
   let diff = clockInMinutes - shiftStartMinutes;
   if (diff < -12 * 60) diff += 24 * 60;
   if (diff <= graceMinutes) return { isLate: false, lateMinutes: 0 };
-  const lateMinutes = diff - graceMinutes;
-  return { isLate: lateMinutes > 0, lateMinutes };
+  // Past grace: count full minutes from shift start (do not subtract grace).
+  return { isLate: true, lateMinutes: diff };
 }
 
 /** Absent if worked hours are well below half-day threshold (scales with shift length). */
