@@ -80,7 +80,7 @@ export function EmployeeProfileMenu({
 
   return (
     <>
-      <div className={styles.menuWrap} ref={menuRef}>
+      <div className={`${styles.menuWrap} ${menuOpen ? styles.menuWrapOpen : ""}`} ref={menuRef}>
         <button
           type="button"
           className={`${styles.menuBtn} ${menuOpen ? styles.menuBtnOpen : ""} ${tone === "onDark" ? styles.menuBtnOnDark : ""}`}

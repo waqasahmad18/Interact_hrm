@@ -1,6 +1,11 @@
 .menuWrap {
   position: relative;
   display: inline-block;
+  z-index: 1;
+}
+
+.menuWrapOpen {
+  z-index: 5000;
 }
 
 .menuBtn {
@@ -53,7 +58,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
-  z-index: 1100;
+  z-index: 5001;
   padding: 4px;
   display: flex;
   flex-direction: column;
