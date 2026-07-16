@@ -1,23 +1,30 @@
+/* Tardy note — PDF full-width bar */
+
 .wrap {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid #f1f5f9;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-sizing: border-box;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
 }
 
 .formRow {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  background: #fff9e6;
+  border: 1px solid #f5d78e;
   border-radius: 12px;
 }
 
@@ -25,9 +32,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #b45309;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #f59e0b;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -37,16 +47,17 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #f59e0b;
+  background: #fff;
 }
 
 .select {
-  flex: 1 1 180px;
+  flex: 1 1 auto;
   min-width: 0;
-  height: 36px;
+  width: 100%;
+  height: 38px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid #e8ecf1;
+  border: 1px solid #e5e7eb;
   background: #fff;
   font-size: 13px;
   color: #0f172a;
@@ -55,19 +66,19 @@
 }
 
 .select:focus {
-  border-color: #611f69;
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
 }
 
 .submit {
-  height: 36px;
-  padding: 0 16px;
+  height: 38px;
+  padding: 0 18px;
   border-radius: 10px;
   border: none;
-  background: #611f69;
+  background: #5b9ef5;
   color: #fff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   flex-shrink: 0;
@@ -75,12 +86,12 @@
 }
 
 .submit:hover:not(:disabled) {
-  background: #4a1850;
+  background: #3b82f6;
 }
 
 .submit:disabled {
-  background: #e2e8f0;
-  color: #94a3b8;
+  background: #cbd5e1;
+  color: #f8fafc;
   cursor: not-allowed;
 }
 
@@ -89,7 +100,7 @@
   box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid #e8ecf1;
+  border: 1px solid #e5e7eb;
   font-size: 13px;
   resize: vertical;
   min-height: 56px;
@@ -100,8 +111,8 @@
 
 .textarea:focus {
   outline: none;
-  border-color: #611f69;
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
 }
 
 .wordCount {
@@ -119,4 +130,18 @@
   font-size: 12px;
   color: #dc2626;
   padding: 0 4px;
+}
+
+@media (max-width: 640px) {
+  .formRow {
+    flex-wrap: wrap;
+  }
+
+  .select {
+    flex: 1 1 100%;
+  }
+
+  .submit {
+    margin-left: auto;
+  }
 }

@@ -182,7 +182,28 @@ export function PrayerButton({
     >
       {isSlack ? (
         <div className={slackStyles.cardHeader}>
-          <span className={`${slackStyles.cardTitle} ${slackStyles.titlePrayer}`}>Prayer break</span>
+          <span className={`${slackStyles.cardTitle} ${slackStyles.titlePrayer}`}>
+            <span className={`${slackStyles.titleIcon} ${slackStyles.titleIconPrayer}`} aria-hidden>
+              {/* Standing prayer — clear side profile, hands folded on mat */}
+              <svg viewBox="0 0 56 56" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {/* Prayer mat */}
+                <path d="M4 48h48" />
+                <path d="M8 48 L14 42 H50 L44 48" />
+                {/* Head */}
+                <circle cx="18" cy="10" r="5.5" />
+                {/* Body (long robe) — side standing */}
+                <path d="M18 15.5v3.5" />
+                <path d="M12 20.5c0-1.5 1.3-2.8 3-2.8h6c1.7 0 3 1.3 3 2.8v22.5c0 1.2-1 2.2-2.2 2.2h-7.6c-1.2 0-2.2-1-2.2-2.2V20.5z" />
+                {/* Arms folded across body */}
+                <path d="M11.5 28.5c2.2 2.8 5.2 4.2 8.5 4.2s6.3-1.4 8.5-4.2" />
+                <path d="M13 31.5c1.8 1.8 4 2.7 6.5 2.7s4.7-.9 6.5-2.7" />
+                {/* Feet */}
+                <path d="M14.5 45.8h4" />
+                <path d="M19.5 45.8h4" />
+              </svg>
+            </span>
+            Prayer Break
+          </span>
           {isPrayerOn && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>In prayer</span>}
         </div>
       ) : (
@@ -218,23 +239,14 @@ export function PrayerButton({
       >
         {bioStatusLoading ? "Preparing…" : isPrayerOn ? "End Prayer" : "Start Prayer"}
       </button>
-      {isPrayerOn && (
-        isSlack ? (
-          <div className={slackStyles.statusBox}>
-            <div className={`${slackStyles.statusLabel} ${slackStyles.statusPrayer}`}>
-              {prayerTimerPaused ? "Verifying…" : "Prayer running"}
-            </div>
-            <div className={slackStyles.statusTimer}>{formatTime(prayerTimer)}</div>
+      {isPrayerOn && !isSlack ? (
+        <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>
+          <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>
+            {prayerTimerPaused ? "⏸ Verifying…" : "🔴 Prayer Running"}
           </div>
-        ) : (
-          <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(142,68,173,0.10)", padding: "8px 12px", minWidth: 120 }}>
-            <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#8e44ad", marginBottom: 6 }}>
-              {prayerTimerPaused ? "⏸ Verifying…" : "🔴 Prayer Running"}
-            </div>
-            <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(prayerTimer)}</div>
-          </div>
-        )
-      )}
+          <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(prayerTimer)}</div>
+        </div>
+      ) : null}
       <PrayerTotals
         employeeId={employeeId}
         isPrayerOn={isPrayerOn}
@@ -386,12 +398,14 @@ function PrayerTotals({
   if (isSlack) {
     return (
       <div className={slackStyles.summaryBox}>
-        <div className={`${slackStyles.summaryLabel} ${slackStyles.titlePrayer}`}>Today&apos;s total prayer</div>
-        <div
-          className={slackStyles.summaryValue}
-          style={displayTotalSeconds > 1800 ? { color: "#dc2626" } : undefined}
-        >
-          {formatDuration(displayTotalSeconds)}
+        <div className={slackStyles.summaryBoxInner}>
+          <div className={slackStyles.summaryLabel}>Total Prayer</div>
+          <div
+            className={slackStyles.summaryValue}
+            style={displayTotalSeconds > 1800 ? { color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" } : undefined}
+          >
+            {formatDuration(displayTotalSeconds)}
+          </div>
         </div>
         {displayExceedSeconds > 0 && (
           <div className={slackStyles.summaryExceed}>Exceed: {formatDuration(displayExceedSeconds)}</div>

@@ -13,6 +13,7 @@ import {
   getParts,
   SERVER_TIMEZONE,
 } from "../../lib/timezone";
+import { resolveEventColor } from "../../lib/event-colors";
 import type { TicketCategory } from "../../lib/ticket-catalog";
 import {
   getLastAdminMessage,
@@ -26,6 +27,7 @@ import { formatDashboardHoursOnly } from "../../lib/attendance-display";
 import styles from "./employee-dashboard.module.css";
 import { fetchEmployeeHierarchy, type HierarchyPerson } from "../employee-hierarchy-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
+import { TardyNoteWidget } from "../components/TardyNoteWidget";
 
 type AttendanceRow = {
   id?: number;
@@ -163,6 +165,22 @@ function StatValue({ value }: { value: string }) {
   return <>{value}</>;
 }
 
+type DashboardEvent = {
+  id: number | string;
+  title: string;
+  description?: string;
+  start_at: string;
+  location?: string | null;
+  color?: string | null;
+  source?: string;
+};
+
+function eventDateKey(startAt: string) {
+  // Holidays use YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss — prefer the date prefix.
+  if (/^\d{4}-\d{2}-\d{2}/.test(startAt)) return startAt.slice(0, 10);
+  return getDateStringInTimeZone(startAt, SERVER_TIMEZONE) || "";
+}
+
 const ProgressRing = React.memo(function ProgressRing({
   pct,
   color,
@@ -279,6 +297,8 @@ export default function EmployeeDashboardPage() {
   const router = useRouter();
   const [employeeId, setEmployeeId] = React.useState("");
   const [calendarNow, setCalendarNow] = React.useState(() => new Date());
+  const [eventsMonthOffset, setEventsMonthOffset] = React.useState(0);
+  const eventsYearRef = React.useRef(new Date().getFullYear());
   const [attendance, setAttendance] = React.useState<AttendanceRow[]>([]);
   const [leaveBalance, setLeaveBalance] = React.useState<LeaveBalance>({
     annual: 0,
@@ -287,15 +307,8 @@ export default function EmployeeDashboardPage() {
     bereavement: 0,
     bereavementAllowance: 3,
   });
-  const [events, setEvents] = React.useState<
-    Array<{
-      id: number;
-      title: string;
-      description?: string;
-      start_at: string;
-      location?: string | null;
-    }>
-  >([]);
+  const [events, setEvents] = React.useState<DashboardEvent[]>([]);
+  const [holidays, setHolidays] = React.useState<DashboardEvent[]>([]);
   const [widgetHeading, setWidgetHeading] = React.useState("Upcoming Events");
   const [reminders, setReminders] = React.useState<
     Array<{ id: number; message: string }>
@@ -439,12 +452,19 @@ export default function EmployeeDashboardPage() {
     }
   }, [employeeId]);
 
-  const fetchEvents = React.useCallback(async () => {
+  const fetchEvents = React.useCallback(async (year?: number) => {
     try {
-      const res = await fetch("/api/events", { cache: "no-store" });
+      const y = year ?? new Date().getFullYear();
+      const res = await fetch(`/api/events?year=${y}`, { cache: "no-store" });
       const data = await res.json();
       if (data?.success) {
         setEvents(data.events || []);
+        setHolidays(
+          (data.holidays || []).map((h: DashboardEvent) => ({
+            ...h,
+            source: h.source || "us_holiday",
+          }))
+        );
         if (data.widgetHeading) setWidgetHeading(data.widgetHeading);
       }
     } catch (err) {
@@ -475,7 +495,6 @@ export default function EmployeeDashboardPage() {
   }, [employeeId, fetchAttendance, fetchLeaveBalance, fetchTickets]);
 
   React.useEffect(() => {
-    fetchEvents();
     fetchReminders();
     if (typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -483,7 +502,7 @@ export default function EmployeeDashboardPage() {
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data.toString());
-        if (msg?.type === "events_updated") fetchEvents();
+        if (msg?.type === "events_updated") fetchEvents(eventsYearRef.current);
         if (msg?.type === "reminders_updated") fetchReminders();
         if (msg?.type === "leave_update") fetchLeaveBalance();
         if (msg?.type === "ticket_update" || msg?.type === "ticket_created") {
@@ -610,15 +629,6 @@ export default function EmployeeDashboardPage() {
     }
   );
 
-  const annualPct = Math.min(
-    100,
-    Math.round((leaveBalance.annual / Math.max(leaveBalance.annualAllowance, 1)) * 100)
-  );
-
-  const hoursPct = Math.min(100, Math.round((todayHours / 8) * 100));
-  const casualPct = Math.min(100, Math.round((leaveBalance.casual / 15) * 100));
-  const punctualPct = Math.max(0, 100 - monthTardies * 25);
-
   const newReplyCount = React.useMemo(
     () => tickets.filter((t) => hasUnreadAdminReply(t.id, t.messages, ticketSeenMap)).length,
     [tickets, ticketSeenMap]
@@ -669,367 +679,346 @@ export default function EmployeeDashboardPage() {
     return { onTime, late, absent, weekScore, avgHours };
   }, [weekChart]);
 
+  const allCalendarEvents = React.useMemo(() => {
+    const merged: DashboardEvent[] = [
+      ...events.map((ev) => ({ ...ev, source: ev.source || "company" })),
+      ...holidays,
+    ];
+    return merged.sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)));
+  }, [events, holidays]);
+
+  const eventsCal = React.useMemo(() => {
+    const base = new Date(Date.UTC(todayParts.year, todayParts.month - 1 + eventsMonthOffset, 1, 12, 0, 0));
+    const year = base.getUTCFullYear();
+    const month = base.getUTCMonth() + 1;
+    const monthLabel = new Intl.DateTimeFormat(undefined, {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(base);
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const leading = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    const byDay = new Map<number, { title: string; color: string; id: string | number }[]>();
+    allCalendarEvents.forEach((ev, i) => {
+      const key = eventDateKey(ev.start_at);
+      if (!key) return;
+      const [y, m, d] = key.split("-").map(Number);
+      if (y !== year || m !== month) return;
+      const list = byDay.get(d) || [];
+      list.push({
+        id: ev.id,
+        title: ev.title || "Event",
+        color: resolveEventColor(ev, i),
+      });
+      byDay.set(d, list);
+    });
+    const slots = Array.from({ length: leading + daysInMonth }, (_, idx) => {
+      if (idx < leading) return null;
+      const day = idx - leading + 1;
+      return { day, tags: byDay.get(day) || [] };
+    });
+    return { year, month, monthLabel, slots };
+  }, [todayParts.year, todayParts.month, eventsMonthOffset, allCalendarEvents]);
+
+  /** Sidebar: next upcoming US / company events with distinct palette colors. */
+  const sidebarEvents = React.useMemo(() => {
+    const todayKey = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-${String(todayParts.day).padStart(2, "0")}`;
+    const upcoming = allCalendarEvents
+      .filter((ev) => {
+        const key = eventDateKey(ev.start_at);
+        return key && key >= todayKey;
+      })
+      .slice(0, 5);
+
+    if (upcoming.length > 0) {
+      return upcoming.map((ev, i) => ({
+        ...ev,
+        // Keep a stable chip color: prefer saved color, else cycle palette by slot
+        color: resolveEventColor(ev, i),
+      }));
+    }
+
+    // Rare empty fallback — same colorful layout as the PDF mock
+    return [
+      { id: -1, title: "Lunch", start_at: "", color: "#25c6da" },
+      { id: -2, title: "Go Home", start_at: "", color: "#45aef0" },
+      { id: -3, title: "Do Homework", start_at: "", color: "#ffb22c" },
+      { id: -4, title: "Work On UI Design", start_at: "", color: "#e03756" },
+      { id: -5, title: "Sleep Tight", start_at: "", color: "#7c4dff" },
+    ] as DashboardEvent[];
+  }, [allCalendarEvents, todayParts]);
+
+  const jumpCalendarToEvent = React.useCallback(
+    (ev: DashboardEvent) => {
+      const key = eventDateKey(ev.start_at);
+      if (!key) return;
+      const [y, m] = key.split("-").map(Number);
+      if (!y || !m) return;
+      setEventsMonthOffset((y - todayParts.year) * 12 + (m - todayParts.month));
+    },
+    [todayParts.year, todayParts.month]
+  );
+
+  React.useEffect(() => {
+    eventsYearRef.current = eventsCal.year;
+    void fetchEvents(eventsCal.year);
+  }, [eventsCal.year, fetchEvents]);
+
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <section className={styles.statRow}>
-          <button
-            type="button"
-            className={`${styles.statCard} ${styles.statCardPurple}`}
-            onClick={() => router.push("/employee-dashboard/time")}
+        {/* Row: Generate Tickets | My Tickets | Reminders */}
+        <section className={styles.topTrio}>
+          <div
+            className={`${styles.generateCard} ${styles.generateCardStatic}`}
+            role="presentation"
+            aria-hidden={false}
           >
-            {isClockedIn ? <span className={styles.liveDot} /> : null}
-            <div className={styles.statCardTop}>
-              <span className={styles.statIconBubble}><FaClock /></span>
-              <ProgressRing pct={hoursPct} color="#fff">
-                <span className={styles.ringPct}>{hoursPct}%</span>
-              </ProgressRing>
-            </div>
-            <div className={styles.statValue}>
-              <StatValue value={formatDashboardHoursOnly(todayHours)} />
-            </div>
-            <div className={styles.statLabel}>Hours today</div>
-            <div className={styles.statHint}>{todayStatus}</div>
-            <div className={styles.statBar}>
-              <div className={styles.statBarFill} style={{ width: `${hoursPct}%` }} />
-            </div>
-          </button>
+            <img
+              className={styles.generateIcon}
+              src="/generate-ticket-icon.png"
+              alt=""
+              width={56}
+              height={46}
+              draggable={false}
+            />
+            <span className={styles.generateBtn}>Generate Tickets</span>
+          </div>
 
-          <button
-            type="button"
-            className={`${styles.statCard} ${styles.statCardGreen}`}
-            onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
-          >
-            <div className={styles.statCardTop}>
-              <span className={styles.statIconBubble}><FaCalendarAlt /></span>
-              <ProgressRing pct={annualPct} color="#fff">
-                <span className={styles.ringPct}>{annualPct}%</span>
-              </ProgressRing>
+          <article className={styles.panelCard}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>My tickets</h2>
+              <button
+                type="button"
+                className={styles.viewAll}
+                onClick={() => router.push("/employee-dashboard/generate-ticket")}
+              >
+                View all
+              </button>
             </div>
-            <div className={styles.statValue}>
-              <StatValue value={String(leaveBalance.annual)} />
-            </div>
-            <div className={styles.statLabel}>Annual leave</div>
-            <div className={styles.statHint}>of {leaveBalance.annualAllowance} days</div>
-            <div className={styles.statBar}>
-              <div className={styles.statBarFill} style={{ width: `${annualPct}%` }} />
-            </div>
-          </button>
+            {newReplyCount > 0 ? (
+              <span className={styles.replyBadge}>
+                {newReplyCount} New {newReplyCount === 1 ? "Reply" : "Replies"}
+              </span>
+            ) : null}
+            <ul className={styles.ticketList}>
+              {ticketWidgetItems.length === 0 ? (
+                <li
+                  className={styles.ticketItem}
+                  onClick={() => router.push("/employee-dashboard/generate-ticket")}
+                >
+                  <div className={styles.ticketEmpty}>No pending tickets</div>
+                </li>
+              ) : (
+                ticketWidgetItems.map((ticket) => {
+                  const unread = hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
+                  const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
+                  return (
+                    <li
+                      key={ticket.id}
+                      className={styles.ticketItem}
+                      onClick={() => openTicketPage(ticket)}
+                    >
+                      <div className={styles.ticketTop}>
+                        <span className={styles.ticketNum}>{ticket.ticket_number}</span>
+                        <span className={unread ? styles.badgeNew : styles.badgeMuted}>
+                          {unread ? "New reply" : ticketStatusLabel(ticket.status)}
+                        </span>
+                      </div>
+                      <div className={styles.ticketSub}>{ticket.subject}</div>
+                      {lastAdmin ? (
+                        <div className={styles.ticketPreview}>Admin: {lastAdmin.body}</div>
+                      ) : null}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </article>
 
-          <button
-            type="button"
-            className={`${styles.statCard} ${styles.statCardGold}`}
-            onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
-          >
-            <div className={styles.statCardTop}>
-              <span className={styles.statIconBubble}><FaCalendarAlt /></span>
-              <ProgressRing pct={casualPct} color="#fff">
-                <span className={styles.ringPct}>{leaveBalance.casual}</span>
-              </ProgressRing>
-            </div>
-            <div className={styles.statValue}>
-              <StatValue value={String(leaveBalance.casual)} />
-            </div>
-            <div className={styles.statLabel}>Casual leave</div>
-            <div className={styles.statHint}>remaining</div>
-            <div className={styles.statBar}>
-              <div className={`${styles.statBarFill} ${styles.statBarFillGold}`} style={{ width: `${casualPct}%` }} />
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={`${styles.statCard} ${styles.statCardRed}`}
-            onClick={() => router.push("/employee-dashboard/time")}
-          >
-            <div className={styles.statCardTop}>
-              <span className={styles.statIconBubble}><FaClock /></span>
-              <ProgressRing pct={punctualPct} color="#fff">
-                <span className={styles.ringPct}>{monthTardies}</span>
-              </ProgressRing>
-            </div>
-            <div className={styles.statValue}>
-              <StatValue value={String(monthTardies)} />
-            </div>
-            <div className={styles.statLabel}>Tardies</div>
-            <div className={styles.statHint}>this month</div>
-            <div className={styles.statBar}>
-              <div className={`${styles.statBarFill} ${styles.statBarFillRed}`} style={{ width: `${punctualPct}%` }} />
-            </div>
-          </button>
+          <article className={`${styles.panelCard} ${styles.remindersCard}`}>
+            <h2 className={styles.panelTitle}>Reminders</h2>
+            {reminders.length === 0 ? (
+              <p className={styles.empty}>No Reminders</p>
+            ) : (
+              <ul className={styles.simpleList}>
+                {reminders.map((r) => (
+                  <li key={r.id}>{r.message}</li>
+                ))}
+              </ul>
+            )}
+          </article>
         </section>
 
-        <section className={styles.pulseStrip}>
-          <div className={styles.pulseGlow} aria-hidden />
-          <div className={styles.pulseInner}>
-            <div className={styles.pulseWeek}>
-              <p className={styles.pulseLabel}>Mon – Fri · tap a day</p>
-              <div className={styles.dayPills}>
-                {weekChart.map((day) => (
-                  <button
-                    key={day.dateKey}
-                    type="button"
-                    className={`${styles.dayPill} ${styles[`dayPill_${day.status}`]} ${day.isToday ? styles.dayPillToday : ""}`}
-                    onClick={() => router.push("/employee-dashboard/time")}
-                    title={`${day.label}: ${day.status}`}
-                  >
-                    <span className={styles.dayPillLabel}>{day.label}</span>
-                    <span className={styles.dayPillHours}>
-                      {day.hours > 0
-                        ? formatDashboardHoursOnly(day.hours)
-                        : day.status === "pending" || day.status === "upcoming"
-                          ? "…"
-                          : "—"}
-                    </span>
-                    {day.status === "tardy" && <span className={styles.dayPillLate} />}
+        {employeeId ? <TardyNoteWidget employeeId={employeeId} variant="slack" /> : null}
+
+        {/* Row: Upcoming Events + 2x2 stats */}
+        <section className={styles.midSplit}>
+          <div className={styles.eventsWrap}>
+            <h2 className={styles.eventsHeading}>{widgetHeading || "Upcoming Events"}</h2>
+            <article className={styles.eventsCard}>
+              <div className={styles.eventsBody}>
+                <div className={styles.eventsSidebar}>
+                  <button type="button" className={styles.eventsHeaderBtn}>
+                    Events &amp; Schedules
                   </button>
-                ))}
-              </div>
-            </div>
+                  {sidebarEvents.map((ev, i) => {
+                    const color = resolveEventColor(ev, i);
+                    return (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        className={`${styles.eventSideBtn} ${i === 3 ? styles.eventSideBtnTall : ""}`}
+                        style={{ background: color }}
+                        title={ev.start_at ? new Date(ev.start_at).toLocaleString() : undefined}
+                        onClick={() => jumpCalendarToEvent(ev)}
+                      >
+                        <span className={styles.eventArrow} aria-hidden>
+                          →
+                        </span>
+                        <span className={styles.eventSideLabel}>
+                          {(ev.title || "Event").toUpperCase()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-            <div className={styles.pulseScore}>
-              <ProgressRing pct={weekStats.weekScore} color="#a78bfa" size={76}>
-                <span className={styles.scoreNum}>{weekStats.weekScore}</span>
-              </ProgressRing>
-              <span className={styles.scoreCaption}>Weekly score</span>
-            </div>
+                <div className={styles.eventsCal}>
+                  <div className={styles.eventsCalToolbar}>
+                    <div className={styles.eventsCalNav}>
+                      <button type="button" onClick={() => setEventsMonthOffset((v) => v - 1)}>
+                        Prev
+                      </button>
+                      <button type="button" onClick={() => setEventsMonthOffset((v) => v + 1)}>
+                        Next
+                      </button>
+                      <button type="button" onClick={() => setEventsMonthOffset(0)}>
+                        Today
+                      </button>
+                    </div>
+                    <div className={styles.eventsCalMonth}>{eventsCal.monthLabel}</div>
+                    <div className={styles.eventsCalViews}>
+                      <span className={styles.eventsCalViewActive}>Month</span>
+                      <span>Week</span>
+                      <span>Day</span>
+                    </div>
+                  </div>
+                  <div className={styles.eventsCalDays}>
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                      <div key={d}>{d}</div>
+                    ))}
+                  </div>
+                  <div className={styles.eventsCalGrid}>
+                    {eventsCal.slots.map((slot, idx) =>
+                      !slot ? (
+                        <div key={idx} className={styles.eventsCalBlank} />
+                      ) : (
+                        <div
+                          key={idx}
+                          className={`${styles.eventsCalCell}${slot.tags.length ? ` ${styles.eventsCalCellHasEvent}` : ""}`}
+                          style={
+                            slot.tags[0]
+                              ? ({
+                                  ["--event-color" as string]: slot.tags[0].color,
+                                } as React.CSSProperties)
+                              : undefined
+                          }
+                          title={slot.tags.map((t) => t.title).join(", ") || undefined}
+                        >
+                          <span className={styles.eventsCalNum}>{slot.day}</span>
+                          {slot.tags.slice(0, 2).map((tag, ti) => (
+                            <span
+                              key={ti}
+                              className={styles.eventsCalTag}
+                              style={{ background: tag.color }}
+                              title={tag.title}
+                            >
+                              {tag.title.length > 9 ? `${tag.title.slice(0, 8)}…` : tag.title}
+                            </span>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
 
-            <div className={styles.pulseChips}>
-              <div className={`${styles.pulseChip} ${styles.chipGreen}`}>
-                <strong>{weekStats.onTime}</strong> on time
+          <div className={styles.statGrid}>
+            <button
+              type="button"
+              className={`${styles.statTile} ${styles.statPurple}`}
+              onClick={() => router.push("/employee-dashboard/time")}
+            >
+              <span className={styles.statBlob} aria-hidden />
+              <span className={styles.statIconCircle} aria-hidden>
+                <FaClock />
+              </span>
+              <div className={styles.statBig}>
+                <StatValue value={formatDashboardHoursOnly(todayHours)} />
               </div>
-              <div className={`${styles.pulseChip} ${styles.chipRed}`}>
-                <strong>{weekStats.late}</strong> late
+              <div className={styles.statName}>Hours Today</div>
+              <div className={styles.statSub}>{todayStatus}</div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.statTile} ${styles.statBlue}`}
+              onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
+            >
+              <span className={styles.statBlob} aria-hidden />
+              <span className={styles.statIconCircle} aria-hidden>
+                <FaCalendarAlt />
+              </span>
+              <div className={styles.statBig}>
+                <StatValue value={String(leaveBalance.annual)} />
               </div>
-              <div className={`${styles.pulseChip} ${styles.chipPurple}`}>
-                <strong>{formatDashboardHoursOnly(weekStats.avgHours)}</strong> avg / day
+              <div className={styles.statName}>Annual Leaves</div>
+              <div className={styles.statSub}>of {leaveBalance.annualAllowance} Days</div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.statTile} ${styles.statGreen}`}
+              onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
+            >
+              <span className={styles.statBlob} aria-hidden />
+              <span className={styles.statIconCircle} aria-hidden>
+                <FaCalendarAlt />
+              </span>
+              <div className={styles.statBig}>
+                <StatValue value={String(leaveBalance.casual)} />
               </div>
-              <div className={`${styles.pulseChip} ${styles.chipGold}`}>
-                <strong>{leaveBalance.bereavement}</strong> bereavement left
+              <div className={styles.statName}>Casual Leaves</div>
+              <div className={styles.statSub}>Remaining</div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.statTile} ${styles.statOrange}`}
+              onClick={() => router.push("/employee-dashboard/time")}
+            >
+              <span className={styles.statBlob} aria-hidden />
+              <span className={styles.statIconCircle} aria-hidden>
+                <FaClock />
+              </span>
+              <div className={styles.statBig}>
+                <StatValue value={String(monthTardies).padStart(2, "0")} />
               </div>
-            </div>
+              <div className={styles.statName}>Tardies</div>
+              <div className={styles.statSub}>This Month</div>
+            </button>
           </div>
         </section>
 
-        <div className={styles.bento}>
-          <article className={`${styles.card} ${styles.bentoChart}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>Attendance this week</h2>
-              <span className={`${styles.pill} ${styles.pillLive}`}>Live</span>
-            </div>
-            <div className={styles.chartLegend}>
-              <span className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ background: "#007a5a" }} /> On time
-              </span>
-              <span className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ background: "#dc2626" }} /> Late
-              </span>
-              <span className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ background: "#e2e8f0" }} /> Absent
-              </span>
-            </div>
-            <div className={styles.chartArea}>
-              {weekChart.map((day) => {
-                const pct =
-                  day.status === "absent"
-                    ? 10
-                    : day.status === "upcoming"
-                      ? 5
-                      : day.status === "pending"
-                        ? 8
-                        : day.hours > 0
-                          ? Math.max(6, (day.hours / maxChartHours) * 100)
-                          : 6;
-                const hoursLabel =
-                  day.status === "onTime" || day.status === "tardy"
-                    ? formatDashboardHoursOnly(day.hours)
-                    : "";
-                return (
-                  <div key={day.dateKey} className={styles.chartCol}>
-                    {hoursLabel ? (
-                      <span className={styles.chartHours}>{hoursLabel}</span>
-                    ) : (
-                      <span className={styles.chartHoursEmpty} aria-hidden> </span>
-                    )}
-                    <div className={styles.chartTrack}>
-                      {day.status === "tardy" && <span className={styles.lateDot} />}
-                      <div
-                        className={`${styles.chartBar} ${
-                          day.status === "tardy"
-                            ? styles.barLate
-                            : day.status === "onTime"
-                              ? styles.barOk
-                              : day.status === "pending"
-                                ? styles.barPending
-                                : day.status === "upcoming"
-                                  ? styles.barUpcoming
-                                  : styles.barMiss
-                        }`}
-                        style={{ height: `${pct}%` }}
-                        title={
-                          day.status === "pending"
-                            ? "Not clocked in yet today"
-                            : day.status === "upcoming"
-                              ? "Upcoming workday"
-                              : day.status === "absent"
-                                ? "No attendance recorded"
-                                : formatDashboardHoursOnly(day.hours)
-                        }
-                      />
-                    </div>
-                    <span className={`${styles.chartDay} ${day.isToday ? styles.chartDayToday : ""}`}>
-                      {day.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoLeave}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>Leave balance</h2>
-            </div>
-            <div className={styles.leaveStack}>
-              <div className={styles.leaveItem}>
-                <div
-                  className={`${styles.leaveRing} ${styles.leaveRingPurple}`}
-                  style={{ "--pct": `${annualPct}%` } as React.CSSProperties}
-                >
-                  <span>{leaveBalance.annual}</span>
-                </div>
-                <div className={styles.leaveInfo}>
-                  <div className={styles.leaveName}>Annual</div>
-                  <div className={styles.leaveSub}>of {leaveBalance.annualAllowance} days left</div>
-                </div>
-              </div>
-              <div className={styles.leaveItem}>
-                <div className={`${styles.leaveRing} ${styles.leaveRingGold}`}>
-                  {leaveBalance.casual}
-                </div>
-                <div className={styles.leaveInfo}>
-                  <div className={styles.leaveName}>Casual</div>
-                  <div className={styles.leaveSub}>remaining days</div>
-                </div>
-              </div>
-              <div className={styles.leaveItem}>
-                <div className={`${styles.leaveRing} ${styles.leaveRingGreen}`}>
-                  {leaveBalance.bereavement}
-                </div>
-                <div className={styles.leaveInfo}>
-                  <div className={styles.leaveName}>Bereavement</div>
-                  <div className={styles.leaveSub}>available</div>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoFeed}`}>
-            <div className={styles.feedSplit}>
-              <div className={styles.ticketWidget}>
-                <div className={styles.ticketWidgetHead}>
-                  <div className={styles.ticketWidgetTitleRow}>
-                    <span className={styles.ticketWidgetIcon}>
-                      <FaTicketAlt />
-                    </span>
-                    <h3 className={styles.ticketWidgetTitle}>My tickets</h3>
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.ticketWidgetViewAll}
-                    onClick={() => router.push("/employee-dashboard/generate-ticket")}
-                  >
-                    View all
-                  </button>
-                </div>
-                <span
-                  className={`${styles.ticketCountPill} ${
-                    newReplyCount > 0 ? styles.ticketCountPillLive : ""
-                  }`}
-                >
-                  {loadingTickets
-                    ? "Loading…"
-                    : newReplyCount > 0
-                      ? `${newReplyCount} new ${newReplyCount === 1 ? "reply" : "replies"}`
-                      : `${ticketWidgetItems.length} active`}
-                </span>
-                <ul className={styles.ticketList}>
-                  {ticketWidgetItems.length === 0 ? (
-                    <li
-                      className={styles.ticketListItem}
-                      onClick={() => router.push("/employee-dashboard/generate-ticket")}
-                    >
-                      <div className={styles.ticketEmpty}>No pending responses</div>
-                    </li>
-                  ) : (
-                    ticketWidgetItems.map((ticket) => {
-                      const unread = hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
-                      const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
-                      return (
-                        <li
-                          key={ticket.id}
-                          className={`${styles.ticketListItem} ${
-                            ticketPulseIds.includes(ticket.id) || unread
-                              ? styles.ticketListItemNew
-                              : ""
-                          }`}
-                          onClick={() => openTicketPage(ticket)}
-                        >
-                          <div className={styles.ticketListTop}>
-                            <span className={styles.ticketListTitle}>{ticket.ticket_number}</span>
-                            <span
-                              className={`${styles.ticketBadge} ${
-                                unread ? styles.ticketBadgeNew : styles.ticketBadgeStatus
-                              }`}
-                            >
-                              {unread ? "New reply" : ticketStatusLabel(ticket.status)}
-                            </span>
-                          </div>
-                          <div className={styles.ticketListMeta}>{ticket.subject}</div>
-                          {lastAdmin ? (
-                            <div className={styles.ticketListPreview}>Admin: {lastAdmin.body}</div>
-                          ) : null}
-                        </li>
-                      );
-                    })
-                  )}
-                </ul>
-              </div>
-              <div>
-                <h3 className={styles.feedBlockTitle}>Reminders</h3>
-                {reminders.length === 0 ? (
-                  <p className={styles.empty}>No reminders</p>
-                ) : (
-                  <ul className={styles.feedList}>
-                    {reminders.map((r) => (
-                      <li key={r.id} className={styles.feedItem}>{r.message}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <h3 className={styles.feedBlockTitle}>{widgetHeading}</h3>
-                {events.length === 0 ? (
-                  <p className={styles.empty}>No upcoming events</p>
-                ) : (
-                  <ul className={styles.feedList}>
-                    {events.map((ev) => (
-                      <li key={ev.id} className={styles.feedItem}>
-                        <div className={styles.feedTitle}>{ev.title}</div>
-                        <div className={styles.feedMeta}>{new Date(ev.start_at).toLocaleString()}</div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-            <CompanyPolicyWidget />
-          </article>
-
-          <article className={`${styles.card} ${styles.bentoCal}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>{monthName}</h2>
-              <span className={styles.pill}>Late days marked</span>
+        {/* Row: Calendar | People | Quick Actions */}
+        <section className={styles.bottomTrio}>
+          <article className={`${styles.panelCard} ${styles.calCard}`}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>{monthName}</h2>
+              <span className={styles.latePill}>Late days marked</span>
             </div>
             <div className={styles.calDays}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -1051,10 +1040,14 @@ export default function EmployeeDashboardPage() {
             </div>
           </article>
 
-          <article className={`${styles.card} ${styles.bentoPeople}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>People</h2>
-              <button type="button" className={styles.textLink} onClick={() => router.push("/employee-dashboard/my-team")}>
+          <article className={`${styles.panelCard} ${styles.peopleCard}`}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>People</h2>
+              <button
+                type="button"
+                className={styles.viewAll}
+                onClick={() => router.push("/employee-dashboard/my-team")}
+              >
                 View all
               </button>
             </div>
@@ -1075,36 +1068,32 @@ export default function EmployeeDashboardPage() {
                     <span className={styles.teamMemberName}>{m.name.split(" ")[0]}</span>
                   </div>
                 ))}
-                {teamMembers.length > 6 && (
-                  <span className={styles.teamMore}>+{teamMembers.length - 6} more</span>
-                )}
               </div>
             ) : (
-              <p className={styles.muted}>No direct reports</p>
+              <p className={styles.empty}>No direct reports</p>
             )}
           </article>
 
-          <article className={`${styles.card} ${styles.bentoActions}`}>
-            <div className={styles.cardHead}>
-              <h2 className={styles.cardTitle}>Quick actions</h2>
-            </div>
-            <div className={styles.actionGrid}>
+          <article className={`${styles.panelCard} ${styles.actionsCard}`}>
+            <h2 className={styles.panelTitle}>Quick actions</h2>
+            <div className={styles.actionList}>
               <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/time")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconGreen}`}><FaClock /></span>
+                <span className={`${styles.actionIcon} ${styles.actionGreen}`}><FaClock /></span>
                 Time &amp; attendance
               </button>
-              <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/generate-ticket")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaTicketAlt /></span>
+              <div className={`${styles.actionBtn} ${styles.actionBtnStatic}`} role="presentation">
+                <span className={`${styles.actionIcon} ${styles.actionPurple}`}><FaTicketAlt /></span>
                 Generate ticket
-              </button>
+              </div>
               <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/my-team")}>
-                <span className={`${styles.actionIcon} ${styles.actionIconPurple}`}><FaUsers /></span>
+                <span className={`${styles.actionIcon} ${styles.actionBlue}`}><FaUsers /></span>
                 My team
               </button>
             </div>
           </article>
-        </div>
+        </section>
       </div>
     </div>
   );
 }
+

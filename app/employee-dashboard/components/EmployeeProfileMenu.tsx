@@ -12,9 +12,18 @@ import { toastError } from "@/lib/app-toast";
 type Props = {
   employeeId: string;
   onAvatarUpdated: (dataUrl: string) => void;
+  /** Open menu upward (e.g. sidebar footer) */
+  dropUp?: boolean;
+  /** Light button for dark backgrounds */
+  tone?: "default" | "onDark";
 };
 
-export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
+export function EmployeeProfileMenu({
+  employeeId,
+  onAvatarUpdated,
+  dropUp = false,
+  tone = "default",
+}: Props) {
   const router = useRouter();
   const menuRef = React.useRef<HTMLDivElement>(null);
   const photoInputRef = React.useRef<HTMLInputElement>(null);
@@ -74,7 +83,7 @@ export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
       <div className={styles.menuWrap} ref={menuRef}>
         <button
           type="button"
-          className={`${styles.menuBtn} ${menuOpen ? styles.menuBtnOpen : ""}`}
+          className={`${styles.menuBtn} ${menuOpen ? styles.menuBtnOpen : ""} ${tone === "onDark" ? styles.menuBtnOnDark : ""}`}
           onClick={() => setMenuOpen((open) => !open)}
           aria-label="Account menu"
           aria-expanded={menuOpen}
@@ -83,7 +92,10 @@ export function EmployeeProfileMenu({ employeeId, onAvatarUpdated }: Props) {
         </button>
 
         {menuOpen ? (
-          <div className={styles.dropdown} role="menu">
+          <div
+            className={`${styles.dropdown} ${dropUp ? styles.dropdownUp : ""}`}
+            role="menu"
+          >
             <button
               type="button"
               className={styles.menuItem}

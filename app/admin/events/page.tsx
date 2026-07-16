@@ -14,6 +14,7 @@ interface EventItem {
   end_at: string | null;
   is_all_day: number | boolean;
   location: string | null;
+  color?: string | null;
   status: string;
   widget_heading?: string;
   created_at?: string;
@@ -29,6 +30,8 @@ interface ReminderItem {
   updated_at?: string;
 }
 
+const EVENT_COLORS = ["#25c6da", "#45aef0", "#ffb22c", "#e03756", "#7c4dff"];
+
 const initialForm = {
   title: "",
   description: "",
@@ -37,6 +40,7 @@ const initialForm = {
   is_all_day: false,
   location: "",
   status: "published",
+  color: EVENT_COLORS[0],
 };
 
 export default function AdminEventsPage() {
@@ -230,7 +234,10 @@ export default function AdminEventsPage() {
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Events & Announcements</h1>
-          <p className={styles.subtitle}>Manage upcoming events, reminders, and widget settings.</p>
+          <p className={styles.subtitle}>
+            Create events here — they appear on the employee dashboard Upcoming Events calendar.
+            US federal holidays are linked automatically and highlight on the same calendar.
+          </p>
 
           <div className={styles.card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -313,6 +320,32 @@ export default function AdminEventsPage() {
                     className={styles.input}
                   />
                 </div>
+                <div className={styles.field}>
+                  <label>Calendar color</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {EVENT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setForm({ ...form, color: c })}
+                        title={c}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 999,
+                          border: form.color === c ? "3px solid #0f172a" : "2px solid #e2e8f0",
+                          background: c,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                        aria-label={`Color ${c}`}
+                      />
+                    ))}
+                  </div>
+                  <p className={styles.muted} style={{ marginTop: 6, fontSize: 12 }}>
+                    Same color shows on the employee event button and calendar date.
+                  </p>
+                </div>
                 <button type="submit" disabled={saving} className={styles.btnPrimary}>
                   {saving ? "Saving..." : "Save Event"}
                 </button>
@@ -329,6 +362,7 @@ export default function AdminEventsPage() {
                   <thead>
                     <tr>
                       <th>Title</th>
+                      <th>Color</th>
                       <th>Schedule</th>
                       <th>Location</th>
                       <th>Status</th>
@@ -338,7 +372,7 @@ export default function AdminEventsPage() {
                   <tbody>
                     {events.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={6} className={tableStyles.breakSummaryNoRecords}>
                           No events yet.
                         </td>
                       </tr>
@@ -352,6 +386,20 @@ export default function AdminEventsPage() {
                                 {ev.description}
                               </div>
                             )}
+                          </td>
+                          <td>
+                            <span
+                              title={ev.color || ""}
+                              style={{
+                                display: "inline-block",
+                                width: 18,
+                                height: 18,
+                                borderRadius: 999,
+                                background: ev.color || EVENT_COLORS[0],
+                                border: "1px solid #e2e8f0",
+                                verticalAlign: "middle",
+                              }}
+                            />
                           </td>
                           <td className={tableStyles.cellMuted}>
                             {new Date(ev.start_at).toLocaleString()}

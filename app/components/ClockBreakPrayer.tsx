@@ -754,7 +754,15 @@ export function ClockBreakPrayerWidget({
       >
         {isSlack ? (
           <div className={slackStyles.cardHeader}>
-            <span className={`${slackStyles.cardTitle} ${slackStyles.titleClock}`}>Clock in</span>
+            <span className={`${slackStyles.cardTitle} ${slackStyles.titleClock}`}>
+              <span className={slackStyles.titleIcon} aria-hidden>
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5.2l3.2 1.8" />
+                </svg>
+              </span>
+              Clock in
+            </span>
             {isClockedIn && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>Active</span>}
           </div>
         ) : (
@@ -790,8 +798,10 @@ export function ClockBreakPrayerWidget({
             {isClockedIn && (
               isSlack ? (
                 <div className={slackStyles.statusBox}>
-                  <div className={`${slackStyles.statusLabel} ${slackStyles.statusClock}`}>Working</div>
-                  <div className={slackStyles.statusTimer}>{formatTime(timer)}</div>
+                  <div className={slackStyles.statusBoxInner}>
+                    <div className={slackStyles.statusLabel}>Working</div>
+                    <div className={slackStyles.statusTimer}>{formatTime(timer)}</div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(52,120,246,0.10)", padding: "8px 12px", minWidth: 120 }}>
@@ -812,7 +822,15 @@ export function ClockBreakPrayerWidget({
         >
           {isSlack ? (
             <div className={slackStyles.cardHeader}>
-              <span className={`${slackStyles.cardTitle} ${slackStyles.titleBreak}`}>Break</span>
+              <span className={`${slackStyles.cardTitle} ${slackStyles.titleBreak}`}>
+                <span className={slackStyles.titleIcon} aria-hidden>
+                  <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5.2l3.2 1.8" />
+                  </svg>
+                </span>
+                Break
+              </span>
               {isOnBreak && <span className={`${slackStyles.cardBadge} ${slackStyles.badgeLive}`}>On break</span>}
             </div>
           ) : (
@@ -842,23 +860,14 @@ export function ClockBreakPrayerWidget({
           >
             {verifyPreparing ? "Preparing…" : isOnBreak ? "End Break" : "Start Break"}
           </button>
-          {isOnBreak && (
-            isSlack ? (
-              <div className={slackStyles.statusBox}>
-                <div className={`${slackStyles.statusLabel} ${slackStyles.statusBreak}`}>
-                  {breakTimerPaused ? "Verifying…" : "Break running"}
-                </div>
-                <div className={slackStyles.statusTimer}>{formatTime(breakTimer)}</div>
+          {isOnBreak && !isSlack ? (
+            <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
+              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>
+                {breakTimerPaused ? "⏸ Verifying…" : "🔴 Break Running"}
               </div>
-            ) : (
-              <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>
-                  {breakTimerPaused ? "⏸ Verifying…" : "🔴 Break Running"}
-                </div>
-                <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
-              </div>
-            )
-          )}
+              <div style={{ fontSize: "1rem", fontWeight: 500, color: "#2d3436" }}>{formatTime(breakTimer)}</div>
+            </div>
+          ) : null}
           <BreakSummary
             employeeId={employeeId}
             isOnBreak={isOnBreak}
@@ -1077,12 +1086,14 @@ function BreakSummary({
   if (isSlack) {
     return (
       <div className={slackStyles.summaryBox}>
-        <div className={`${slackStyles.summaryLabel} ${slackStyles.titleBreak}`}>Today&apos;s total break</div>
-        <div
-          className={slackStyles.summaryValue}
-          style={displayTotalSeconds > 3600 ? { color: "#dc2626" } : undefined}
-        >
-          {formatDuration(displayTotalSeconds)}
+        <div className={slackStyles.summaryBoxInner}>
+          <div className={slackStyles.summaryLabel}>Total Break</div>
+          <div
+            className={slackStyles.summaryValue}
+            style={displayTotalSeconds > 3600 ? { color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" } : undefined}
+          >
+            {formatDuration(displayTotalSeconds)}
+          </div>
         </div>
         {displayExceedSeconds > 0 && (
           <div className={slackStyles.summaryExceed}>Exceed: {formatDuration(displayExceedSeconds)}</div>

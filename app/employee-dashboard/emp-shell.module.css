@@ -1,11 +1,172 @@
-/* Attendance dock — light integrated card (matches dashboard) */
+/* Employee shell — PDF layout (teal top accent, no old top bar) */
 
+.topAccent {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 1200;
+  pointer-events: none;
+  background: linear-gradient(90deg, #00c2cb 0%, #1ab4bc 45%, #35aaae 100%);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.noTopbar {
+  padding-top: 28px !important;
+}
+
+.sidebarFull {
+  height: calc(100vh - 28px) !important;
+  max-height: calc(100vh - 28px) !important;
+  top: 28px !important;
+}
+
+.contentFull {
+  min-height: calc(100vh - 28px) !important;
+  max-height: calc(100vh - 28px) !important;
+}
+
+/* PDF sidebar look */
+.sidebarPdf {
+  background: #292929 !important;
+  border-right: none !important;
+  box-shadow: none !important;
+  width: 240px !important;
+  padding-top: 8px !important;
+}
+
+.sidebarBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 22px 16px 18px;
+  border-bottom: none;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.sidebarGlobe {
+  width: 120px;
+  height: 120px;
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  object-fit: contain;
+}
+
+.sidebarLogoSlot {
+  display: none;
+}
+
+.sidebarBrandText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.1;
+}
+
+.sidebarBrandName {
+  font-family: Georgia, "Times New Roman", Times, serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #e8e8e8;
+  text-transform: uppercase;
+}
+
+.sidebarBrandSub {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: #5ce1e6;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.sidebarNav {
+  padding-top: 4px !important;
+  gap: 4px !important;
+}
+
+.navItemPdf {
+  background: transparent !important;
+  color: #f0f0f0 !important;
+  font-weight: 500 !important;
+  font-size: 0.9rem !important;
+  padding: 11px 18px !important;
+  margin: 0 8px !important;
+  border-radius: 8px !important;
+  gap: 12px !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.navItemPdf:not(.navItemPdfActive)::before {
+  display: none !important;
+  content: none !important;
+}
+
+.navItemPdf:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+
+.navItemPdfActive,
+.navItemPdf.navItemPdfActive {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.navItemPdf.navItemPdfActive::before {
+  display: block !important;
+  content: "" !important;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 62%;
+  min-height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: #00c2cb;
+  box-shadow: 0 0 8px rgba(0, 194, 203, 0.45);
+}
+
+.navIconPdf {
+  color: #fff !important;
+  font-size: 1.05rem !important;
+  opacity: 0.95;
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  width: 100%;
+  padding: 12px 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Hero (PDF header card) ─────────────────────────────────── */
 .heroStrip {
   flex-shrink: 0;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.07) 0%, transparent 55%),
-    linear-gradient(180deg, #eef1f6 0%, #eef1f6 100%);
-  padding: 22px 28px 0;
+  background: #f3f4f6;
+  padding: 18px 28px 0;
 }
 
 .heroStripInner {
@@ -14,50 +175,52 @@
 }
 
 .hero {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
   flex-wrap: wrap;
-  margin-bottom: 0;
   padding: 22px 26px;
   background: #fff;
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.06);
-  position: relative;
+  border-radius: 16px;
+  border: 1px solid #b8e8ea;
+  border-left: 6px solid #5ad1d5;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
   overflow: hidden;
 }
 
-.hero::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: linear-gradient(180deg, #611f69, #007a5a);
-  border-radius: 18px 0 0 18px;
+.heroLeft {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.heroAvatar {
+  flex-shrink: 0;
+}
+
+.heroAvatarSquare {
+  border-radius: 14px !important;
+  box-shadow: 0 0 0 2px #b8e8ea;
 }
 
 .heroMain {
   min-width: 0;
-  padding-left: 6px;
 }
 
 .heroKicker {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #611f69;
+  color: #0f172a;
 }
 
 .heroTitle {
   margin: 0;
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   letter-spacing: -0.03em;
   color: #0f172a;
   line-height: 1.15;
@@ -66,50 +229,101 @@
 .heroDate {
   display: inline-flex;
   align-items: center;
-  margin-top: 8px;
-  padding: 4px 12px;
+  margin-top: 10px;
+  padding: 6px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: #64748b;
-  background: #f1f5f9;
+  color: #0f172a;
+  background: #dffbec;
   border-radius: 999px;
+  text-transform: capitalize;
 }
 
-.heroManager {
+.heroRight {
+  flex: 1 1 280px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  justify-content: flex-end;
+  gap: 10px;
   min-width: 0;
+  max-width: 560px;
+  margin-left: auto;
 }
 
-.heroManagerLabel {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.heroSearch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  box-sizing: border-box;
+}
+
+.heroSearchIcon {
+  color: #94a3b8;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.heroSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #0f172a;
+  font-family: inherit;
+}
+
+.heroSearchInput::placeholder {
   color: #94a3b8;
 }
 
-.heroManagerName {
+.mobileMenuBtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.subPageBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 28px 0;
+  background: #f3f4f6;
+}
+
+.subPageProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
   font-size: 14px;
   font-weight: 600;
   color: #0f172a;
 }
 
-.heroManagerRole {
-  font-size: 12px;
-  color: #64748b;
-}
-
 .attendanceDock {
   flex-shrink: 0;
-  background: linear-gradient(180deg, #eef1f6 0%, #f4f6f9 100%);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-  padding: 16px 28px 20px;
+  background: #f3f4f6;
+  border-bottom: none;
+  padding: 12px 28px 10px;
 }
 
 .attendanceDockInner {
@@ -118,65 +332,51 @@
 }
 
 .dockCard {
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  border-radius: 16px;
-  padding: 18px 20px 16px;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
 .dockHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.dockTitle {
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-}
-
-.dockSub {
-  font-size: 12px;
-  color: #94a3b8;
-  font-weight: 400;
-}
-
-.dockSub::before {
-  content: "·";
-  margin-right: 10px;
-  color: #cbd5e1;
+  display: none;
 }
 
 .employeeMain {
-  flex: 0 0 auto;
-  overflow: visible;
+  background: #f3f4f6;
 }
 
-@media (max-width: 768px) {
-  .heroStrip {
-    padding: 16px 16px 0;
+.tardyRow {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 28px 8px;
+}
+
+@media (max-width: 900px) {
+  .heroStrip,
+  .attendanceDock,
+  .tardyRow,
+  .subPageBar {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
   .hero {
-    padding: 18px;
+    padding: 14px 16px;
   }
 
   .heroTitle {
-    font-size: 22px;
+    font-size: 20px;
   }
 
-  .attendanceDock {
-    padding: 14px 16px 16px;
+  .heroRight {
+    flex: 1 1 100%;
+    max-width: none;
+    margin-left: 0;
   }
 
-  .dockCard {
-    padding: 14px 14px 12px;
-    border-radius: 14px;
+  .mobileMenuBtn {
+    display: inline-flex;
   }
 }
