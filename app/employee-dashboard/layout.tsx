@@ -10,6 +10,7 @@ import { TardyNoteWidget } from "../components/TardyNoteWidget";
 import { fetchShellBranding } from "../shell-branding-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
 import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
+import { HeroProfileAvatar } from "./components/HeroProfileAvatar";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
 
 function greetingLabel() {
@@ -179,12 +180,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                     &#9776;
                   </button>
                   <div className={empStyles.heroAvatar}>
-                    <EmployeeAvatar
+                    <HeroProfileAvatar
+                      employeeId={employeeId}
                       name={employeeName || "Employee"}
                       initials={initials}
                       photo={employeeAvatar}
-                      size="lg"
-                      className={empStyles.heroAvatarSquare}
+                      onAvatarUpdated={(url) => setEmployeeAvatar(url)}
                     />
                   </div>
                   <div className={empStyles.heroMain}>
