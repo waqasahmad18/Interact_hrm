@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import type { BiometricAction } from "@/lib/face-types";
 import {
   averageDescriptors,
@@ -380,6 +381,7 @@ export function FaceVerifyModal({
   }, [open, modelsReady, cameraReady, submitScan]);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
   const captureMatch = status.match(/\((\d+)\/(\d+)\)/);
   const captureCurrent = captureMatch ? Number(captureMatch[1]) : 0;
@@ -400,7 +402,7 @@ export function FaceVerifyModal({
         ? "SCANNING FACE"
         : status.replace(/…/g, "").toUpperCase();
 
-  return (
+  return createPortal(
     <div className={modalStyles.overlay}>
       <div className={[modalStyles.modal, verifySuccess ? modalStyles.modalSuccess : ""].filter(Boolean).join(" ")}>
         <div className={modalStyles.title}>Face Verification</div>
@@ -433,6 +435,7 @@ export function FaceVerifyModal({
         >
           <FaceScanViewport
             videoRef={videoRef}
+            className={modalStyles.scanViewport}
             mode={scanMode}
             statusLine={hudStatus}
             subjectName={employeeName || undefined}
@@ -442,7 +445,7 @@ export function FaceVerifyModal({
             loadingLabel={
               !cameraReady ? "Starting camera…" : !modelsReady ? "Loading face engine…" : undefined
             }
-            aspectRatio="4 / 3"
+            aspectRatio="5 / 4"
           />
         </div>
 
@@ -475,6 +478,7 @@ export function FaceVerifyModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
