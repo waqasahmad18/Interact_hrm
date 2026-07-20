@@ -54,3 +54,21 @@ body {
 nextjs-portal {
   display: none !important;
 }
+
+/*
+ * Shared modal overlay safety net.
+ * Prefer ModalPortal + module CSS; this keeps any [data-hrm-modal-overlay]
+ * fully visible even when an ancestor scrolls/clips.
+ */
+[data-hrm-modal-overlay] {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: safe center;
+  justify-content: center;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px
+    max(16px, env(safe-area-inset-bottom, 0px)) !important;
+}

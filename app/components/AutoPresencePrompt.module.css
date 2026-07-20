@@ -3,10 +3,14 @@
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
-  z-index: 10000;
-  padding: 20px;
+  z-index: 13000;
+  padding: max(20px, env(safe-area-inset-top, 0px)) 20px
+    max(20px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   backdrop-filter: blur(3px);
   animation: fadeIn 0.18s ease;
 }
@@ -18,13 +22,17 @@
   padding: 30px 34px 26px;
   max-width: 430px;
   width: 100%;
+  max-height: min(92vh, 720px);
+  margin: auto;
+  flex-shrink: 0;
   border: 1px solid #e8d9ef;
   box-shadow:
     0 24px 60px rgba(97, 31, 105, 0.20),
     0 6px 16px rgba(15, 23, 42, 0.08);
   text-align: center;
   font-family: "Inter", system-ui, sans-serif;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   animation: popIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 

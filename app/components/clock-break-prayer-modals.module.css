@@ -1,12 +1,16 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 12000;
+  z-index: 13000;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top, 0px)) 24px
+    max(24px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .box {
@@ -17,6 +21,10 @@
   min-width: min(340px, 92vw);
   max-width: 420px;
   width: 100%;
+  max-height: min(92vh, 720px);
+  margin: auto;
+  flex-shrink: 0;
+  overflow-y: auto;
   text-align: center;
 }
 

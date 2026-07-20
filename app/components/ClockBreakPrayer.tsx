@@ -902,7 +902,7 @@ export function ClockBreakPrayerWidget({
     </div>
     {typeof document !== "undefined" && showClockOutConfirm
       ? createPortal(
-          <div className={modalStyles.overlay} role="presentation">
+          <div className={modalStyles.overlay} data-hrm-modal-overlay role="presentation">
             <div
               className={modalStyles.box}
               role="dialog"
@@ -926,7 +926,7 @@ export function ClockBreakPrayerWidget({
       : null}
     {typeof document !== "undefined" && showActiveBreakModal
       ? createPortal(
-          <div className={modalStyles.overlay} role="presentation">
+          <div className={modalStyles.overlay} data-hrm-modal-overlay role="presentation">
             <div
               className={modalStyles.box}
               role="dialog"

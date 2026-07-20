@@ -7,6 +7,7 @@ import tableStyles from "../../break-summary/break-summary.module.css";
 import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { ModalPortal } from "@/app/components/ModalPortal";
 import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
@@ -373,7 +374,8 @@ export default function ManageLeavesPage() {
 
         {/* Edit Modal */}
         {showModal && editingEmployee && (
-          <div className={styles.modalOverlay}>
+          <ModalPortal>
+          <div className={styles.modalOverlay} data-hrm-modal-overlay>
             <div className={styles.modal}>
               <h2 className={styles.modalTitle}>
                 Update Leave Allowance
@@ -468,6 +470,7 @@ export default function ManageLeavesPage() {
               </div>
             </div>
           </div>
+          </ModalPortal>
         )}
         </div>
       </div>

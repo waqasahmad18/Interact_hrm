@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { ModalPortal } from "@/app/components/ModalPortal";
 import styles from "./system-control-demo.module.css";
 import type { RoleDef } from "./system-control-data";
 import { isSystemRole, scopeLabelFromScope } from "./system-control-data";
@@ -37,7 +38,8 @@ export default function NewRoleModal({
   if (!open) return null;
 
   return (
-    <div className={styles.modalOverlay} role="presentation" onClick={onClose}>
+    <ModalPortal>
+    <div className={styles.modalOverlay} data-hrm-modal-overlay role="presentation" onClick={onClose}>
       <div
         className={styles.modalCard}
         role="dialog"
@@ -105,5 +107,6 @@ export default function NewRoleModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

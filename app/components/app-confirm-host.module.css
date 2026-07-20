@@ -1,18 +1,26 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 10070;
+  z-index: 13000;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
-  padding: 20px;
+  padding: max(20px, env(safe-area-inset-top, 0px)) 20px
+    max(20px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: fadeIn 0.18s ease;
 }
 
 .card {
   width: 100%;
   max-width: 360px;
+  max-height: min(92vh, 720px);
+  margin: auto;
+  flex-shrink: 0;
+  overflow-y: auto;
   border-radius: 14px;
   border: 1px solid #e8d9ef;
   border-left: 5px solid #611f69;

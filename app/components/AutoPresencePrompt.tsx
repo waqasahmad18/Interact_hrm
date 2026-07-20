@@ -3,6 +3,7 @@
 import React from "react";
 import { FaRegClock } from "react-icons/fa";
 import { AUTO_PRESENCE_POPUP_MS } from "@/lib/shift-timing";
+import { ModalPortal } from "./ModalPortal";
 import styles from "./AutoPresencePrompt.module.css";
 import { toastError } from "@/lib/app-toast";
 
@@ -210,29 +211,31 @@ export function AutoPresencePrompt({
   const secs = secondsLeft % 60;
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="auto-presence-title">
-        <div className={styles.iconWrap} aria-hidden="true">
-          <FaRegClock />
-        </div>
-        <div id="auto-presence-title" className={styles.title}>
-          Still working?
-        </div>
-        <p className={styles.message}>
-          Your assigned shift ended and the <strong>3-hour grace period</strong> is over.
-          You are still clocked in. Tap <strong>I am here</strong> if you are available.
-        </p>
-        <div className={styles.timerWrap}>
-          <div className={styles.timerLabel}>Auto clock-out in</div>
-          <div className={styles.timer}>
-            {mins}:{String(secs).padStart(2, "0")}
+    <ModalPortal>
+      <div className={styles.overlay} data-hrm-modal-overlay>
+        <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="auto-presence-title">
+          <div className={styles.iconWrap} aria-hidden="true">
+            <FaRegClock />
           </div>
+          <div id="auto-presence-title" className={styles.title}>
+            Still working?
+          </div>
+          <p className={styles.message}>
+            Your assigned shift ended and the <strong>3-hour grace period</strong> is over.
+            You are still clocked in. Tap <strong>I am here</strong> if you are available.
+          </p>
+          <div className={styles.timerWrap}>
+            <div className={styles.timerLabel}>Auto clock-out in</div>
+            <div className={styles.timer}>
+              {mins}:{String(secs).padStart(2, "0")}
+            </div>
+          </div>
+          <button type="button" className={styles.ackButton} disabled={busy} onClick={handleAck}>
+            I am here
+          </button>
+          <p className={styles.hint}>Session closes automatically if no response.</p>
         </div>
-        <button type="button" className={styles.ackButton} disabled={busy} onClick={handleAck}>
-          I am here
-        </button>
-        <p className={styles.hint}>Session closes automatically if no response.</p>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

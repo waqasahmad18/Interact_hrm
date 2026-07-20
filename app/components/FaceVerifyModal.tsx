@@ -403,7 +403,7 @@ export function FaceVerifyModal({
         : status.replace(/…/g, "").toUpperCase();
 
   return createPortal(
-    <div className={modalStyles.overlay}>
+    <div className={modalStyles.overlay} data-hrm-modal-overlay>
       <div className={[modalStyles.modal, verifySuccess ? modalStyles.modalSuccess : ""].filter(Boolean).join(" ")}>
         <div className={modalStyles.title}>Face Verification</div>
         <div

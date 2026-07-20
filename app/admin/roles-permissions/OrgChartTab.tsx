@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { ModalPortal } from "@/app/components/ModalPortal";
 import styles from "./system-control-demo.module.css";
 import {
   childRoles,
@@ -807,8 +808,10 @@ export default function OrgChartTab({
       </div>
 
       {editing && (
+        <ModalPortal>
         <div
           className={styles.modalOverlay}
+          data-hrm-modal-overlay
           role="presentation"
           onClick={() => setEditId(null)}
         >
@@ -960,6 +963,7 @@ export default function OrgChartTab({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {panelRole && (

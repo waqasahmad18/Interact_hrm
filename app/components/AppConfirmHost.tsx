@@ -46,6 +46,7 @@ export function AppConfirmHost() {
   return createPortal(
     <div
       className={styles.backdrop}
+      data-hrm-modal-overlay
       onClick={() => close(false)}
       role="presentation"
     >

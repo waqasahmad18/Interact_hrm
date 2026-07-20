@@ -14,6 +14,7 @@ import {
 import RolesPermissionsPanel from "./RolesPermissionsPanel";
 import SettingsTab from "./SettingsTab";
 import styles from "./system-control-demo.module.css";
+import { ModalPortal } from "@/app/components/ModalPortal";
 import {
   BASE_ROLES,
   childRoles,
@@ -682,8 +683,10 @@ export default function SystemControlPage() {
         />
 
         {deleteTargetMeta && (
+          <ModalPortal>
           <div
             className={styles.modalOverlay}
+            data-hrm-modal-overlay
             role="presentation"
             onClick={() => setDeleteTargetId(null)}
           >
@@ -719,6 +722,7 @@ export default function SystemControlPage() {
               </div>
             </div>
           </div>
+          </ModalPortal>
         )}
       </div>
     </LayoutDashboard>

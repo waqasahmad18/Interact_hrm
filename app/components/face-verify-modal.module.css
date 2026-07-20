@@ -4,9 +4,10 @@
   background: rgba(15, 23, 42, 0.38);
   backdrop-filter: blur(3px);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
-  padding: 28px 14px 20px;
+  padding: max(20px, env(safe-area-inset-top, 0px)) 14px
+    max(20px, env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
   /* Above hero strip / teal accent / attendance dock stacking contexts */
   z-index: 13000;
