@@ -50,7 +50,6 @@ type DayChart = {
 type LeaveBalance = {
   annual: number;
   annualAllowance: number;
-  casual: number;
   bereavement: number;
   bereavementAllowance: number;
 };
@@ -303,7 +302,6 @@ export default function EmployeeDashboardPage() {
   const [leaveBalance, setLeaveBalance] = React.useState<LeaveBalance>({
     annual: 0,
     annualAllowance: 20,
-    casual: 0,
     bereavement: 0,
     bereavementAllowance: 3,
   });
@@ -441,7 +439,6 @@ export default function EmployeeDashboardPage() {
         setLeaveBalance({
           annual: data.annualBalance ?? 0,
           annualAllowance: data.annualAllowance ?? 20,
-          casual: data.categoryBalance?.casual ?? 0,
           bereavement: data.bereavementBalance ?? 0,
           bereavementAllowance: 3,
         });
@@ -987,10 +984,10 @@ export default function EmployeeDashboardPage() {
                 <FaCalendarAlt />
               </span>
               <div className={styles.statBig}>
-                <StatValue value={String(leaveBalance.casual)} />
+                <StatValue value={String(leaveBalance.bereavement)} />
               </div>
-              <div className={styles.statName}>Casual Leaves</div>
-              <div className={styles.statSub}>Remaining</div>
+              <div className={styles.statName}>Bereavement Leaves</div>
+              <div className={styles.statSub}>of {leaveBalance.bereavementAllowance} Days</div>
             </button>
 
             <button
