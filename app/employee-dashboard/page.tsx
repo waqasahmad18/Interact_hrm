@@ -313,7 +313,6 @@ export default function EmployeeDashboardPage() {
   const [reminders, setReminders] = React.useState<
     Array<{ id: number; message: string }>
   >([]);
-  const [reportsTo, setReportsTo] = React.useState<HierarchyPerson | null>(null);
   const [teamMembers, setTeamMembers] = React.useState<HierarchyPerson[]>([]);
   const [tickets, setTickets] = React.useState<TicketWidgetRow[]>([]);
   const [loadingTickets, setLoadingTickets] = React.useState(false);
@@ -489,7 +488,6 @@ export default function EmployeeDashboardPage() {
     void fetchTickets();
     void fetchEmployeeHierarchy(employeeId).then((data) => {
       if (!data) return;
-      setReportsTo(data.reportsTo);
       setTeamMembers(data.teamMembers);
     });
   }, [employeeId, fetchAttendance, fetchLeaveBalance, fetchTickets]);
@@ -1051,15 +1049,6 @@ export default function EmployeeDashboardPage() {
                 View all
               </button>
             </div>
-            {reportsTo ? (
-              <div className={styles.teamLead}>
-                <EmployeeAvatar name={reportsTo.name} initials={reportsTo.initials} photo={reportsTo.photo} size="sm" />
-                <div>
-                  <div className={styles.teamLeadLabel}>Reports to</div>
-                  <div className={styles.teamLeadName}>{reportsTo.name}</div>
-                </div>
-              </div>
-            ) : null}
             {teamMembers.length > 0 ? (
               <div className={styles.teamGrid}>
                 {teamMembers.slice(0, 6).map((m) => (

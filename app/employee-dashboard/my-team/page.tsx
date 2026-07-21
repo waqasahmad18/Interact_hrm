@@ -75,27 +75,6 @@ export default function MyTeamPage() {
           <span className={styles.count}>{team.length} members</span>
         </div>
 
-        {hierarchy?.reportsTo ? (
-          <div className={styles.managerCard}>
-            <EmployeeAvatar
-              name={hierarchy.reportsTo.name}
-              initials={hierarchy.reportsTo.initials}
-              photo={hierarchy.reportsTo.photo}
-              size="sm"
-            />
-            <div>
-              <div className={styles.managerLabel}>Reporting to</div>
-              <div className={styles.managerName}>{hierarchy.reportsTo.name}</div>
-              <div className={styles.managerMeta}>
-                {hierarchy.reportsTo.role}
-                {hierarchy.reportsTo.jobTitle
-                  ? ` · ${hierarchy.reportsTo.jobTitle}`
-                  : ""}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         {loading ? (
           <div className={styles.empty}>Loading team…</div>
         ) : team.length === 0 ? (
