@@ -65,7 +65,8 @@ type TicketWidgetRow = {
   updated_at: string;
 };
 
-function ticketStatusLabel(status: string) {
+function ticketStatusLabel(status: string, ticketType?: string) {
+  if (ticketType === "leave" && status === "resolved") return "approved";
   return status.replace("_", " ");
 }
 
@@ -375,6 +376,7 @@ export default function EmployeeDashboardPage() {
         const prev = ticketsRef.current;
         const pulseIds: number[] = [];
         next.forEach((t) => {
+          if (t.ticket_type === "leave") return;
           const lastAdmin = getLastAdminMessage(t.messages ?? []);
           const prevTicket = prev.find((p) => p.id === t.id);
           const prevAdmin = prevTicket ? getLastAdminMessage(prevTicket.messages ?? []) : null;
@@ -399,10 +401,12 @@ export default function EmployeeDashboardPage() {
 
   const openTicketPage = React.useCallback(
     (ticket: TicketWidgetRow) => {
-      const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
-      if (lastAdmin && employeeId) {
-        saveTicketSeen(employeeId, ticket.id, lastAdmin.id);
-        setTicketSeenMap((prev) => ({ ...prev, [ticket.id]: lastAdmin.id }));
+      if (ticket.ticket_type !== "leave") {
+        const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
+        if (lastAdmin && employeeId) {
+          saveTicketSeen(employeeId, ticket.id, lastAdmin.id);
+          setTicketSeenMap((prev) => ({ ...prev, [ticket.id]: lastAdmin.id }));
+        }
       }
       router.push(`/employee-dashboard/generate-ticket?open=${ticket.id}`);
     },
@@ -625,21 +629,36 @@ export default function EmployeeDashboardPage() {
   );
 
   const newReplyCount = React.useMemo(
-    () => tickets.filter((t) => hasUnreadAdminReply(t.id, t.messages, ticketSeenMap)).length,
+    () =>
+      tickets.filter(
+        (t) =>
+          t.ticket_type !== "leave" &&
+          hasUnreadAdminReply(t.id, t.messages, ticketSeenMap)
+      ).length,
     [tickets, ticketSeenMap]
   );
 
   const ticketWidgetItems = React.useMemo(() => {
     return [...tickets]
       .filter((t) => {
+        if (t.ticket_type === "leave") {
+          const open = !["resolved", "rejected", "closed"].includes(t.status);
+          return open;
+        }
         const unread = hasUnreadAdminReply(t.id, t.messages, ticketSeenMap);
         const open = !["resolved", "rejected", "closed"].includes(t.status);
         const hasAdminReply = Boolean(getLastAdminMessage(t.messages ?? []));
         return unread || (open && hasAdminReply) || (open && t.status === "pending");
       })
       .sort((a, b) => {
-        const aUnread = hasUnreadAdminReply(a.id, a.messages, ticketSeenMap) ? 1 : 0;
-        const bUnread = hasUnreadAdminReply(b.id, b.messages, ticketSeenMap) ? 1 : 0;
+        const aUnread =
+          a.ticket_type !== "leave" && hasUnreadAdminReply(a.id, a.messages, ticketSeenMap)
+            ? 1
+            : 0;
+        const bUnread =
+          b.ticket_type !== "leave" && hasUnreadAdminReply(b.id, b.messages, ticketSeenMap)
+            ? 1
+            : 0;
         if (bUnread !== aUnread) return bUnread - aUnread;
         return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
       })
@@ -765,9 +784,16 @@ export default function EmployeeDashboardPage() {
         {/* Row: Generate Tickets | My Tickets | Reminders */}
         <section className={styles.topTrio}>
           <div
-            className={`${styles.generateCard} ${styles.generateCardStatic}`}
-            role="presentation"
-            aria-hidden={false}
+            className={styles.generateCard}
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push("/employee-dashboard/generate-ticket?type=leave");
+              }
+            }}
           >
             <img
               className={styles.generateIcon}
@@ -806,8 +832,13 @@ export default function EmployeeDashboardPage() {
                 </li>
               ) : (
                 ticketWidgetItems.map((ticket) => {
-                  const unread = hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
-                  const lastAdmin = getLastAdminMessage(ticket.messages ?? []);
+                  const isLeave = ticket.ticket_type === "leave";
+                  const unread =
+                    !isLeave &&
+                    hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
+                  const lastAdmin = isLeave
+                    ? null
+                    : getLastAdminMessage(ticket.messages ?? []);
                   return (
                     <li
                       key={ticket.id}
@@ -817,7 +848,7 @@ export default function EmployeeDashboardPage() {
                       <div className={styles.ticketTop}>
                         <span className={styles.ticketNum}>{ticket.ticket_number}</span>
                         <span className={unread ? styles.badgeNew : styles.badgeMuted}>
-                          {unread ? "New reply" : ticketStatusLabel(ticket.status)}
+                          {unread ? "New reply" : ticketStatusLabel(ticket.status, ticket.ticket_type)}
                         </span>
                       </div>
                       <div className={styles.ticketSub}>{ticket.subject}</div>
@@ -1067,10 +1098,14 @@ export default function EmployeeDashboardPage() {
                 <span className={`${styles.actionIcon} ${styles.actionGreen}`}><FaClock /></span>
                 Time &amp; attendance
               </button>
-              <div className={`${styles.actionBtn} ${styles.actionBtnStatic}`} role="presentation">
+              <button
+                type="button"
+                className={styles.actionBtn}
+                onClick={() => router.push("/employee-dashboard/generate-ticket?type=leave")}
+              >
                 <span className={`${styles.actionIcon} ${styles.actionPurple}`}><FaTicketAlt /></span>
                 Generate ticket
-              </div>
+              </button>
               <button type="button" className={styles.actionBtn} onClick={() => router.push("/employee-dashboard/my-team")}>
                 <span className={`${styles.actionIcon} ${styles.actionBlue}`}><FaUsers /></span>
                 My team

@@ -271,6 +271,71 @@
   letter-spacing: 0.04em;
 }
 
+.detailCard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detailLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.detailValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  text-transform: capitalize;
+  word-break: break-word;
+}
+
+.detailBlock {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detailReason {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.detailDocs {
+  margin: 0;
+  padding-left: 18px;
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chatComposer {
   display: flex;
   flex-direction: column;

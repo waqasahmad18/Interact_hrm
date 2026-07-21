@@ -34,11 +34,12 @@ type Ticket = {
   subject: string | null;
   status: string;
   requested_at: string;
+  form_data?: Record<string, unknown> | null;
 };
 
 const quickLinks = [
   { label: "Add Employee", action: "/add-employee", icon: <FaUserPlus /> },
-  { label: "Leave Requests", action: "/leave", icon: <FaCalendarAlt /> },
+  { label: "Leave Requests", action: "/admin/tickets", icon: <FaCalendarAlt /> },
   { label: "Ticket Inbox", action: "/admin/tickets", icon: <FaTicketAlt /> },
   { label: "Recruitment", action: "/recruitment", icon: <FaBriefcase /> },
 ];
@@ -208,13 +209,28 @@ export default function DashboardPage() {
     [leaves],
   );
 
+  const pendingLeaveTickets = React.useMemo(
+    () =>
+      tickets.filter(
+        (t) =>
+          t.ticket_type === "leave" && (t.status || "").toLowerCase() === "pending"
+      ),
+    [tickets],
+  );
+
+  const leaveInboxCount = pendingLeaveTickets.length + pendingLeaves.length;
+
   const pendingFinancial = React.useMemo(
     () => financialRequests.filter((r) => (r.status || "").toLowerCase() === "pending"),
     [financialRequests],
   );
 
   const pendingTickets = React.useMemo(
-    () => tickets.filter((t) => (t.status || "").toLowerCase() === "pending"),
+    () =>
+      tickets.filter(
+        (t) =>
+          t.ticket_type !== "leave" && (t.status || "").toLowerCase() === "pending"
+      ),
     [tickets],
   );
   const snapshotTotal = Math.max(
@@ -708,8 +724,8 @@ export default function DashboardPage() {
               <FaHourglassHalf />
             </span>
             <span>
-              <strong>{pendingLeaves.length}</strong> leave request
-              {pendingLeaves.length === 1 ? "" : "s"} pending review
+              <strong>{leaveInboxCount}</strong> leave request
+              {leaveInboxCount === 1 ? "" : "s"} pending review
             </span>
           </div>
           <div className={styles.insightChip}>
@@ -954,45 +970,72 @@ export default function DashboardPage() {
               <div className={styles.cardHeader}>
                 <div className={styles.cardTitleRow}>
                   <span className={styles.cardIcon}>
-                    <FaTicketAlt />
+                    <FaClipboardList />
                   </span>
-                  <h2 className={styles.cardTitle}>Support tickets</h2>
+                  <h2 className={styles.cardTitle}>Leave requests</h2>
                 </div>
                 <span className={`${styles.pill} ${styles.pillLive}`}>
-                  {loadingTickets ? "…" : `${pendingTickets.length} pending`}
+                  {loadingTickets || loadingLeaves ? "…" : `${leaveInboxCount} pending`}
                 </span>
               </div>
               <ul className={`${styles.list} ${styles.listScrollable}`}>
-                {pendingTickets.length === 0 && (
+                {leaveInboxCount === 0 && (
                   <li
                     className={styles.listItem}
                     onClick={() => router.push("/admin/tickets")}
                   >
-                    <div className={styles.listItemTitle}>No pending tickets</div>
-                    <div className={styles.listItemMeta}>Open ticket inbox</div>
+                    <div className={styles.listItemTitle}>No pending requests</div>
+                    <div className={styles.listItemMeta}>Open leave ticket inbox</div>
                   </li>
                 )}
-                {pendingTickets.slice(0, 5).map((ticket) => (
-                  <li
-                    key={ticket.id}
-                    className={`${styles.listItem} ${ticketPulseIds.includes(ticket.id) ? styles.listItemNew : ""}`}
-                    onClick={() => router.push("/admin/tickets")}
-                  >
-                    <div className={styles.listItemTop}>
-                      <span className={styles.listItemTitle}>
-                        {ticket.ticket_number}
-                      </span>
-                      <span className={styles.badge}>Pending</span>
-                    </div>
-                    <div className={styles.listItemMeta}>
-                      {ticket.employee_name} · {ticket.subject}
-                    </div>
-                    <div className={styles.listItemMeta} style={{ marginTop: 4 }}>
-                      {categoryLabel(ticket.category)} ·{" "}
-                      {ticketTypeLabel(ticket.category, ticket.ticket_type)}
-                    </div>
-                  </li>
-                ))}
+                {pendingLeaveTickets.slice(0, 5).map((ticket) => {
+                  const fd = ticket.form_data || {};
+                  const leaveCategory = String(fd.leave_category || "leave");
+                  const startDate = String(fd.start_date || "");
+                  const endDate = String(fd.end_date || "");
+                  return (
+                    <li
+                      key={`ticket-leave-${ticket.id}`}
+                      className={`${styles.listItem} ${ticketPulseIds.includes(ticket.id) ? styles.listItemNew : ""}`}
+                      onClick={() => router.push("/admin/tickets")}
+                    >
+                      <div className={styles.listItemTop}>
+                        <span className={styles.listItemTitle}>
+                          {ticket.ticket_number}
+                        </span>
+                        <span className={styles.badge}>Pending</span>
+                      </div>
+                      <div className={styles.listItemMeta}>
+                        {ticket.employee_name} · {leaveCategory}
+                      </div>
+                      <div className={styles.listItemMeta} style={{ marginTop: 4 }}>
+                        {startDate
+                          ? `${formatDate(startDate)}${endDate ? ` → ${formatDate(endDate)}` : ""}`
+                          : ticket.subject || "Leave request"}
+                      </div>
+                    </li>
+                  );
+                })}
+                {pendingLeaves
+                  .slice(0, Math.max(0, 5 - pendingLeaveTickets.length))
+                  .map((leave) => (
+                    <li
+                      key={`legacy-leave-${leave.id}`}
+                      className={`${styles.listItem} ${pulseIds.includes(leave.id) ? styles.listItemNew : ""}`}
+                      onClick={() => router.push("/leave")}
+                    >
+                      <div className={styles.listItemTop}>
+                        <span className={styles.listItemTitle}>
+                          {leave.employee_name || "Employee"}
+                        </span>
+                        <span className={styles.badge}>Pending</span>
+                      </div>
+                      <div className={styles.listItemMeta}>
+                        {leave.leave_category} · {formatDate(leave.start_date)} →{" "}
+                        {formatDate(leave.end_date)}
+                      </div>
+                    </li>
+                  ))}
               </ul>
             </section>
           </div>
@@ -1026,39 +1069,42 @@ export default function DashboardPage() {
               <div className={styles.cardHeader}>
                 <div className={styles.cardTitleRow}>
                   <span className={styles.cardIcon}>
-                    <FaClipboardList />
+                    <FaTicketAlt />
                   </span>
-                  <h2 className={styles.cardTitle}>Leave requests</h2>
+                  <h2 className={styles.cardTitle}>Support tickets</h2>
                 </div>
                 <span className={styles.pill}>
-                  {loadingLeaves ? "…" : `${pendingLeaves.length} pending`}
+                  {loadingTickets ? "…" : `${pendingTickets.length} pending`}
                 </span>
               </div>
               <ul className={`${styles.list} ${styles.listScrollable}`}>
-                {pendingLeaves.length === 0 && (
+                {pendingTickets.length === 0 && (
                   <li
                     className={styles.listItem}
-                    onClick={() => router.push("/leave")}
+                    onClick={() => router.push("/admin/tickets")}
                   >
-                    <div className={styles.listItemTitle}>No pending requests</div>
-                    <div className={styles.listItemMeta}>Tap to open leave center</div>
+                    <div className={styles.listItemTitle}>No pending tickets</div>
+                    <div className={styles.listItemMeta}>Open ticket inbox</div>
                   </li>
                 )}
-                {pendingLeaves.slice(0, 4).map((leave) => (
+                {pendingTickets.slice(0, 5).map((ticket) => (
                   <li
-                    key={leave.id}
-                    className={`${styles.listItem} ${pulseIds.includes(leave.id) ? styles.listItemNew : ""}`}
-                    onClick={() => router.push("/leave")}
+                    key={ticket.id}
+                    className={`${styles.listItem} ${ticketPulseIds.includes(ticket.id) ? styles.listItemNew : ""}`}
+                    onClick={() => router.push("/admin/tickets")}
                   >
                     <div className={styles.listItemTop}>
                       <span className={styles.listItemTitle}>
-                        {leave.employee_name || "Employee"}
+                        {ticket.ticket_number}
                       </span>
                       <span className={styles.badge}>Pending</span>
                     </div>
                     <div className={styles.listItemMeta}>
-                      {leave.leave_category} · {formatDate(leave.start_date)} →{" "}
-                      {formatDate(leave.end_date)}
+                      {ticket.employee_name} · {ticket.subject}
+                    </div>
+                    <div className={styles.listItemMeta} style={{ marginTop: 4 }}>
+                      {categoryLabel(ticket.category)} ·{" "}
+                      {ticketTypeLabel(ticket.category, ticket.ticket_type)}
                     </div>
                   </li>
                 ))}

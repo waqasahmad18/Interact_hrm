@@ -169,10 +169,10 @@ export async function POST(req: NextRequest) {
       [ticketNumber, insertId]
     );
 
-    const initialMessages = seedEmployeeMessage(
-      employee_name || "Employee",
-      desc || null
-    );
+    const initialMessages =
+      typeKey === "leave"
+        ? []
+        : seedEmployeeMessage(employee_name || "Employee", desc || null);
     if (initialMessages.length > 0) {
       await query(
         `UPDATE ${EMPLOYEE_TICKETS_TABLE} SET messages = ? WHERE id = ?`,
@@ -231,6 +231,12 @@ export async function PATCH(req: NextRequest) {
 
     let messages = current.messages ?? [];
     if (replyText) {
+      if (current.ticket_type === "leave") {
+        return NextResponse.json(
+          { success: false, error: "Leave tickets are status-only. Chat replies are not allowed." },
+          { status: 403 }
+        );
+      }
       messages = appendAdminMessage(messages, String(author_name || "Admin"), replyText);
     }
 

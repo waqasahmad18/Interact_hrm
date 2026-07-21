@@ -15,7 +15,7 @@ import {
   saveTicketSeen,
   type TicketThreadMessage,
 } from "../../../lib/ticket-thread";
-import { isTicketClosed } from "../../../lib/ticket-status";
+import { formatTicketStatusLabel, isTicketClosed } from "../../../lib/ticket-status";
 import TicketThread from "../../components/TicketThread";
 import styles from "./generate-ticket.module.css";
 
@@ -71,7 +71,7 @@ function GenerateTicketPageInner() {
   const [employeeId, setEmployeeId] = useState("");
   const [employeeName, setEmployeeName] = useState("Employee");
   const [category, setCategory] = useState<TicketCategory>("HR");
-  const [ticketType, setTicketType] = useState("");
+  const [ticketType, setTicketType] = useState("leave");
   const [priority, setPriority] = useState("normal");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -192,20 +192,9 @@ function GenerateTicketPageInner() {
   }, [employeeId, fetchHistory, selectedTicket?.id]);
 
   useEffect(() => {
-    const wantLeave = searchParams?.get("type") === "leave" && category === "HR";
-    const hasLeave = typeOptions.some((t) => t.value === "leave");
-    if (wantLeave && hasLeave) {
-      setTicketType("leave");
-      return;
-    }
-    const first = typeOptions[0]?.value ?? "";
-    setTicketType(first);
-  }, [category, typeOptions, searchParams]);
-
-  useEffect(() => {
-    if (searchParams?.get("type") === "leave") {
-      setCategory("HR");
-    }
+    // Only HR → Leave is enabled for now; keep that as the active default.
+    setCategory("HR");
+    setTicketType("leave");
   }, [searchParams]);
 
   useEffect(() => {
@@ -305,6 +294,10 @@ function GenerateTicketPageInner() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (category !== "HR" || ticketType !== "leave") {
+      setError("Only HR Leave tickets are available right now.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -371,14 +364,11 @@ function GenerateTicketPageInner() {
               <select
                 id="ticket-category"
                 className={styles.select}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                value="HR"
+                disabled
+                aria-readonly="true"
               >
-                {TICKET_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
+                <option value="HR">HR</option>
               </select>
             </div>
             <div className={styles.field}>
@@ -388,14 +378,11 @@ function GenerateTicketPageInner() {
               <select
                 id="ticket-type"
                 className={styles.select}
-                value={ticketType}
-                onChange={(e) => setTicketType(e.target.value)}
+                value="leave"
+                disabled
+                aria-readonly="true"
               >
-                {typeOptions.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
+                <option value="leave">Leave</option>
               </select>
             </div>
           </div>
@@ -625,7 +612,7 @@ function GenerateTicketPageInner() {
                   <div className={styles.historyTop}>
                     <span className={styles.historyId}>{t.ticket_number}</span>
                     <span className={`${styles.badge} ${statusBadgeClass(t.status)}`}>
-                      {t.status.replace("_", " ")}
+                      {formatTicketStatusLabel(t.status, t.ticket_type)}
                     </span>
                   </div>
                   <div className={styles.historySubject}>{t.subject}</div>
@@ -634,9 +621,13 @@ function GenerateTicketPageInner() {
                     {new Date(t.requested_at).toLocaleString()}
                   </div>
                   <div className={styles.historyHint}>
-                    {isTicketClosed(t.status)
-                      ? "Closed · Click to read conversation"
-                      : "Click to view conversation"}
+                    {t.ticket_type === "leave"
+                      ? isTicketClosed(t.status)
+                        ? "Leave request · Click to view status"
+                        : "Leave request · Click to view status"
+                      : isTicketClosed(t.status)
+                        ? "Closed · Click to read conversation"
+                        : "Click to view conversation"}
                   </div>
                 </button>
               ))}
@@ -651,7 +642,7 @@ function GenerateTicketPageInner() {
             <h2 className={styles.modalTitle}>{selectedTicket.ticket_number}</h2>
             <div className={styles.modalMeta}>
               <span className={`${styles.badge} ${statusBadgeClass(selectedTicket.status)}`}>
-                {selectedTicket.status.replace("_", " ")}
+                {formatTicketStatusLabel(selectedTicket.status, selectedTicket.ticket_type)}
               </span>
               <span className={styles.historyMeta}>
                 {categoryLabel(selectedTicket.category)} ·{" "}
@@ -659,17 +650,32 @@ function GenerateTicketPageInner() {
               </span>
             </div>
             <p className={styles.historySubject}>{selectedTicket.subject}</p>
-            <div className={styles.modalThread}>
-              <span className={styles.historyBodyLabel}>Conversation</span>
-              {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
-                <TicketThread messages={selectedTicket.messages} />
-              ) : selectedTicket.description ? (
-                <p className={styles.historyBodyText}>{selectedTicket.description}</p>
-              ) : (
-                <p className={styles.empty}>No messages yet.</p>
-              )}
-            </div>
-            {isTicketClosed(selectedTicket.status) ? (
+            {selectedTicket.ticket_type === "leave" ? (
+              <div className={styles.modalThread}>
+                <span className={styles.historyBodyLabel}>Leave request status</span>
+                <p className={styles.historyBodyText}>
+                  You can track this leave ticket status here. Chat is not available on leave
+                  tickets.
+                </p>
+                {selectedTicket.description ? (
+                  <p className={styles.historyBodyText} style={{ marginTop: 10 }}>
+                    {selectedTicket.description}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className={styles.modalThread}>
+                <span className={styles.historyBodyLabel}>Conversation</span>
+                {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
+                  <TicketThread messages={selectedTicket.messages} />
+                ) : selectedTicket.description ? (
+                  <p className={styles.historyBodyText}>{selectedTicket.description}</p>
+                ) : (
+                  <p className={styles.empty}>No messages yet.</p>
+                )}
+              </div>
+            )}
+            {selectedTicket.ticket_type !== "leave" && isTicketClosed(selectedTicket.status) ? (
               <p className={styles.closedNotice}>
                 This ticket is closed. You can read the conversation but cannot reply.
               </p>

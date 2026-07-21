@@ -5,7 +5,7 @@ import React from "react";
 import adminStyles from "../admin-page.module.css";
 import TicketThread from "../../components/TicketThread";
 import { categoryLabel, ticketTypeLabel, type TicketCategory } from "../../../lib/ticket-catalog";
-import { isTicketClosed } from "../../../lib/ticket-status";
+import { formatTicketStatusLabel, isTicketClosed } from "../../../lib/ticket-status";
 import { previewTicketToastOnPage } from "../../../lib/ticket-toast-demo";
 import type { TicketThreadMessage } from "../../../lib/ticket-thread";
 import { toastError, toastInfo } from "@/lib/app-toast";
@@ -140,6 +140,87 @@ export default function AdminTicketsPage() {
   const threadMessages = selected?.messages ?? [];
   const ticketClosed = selected ? isTicketClosed(selected.status) : false;
 
+  const formatDateLabel = (value: unknown) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString();
+  };
+
+  const renderTicketDetails = (ticket: Ticket) => {
+    const fd = ticket.form_data || {};
+    if (!fd || Object.keys(fd).length === 0) {
+      return ticket.description ? (
+        <p className={adminStyles.muted} style={{ marginBottom: 12 }}>
+          {ticket.description}
+        </p>
+      ) : null;
+    }
+
+    if (ticket.ticket_type === "leave") {
+      const docs = Array.isArray(fd.document_paths) ? fd.document_paths : [];
+      return (
+        <div className={adminStyles.detailCard}>
+          <div className={adminStyles.detailGrid}>
+            <div className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>Leave category</span>
+              <span className={adminStyles.detailValue}>
+                {String(fd.leave_category || "—").replace(/_/g, " ")}
+              </span>
+            </div>
+            <div className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>Total days</span>
+              <span className={adminStyles.detailValue}>{String(fd.total_days ?? "—")}</span>
+            </div>
+            <div className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>Start date</span>
+              <span className={adminStyles.detailValue}>{formatDateLabel(fd.start_date)}</span>
+            </div>
+            <div className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>End date</span>
+              <span className={adminStyles.detailValue}>{formatDateLabel(fd.end_date)}</span>
+            </div>
+          </div>
+          <div className={adminStyles.detailBlock}>
+            <span className={adminStyles.detailLabel}>Reason</span>
+            <p className={adminStyles.detailReason}>
+              {String(fd.reason || ticket.description || "No reason provided")}
+            </p>
+          </div>
+          {docs.length > 0 ? (
+            <div className={adminStyles.detailBlock}>
+              <span className={adminStyles.detailLabel}>Documents</span>
+              <ul className={adminStyles.detailDocs}>
+                {docs.map((path, idx) => (
+                  <li key={`${String(path)}-${idx}`}>
+                    <a href={String(path)} target="_blank" rel="noreferrer">
+                      Attachment {idx + 1}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className={adminStyles.detailCard}>
+        <div className={adminStyles.detailGrid}>
+          {Object.entries(fd).map(([key, value]) => (
+            <div key={key} className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>{key.replace(/_/g, " ")}</span>
+              <span className={adminStyles.detailValue}>
+                {Array.isArray(value) ? value.join(", ") || "—" : String(value ?? "—")}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <LayoutDashboard>
       <div className={adminStyles.page}>
@@ -203,7 +284,7 @@ export default function AdminTicketsPage() {
                         {t.ticket_number}
                       </span>
                       <span className={`${adminStyles.badge} ${statusBadge(t.status)}`}>
-                        {t.status.replace("_", " ")}
+                        {formatTicketStatusLabel(t.status, t.ticket_type)}
                       </span>
                       <span className={`${adminStyles.badge} ${adminStyles.badgeType}`}>
                         {t.priority}
@@ -262,35 +343,28 @@ export default function AdminTicketsPage() {
                 {ticketTypeLabel(selected.category, selected.ticket_type)}
               </p>
               <span className={`${adminStyles.badge} ${statusBadge(selected.status)}`}>
-                {selected.status.replace("_", " ")}
+                {formatTicketStatusLabel(selected.status, selected.ticket_type)}
               </span>
             </div>
             <p style={{ fontWeight: 600, margin: "0 0 12px" }}>{selected.subject}</p>
-            {selected.form_data && Object.keys(selected.form_data).length > 0 ? (
-              <pre
-                style={{
-                  background: "#f8fafc",
-                  padding: 12,
-                  borderRadius: 8,
-                  fontSize: 12,
-                  overflow: "auto",
-                  marginBottom: 12,
-                }}
-              >
-                {JSON.stringify(selected.form_data, null, 2)}
-              </pre>
-            ) : null}
+            {renderTicketDetails(selected)}
 
-            <div className={adminStyles.chatSection}>
-              <span className={adminStyles.chatSectionLabel}>Conversation</span>
-              {threadMessages.length > 0 ? (
-                <TicketThread messages={threadMessages} />
-              ) : (
-                <p className={adminStyles.muted} style={{ margin: 0 }}>
-                  No messages yet.
-                </p>
-              )}
-            </div>
+            {selected.ticket_type === "leave" ? (
+              <p className={adminStyles.muted} style={{ marginBottom: 12 }}>
+                Leave tickets are status-only — chat / replies are disabled.
+              </p>
+            ) : (
+              <div className={adminStyles.chatSection}>
+                <span className={adminStyles.chatSectionLabel}>Conversation</span>
+                {threadMessages.length > 0 ? (
+                  <TicketThread messages={threadMessages} />
+                ) : (
+                  <p className={adminStyles.muted} style={{ margin: 0 }}>
+                    No messages yet.
+                  </p>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
@@ -300,6 +374,7 @@ export default function AdminTicketsPage() {
               Close
             </button>
 
+            {selected.ticket_type !== "leave" ? (
             <div
               className={`${adminStyles.chatComposer} ${ticketClosed ? adminStyles.chatComposerDisabled : ""}`}
             >
@@ -337,6 +412,7 @@ export default function AdminTicketsPage() {
                 </button>
               </div>
             </div>
+            ) : null}
 
             {!ticketClosed ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -354,7 +430,7 @@ export default function AdminTicketsPage() {
                 disabled={processing}
                 onClick={() => handleStatus(selected.id, "resolved")}
               >
-                Resolve
+                {selected.ticket_type === "leave" ? "Approve" : "Resolve"}
               </button>
               <button
                 type="button"
