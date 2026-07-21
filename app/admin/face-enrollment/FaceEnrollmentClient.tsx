@@ -81,17 +81,44 @@ export default function FaceEnrollmentAdminPage() {
   const [listSearchMode, setListSearchMode] = React.useState<ListSearchMode>("both");
   const [deptFilter, setDeptFilter] = React.useState("");
   const [bulkBusy, setBulkBusy] = React.useState(false);
+  const [employeePickerQuery, setEmployeePickerQuery] = React.useState("");
+  const [employeePickerOpen, setEmployeePickerOpen] = React.useState(false);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const employeePickerRef = React.useRef<HTMLDivElement>(null);
 
   const selectedEmployee = employees.find((e) => String(e.id) === employeeId);
 
   const displayName = (e: EmployeeOption) =>
     [e.first_name, e.last_name].filter(Boolean).join(" ").trim() || `Employee ${e.id}`;
+
+  const filteredPickerEmployees = React.useMemo(() => {
+    const q = employeePickerQuery.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter((e) => {
+      const name =
+        [e.first_name, e.last_name].filter(Boolean).join(" ").trim().toLowerCase() ||
+        `employee ${e.id}`;
+      const pseudo = (e.pseudonym || "").toLowerCase();
+      const id = String(e.id);
+      return name.includes(q) || pseudo.includes(q) || id.includes(q);
+    });
+  }, [employees, employeePickerQuery]);
+
+  React.useEffect(() => {
+    if (!employeePickerOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      if (!employeePickerRef.current?.contains(ev.target as Node)) {
+        setEmployeePickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [employeePickerOpen]);
 
   const loadEmployeeList = React.useCallback(async () => {
     setListLoading(true);
@@ -637,20 +664,71 @@ export default function FaceEnrollmentAdminPage() {
         <div className={styles.grid}>
           <div className={styles.card}>
             <h2 className={styles.cardTitle}>Employee</h2>
-            <select
-              id="employee-select"
-              className={styles.select}
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              disabled={loading || busy}
-            >
-              <option value="">Select employee…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={String(e.id)}>
-                  {displayName(e)} · ID {e.id}
-                </option>
-              ))}
-            </select>
+            <div className={styles.employeePicker} ref={employeePickerRef}>
+              <input
+                id="employee-select"
+                type="search"
+                className={styles.select}
+                placeholder="Search by name or pseudonym…"
+                value={
+                  employeePickerOpen
+                    ? employeePickerQuery
+                    : selectedEmployee
+                      ? `${displayName(selectedEmployee)}${
+                          selectedEmployee.pseudonym
+                            ? ` · ${selectedEmployee.pseudonym}`
+                            : ""
+                        } · ID ${selectedEmployee.id}`
+                      : employeePickerQuery
+                }
+                onChange={(e) => {
+                  setEmployeePickerQuery(e.target.value);
+                  setEmployeePickerOpen(true);
+                  if (employeeId) setEmployeeId("");
+                }}
+                onFocus={() => {
+                  setEmployeePickerOpen(true);
+                  if (selectedEmployee) {
+                    setEmployeePickerQuery("");
+                  }
+                }}
+                disabled={loading || busy}
+                autoComplete="off"
+                aria-label="Search employee by name or pseudonym"
+                aria-expanded={employeePickerOpen}
+                aria-controls="employee-picker-list"
+              />
+              {employeePickerOpen && !loading ? (
+                <ul id="employee-picker-list" className={styles.employeePickerList} role="listbox">
+                  {filteredPickerEmployees.length === 0 ? (
+                    <li className={styles.employeePickerEmpty}>No employees match</li>
+                  ) : (
+                    filteredPickerEmployees.map((e) => (
+                      <li key={e.id}>
+                        <button
+                          type="button"
+                          className={`${styles.employeePickerOption}${
+                            String(e.id) === employeeId ? ` ${styles.employeePickerOptionActive}` : ""
+                          }`}
+                          role="option"
+                          aria-selected={String(e.id) === employeeId}
+                          onClick={() => {
+                            setEmployeeId(String(e.id));
+                            setEmployeePickerQuery("");
+                            setEmployeePickerOpen(false);
+                          }}
+                        >
+                          <span className={styles.employeePickerName}>{displayName(e)}</span>
+                          <span className={styles.employeePickerMeta}>
+                            {e.pseudonym ? `${e.pseudonym} · ` : ""}ID {e.id}
+                          </span>
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              ) : null}
+            </div>
           </div>
 
           <div className={styles.card}>

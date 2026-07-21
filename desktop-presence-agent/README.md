@@ -32,11 +32,12 @@ Tray → **Check for updates…** forces a check (still throttled lightly).
 - Default password if unset: `InteractAdmin`
 - Note: Task Manager “End task” can still kill the process (Windows limitation without a service).
 
-## Point at Staging or Localhost
+## Point at Staging, Main HRM, or Localhost
 
 Tray menu:
 
 - **Use Staging HRM** → `https://192.168.10.6:8443`
+- **Use Main HRM** → `https://192.168.10.40:8443`
 - **Use Localhost HRM** → `http://localhost:3000`
 - **Set HRM URL…** → any custom base URL
 

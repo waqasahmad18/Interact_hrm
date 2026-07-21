@@ -46,6 +46,8 @@ public sealed class TrayHost : IDisposable
         AddAction("Set HRM URL (admin)…", PromptHrmUrl);
         AddAction("Use Staging HRM (admin)…", () =>
             SetHrmUrlWithPassword("https://192.168.10.6:8443", "staging"));
+        AddAction("Use Main HRM (admin)…", () =>
+            SetHrmUrlWithPassword("https://192.168.10.40:8443", "main HRM"));
         AddAction("Use Localhost HRM (admin)…", () =>
             SetHrmUrlWithPassword("http://localhost:3000", "localhost"));
         AddAction("Check for updates (admin)…", CheckUpdates);
