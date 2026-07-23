@@ -58,20 +58,7 @@ type CommissionAmountField =
   | "trainer_incentive"
   | "floor_incentive";
 
-/** One-time static demo for Waqas Rafique (as provided). Remove when live data is trusted. */
-function getWaqasStaticPayrollOverride(employee: { employeeName?: string; pseudonym?: string }) {
-  const name = String(employee.employeeName || "").trim().toLowerCase();
-  if (!(name.includes("waqas") && name.includes("rafique"))) return null;
-  return {
-    basicSalary: 70000,
-    fuelAllowance: 5000,
-    workingDays: 21,
-    unpaidDays: 0,
-    otHours: 51,
-    paidHoursPerDay: 5,
-    zeroExtraDeductions: true,
-  };
-}
+
 
 export default function MonthlyAttendancePage() {
     // Calculate total working days for the month (excluding leaves and off days)
@@ -175,6 +162,9 @@ export default function MonthlyAttendancePage() {
   const [breakExceedDedByEmployee, setBreakExceedDedByEmployee] = useState<Record<string, number>>({});
   const [kpisDedByEmployee, setKpisDedByEmployee] = useState<Record<string, number>>({});
   const [otherDedByEmployee, setOtherDedByEmployee] = useState<Record<string, number>>({});
+  /** CTD + Fuel — persisted in monthly_payroll_adjustments */
+  const [ctdByEmployee, setCtdByEmployee] = useState<Record<string, number>>({});
+  const [fuelByEmployee, setFuelByEmployee] = useState<Record<string, number>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   function setManualAmount(
@@ -189,6 +179,50 @@ export default function MonthlyAttendancePage() {
     }));
   }
 
+  function parsePositiveMoney(raw: string | number | undefined): number {
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /** Fuel from DB / HR edit; default 0 (no static demo values). */
+  function getFuelAllowanceForEmployee(employee: { employeeId?: string }) {
+    const empId = String(employee.employeeId ?? "");
+    if (Object.prototype.hasOwnProperty.call(fuelByEmployee, empId)) {
+      return fuelByEmployee[empId] ?? 0;
+    }
+    return 0;
+  }
+
+  function setFuelAmount(employeeId: string, raw: string) {
+    setFuelByEmployee((prev) => ({ ...prev, [employeeId]: parsePositiveMoney(raw) }));
+  }
+
+  function saveFuelAmount(employeeId: string, raw?: string) {
+    if (!selectedMonth) return;
+    const fuel_allowance =
+      raw !== undefined ? parsePositiveMoney(raw) : (fuelByEmployee[employeeId] ?? 0);
+    void fetch("/api/monthly-payroll-adjustments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employee_id: employeeId, month: selectedMonth, fuel_allowance }),
+    }).catch((err) => console.error("Fuel save failed", err));
+  }
+
+  function setCtdAmount(employeeId: string, raw: string) {
+    setCtdByEmployee((prev) => ({ ...prev, [employeeId]: parsePositiveMoney(raw) }));
+  }
+
+  function saveCtdAmount(employeeId: string, raw?: string) {
+    if (!selectedMonth) return;
+    const ctd =
+      raw !== undefined ? parsePositiveMoney(raw) : (ctdByEmployee[employeeId] ?? 0);
+    void fetch("/api/monthly-payroll-adjustments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employee_id: employeeId, month: selectedMonth, ctd }),
+    }).catch((err) => console.error("CTD save failed", err));
+  }
+
   const manualInputStyle: React.CSSProperties = {
     width: 88,
     padding: "4px 6px",
@@ -196,6 +230,11 @@ export default function MonthlyAttendancePage() {
     borderRadius: 6,
     fontWeight: 600,
     color: "#dc2626",
+  };
+
+  const fuelInputStyle: React.CSSProperties = {
+    ...manualInputStyle,
+    color: "#007a5a",
   };
 
   // Fetch departments
@@ -422,6 +461,53 @@ export default function MonthlyAttendancePage() {
   }, [selectedMonth]);
 
   useEffect(() => {
+    if (!selectedMonth) {
+      setCtdByEmployee({});
+      setFuelByEmployee({});
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/monthly-payroll-adjustments?month=${encodeURIComponent(selectedMonth)}`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const ctdMap: Record<string, number> = {};
+        const fuelMap: Record<string, number> = {};
+        if (data.success && Array.isArray(data.adjustments)) {
+          data.adjustments.forEach(
+            (row: {
+              employee_id?: string | number;
+              ctd?: number;
+              fuel_allowance?: number | null;
+            }) => {
+              const id = String(row.employee_id ?? "").trim();
+              if (!id) return;
+              ctdMap[id] = parsePositiveMoney(row.ctd);
+              // NULL = not set → keep UI default (5k where applicable)
+              if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
+                fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
+              }
+            }
+          );
+        }
+        setCtdByEmployee(ctdMap);
+        setFuelByEmployee(fuelMap);
+      })
+      .catch((err) => {
+        console.error("Payroll adjustments fetch failed", err);
+        if (!cancelled) {
+          setCtdByEmployee({});
+          setFuelByEmployee({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMonth]);
+
+  useEffect(() => {
     if (!selectedMonth) return;
     fetch(`/api/calendar?month=${selectedMonth}`, { cache: "no-store" })
       .then((res) => res.json())
@@ -554,6 +640,8 @@ export default function MonthlyAttendancePage() {
         breakExceedDed: breakExceedDedByEmployee[emp.employeeId] ?? 0,
         kpisDed: kpisDedByEmployee[emp.employeeId] ?? 0,
         otherDed: otherDedByEmployee[emp.employeeId] ?? 0,
+        ctd: ctdByEmployee[emp.employeeId] ?? 0,
+        fuelAllowance: getFuelAllowanceForEmployee(emp),
       });
       return {
       "ID": emp.employeeId,
@@ -561,7 +649,7 @@ export default function MonthlyAttendancePage() {
       "Pseudonym": emp.pseudonym,
       "Department": emp.departmentName,
       "Basic Salary": row.basicSalary || '--',
-      "Fuel": row.fuelAllowance || 0,
+      "Fuel Allowance": row.fuelAllowance || 0,
       "T.W Days": row.workingDays || '--',
       "T.Unpaid Days": row.unpaidDaysDisplay,
       "O. T Hours": row.otHoursLabel,
@@ -575,6 +663,11 @@ export default function MonthlyAttendancePage() {
       "Floor Incentive": getCommissionDisplay(emp.employeeId, "floor_incentive"),
       "Gross Salary": row.grossSalary,
       "Unpaid Days Salary": row.unpaidDaysSalary,
+      "Break Exceed Ded.": row.breakExceedDed,
+      "KPIs Ded.": row.kpisDed,
+      "Other Ded": row.otherDed,
+      "CTD": row.ctd,
+      "Loan/Advance": row.loanAdvance,
       "Total Deductions": row.totalDeductions,
       "Net before Tax": row.netBeforeTax,
       "Tax": row.tax,
@@ -944,8 +1037,9 @@ export default function MonthlyAttendancePage() {
   }
 
   /**
-   * Full payroll row (dynamic). Waqas static override applies when matched.
-   * Final = Net before tax − Tax. Manual deduction columns feed Total Deductions live.
+   * Full payroll row from live system data.
+   * OT: Per hour = Basic ÷ Working Days ÷ Hours/Day; OT Salary = Per hour × OT hours.
+   * Final = Gross − Total Deductions − Tax. Manual columns (Fuel, CTD, etc.) feed live.
    */
   function getPayrollBreakdown(
     employee: any,
@@ -954,40 +1048,30 @@ export default function MonthlyAttendancePage() {
       breakExceedDed?: number;
       kpisDed?: number;
       otherDed?: number;
+      ctd?: number;
+      fuelAllowance?: number;
     } = {}
   ) {
     const taxAmount = opts.taxAmount ?? 0;
-    const override = getWaqasStaticPayrollOverride(employee);
     const hasAttendance = Object.keys(employee.byDate || {}).length > 0;
 
-    const basicSalary = override
-      ? override.basicSalary
-      : Number(employee.basicSalary ?? 0) || 0;
-    const fuelAllowance = override ? override.fuelAllowance : 0;
-    const paidHoursPerDay = override
-      ? override.paidHoursPerDay
-      : Number(employee.paidHoursPerDay) > 0
-        ? Number(employee.paidHoursPerDay)
-        : 9;
-
-    const workingDays = override
-      ? override.workingDays
-      : hasAttendance
-        ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)
+    const basicSalary = Number(employee.basicSalary ?? 0) || 0;
+    const fuelAllowance =
+      opts.fuelAllowance !== undefined
+        ? parsePositiveMoney(opts.fuelAllowance)
         : 0;
+    const paidHoursPerDay =
+      Number(employee.paidHoursPerDay) > 0 ? Number(employee.paidHoursPerDay) : 9;
 
-    const unpaidDays = override
-      ? override.unpaidDays
-      : hasAttendance
-        ? calculateTotalDeduction(employee) / 100
-        : 0;
+    const workingDays = hasAttendance
+      ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)
+      : 0;
+
+    const unpaidDays = hasAttendance ? calculateTotalDeduction(employee) / 100 : 0;
 
     let otHours = 0;
     let otHoursLabel = "--";
-    if (override) {
-      otHours = override.otHours;
-      otHoursLabel = formatOtHoursLabel(otHours);
-    } else if (!employee.allowOvertime) {
+    if (!employee.allowOvertime) {
       otHoursLabel = "--";
     } else if (hasAttendance) {
       let totalOvertimeSeconds = 0;
@@ -1008,7 +1092,7 @@ export default function MonthlyAttendancePage() {
     }
 
     let otSalary = 0;
-    if (employee.allowOvertime !== false || override) {
+    if (employee.allowOvertime !== false) {
       if (basicSalary > 0 && workingDays > 0 && otHours > 0) {
         const perHourRate = basicSalary / workingDays / paidHoursPerDay;
         otSalary = Math.round(perHourRate * otHours);
@@ -1049,16 +1133,17 @@ export default function MonthlyAttendancePage() {
     const otherDed = Number.isFinite(opts.otherDed) && (opts.otherDed as number) > 0
       ? (opts.otherDed as number)
       : 0;
+    const ctd = Number.isFinite(opts.ctd) && (opts.ctd as number) > 0
+      ? (opts.ctd as number)
+      : 0;
 
     const adv = Number(advanceSalaryMap[employee.employeeId] ?? 0);
     const loan = Number(loanSalaryMap[employee.employeeId] ?? 0);
     const loanAdvance =
-      override?.zeroExtraDeductions
-        ? 0
-        : (Number.isFinite(adv) ? adv : 0) + (Number.isFinite(loan) ? loan : 0);
+      (Number.isFinite(adv) ? adv : 0) + (Number.isFinite(loan) ? loan : 0);
 
     const totalDeductions =
-      unpaidDaysSalary + breakExceedDed + kpisDed + otherDed + loanAdvance;
+      unpaidDaysSalary + breakExceedDed + kpisDed + otherDed + ctd + loanAdvance;
 
     const netBeforeTax = grossSalary - totalDeductions;
     const tax = Number.isFinite(taxAmount) && taxAmount > 0 ? taxAmount : 0;
@@ -1070,7 +1155,6 @@ export default function MonthlyAttendancePage() {
       : unpaidDays.toFixed(1).replace(/\.0$/, "");
 
     return {
-      isStaticDemo: !!override,
       basicSalary,
       fuelAllowance,
       workingDays,
@@ -1084,6 +1168,7 @@ export default function MonthlyAttendancePage() {
       breakExceedDed,
       kpisDed,
       otherDed,
+      ctd,
       loanAdvance,
       totalDeductions,
       netBeforeTax,
@@ -1099,7 +1184,7 @@ export default function MonthlyAttendancePage() {
 
   function getEmployeeGrossSalary(employee: any) {
     const g = getPayrollBreakdown(employee).grossSalary;
-    return g > 0 || getWaqasStaticPayrollOverride(employee) ? formatAmountValue(g) : "--";
+    return g > 0 ? formatAmountValue(g) : "--";
   }
 
   function getUnpaidDaysSalary(employee: any) {
@@ -1178,7 +1263,7 @@ export default function MonthlyAttendancePage() {
             {monthInfo.label && `Payroll for ${monthInfo.label}`}
           </h3>
           <div className={styles.breakSummaryTableWrapper}>
-          <table className={styles.breakSummaryTable} style={{ minWidth: 1900 }}>
+          <table className={styles.breakSummaryTable} style={{ minWidth: 2000 }}>
             <thead>
               <tr>
                 <th>ID</th>
@@ -1186,6 +1271,7 @@ export default function MonthlyAttendancePage() {
                 <th>Pseudonym</th>
                 <th>Department</th>
                 <th>Basic Salary</th>
+                <th>Fuel Allowance</th>
                 <th>T.W Days</th>
                 <th>T.Unpaid Days</th>
                 <th>O.T Hours</th>
@@ -1202,6 +1288,7 @@ export default function MonthlyAttendancePage() {
                 <th>Break Exceed Ded.</th>
                 <th>KPIs Ded.</th>
                 <th>Other Ded (fine,etc.)</th>
+                <th>CTD</th>
                 <th>Loan/Advance</th>
                 <th>Total Deductions</th>
                 <th>Net. Salary before Tax</th>
@@ -1218,11 +1305,15 @@ export default function MonthlyAttendancePage() {
                   const breakVal = breakExceedDedByEmployee[empId] ?? 0;
                   const kpisVal = kpisDedByEmployee[empId] ?? 0;
                   const otherVal = otherDedByEmployee[empId] ?? 0;
+                  const ctdVal = ctdByEmployee[empId] ?? 0;
+                  const fuelVal = getFuelAllowanceForEmployee(employee);
                   const row = getPayrollBreakdown(employee, {
                     taxAmount: taxVal,
                     breakExceedDed: breakVal,
                     kpisDed: kpisVal,
                     otherDed: otherVal,
+                    ctd: ctdVal,
+                    fuelAllowance: fuelVal,
                   });
                   return (
                     <tr key={employee.employeeId}>
@@ -1246,11 +1337,18 @@ export default function MonthlyAttendancePage() {
                       <td>{employee.departmentName}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>
                         {row.basicSalary > 0 ? formatWithCommas(row.basicSalary) : '--'}
-                        {row.fuelAllowance > 0 ? (
-                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
-                            +Fuel {formatWithCommas(row.fuelAllowance)}
-                          </div>
-                        ) : null}
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={fuelVal}
+                          onChange={(e) => setFuelAmount(empId, e.target.value)}
+                          onBlur={(e) => saveFuelAmount(empId, e.target.value)}
+                          style={fuelInputStyle}
+                          title="Fuel Allowance — editable, saved for this month"
+                        />
                       </td>
                       <td>{row.workingDays > 0 ? row.workingDays : '--'}</td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{row.unpaidDaysDisplay}</td>
@@ -1298,6 +1396,18 @@ export default function MonthlyAttendancePage() {
                           title="Other Ded — totals update live"
                         />
                       </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={ctdVal}
+                          onChange={(e) => setCtdAmount(empId, e.target.value)}
+                          onBlur={(e) => saveCtdAmount(empId, e.target.value)}
+                          style={manualInputStyle}
+                          title="CTD — saved for this month, totals update live"
+                        />
+                      </td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.loanAdvance)}</td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.totalDeductions)}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netBeforeTax)}</td>
@@ -1318,7 +1428,7 @@ export default function MonthlyAttendancePage() {
                   );
                 })
               ) : (
-                <tr><td colSpan={27} className={styles.breakSummaryNoRecords}>No records found</td></tr>
+                <tr><td colSpan={29} className={styles.breakSummaryNoRecords}>No records found</td></tr>
               )}
             </tbody>
           </table>

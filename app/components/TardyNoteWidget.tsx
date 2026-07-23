@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ATTENDANCE_DATA_CHANGED } from "@/lib/ui-sync/breakPrayerDataRefresh";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "@/lib/timezone";
 import {
@@ -21,6 +22,7 @@ export function TardyNoteWidget({
   variant?: "default" | "slack";
 }) {
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [selectedCode, setSelectedCode] = useState("");
   const [otherText, setOtherText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +37,10 @@ export function TardyNoteWidget({
     Boolean(selectedCode) &&
     !submitting &&
     (!isOther || (otherWordCount >= 1 && otherWordCount <= TARDY_NOTE_OTHER_MAX_WORDS));
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const refresh = useCallback(async () => {
     const id = String(employeeId || "").trim();
@@ -76,17 +82,8 @@ export function TardyNoteWidget({
     return () => window.removeEventListener(ATTENDANCE_DATA_CHANGED, onAttendanceChanged);
   }, [refresh]);
 
-  // Lock page scroll while compulsory modal is open
-  useEffect(() => {
-    if (!visible) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [visible]);
-
-  // Block Escape — response is required
+  // Block Escape only. Background scroll uses overlay pointer-events:none
+  // (no wheel capture / preventDefault — that caused scroll jank).
   useEffect(() => {
     if (!visible) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -129,9 +126,9 @@ export function TardyNoteWidget({
     }
   };
 
-  if (!visible) return null;
+  if (!visible || !mounted) return null;
 
-  return (
+  const modal = (
     <div
       className={styles.overlay}
       role="alertdialog"
@@ -139,7 +136,7 @@ export function TardyNoteWidget({
       aria-labelledby="tardy-note-title"
       aria-describedby="tardy-note-desc"
     >
-      <div className={styles.dialog}>
+      <div id="tardy-note-dialog" className={styles.dialog}>
         <div className={styles.header}>
           <span className={styles.badge}>Late today</span>
           <h2 id="tardy-note-title" className={styles.title}>
@@ -218,4 +215,7 @@ export function TardyNoteWidget({
       </div>
     </div>
   );
+
+  // Portal to body so sticky summary tables cannot cover the modal (dock has low z-index).
+  return createPortal(modal, document.body);
 }

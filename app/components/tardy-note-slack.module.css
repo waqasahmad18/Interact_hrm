@@ -3,14 +3,17 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 12000;
+  /* Above sticky summary tables / attendance dock stacking contexts */
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   box-sizing: border-box;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(3px);
+  /* Solid dim only — no backdrop-filter (blur causes scroll jank) */
+  background: rgba(15, 23, 42, 0.45);
+  /* Let wheel/touch reach page scroll behind the dimmed area */
+  pointer-events: none;
 }
 
 .dialog {
@@ -23,10 +26,15 @@
   border-radius: 16px;
   background: #fff;
   border: 1px solid #f5d78e;
-  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* Dialog remains interactive; backdrop is click/scroll-through */
+  pointer-events: auto;
+  /* Isolate paint so page scroll behind stays smooth */
+  contain: layout paint;
+  transform: translateZ(0);
 }
 
 .header {
