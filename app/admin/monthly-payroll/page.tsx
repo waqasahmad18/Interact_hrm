@@ -891,8 +891,11 @@ export default function MonthlyAttendancePage() {
         if (data.success && Array.isArray(data.salaries)) {
           const map: Record<string, number> = {};
           data.salaries.forEach((row: any) => {
-            if (row.employee_id && row.amount !== undefined) {
-              map[String(row.employee_id)] = row.amount;
+            if (row.employee_id != null && row.amount !== undefined && row.amount !== null) {
+              const amt = Number(row.amount);
+              if (Number.isFinite(amt) && amt > 0) {
+                map[String(row.employee_id)] = amt;
+              }
             }
           });
           setSalaryMap(map);

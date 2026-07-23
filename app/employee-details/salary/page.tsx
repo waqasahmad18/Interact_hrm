@@ -33,19 +33,26 @@ export default function SalaryPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    const eid = window.prompt('Enter Employee ID to save salary details for (employee_id):');
-    if (!eid) { toastInfo('Employee ID is required'); return; }
-    const payload = { details: { employeeId: eid, salary } };
+    const eid = window.prompt("Enter Employee ID to save salary details for (employee_id):");
+    if (!eid) {
+      toastInfo("Employee ID is required");
+      return;
+    }
     try {
-      // Example placeholder for saving salary details
-      const res = await fetch('/api/employee_salaries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      const res = await fetch("/api/employee_salaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: eid,
+          ...salary,
+        }),
       });
       const data = await res.json();
-      if (data.success) toastSuccess('Salary details saved'); else toastError('Save failed: ' + (data.error || 'Unknown'));
-    } catch (err) { toastError('Save failed: ' + String(err)); }
+      if (data.success) toastSuccess("Salary details saved");
+      else toastError("Save failed: " + (data.error || "Unknown"));
+    } catch (err) {
+      toastError("Save failed: " + String(err));
+    }
   }
 
   return (
