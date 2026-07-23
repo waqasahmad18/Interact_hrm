@@ -135,12 +135,9 @@ export default function LoginPage() {
             localStorage.setItem("userRole", data.role || data.employee?.role || "Officer");
           }
           await persistCredentials(rawLoginId, rawPassword);
-          const role = data.role || data.employee?.role || "Officer";
-          if (role === "BOD/CEO") router.push("/bod-dashboard");
-          else if (role === "HOD") router.push("/hod-dashboard");
-          else if (role === "Management") router.push("/management-dashboard");
-          else if (role === "Leader") router.push("/leader-dashboard");
-          else router.push("/employee-dashboard");
+          // Keep role in localStorage for My Team / hierarchy. Dedicated
+          // bod|hod|management|leader dashboard routes do not exist → always employee-dashboard.
+          router.push("/employee-dashboard");
         } else {
           setError(data.error || "Invalid credentials. Please try again.");
         }

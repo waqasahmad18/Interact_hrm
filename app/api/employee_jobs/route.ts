@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '../../../lib/db';
 
+function normalizeFirstAppraisalMonths(v: unknown): number | null {
+	const n = Number(v);
+	return n === 3 || n === 6 ? n : null;
+}
+
+function normalizeSecondAppraisalMonths(v: unknown): number | null {
+	const n = Number(v);
+	return n === 7 || n === 8 || n === 12 ? n : null;
+}
+
 export async function GET(req: NextRequest) {
 	try {
 		const { searchParams } = new URL(req.url);
@@ -28,13 +38,15 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
 	try {
 		const body = await req.json();
-		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
+		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId, firstAppraisalMonths, secondAppraisalMonths } = body;
 		console.log('PUT employee_jobs - Received body:', body);
 		console.log('PUT employee_jobs - Department ID received:', departmentId);
 		console.log('PUT employee_jobs - Department ID type:', typeof departmentId);
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
+		const firstM = normalizeFirstAppraisalMonths(firstAppraisalMonths);
+		const secondM = normalizeSecondAppraisalMonths(secondAppraisalMonths);
 		
 		// Check if record exists
 		const [existing]: any = await pool.execute(
@@ -45,9 +57,9 @@ export async function PUT(req: NextRequest) {
 		if (existing && existing.length > 0) {
 			// Record exists, UPDATE
 			await pool.execute(
-				`UPDATE employee_jobs SET joined_date = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
+				`UPDATE employee_jobs SET joined_date = ?, first_appraisal_months = ?, second_appraisal_months = ?, job_title = ?, job_specification = ?, job_category = ?, sub_unit = ?, location = ?, employment_status = ?, include_contract = ?, department_id = ?
 				 WHERE employee_id = ?` ,
-				[joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
+				[joinedDate || null, firstM, secondM, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null, employee_id]
 			);
 			console.log('PUT employee_jobs - Successfully UPDATED employee_id:', employee_id, 'with department_id:', departmentId || null);
 			
@@ -66,9 +78,9 @@ export async function PUT(req: NextRequest) {
 		} else {
 			// Record doesn't exist, INSERT
 			await pool.execute(
-				`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-				[employee_id, joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
+				`INSERT INTO employee_jobs (employee_id, joined_date, first_appraisal_months, second_appraisal_months, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+				[employee_id, joinedDate || null, firstM, secondM, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 			);
 			console.log('PUT employee_jobs - Successfully INSERTED employee_id:', employee_id, 'with department_id:', departmentId || null);
 		}
@@ -83,17 +95,19 @@ export async function PUT(req: NextRequest) {
 export async function POST(req: NextRequest) {
 	try {
 		const body = await req.json();
-		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId } = body;
+		const { employee_id, joinedDate, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract, departmentId, firstAppraisalMonths, secondAppraisalMonths } = body;
 		console.log('POST employee_jobs - Received body:', body);
 		console.log('POST employee_jobs - Department ID received:', departmentId);
 		console.log('POST employee_jobs - Department ID after null check:', departmentId || null);
 		if (!employee_id) {
 			return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
 		}
+		const firstM = normalizeFirstAppraisalMonths(firstAppraisalMonths);
+		const secondM = normalizeSecondAppraisalMonths(secondAppraisalMonths);
 		await pool.execute(
-			`INSERT INTO employee_jobs (employee_id, joined_date, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-			[employee_id, joinedDate || null, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
+			`INSERT INTO employee_jobs (employee_id, joined_date, first_appraisal_months, second_appraisal_months, job_title, job_specification, job_category, sub_unit, location, employment_status, include_contract, department_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+			[employee_id, joinedDate || null, firstM, secondM, jobTitle, jobSpecification, jobCategory, subUnit, location, employmentStatus, includeContract ? 1 : 0, departmentId || null]
 		);
 		console.log('POST employee_jobs - Successfully inserted employee_id:', employee_id, 'with department_id:', departmentId || null);
 		

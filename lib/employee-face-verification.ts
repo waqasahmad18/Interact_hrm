@@ -11,7 +11,7 @@ export async function ensureFaceVerificationColumn(): Promise<void> {
     try {
       await pool.execute(
         `ALTER TABLE hrm_employees
-         ADD COLUMN face_verification_enabled TINYINT(1) NOT NULL DEFAULT 1`
+         ADD COLUMN face_verification_enabled TINYINT(1) NOT NULL DEFAULT 0`
       );
     } catch {
       // column already exists
@@ -35,10 +35,10 @@ export async function isEmployeeFaceVerificationEnabled(
       [id]
     );
     const row = (rows as Array<{ face_verification_enabled?: number }>)[0];
-    if (!row) return true;
-    return Number(row.face_verification_enabled ?? 1) === 1;
+    if (!row) return false;
+    return Number(row.face_verification_enabled ?? 0) === 1;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -146,16 +146,16 @@ async function loadVerificationFlags(): Promise<Map<number, boolean>> {
   await ensureFaceVerificationColumn();
   try {
     const [rows] = await pool.query(
-      `SELECT id, COALESCE(face_verification_enabled, 1) AS face_verification_enabled
+      `SELECT id, COALESCE(face_verification_enabled, 0) AS face_verification_enabled
        FROM hrm_employees`
     );
     for (const raw of rows as Array<Record<string, unknown>>) {
       const id = Number(raw.id);
       if (!id) continue;
-      map.set(id, Number(raw.face_verification_enabled ?? 1) === 1);
+      map.set(id, Number(raw.face_verification_enabled ?? 0) === 1);
     }
   } catch {
-    // default all enabled
+    // leave map empty — callers treat missing as inactive
   }
   return map;
 }
@@ -208,7 +208,7 @@ export async function listEmployeesFaceVerification(): Promise<EmployeeFaceVerif
       pseudonym: row.pseudonym,
       employee_code: row.employee_code,
       department: row.department_name,
-      face_verification_enabled: verificationFlags.get(row.id) ?? true,
+      face_verification_enabled: verificationFlags.get(row.id) ?? false,
       photo_count: counts.photo_count,
       descriptor_count: counts.descriptor_count,
     };

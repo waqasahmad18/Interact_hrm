@@ -563,7 +563,7 @@ export default function FaceEnrollmentAdminPage() {
       pseudonym: e.pseudonym?.trim() || null,
       employee_code: e.employee_code ?? null,
       department: null,
-      face_verification_enabled: true,
+      face_verification_enabled: false,
       photo_count: 0,
       descriptor_count: 0,
     }));

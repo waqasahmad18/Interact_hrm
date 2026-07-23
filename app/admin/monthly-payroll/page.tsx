@@ -58,6 +58,21 @@ type CommissionAmountField =
   | "trainer_incentive"
   | "floor_incentive";
 
+/** One-time static demo for Waqas Rafique (as provided). Remove when live data is trusted. */
+function getWaqasStaticPayrollOverride(employee: { employeeName?: string; pseudonym?: string }) {
+  const name = String(employee.employeeName || "").trim().toLowerCase();
+  if (!(name.includes("waqas") && name.includes("rafique"))) return null;
+  return {
+    basicSalary: 70000,
+    fuelAllowance: 5000,
+    workingDays: 21,
+    unpaidDays: 0,
+    otHours: 51,
+    paidHoursPerDay: 5,
+    zeroExtraDeductions: true,
+  };
+}
+
 export default function MonthlyAttendancePage() {
     // Calculate total working days for the month (excluding leaves and off days)
     function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
@@ -103,6 +118,19 @@ export default function MonthlyAttendancePage() {
     return shiftSeconds;
   }
 
+  /** Paid hours for OT rate: ~5h shift → 5; normal shift → 9. */
+  function getPaidHoursPerDayFromShift(
+    shiftStart: string | null | undefined,
+    shiftEnd: string | null | undefined
+  ): number {
+    const secs = getAssignedShiftSeconds(shiftStart, shiftEnd);
+    if (secs == null || secs <= 0) return 9;
+    const hours = secs / 3600;
+    // Short shifts (e.g. developer) are ~5h
+    if (hours <= 5.5) return 5;
+    return 9;
+  }
+
   // Calculate overtime in seconds (actual - shift duration)
   function calculateOvertime(totalSeconds: number, assignedShiftSeconds: number | null): number | null {
     if (!assignedShiftSeconds || assignedShiftSeconds <= 0) return null;
@@ -125,6 +153,8 @@ export default function MonthlyAttendancePage() {
     // After attendanceByEmployee is defined (around line 660):
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allowOvertimeMap, setAllowOvertimeMap] = useState<Record<string, boolean>>({});
+  /** employee_id → paid hours/day for OT (5 or 8) from shift assignment */
+  const [paidHoursPerDayMap, setPaidHoursPerDayMap] = useState<Record<string, number>>({});
   
   // Set default dates - start of current month to today
   const today = new Date();
@@ -140,7 +170,33 @@ export default function MonthlyAttendancePage() {
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
   const [commissionsMap, setCommissionsMap] = useState<Record<string, EmployeeCommissionRow>>({});
+  /** Editable tax + manual deductions per employee — Final updates live when changed */
+  const [taxByEmployee, setTaxByEmployee] = useState<Record<string, number>>({});
+  const [breakExceedDedByEmployee, setBreakExceedDedByEmployee] = useState<Record<string, number>>({});
+  const [kpisDedByEmployee, setKpisDedByEmployee] = useState<Record<string, number>>({});
+  const [otherDedByEmployee, setOtherDedByEmployee] = useState<Record<string, number>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  function setManualAmount(
+    setter: React.Dispatch<React.SetStateAction<Record<string, number>>>,
+    employeeId: string,
+    raw: string
+  ) {
+    const next = Number(raw);
+    setter((prev) => ({
+      ...prev,
+      [employeeId]: Number.isFinite(next) && next > 0 ? next : 0,
+    }));
+  }
+
+  const manualInputStyle: React.CSSProperties = {
+    width: 88,
+    padding: "4px 6px",
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    fontWeight: 600,
+    color: "#dc2626",
+  };
 
   // Fetch departments
   useEffect(() => {
@@ -280,23 +336,25 @@ export default function MonthlyAttendancePage() {
     }
   };
 
-  // Fetch shift assignment allow_overtime flags for all employees
+  // Fetch shift assignment allow_overtime + paid hours/day from shift timings
   const fetchOverTimeSettings = async () => {
     try {
       const response = await fetch("/api/hrm-shifts-assignments", { cache: "no-store" });
       const data = await response.json();
 
       if (data.success && data.employees) {
-        // Build map of employee_id -> allow_overtime
         const otMap: Record<string, boolean> = {};
+        const hoursMap: Record<string, number> = {};
         data.employees.forEach((emp: any) => {
           const empId = String(emp.id);
           // Latest assignment (returned by API) determines OT allowance
           if (emp.allow_overtime !== undefined && emp.allow_overtime !== null) {
             otMap[empId] = emp.allow_overtime === 1 || emp.allow_overtime === true;
           }
+          hoursMap[empId] = getPaidHoursPerDayFromShift(emp.start_time, emp.end_time);
         });
         setAllowOvertimeMap(otMap);
+        setPaidHoursPerDayMap(hoursMap);
       }
     } catch (err) {
       console.error("Error fetching overtime settings:", err);
@@ -490,16 +548,24 @@ export default function MonthlyAttendancePage() {
   function downloadExcel() {
     // Export the same data as shown in the table (filteredEmployees)
     // Export the same data as shown in the table (filteredEmployees)
-    const dataToExport = filteredEmployees.map(emp => ({
+    const dataToExport = filteredEmployees.map(emp => {
+      const row = getPayrollBreakdown(emp, {
+        taxAmount: taxByEmployee[emp.employeeId] ?? 0,
+        breakExceedDed: breakExceedDedByEmployee[emp.employeeId] ?? 0,
+        kpisDed: kpisDedByEmployee[emp.employeeId] ?? 0,
+        otherDed: otherDedByEmployee[emp.employeeId] ?? 0,
+      });
+      return {
       "ID": emp.employeeId,
       "Employee Name": emp.employeeName,
       "Pseudonym": emp.pseudonym,
       "Department": emp.departmentName,
-      "Basic Salary": emp.basicSalary !== undefined ? emp.basicSalary : '--',
-      "T.W Days": Object.keys(emp.byDate).length > 0 ? getTotalWorkingDays(emp, monthInfo, approvedLeavesMap) : '--',
-      "T.Unpaid Days": Object.keys(emp.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(emp) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--',
-      "O. T Hours": Object.keys(emp.byDate).length > 0 ? getEmployeeTotalOvertime(emp) : '--',
-      "O. T Salary": getEmployeeOTSalary(emp),
+      "Basic Salary": row.basicSalary || '--',
+      "Fuel": row.fuelAllowance || 0,
+      "T.W Days": row.workingDays || '--',
+      "T.Unpaid Days": row.unpaidDaysDisplay,
+      "O. T Hours": row.otHoursLabel,
+      "O. T Salary": row.otSalary,
       "6H Train Amt": getCommissionDisplay(emp.employeeId, "train_6h_amt"),
       "Arrears": getCommissionDisplay(emp.employeeId, "arrears"),
       "KPI Add": getCommissionDisplay(emp.employeeId, "kpi_add"),
@@ -507,8 +573,15 @@ export default function MonthlyAttendancePage() {
       "Existing Client Incentive": getCommissionDisplay(emp.employeeId, "existing_client_incentive"),
       "Trainer Incentive": getCommissionDisplay(emp.employeeId, "trainer_incentive"),
       "Floor Incentive": getCommissionDisplay(emp.employeeId, "floor_incentive"),
-      "Gross Salary": getEmployeeGrossSalary(emp),
-    }));
+      "Gross Salary": row.grossSalary,
+      "Unpaid Days Salary": row.unpaidDaysSalary,
+      "Total Deductions": row.totalDeductions,
+      "Net before Tax": row.netBeforeTax,
+      "Tax": row.tax,
+      "Net Salary": row.netSalary,
+      "Final Salary": row.finalSalary,
+    };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -789,6 +862,7 @@ export default function MonthlyAttendancePage() {
       // Always show salary from salaryMap (amount, any component)
       const basicSalary = salaryMap[empId];
       const allowOT = allowOvertimeMap[empId] !== false;
+      const paidHoursPerDay = paidHoursPerDayMap[empId] ?? 9;
       return {
         employeeId: empId,
         employeeName: (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.employee_name || "-"),
@@ -796,11 +870,12 @@ export default function MonthlyAttendancePage() {
         departmentName: emp.department_name || "-",
         basicSalary,
         allowOvertime: allowOT,
+        paidHoursPerDay,
         byDate: att ? att.byDate : {},
         dateMeta: att ? att.dateMeta : {},
       };
     });
-  }, [attendance, allEmployees, salaryMap, allowOvertimeMap]);
+  }, [attendance, allEmployees, salaryMap, allowOvertimeMap, paidHoursPerDayMap]);
 
   // Calculate total overtime (extra hours) for the SELECTED MONTH ONLY for an employee
   function getEmployeeTotalOvertime(emp: any) {
@@ -827,42 +902,6 @@ export default function MonthlyAttendancePage() {
     return `${h}h ${m}m`;
   }
 
-  // Calculate O.T Salary for the SELECTED MONTH ONLY for an employee
-  function getEmployeeOTSalary(employee: any) {
-    let otSalary = '--';
-    // Check if overtime is allowed for this employee
-    if (employee.allowOvertime && Object.keys(employee.byDate).length > 0) {
-      // Get O.T seconds ONLY FOR SELECTED MONTH
-      let totalOvertimeSeconds = 0;
-      if (monthInfo.days && monthInfo.days.length > 0) {
-        monthInfo.days.forEach((day) => {
-          const records = employee.byDate[day.dateKey] || [];
-          (records as any[]).forEach((record) => {
-            if (record.overtime && typeof record.overtime === 'number' && record.overtime > 0) {
-              totalOvertimeSeconds += record.overtime;
-            }
-          });
-        });
-      }
-      // Convert seconds to hours (fractional)
-      const overtimeHours = totalOvertimeSeconds / 3600;
-      // Get working days
-      const totalWorkingDays = getTotalWorkingDays(employee, monthInfo, approvedLeavesMap);
-      // Get basic salary
-      const basicSalary = employee.basicSalary;
-      // Working hours per day: 5 if pseudonym is 'Developer', else 9
-      let workingHoursPerDay = 9;
-      if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
-        workingHoursPerDay = 5;
-      }
-      if (basicSalary && totalWorkingDays && overtimeHours > 0) {
-        const perHourSalary = basicSalary / totalWorkingDays / workingHoursPerDay;
-        otSalary = Math.round(perHourSalary * overtimeHours).toString();
-      }
-    }
-    return otSalary;
-  }
-
   function formatAmountValue(value: number) {
     if (!Number.isFinite(value)) return "--";
     if (Number.isInteger(value)) return String(value);
@@ -887,70 +926,184 @@ export default function MonthlyAttendancePage() {
 
   function getCommissionDisplay(employeeId: string | number, field: CommissionAmountField) {
     const amount = getCommissionAmount(employeeId, field);
-    if (amount === null) return "--";
+    if (amount === null) return "0";
     return formatAmountValue(amount);
   }
 
-  function getEmployeeGrossSalary(employee: any) {
-    const trainAmt = getCommissionAmount(employee.employeeId, "train_6h_amt");
-    const arrears = getCommissionAmount(employee.employeeId, "arrears");
-    const kpiAdd = getCommissionAmount(employee.employeeId, "kpi_add");
-    const commission = getCommissionAmount(employee.employeeId, "commission");
-    const existingClientIncentive = getCommissionAmount(employee.employeeId, "existing_client_incentive");
-    const trainerIncentive = getCommissionAmount(employee.employeeId, "trainer_incentive");
-    const floorIncentive = getCommissionAmount(employee.employeeId, "floor_incentive");
+  function parseMoneyCell(value: any): number {
+    if (value === null || value === undefined || value === "--" || value === "-" || value === "") return 0;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
 
-    const hasCommissionRow =
-      trainAmt !== null ||
-      arrears !== null ||
-      kpiAdd !== null ||
-      commission !== null ||
-      existingClientIncentive !== null ||
-      trainerIncentive !== null ||
-      floorIncentive !== null;
+  function formatOtHoursLabel(hours: number) {
+    if (!(hours > 0)) return "0h 00m";
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m`;
+  }
 
-    if (!hasCommissionRow) return "--";
+  /**
+   * Full payroll row (dynamic). Waqas static override applies when matched.
+   * Final = Net before tax − Tax. Manual deduction columns feed Total Deductions live.
+   */
+  function getPayrollBreakdown(
+    employee: any,
+    opts: {
+      taxAmount?: number;
+      breakExceedDed?: number;
+      kpisDed?: number;
+      otherDed?: number;
+    } = {}
+  ) {
+    const taxAmount = opts.taxAmount ?? 0;
+    const override = getWaqasStaticPayrollOverride(employee);
+    const hasAttendance = Object.keys(employee.byDate || {}).length > 0;
 
-    const basicSalary = Number(employee.basicSalary ?? 0) || 0;
-    const otSalaryParsed = Number(getEmployeeOTSalary(employee));
-    const otSalary = Number.isNaN(otSalaryParsed) ? 0 : otSalaryParsed;
+    const basicSalary = override
+      ? override.basicSalary
+      : Number(employee.basicSalary ?? 0) || 0;
+    const fuelAllowance = override ? override.fuelAllowance : 0;
+    const paidHoursPerDay = override
+      ? override.paidHoursPerDay
+      : Number(employee.paidHoursPerDay) > 0
+        ? Number(employee.paidHoursPerDay)
+        : 9;
+
+    const workingDays = override
+      ? override.workingDays
+      : hasAttendance
+        ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)
+        : 0;
+
+    const unpaidDays = override
+      ? override.unpaidDays
+      : hasAttendance
+        ? calculateTotalDeduction(employee) / 100
+        : 0;
+
+    let otHours = 0;
+    let otHoursLabel = "--";
+    if (override) {
+      otHours = override.otHours;
+      otHoursLabel = formatOtHoursLabel(otHours);
+    } else if (!employee.allowOvertime) {
+      otHoursLabel = "--";
+    } else if (hasAttendance) {
+      let totalOvertimeSeconds = 0;
+      if (monthInfo.days?.length) {
+        monthInfo.days.forEach((day: any) => {
+          const records = employee.byDate[day.dateKey] || [];
+          (records as any[]).forEach((record) => {
+            if (record.overtime && typeof record.overtime === "number" && record.overtime > 0) {
+              totalOvertimeSeconds += record.overtime;
+            }
+          });
+        });
+      }
+      const otH = Math.floor(totalOvertimeSeconds / 3600);
+      const otM = Math.floor((totalOvertimeSeconds % 3600) / 60);
+      otHours = otH + otM / 60;
+      otHoursLabel = totalOvertimeSeconds > 0 ? formatOtHoursLabel(otHours) : "0h 00m";
+    }
+
+    let otSalary = 0;
+    if (employee.allowOvertime !== false || override) {
+      if (basicSalary > 0 && workingDays > 0 && otHours > 0) {
+        const perHourRate = basicSalary / workingDays / paidHoursPerDay;
+        otSalary = Math.round(perHourRate * otHours);
+      }
+    }
+
+    const trainAmt = getCommissionAmount(employee.employeeId, "train_6h_amt") ?? 0;
+    const arrears = getCommissionAmount(employee.employeeId, "arrears") ?? 0;
+    const kpiAdd = getCommissionAmount(employee.employeeId, "kpi_add") ?? 0;
+    const commission = getCommissionAmount(employee.employeeId, "commission") ?? 0;
+    const existingClientIncentive = getCommissionAmount(employee.employeeId, "existing_client_incentive") ?? 0;
+    const trainerIncentive = getCommissionAmount(employee.employeeId, "trainer_incentive") ?? 0;
+    const floorIncentive = getCommissionAmount(employee.employeeId, "floor_incentive") ?? 0;
 
     const grossSalary =
       basicSalary +
+      fuelAllowance +
       otSalary +
-      (trainAmt ?? 0) +
-      (arrears ?? 0) +
-      (kpiAdd ?? 0) +
-      (commission ?? 0) +
-      (existingClientIncentive ?? 0) +
-      (trainerIncentive ?? 0) +
-      (floorIncentive ?? 0);
+      trainAmt +
+      arrears +
+      kpiAdd +
+      commission +
+      existingClientIncentive +
+      trainerIncentive +
+      floorIncentive;
 
-    return formatAmountValue(grossSalary);
+    const unpaidDaysSalary =
+      basicSalary > 0 && workingDays > 0 && unpaidDays > 0
+        ? Math.round((basicSalary / workingDays) * unpaidDays)
+        : 0;
+
+    const breakExceedDed = Number.isFinite(opts.breakExceedDed) && (opts.breakExceedDed as number) > 0
+      ? (opts.breakExceedDed as number)
+      : 0;
+    const kpisDed = Number.isFinite(opts.kpisDed) && (opts.kpisDed as number) > 0
+      ? (opts.kpisDed as number)
+      : 0;
+    const otherDed = Number.isFinite(opts.otherDed) && (opts.otherDed as number) > 0
+      ? (opts.otherDed as number)
+      : 0;
+
+    const adv = Number(advanceSalaryMap[employee.employeeId] ?? 0);
+    const loan = Number(loanSalaryMap[employee.employeeId] ?? 0);
+    const loanAdvance =
+      override?.zeroExtraDeductions
+        ? 0
+        : (Number.isFinite(adv) ? adv : 0) + (Number.isFinite(loan) ? loan : 0);
+
+    const totalDeductions =
+      unpaidDaysSalary + breakExceedDed + kpisDed + otherDed + loanAdvance;
+
+    const netBeforeTax = grossSalary - totalDeductions;
+    const tax = Number.isFinite(taxAmount) && taxAmount > 0 ? taxAmount : 0;
+    const netSalary = netBeforeTax - tax;
+    const finalSalary = netSalary;
+
+    const unpaidDaysDisplay = Number.isInteger(unpaidDays)
+      ? String(unpaidDays)
+      : unpaidDays.toFixed(1).replace(/\.0$/, "");
+
+    return {
+      isStaticDemo: !!override,
+      basicSalary,
+      fuelAllowance,
+      workingDays,
+      unpaidDays,
+      unpaidDaysDisplay,
+      otHours,
+      otHoursLabel,
+      otSalary,
+      grossSalary,
+      unpaidDaysSalary,
+      breakExceedDed,
+      kpisDed,
+      otherDed,
+      loanAdvance,
+      totalDeductions,
+      netBeforeTax,
+      tax,
+      netSalary,
+      finalSalary,
+    };
   }
 
-  // Calculate Unpaid Days Salary for an employee
-  // Developer (P.Name = 'Developer') ki shift 5 hours ki hai, baqi sab ki 9 hours ki hai.
+  function getEmployeeOTSalary(employee: any) {
+    return String(getPayrollBreakdown(employee).otSalary);
+  }
+
+  function getEmployeeGrossSalary(employee: any) {
+    const g = getPayrollBreakdown(employee).grossSalary;
+    return g > 0 || getWaqasStaticPayrollOverride(employee) ? formatAmountValue(g) : "--";
+  }
+
   function getUnpaidDaysSalary(employee: any) {
-    const basicSalary = Number(employee.basicSalary ?? 0);
-    const totalWorkingDays = Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : 0;
-    // Unpaid days = totalDeduction / 100
-    const unpaidDays = Object.keys(employee.byDate).length > 0 ? (calculateTotalDeduction(employee) / 100) : 0;
-    // Working hours per day logic:
-    // Agar employee ka pseudonym (P.Name) 'Developer' hai to shift 5 hours ki hai.
-    // Baqi sab employees ki shift 9 hours ki hai.
-    let workingHoursPerDay = 9;
-    if (employee.pseudonym && typeof employee.pseudonym === 'string' && employee.pseudonym.trim().toLowerCase() === 'developer') {
-      workingHoursPerDay = 5;
-    }
-    // Formula: Daily Salary = Basic Salary / Total Working Days
-    // Unpaid Days Salary = Daily Salary * Unpaid Days
-    if (basicSalary > 0 && totalWorkingDays > 0 && unpaidDays > 0) {
-      const dailySalary = basicSalary / totalWorkingDays;
-      const unpaidDaysSalary = dailySalary * unpaidDays;
-      return Math.round(unpaidDaysSalary).toString();
-    }
-    return '--';
+    return String(getPayrollBreakdown(employee).unpaidDaysSalary);
   }
 
   // Filter attendanceByEmployee for table and export
@@ -1060,16 +1213,17 @@ export default function MonthlyAttendancePage() {
             <tbody>
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
-                  const advSalary = advanceSalaryMap[employee.employeeId];
-                  const loanSalary = loanSalaryMap[employee.employeeId];
-                  const adv = Number(advSalary ?? 0);
-                  const loan = Number(loanSalary ?? 0);
-                  const hasAdv = advSalary !== undefined && Number.isFinite(adv);
-                  const hasLoan = loanSalary !== undefined && Number.isFinite(loan);
-                  const loanAdvanceValue =
-                    hasAdv || hasLoan
-                      ? (hasAdv ? adv : 0) + (hasLoan ? loan : 0)
-                      : "--";
+                  const empId = employee.employeeId;
+                  const taxVal = taxByEmployee[empId] ?? 0;
+                  const breakVal = breakExceedDedByEmployee[empId] ?? 0;
+                  const kpisVal = kpisDedByEmployee[empId] ?? 0;
+                  const otherVal = otherDedByEmployee[empId] ?? 0;
+                  const row = getPayrollBreakdown(employee, {
+                    taxAmount: taxVal,
+                    breakExceedDed: breakVal,
+                    kpisDed: kpisVal,
+                    otherDed: otherVal,
+                  });
                   return (
                     <tr key={employee.employeeId}>
                       <td className={styles.cellMuted}>{employee.employeeId}</td>
@@ -1090,11 +1244,18 @@ export default function MonthlyAttendancePage() {
                       </td>
                       <td>{employee.pseudonym}</td>
                       <td>{employee.departmentName}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{employee.basicSalary !== undefined ? formatWithCommas(employee.basicSalary) : '--'}</td>
-                      <td>{Object.keys(employee.byDate).length > 0 ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap) : '--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? (() => { const val = calculateTotalDeduction(employee) / 100; return Number.isInteger(val) ? val : val.toFixed(1).replace(/\.0$/, ''); })() : '--'}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{Object.keys(employee.byDate).length > 0 ? getEmployeeTotalOvertime(employee) : '--'}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getEmployeeOTSalary(employee))}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>
+                        {row.basicSalary > 0 ? formatWithCommas(row.basicSalary) : '--'}
+                        {row.fuelAllowance > 0 ? (
+                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+                            +Fuel {formatWithCommas(row.fuelAllowance)}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>{row.workingDays > 0 ? row.workingDays : '--'}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{row.unpaidDaysDisplay}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{row.otHoursLabel}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.otSalary)}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "train_6h_amt"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "arrears"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "kpi_add"))}</td>
@@ -1102,17 +1263,57 @@ export default function MonthlyAttendancePage() {
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "existing_client_incentive"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "trainer_incentive"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "floor_incentive"))}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getEmployeeGrossSalary(employee))}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(getUnpaidDaysSalary(employee))}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(loanAdvanceValue)}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{'--'}</td>
-                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{'--'}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 700 }}>{formatWithCommas(row.grossSalary)}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.unpaidDaysSalary)}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={breakVal}
+                          onChange={(e) => setManualAmount(setBreakExceedDedByEmployee, empId, e.target.value)}
+                          style={manualInputStyle}
+                          title="Break Exceed Ded. — totals update live"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={kpisVal}
+                          onChange={(e) => setManualAmount(setKpisDedByEmployee, empId, e.target.value)}
+                          style={manualInputStyle}
+                          title="KPIs Ded. — totals update live"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={otherVal}
+                          onChange={(e) => setManualAmount(setOtherDedByEmployee, empId, e.target.value)}
+                          style={manualInputStyle}
+                          title="Other Ded — totals update live"
+                        />
+                      </td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.loanAdvance)}</td>
+                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.totalDeductions)}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netBeforeTax)}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={taxVal}
+                          onChange={(e) => setManualAmount(setTaxByEmployee, empId, e.target.value)}
+                          style={manualInputStyle}
+                          title="Tax — Final updates when you change this"
+                        />
+                      </td>
+                      <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netSalary)}</td>
+                      <td style={{ color: '#007a5a', fontWeight: 700 }}>{formatWithCommas(row.finalSalary)}</td>
                     </tr>
                   );
                 })

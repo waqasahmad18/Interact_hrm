@@ -69,7 +69,9 @@ export async function POST(req: NextRequest) {
       role,
       cnic_number,
       cnic_address,
-      employment_status
+      employment_status,
+      employment_type,
+      working_hours
     } = data;
     conn = await pool.getConnection();
     if (!conn) {
@@ -77,9 +79,17 @@ export async function POST(req: NextRequest) {
     }
     // Convert empty employee_code to null to avoid duplicate key constraint
     const empCode = employee_code && employee_code.trim() !== '' ? employee_code : null;
+    const empType = employment_type === "Part Time" || employment_type === "Full Time" ? employment_type : null;
+    let hoursVal: number | null = null;
+    if (empType === "Full Time") {
+      hoursVal = 9;
+    } else if (empType === "Part Time") {
+      const n = Number(working_hours);
+      hoursVal = Number.isInteger(n) && n >= 1 && n <= 6 ? n : null;
+    }
     const [result]: any = await conn.execute(
-      `INSERT INTO hrm_employees (first_name, pseudonym, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status]
+      `INSERT INTO hrm_employees (first_name, pseudonym, last_name, employee_code, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, employment_type, working_hours, face_verification_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, empType, hoursVal]
     );
     const insertedId = result.insertId;
     console.log('Insert successful, ID:', insertedId);
@@ -114,7 +124,9 @@ export async function PUT(req: NextRequest) {
       role,
       cnic_number,
       cnic_address,
-      employment_status
+      employment_status,
+      employment_type,
+      working_hours
     } = data;
     if (!id && !employee_code && !username) {
       return NextResponse.json({ success: false, error: 'id or employee_code or username is required' }, { status: 400 });
@@ -128,13 +140,21 @@ export async function PUT(req: NextRequest) {
     
     // Convert empty employee_code to null to avoid duplicate key constraint
     const empCode = employee_code && employee_code.trim() !== '' ? employee_code : null;
+    const empType = employment_type === "Part Time" || employment_type === "Full Time" ? employment_type : null;
+    let hoursVal: number | null = null;
+    if (empType === "Full Time") {
+      hoursVal = 9;
+    } else if (empType === "Part Time") {
+      const n = Number(working_hours);
+      hoursVal = Number.isInteger(n) && n >= 1 && n <= 6 ? n : null;
+    }
     
-    console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`);
-    console.log('Parameters:', [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]);
+    console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ?, employment_type = ?, working_hours = ? WHERE ${whereClause}`);
+    console.log('Parameters:', [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, empType, hoursVal, whereValue]);
     
     const [result]: any = await conn.execute(
-      `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ? WHERE ${whereClause}`,
-      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, whereValue]
+      `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_address = ?, employment_status = ?, employment_type = ?, working_hours = ? WHERE ${whereClause}`,
+      [first_name, middle_name, last_name, empCode, dob, gender, marital_status, nationality, profile_img, username, password, status, role, cnic_number, cnic_address, employment_status, empType, hoursVal, whereValue]
     );
     
     console.log('Affected rows:', result.affectedRows);

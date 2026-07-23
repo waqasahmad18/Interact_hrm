@@ -197,6 +197,10 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = React.useState<any[]>([]);
   const [reminders, setReminders] = React.useState<any[]>([]);
   const [birthdays, setBirthdays] = React.useState<string[]>([]);
+  const [pendingAppraisals, setPendingAppraisals] = React.useState<
+    Array<{ employee_id: number; employee_name: string; cycle_label: string; due_date: string; has_open_assignment: boolean }>
+  >([]);
+  const [loadingAppraisals, setLoadingAppraisals] = React.useState(false);
   const leavesRef = React.useRef<Leave[]>([]);
   const finRef = React.useRef<FinancialRequest[]>([]);
   const ticketsRef = React.useRef<Ticket[]>([]);
@@ -244,6 +248,21 @@ export default function DashboardPage() {
     if (!value) return "";
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString();
+  }, []);
+
+  const fetchPendingAppraisals = React.useCallback(async () => {
+    try {
+      setLoadingAppraisals(true);
+      const res = await fetch("/api/appraisals/pending", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) {
+        setPendingAppraisals(Array.isArray(data.pending) ? data.pending : []);
+      }
+    } catch (err) {
+      console.error("appraisals fetch", err);
+    } finally {
+      setLoadingAppraisals(false);
+    }
   }, []);
 
   const fetchLeaves = React.useCallback(async () => {
@@ -618,6 +637,7 @@ export default function DashboardPage() {
     fetchLeaves();
     fetchFinancialRequests();
     fetchTickets();
+    fetchPendingAppraisals();
     fetchEmployeeCount();
     fetchTodayAttendance();
     fetchWeeklyAttendance();
@@ -744,6 +764,15 @@ export default function DashboardPage() {
             <span>
               <strong>{pendingFinancial.length}</strong> payroll request
               {pendingFinancial.length === 1 ? "" : "s"} pending
+            </span>
+          </div>
+          <div className={styles.insightChip}>
+            <span className={styles.insightIcon}>
+              <FaClipboardList />
+            </span>
+            <span>
+              <strong>{pendingAppraisals.length}</strong> appraisal
+              {pendingAppraisals.length === 1 ? "" : "s"} due
             </span>
           </div>
           <div className={styles.insightChip}>
@@ -964,6 +993,48 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+            </section>
+
+            <section className={`${styles.card} ${styles.cardDelay3}`}>
+              <div className={styles.cardHeader}>
+                <div className={styles.cardTitleRow}>
+                  <span className={styles.cardIcon}>
+                    <FaClipboardList />
+                  </span>
+                  <h2 className={styles.cardTitle}>Pending appraisals</h2>
+                </div>
+                <span className={`${styles.pill} ${styles.pillLive}`}>
+                  {loadingAppraisals ? "…" : `${pendingAppraisals.length} due`}
+                </span>
+              </div>
+              <ul className={`${styles.list} ${styles.listScrollable}`}>
+                {pendingAppraisals.length === 0 && (
+                  <li
+                    className={styles.listItem}
+                    onClick={() => router.push("/admin/pending-appraisals")}
+                  >
+                    <div className={styles.listItemTitle}>No appraisals due</div>
+                    <div className={styles.listItemMeta}>Open pending appraisals</div>
+                  </li>
+                )}
+                {pendingAppraisals.slice(0, 5).map((row) => (
+                  <li
+                    key={`${row.employee_id}-${row.cycle_label}`}
+                    className={styles.listItem}
+                    onClick={() => router.push("/admin/pending-appraisals")}
+                  >
+                    <div className={styles.listItemTop}>
+                      <span className={styles.listItemTitle}>{row.employee_name}</span>
+                      <span className={styles.badge}>
+                        {row.has_open_assignment ? "Issued" : "Due"}
+                      </span>
+                    </div>
+                    <div className={styles.listItemMeta}>
+                      {row.cycle_label} · due {row.due_date}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </section>
 
             <section className={`${styles.card} ${styles.cardDelay3}`}>

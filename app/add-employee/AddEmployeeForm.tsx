@@ -122,6 +122,8 @@ export default function AddEmployeeForm({
   // Job Details state
   const [jobDetails, setJobDetails] = useState({
     joinedDate: "",
+    firstAppraisalMonths: "",
+    secondAppraisalMonths: "",
     jobTitle: "",
     jobSpecification: "",
     jobCategory: "",
@@ -146,6 +148,12 @@ export default function AddEmployeeForm({
         body: JSON.stringify({
           employee_id: employeeId,
           joinedDate: jobDetails.joinedDate,
+          firstAppraisalMonths: jobDetails.firstAppraisalMonths
+            ? Number(jobDetails.firstAppraisalMonths)
+            : null,
+          secondAppraisalMonths: jobDetails.secondAppraisalMonths
+            ? Number(jobDetails.secondAppraisalMonths)
+            : null,
           jobTitle: jobDetails.jobTitle,
           jobSpecification: jobDetails.jobSpecification,
           jobCategory: jobDetails.jobCategory,
@@ -208,6 +216,8 @@ export default function AddEmployeeForm({
   const [cnicNumber, setCnicNumber] = useState("");
   const [cnicAddress, setCnicAddress] = useState("");
   const [employmentStatus, setEmploymentStatus] = useState("");
+  const [employmentType, setEmploymentType] = useState("");
+  const [workingHours, setWorkingHours] = useState<string>("");
   // Role selection for hrm_employees
   const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
   const [role, setRole] = useState<string>("Officer");
@@ -293,6 +303,12 @@ export default function AddEmployeeForm({
             setCnicNumber(data.employee.cnic_number || "");
             setCnicAddress(data.employee.cnic_address || "");
             setEmploymentStatus(data.employee.employment_status || "");
+            setEmploymentType(data.employee.employment_type || "");
+            setWorkingHours(
+              data.employee.working_hours != null && data.employee.working_hours !== ""
+                ? String(data.employee.working_hours)
+                : ""
+            );
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
               // Set status to "enabled" - default for login details
@@ -360,6 +376,14 @@ export default function AddEmployeeForm({
         if (data.success && data.job) {
           setJobDetails({
             joinedDate: formatDateForInput(data.job.joined_date),
+            firstAppraisalMonths:
+              data.job.first_appraisal_months != null
+                ? String(data.job.first_appraisal_months)
+                : "",
+            secondAppraisalMonths:
+              data.job.second_appraisal_months != null
+                ? String(data.job.second_appraisal_months)
+                : "",
             jobTitle: data.job.job_title || "",
             jobSpecification: data.job.job_specification || "",
             jobCategory: data.job.job_category || "",
@@ -431,6 +455,17 @@ export default function AddEmployeeForm({
       toastError('Password and Confirm Password do not match');
       return;
     }
+    if (!employmentType) {
+      toastError("Please select Employment Type");
+      return;
+    }
+    if (employmentType === "Part Time") {
+      const n = Number(workingHours);
+      if (!Number.isInteger(n) || n < 1 || n > 6) {
+        toastError("Part Time: select working hours from 1 to 6");
+        return;
+      }
+    }
     // Do not require employeeId before save; it will be set after backend returns it
     const hrmPayload: any = {
       first_name: firstName || '',
@@ -444,6 +479,13 @@ export default function AddEmployeeForm({
       cnic_number: cnicNumber || '',
       cnic_address: cnicAddress || '',
       employment_status: employmentStatus || '',
+      employment_type: employmentType || '',
+      working_hours:
+        employmentType === "Full Time"
+          ? 9
+          : employmentType === "Part Time"
+            ? Number(workingHours) || null
+            : null,
       profile_img: profileImg || '',
       username: createLogin ? username : '',
       password: createLogin ? password : '',
@@ -590,6 +632,62 @@ export default function AddEmployeeForm({
                   <option value="Permanent">Permanent</option>
                 </select>
               </div>
+              <div>
+                <label className={styles.fieldLabel}>Employment Type</label>
+                <select
+                  className={styles.select}
+                  value={employmentType}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEmploymentType(next);
+                    if (next === "Full Time") {
+                      setWorkingHours("9");
+                    } else if (next === "Part Time") {
+                      setWorkingHours((prev) => {
+                        const n = Number(prev);
+                        return n >= 1 && n <= 6 ? String(n) : "";
+                      });
+                    } else {
+                      setWorkingHours("");
+                    }
+                  }}
+                  required
+                >
+                  <option value="">Select Employment Type</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Part Time">Part Time</option>
+                </select>
+              </div>
+              {employmentType === "Full Time" ? (
+                <div>
+                  <label className={styles.fieldLabel}>Working Hours</label>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    value="9 hours"
+                    readOnly
+                    style={{ background: "#f8fafc", color: "#334155", cursor: "default" }}
+                  />
+                </div>
+              ) : null}
+              {employmentType === "Part Time" ? (
+                <div>
+                  <label className={styles.fieldLabel}>Working Hours</label>
+                  <select
+                    className={styles.select}
+                    value={workingHours}
+                    onChange={(e) => setWorkingHours(e.target.value)}
+                    required
+                  >
+                    <option value="">Select hours (1–6)</option>
+                    {[1, 2, 3, 4, 5, 6].map((h) => (
+                      <option key={h} value={String(h)}>
+                        {h} {h === 1 ? "hour" : "hours"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div>
                 <label className={styles.fieldLabel}>Role</label>
                 <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
@@ -791,6 +889,37 @@ export default function AddEmployeeForm({
                   <div className={styles.field}>
                     <label className={styles.fieldLabel}>Job Title</label>
                     <input className={styles.input} type="text" placeholder="Job Title" value={jobDetails.jobTitle} onChange={e => setJobDetails(j => ({ ...j, jobTitle: e.target.value }))} />
+                  </div>
+                </div>
+                <div className={styles.row}>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>1st Appraisal Timing</label>
+                    <select
+                      className={styles.select}
+                      value={jobDetails.firstAppraisalMonths}
+                      onChange={(e) =>
+                        setJobDetails((j) => ({ ...j, firstAppraisalMonths: e.target.value }))
+                      }
+                    >
+                      <option value="">Select 1st appraisal</option>
+                      <option value="3">After 3 months</option>
+                      <option value="6">After 6 months</option>
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.fieldLabel}>2nd Appraisal Timing</label>
+                    <select
+                      className={styles.select}
+                      value={jobDetails.secondAppraisalMonths}
+                      onChange={(e) =>
+                        setJobDetails((j) => ({ ...j, secondAppraisalMonths: e.target.value }))
+                      }
+                    >
+                      <option value="">Select 2nd appraisal</option>
+                      <option value="7">After 7 months</option>
+                      <option value="8">After 8 months</option>
+                      <option value="12">Annual (12 months)</option>
+                    </select>
                   </div>
                 </div>
                 <div className={styles.row}>
