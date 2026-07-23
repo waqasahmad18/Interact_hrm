@@ -162,9 +162,11 @@ export default function MonthlyAttendancePage() {
   const [breakExceedDedByEmployee, setBreakExceedDedByEmployee] = useState<Record<string, number>>({});
   const [kpisDedByEmployee, setKpisDedByEmployee] = useState<Record<string, number>>({});
   const [otherDedByEmployee, setOtherDedByEmployee] = useState<Record<string, number>>({});
-  /** CTD + Fuel — persisted in monthly_payroll_adjustments */
+  /** CTD + Fuel + Unpaid days — persisted in monthly_payroll_adjustments */
   const [ctdByEmployee, setCtdByEmployee] = useState<Record<string, number>>({});
   const [fuelByEmployee, setFuelByEmployee] = useState<Record<string, number>>({});
+  /** Override map; missing key = use system-calculated unpaid days */
+  const [unpaidDaysByEmployee, setUnpaidDaysByEmployee] = useState<Record<string, number>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   function setManualAmount(
@@ -184,6 +186,11 @@ export default function MonthlyAttendancePage() {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
+  function parseUnpaidDaysValue(raw: string | number | undefined): number {
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+
   /** Fuel from DB / HR edit; default 0 (no static demo values). */
   function getFuelAllowanceForEmployee(employee: { employeeId?: string }) {
     const empId = String(employee.employeeId ?? "");
@@ -191,6 +198,42 @@ export default function MonthlyAttendancePage() {
       return fuelByEmployee[empId] ?? 0;
     }
     return 0;
+  }
+
+  /** System unpaid days from attendance deduction % (e.g. 400% → 4 days). */
+  function getSystemUnpaidDays(employee: any): number {
+    const hasAttendance = Object.keys(employee.byDate || {}).length > 0;
+    if (!hasAttendance) return 0;
+    return calculateTotalDeduction(employee) / 100;
+  }
+
+  /** HR override if saved; otherwise system-calculated value. */
+  function getUnpaidDaysForEmployee(employee: any): number {
+    const empId = String(employee.employeeId ?? "");
+    if (Object.prototype.hasOwnProperty.call(unpaidDaysByEmployee, empId)) {
+      return unpaidDaysByEmployee[empId] ?? 0;
+    }
+    return getSystemUnpaidDays(employee);
+  }
+
+  function setUnpaidDaysAmount(employeeId: string, raw: string) {
+    setUnpaidDaysByEmployee((prev) => ({
+      ...prev,
+      [employeeId]: parseUnpaidDaysValue(raw),
+    }));
+  }
+
+  function saveUnpaidDaysAmount(employeeId: string, raw?: string) {
+    if (!selectedMonth) return;
+    const unpaid_days =
+      raw !== undefined
+        ? parseUnpaidDaysValue(raw)
+        : (unpaidDaysByEmployee[employeeId] ?? 0);
+    void fetch("/api/monthly-payroll-adjustments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employee_id: employeeId, month: selectedMonth, unpaid_days }),
+    }).catch((err) => console.error("Unpaid days save failed", err));
   }
 
   function setFuelAmount(employeeId: string, raw: string) {
@@ -464,6 +507,7 @@ export default function MonthlyAttendancePage() {
     if (!selectedMonth) {
       setCtdByEmployee({});
       setFuelByEmployee({});
+      setUnpaidDaysByEmployee({});
       return;
     }
     let cancelled = false;
@@ -475,31 +519,37 @@ export default function MonthlyAttendancePage() {
         if (cancelled) return;
         const ctdMap: Record<string, number> = {};
         const fuelMap: Record<string, number> = {};
+        const unpaidMap: Record<string, number> = {};
         if (data.success && Array.isArray(data.adjustments)) {
           data.adjustments.forEach(
             (row: {
               employee_id?: string | number;
               ctd?: number;
               fuel_allowance?: number | null;
+              unpaid_days?: number | null;
             }) => {
               const id = String(row.employee_id ?? "").trim();
               if (!id) return;
               ctdMap[id] = parsePositiveMoney(row.ctd);
-              // NULL = not set → keep UI default (5k where applicable)
               if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
                 fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
+              }
+              if (row.unpaid_days !== null && row.unpaid_days !== undefined) {
+                unpaidMap[id] = parseUnpaidDaysValue(row.unpaid_days);
               }
             }
           );
         }
         setCtdByEmployee(ctdMap);
         setFuelByEmployee(fuelMap);
+        setUnpaidDaysByEmployee(unpaidMap);
       })
       .catch((err) => {
         console.error("Payroll adjustments fetch failed", err);
         if (!cancelled) {
           setCtdByEmployee({});
           setFuelByEmployee({});
+          setUnpaidDaysByEmployee({});
         }
       });
     return () => {
@@ -642,6 +692,7 @@ export default function MonthlyAttendancePage() {
         otherDed: otherDedByEmployee[emp.employeeId] ?? 0,
         ctd: ctdByEmployee[emp.employeeId] ?? 0,
         fuelAllowance: getFuelAllowanceForEmployee(emp),
+        unpaidDays: getUnpaidDaysForEmployee(emp),
       });
       return {
       "ID": emp.employeeId,
@@ -1053,6 +1104,7 @@ export default function MonthlyAttendancePage() {
       otherDed?: number;
       ctd?: number;
       fuelAllowance?: number;
+      unpaidDays?: number;
     } = {}
   ) {
     const taxAmount = opts.taxAmount ?? 0;
@@ -1070,7 +1122,11 @@ export default function MonthlyAttendancePage() {
       ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)
       : 0;
 
-    const unpaidDays = hasAttendance ? calculateTotalDeduction(employee) / 100 : 0;
+    const systemUnpaidDays = hasAttendance ? calculateTotalDeduction(employee) / 100 : 0;
+    const unpaidDays =
+      opts.unpaidDays !== undefined
+        ? parseUnpaidDaysValue(opts.unpaidDays)
+        : systemUnpaidDays;
 
     let otHours = 0;
     let otHoursLabel = "--";
@@ -1310,6 +1366,7 @@ export default function MonthlyAttendancePage() {
                   const otherVal = otherDedByEmployee[empId] ?? 0;
                   const ctdVal = ctdByEmployee[empId] ?? 0;
                   const fuelVal = getFuelAllowanceForEmployee(employee);
+                  const unpaidVal = getUnpaidDaysForEmployee(employee);
                   const row = getPayrollBreakdown(employee, {
                     taxAmount: taxVal,
                     breakExceedDed: breakVal,
@@ -1317,6 +1374,7 @@ export default function MonthlyAttendancePage() {
                     otherDed: otherVal,
                     ctd: ctdVal,
                     fuelAllowance: fuelVal,
+                    unpaidDays: unpaidVal,
                   });
                   return (
                     <tr key={employee.employeeId}>
@@ -1354,7 +1412,18 @@ export default function MonthlyAttendancePage() {
                         />
                       </td>
                       <td>{row.workingDays > 0 ? row.workingDays : '--'}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{row.unpaidDaysDisplay}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={unpaidVal}
+                          onChange={(e) => setUnpaidDaysAmount(empId, e.target.value)}
+                          onBlur={(e) => saveUnpaidDaysAmount(empId, e.target.value)}
+                          style={manualInputStyle}
+                          title={`System unpaid days: ${getSystemUnpaidDays(employee)} — editable override`}
+                        />
+                      </td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{row.otHoursLabel}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.otSalary)}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "train_6h_amt"))}</td>
