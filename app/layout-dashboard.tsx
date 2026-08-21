@@ -8,6 +8,7 @@ import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaId
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
+import { AdminActivityProbe } from "./components/AdminActivityProbe";
 import { ShellImageUpload } from "./components/ShellImageUpload";
 import {
 	fetchShellBranding,
@@ -516,6 +517,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 					</main>
 				</div>
 			</div>
+			<AdminActivityProbe />
 		</>
-	 );
+	);
 }
