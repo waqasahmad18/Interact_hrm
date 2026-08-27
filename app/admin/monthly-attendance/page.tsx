@@ -54,6 +54,7 @@ import {
 } from "../../../lib/tungsten-punch-pairing";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
+import { resolveBillableOvertimeSeconds } from "../../../lib/attendance-overtime";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
 type MonthlyAttendanceEmployeeRow = {
@@ -123,6 +124,25 @@ function addDaysToDateKey(dateKey: string, daysToAdd: number) {
   return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** Coming days (after today Asia/Karachi) — no Absent/100% until the day arrives. */
+function isFutureAttendanceDay(dateKey: string) {
+  if (!dateKey) return false;
+  const todayKey = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+  return dateKey > todayKey;
+}
+
+/** Empty working-day cell: Leave / future --- / past Absent. */
+function emptyWorkingDayStatus(
+  dateKey: string,
+  workingDay: boolean,
+  onLeave: boolean,
+): { statusLabel: string; deduction: string } {
+  if (!workingDay) return { statusLabel: "Off", deduction: "" };
+  if (onLeave) return { statusLabel: "Leave", deduction: "0%" };
+  if (isFutureAttendanceDay(dateKey)) return { statusLabel: "---", deduction: "0%" };
+  return { statusLabel: "Absent", deduction: "100%" };
+}
+
 /** Extra work beyond assigned shift before OT is shown/counted (1 hour). */
 const OVERTIME_MIN_SECONDS = 60 * 60;
 
@@ -171,13 +191,22 @@ export default function MonthlyAttendancePage() {
     return shiftSeconds;
   }
 
-  // Calculate overtime in seconds (actual - shift duration)
-  function calculateOvertime(totalSeconds: number, assignedShiftSeconds: number | null): number | null {
-    if (!assignedShiftSeconds || assignedShiftSeconds <= 0) return null;
-    const overtime = totalSeconds - assignedShiftSeconds;
-    // Only count/show overtime if >= 1 hour beyond assigned shift
-    if (overtime >= OVERTIME_MIN_SECONDS) return overtime;
-    return null;
+  /** OT only if allow_overtime + manual clock-out (not auto) + ≥1h past shift. */
+  function calculateOvertime(
+    totalSeconds: number,
+    assignedShiftSeconds: number | null,
+    record?: {
+      allow_overtime?: boolean | number | string | null;
+      auto_clock_out?: boolean | number | string | null;
+    },
+  ): number | null {
+    return resolveBillableOvertimeSeconds({
+      totalSeconds,
+      assignedShiftSeconds,
+      allowOvertime: record?.allow_overtime,
+      autoClockOut: record?.auto_clock_out,
+      minSeconds: OVERTIME_MIN_SECONDS,
+    });
   }
 
   function formatDurationHM(seconds: number | null) {
@@ -362,7 +391,7 @@ export default function MonthlyAttendancePage() {
         ) {
           assignedShiftSeconds = empShiftMap[record.employee_id].seconds;
         }
-        const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds);
+        const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds, record);
         return {
           ...record,
           total_hours: formatDuration(totalSeconds),
@@ -774,18 +803,11 @@ export default function MonthlyAttendancePage() {
       
       let dayDeduction = 0;
       if (dayRecords.length === 0) {
-        // No records for this day
-        if (workingDay) {
-          // Check for approved leave
-          if (
-            approvedLeavesMap[employee.employeeId] &&
-            approvedLeavesMap[employee.employeeId][day.dateKey]
-          ) {
-            dayDeduction = 0; // Approved leave, no deduction
-          } else {
-            dayDeduction = 100; // Absent on working day
-          }
-        }
+        const onLeave = Boolean(
+          approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+        );
+        const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, onLeave);
+        dayDeduction = parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
       } else {
         // Has records, use meta deduction
         if (meta?.deduction) {
@@ -940,16 +962,14 @@ export default function MonthlyAttendancePage() {
       const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
 
       if (daySessions.length === 0 && dayRecords.length === 0) {
-        let statusLabel = workingDay ? "Absent" : "Off";
-        let deduction = workingDay ? "100%" : "";
-        if (
-          workingDay &&
-          approvedLeavesMap[employee.employeeId] &&
-          approvedLeavesMap[employee.employeeId][day.dateKey]
-        ) {
-          statusLabel = "Leave";
-          deduction = "0%";
-        }
+        const onLeave = Boolean(
+          approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+        );
+        const { statusLabel, deduction } = emptyWorkingDayStatus(
+          day.dateKey,
+          workingDay,
+          onLeave,
+        );
         dataRows.push({
           cells: [
             day.weekday,
@@ -1087,7 +1107,12 @@ export default function MonthlyAttendancePage() {
 
   function shouldIncludeInDeductionSummary(statusLabel: string): boolean {
     const status = String(statusLabel || "").trim();
-    return status !== "On Time" && status !== "Off" && status !== "";
+    return (
+      status !== "On Time" &&
+      status !== "Off" &&
+      status !== "---" &&
+      status !== ""
+    );
   }
 
   function formatDeductionSummaryStatus(statusLabel: string): string {
@@ -1226,15 +1251,15 @@ export default function MonthlyAttendancePage() {
         const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
 
         if (dayRecords.length === 0 && daySessions.length === 0) {
-          let statusLabel = "Absent";
-          let deduction = "100%";
-          if (
-            approvedLeavesMap[employee.employeeId] &&
-            approvedLeavesMap[employee.employeeId][day.dateKey]
-          ) {
-            statusLabel = "Leave";
-            deduction = "0%";
-          }
+          const onLeave = Boolean(
+            approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+          );
+          const { statusLabel, deduction } = emptyWorkingDayStatus(
+            day.dateKey,
+            true,
+            onLeave,
+          );
+          if (!shouldIncludeInDeductionSummary(statusLabel)) return;
           pushDeductionSummaryRow(
             rows,
             employee,
@@ -1763,16 +1788,14 @@ export default function MonthlyAttendancePage() {
                           );
 
                           if (daySessions.length === 0 && dayRecords.length === 0) {
-                            let statusLabel = workingDay ? "Absent" : "Off";
-                            let deduction = workingDay ? "100%" : "";
-                            if (
-                              workingDay &&
-                              approvedLeavesMap[employee.employeeId] &&
-                              approvedLeavesMap[employee.employeeId][day.dateKey]
-                            ) {
-                              statusLabel = "Leave";
-                              deduction = "0%";
-                            }
+                            const onLeave = Boolean(
+                              approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+                            );
+                            const { statusLabel, deduction } = emptyWorkingDayStatus(
+                              day.dateKey,
+                              workingDay,
+                              onLeave,
+                            );
                             return (
                               <tr key={`${employee.employeeId}-${day.dateKey}-empty`}>
                                 <td>{day.weekday}</td>
@@ -1786,10 +1809,12 @@ export default function MonthlyAttendancePage() {
                                 <td>---</td>
                                 <td>{meta?.runningLate ? meta.runningLate : ""}</td>
                                 <td style={{ color: uiStatusTextColor(statusLabel), fontWeight: 600 }}>
-                                  {renderStatusWithExcessLate(
-                                    normalizeAttendanceStatus(statusLabel),
-                                    meta?.lateMinutes,
-                                  )}
+                                  {statusLabel === "---"
+                                    ? "---"
+                                    : renderStatusWithExcessLate(
+                                        normalizeAttendanceStatus(statusLabel),
+                                        meta?.lateMinutes,
+                                      )}
                                 </td>
                                 <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, lineHeight: 1.35, wordBreak: "break-word" }}>{tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, undefined, dayRecords)}</td>
                                 <td>{deduction}</td>
