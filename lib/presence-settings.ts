@@ -4,6 +4,11 @@ import { pool } from "@/lib/db";
 const TABLE = "hrm_admin_settings";
 
 export type PresenceSettings = {
+  /**
+   * When true, all desktop agents must shut down permanently (disable auto-start + exit).
+   * Heartbeat keeps returning exit until agents stop checking in.
+   */
+  agentsRetired: boolean;
   /** Master switch — desktop agent idle monitoring on/off */
   presenceEnabled: boolean;
   /** Seconds of no mouse/keyboard before action (popup and/or camera check) */
@@ -30,6 +35,7 @@ export type PresenceSettings = {
 };
 
 export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
+  agentsRetired: false,
   presenceEnabled: true,
   idleWarningSeconds: 1800,
   popupCountdownSeconds: 60,
@@ -40,6 +46,7 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
 };
 
 const KEYS = {
+  agentsRetired: "presence_agents_retired",
   presenceEnabled: "presence_enabled",
   idleWarningSeconds: "presence_idle_warning_seconds",
   popupCountdownSeconds: "presence_popup_countdown_seconds",
@@ -120,6 +127,7 @@ function normalizeIdList(input: unknown): string[] | undefined {
 export async function getPresenceSettings(): Promise<PresenceSettings> {
   const d = DEFAULT_PRESENCE_SETTINGS;
   const [
+    agentsRetired,
     presenceEnabled,
     idleWarningSeconds,
     popupCountdownSeconds,
@@ -128,6 +136,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     agentExitPassword,
     enabledEmployeeIds,
   ] = await Promise.all([
+    getRaw(KEYS.agentsRetired),
     getRaw(KEYS.presenceEnabled),
     getRaw(KEYS.idleWarningSeconds),
     getRaw(KEYS.popupCountdownSeconds),
@@ -138,6 +147,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
   ]);
 
   return {
+    agentsRetired: parseBool(agentsRetired, d.agentsRetired),
     presenceEnabled: parseBool(presenceEnabled, d.presenceEnabled),
     idleWarningSeconds: parseIntClamped(idleWarningSeconds, d.idleWarningSeconds, 10, 86400),
     popupCountdownSeconds: parseIntClamped(
@@ -174,6 +184,10 @@ export async function savePresenceSettings(
   const current = await getPresenceSettings();
   const ids = normalizeIdList(input.enabledEmployeeIds);
   const next: PresenceSettings = {
+    agentsRetired:
+      typeof input.agentsRetired === "boolean"
+        ? input.agentsRetired
+        : current.agentsRetired,
     presenceEnabled:
       typeof input.presenceEnabled === "boolean"
         ? input.presenceEnabled
@@ -210,6 +224,7 @@ export async function savePresenceSettings(
   };
 
   await Promise.all([
+    setRaw(KEYS.agentsRetired, next.agentsRetired ? "true" : "false"),
     setRaw(KEYS.presenceEnabled, next.presenceEnabled ? "true" : "false"),
     setRaw(KEYS.idleWarningSeconds, String(next.idleWarningSeconds)),
     setRaw(KEYS.popupCountdownSeconds, String(next.popupCountdownSeconds)),

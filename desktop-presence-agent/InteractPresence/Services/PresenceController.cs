@@ -87,6 +87,12 @@ public sealed class PresenceController : IDisposable
         // Pull admin settings from HRM periodically (~every 30s)
         MaybeRefreshRemoteSettings();
 
+        if (_settings.AgentsRetired)
+        {
+            MaybePermanentShutdownIfRetired();
+            return;
+        }
+
         if (!_settings.PresenceEnabled)
         {
             if (_state == State.IdleWarning) return;
@@ -171,7 +177,9 @@ public sealed class PresenceController : IDisposable
             var applied = await _api.TryApplyPresenceSettingsAsync(_settings, ct).ConfigureAwait(false);
             var hb = await _api.TrySendHeartbeatAsync(_settings, ct).ConfigureAwait(false);
             await HandleRemoteCommandAsync(hb?.Command).ConfigureAwait(false);
+            MaybePermanentShutdownIfRetired();
             if (ct.IsCancellationRequested) return false;
+            if (applied) MaybeEnsureAutoStartIfActive();
             await WpfApp.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (applied)
@@ -200,6 +208,12 @@ public sealed class PresenceController : IDisposable
 
     private async Task HandleRemoteCommandAsync(string? command)
     {
+        if (_settings.AgentsRetired)
+        {
+            await WpfApp.Current.Dispatcher.InvokeAsync(() => PermanentShutdown("Admin retired all agents"));
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(command)) return;
         var c = command.Trim().ToLowerInvariant();
         await WpfApp.Current.Dispatcher.InvokeAsync(() =>
@@ -209,13 +223,43 @@ public sealed class PresenceController : IDisposable
                 StatusChanged?.Invoke("Admin requested restart…");
                 AgentCommands.Restart();
             }
+            else if (c == "start")
+            {
+                StatusChanged?.Invoke("Admin requested start — re-enabling auto-start…");
+                AutoStartHelper.EnsureEnabled();
+                DesktopNotify.Success("Presence agent active (admin start).");
+            }
             else if (c == "exit")
             {
                 StatusChanged?.Invoke("Admin requested exit…");
-                Stop();
-                AgentCommands.Exit();
+                if (_settings.AgentsRetired)
+                    PermanentShutdown("Admin requested permanent exit");
+                else
+                {
+                    Stop();
+                    AgentCommands.Exit();
+                }
             }
         });
+    }
+
+    private void PermanentShutdown(string reason)
+    {
+        StatusChanged?.Invoke(reason);
+        Stop();
+        AgentCommands.PermanentExit();
+    }
+
+    private void MaybePermanentShutdownIfRetired()
+    {
+        if (!_settings.AgentsRetired) return;
+        PermanentShutdown("Agents retired by admin");
+    }
+
+    private void MaybeEnsureAutoStartIfActive()
+    {
+        if (_settings.AgentsRetired) return;
+        AutoStartHelper.EnsureEnabled();
     }
 
     private bool IsEmployeeAllowed()
@@ -238,8 +282,10 @@ public sealed class PresenceController : IDisposable
                 var applied = await _api.TryApplyPresenceSettingsAsync(_settings).ConfigureAwait(false);
                 var hb = await _api.TrySendHeartbeatAsync(_settings).ConfigureAwait(false);
                 await HandleRemoteCommandAsync(hb?.Command).ConfigureAwait(false);
+                MaybePermanentShutdownIfRetired();
                 if (applied)
                 {
+                    MaybeEnsureAutoStartIfActive();
                     await WpfApp.Current.Dispatcher.InvokeAsync(() =>
                     {
                         StatusChanged?.Invoke(

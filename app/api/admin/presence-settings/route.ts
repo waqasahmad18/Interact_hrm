@@ -36,6 +36,8 @@ export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const settings = await savePresenceSettings({
+      agentsRetired:
+        typeof body.agentsRetired === "boolean" ? body.agentsRetired : undefined,
       presenceEnabled:
         typeof body.presenceEnabled === "boolean"
           ? body.presenceEnabled

@@ -9,6 +9,7 @@ import PresenceAgentsPanel from "./PresenceAgentsPanel";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type PresenceSettings = {
+  agentsRetired: boolean;
   presenceEnabled: boolean;
   idleWarningSeconds: number;
   popupCountdownSeconds: number;
@@ -252,6 +253,7 @@ export default function PresenceIdleSettingsPage() {
     setSaving(true);
     try {
       const body = {
+        agentsRetired: settings.agentsRetired,
         presenceEnabled: settings.presenceEnabled,
         cameraVerificationEnabled: settings.cameraVerificationEnabled,
         idleWarningSeconds: Math.max(5, idleTotal),
@@ -446,9 +448,33 @@ export default function PresenceIdleSettingsPage() {
             <p className={styles.loading}>Loading…</p>
           ) : (
             <div className={styles.wrap}>
+              {settings.agentsRetired ? (
+                <div className={styles.retiredBanner} role="status">
+                  <strong>Desktop agents are permanently retired.</strong> Running PCs exit on
+                  heartbeat; auto-start is removed on v0.5.2+. Uncheck below and save to allow
+                  agents again (employees must re-run the installer or exe).
+                </div>
+              ) : null}
               <div className={adminStyles.card}>
                 <h2 className={adminStyles.cardTitle}>Desktop presence settings</h2>
                 <div className={styles.section}>
+                  <label className={styles.toggleRow}>
+                    <input
+                      type="checkbox"
+                      checked={settings.agentsRetired}
+                      onChange={(e) =>
+                        setSettings({ ...settings, agentsRetired: e.target.checked })
+                      }
+                    />
+                    <span className={styles.toggleText}>
+                      <span className={styles.toggleTitle}>Agents retired (permanent shutdown)</span>
+                      <span className={styles.toggleHint}>
+                        When on, all agents must exit and remove auto-start. Use &quot;Permanent
+                        shutdown&quot; in Installed agents for one-click.
+                      </span>
+                    </span>
+                  </label>
+
                   <label className={styles.toggleRow}>
                     <input
                       type="checkbox"

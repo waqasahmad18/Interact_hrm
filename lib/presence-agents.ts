@@ -1,4 +1,5 @@
 import { pool } from "@/lib/db";
+import { getPresenceSettings, savePresenceSettings } from "@/lib/presence-settings";
 
 const TABLE = "presence_agents";
 
@@ -126,7 +127,7 @@ export type HeartbeatInput = {
   clientIp?: string | null;
 };
 
-export type AgentCommand = "restart" | "exit";
+export type AgentCommand = "restart" | "exit" | "start";
 
 export type HeartbeatResult = {
   assignedEmployeeId: string | null;
@@ -201,12 +202,17 @@ export async function upsertAgentHeartbeat(
 
   let command: AgentCommand | null = null;
   const rawCmd = (row?.pending_command ?? "").trim().toLowerCase();
-  if (rawCmd === "restart" || rawCmd === "exit") {
+  if (rawCmd === "restart" || rawCmd === "exit" || rawCmd === "start") {
     command = rawCmd;
     await pool.execute(
       `UPDATE ${TABLE} SET pending_command = NULL, command_issued_at = NULL WHERE machine_id = ?`,
       [machineId]
     );
+  }
+
+  const settings = await getPresenceSettings();
+  if (settings.agentsRetired) {
+    command = "exit";
   }
 
   return { assignedEmployeeId, assignedEmployeeName, command };
@@ -277,8 +283,8 @@ export async function queueAgentCommand(input: {
 }): Promise<number> {
   await ensurePresenceAgentsTable();
   const cmd = input.command;
-  if (cmd !== "restart" && cmd !== "exit") {
-    throw new Error("command must be restart or exit");
+  if (cmd !== "restart" && cmd !== "exit" && cmd !== "start") {
+    throw new Error("command must be restart, exit, or start");
   }
   const now = new Date();
   if (input.all) {
@@ -297,4 +303,24 @@ export async function queueAgentCommand(input: {
   const n = (res as { affectedRows?: number }).affectedRows ?? 0;
   if (n === 0) throw new Error("Agent not found");
   return n;
+}
+
+/** Permanently retire all agents: disable monitoring, queue exit, keep sending exit on heartbeat. */
+export async function retireAllPresenceAgents(): Promise<{ queued: number }> {
+  await savePresenceSettings({
+    agentsRetired: true,
+    presenceEnabled: false,
+  });
+  const queued = await queueAgentCommand({ all: true, command: "exit" });
+  return { queued };
+}
+
+/** Re-activate all agents: clear retire flag, enable presence, queue restart/start. */
+export async function activateAllPresenceAgents(): Promise<{ queued: number }> {
+  await savePresenceSettings({
+    agentsRetired: false,
+    presenceEnabled: true,
+  });
+  const queued = await queueAgentCommand({ all: true, command: "restart" });
+  return { queued };
 }

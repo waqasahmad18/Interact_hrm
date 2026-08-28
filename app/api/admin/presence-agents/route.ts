@@ -80,9 +80,9 @@ export async function POST(req: NextRequest) {
       command?: AgentCommand;
     };
     const command = body.command;
-    if (command !== "restart" && command !== "exit") {
+    if (command !== "restart" && command !== "exit" && command !== "start") {
       return NextResponse.json(
-        { success: false, error: "command must be restart or exit" },
+        { success: false, error: "command must be restart, exit, or start" },
         { status: 400 }
       );
     }
@@ -98,7 +98,9 @@ export async function POST(req: NextRequest) {
       message:
         command === "exit"
           ? `Exit queued for ${count} agent(s). Takes effect within ~15s.`
-          : `Restart queued for ${count} agent(s). Takes effect within ~15s.`,
+          : command === "start"
+            ? `Start queued for ${count} agent(s). Takes effect within ~15s.`
+            : `Restart queued for ${count} agent(s). Takes effect within ~15s.`,
     });
   } catch (err) {
     return NextResponse.json(

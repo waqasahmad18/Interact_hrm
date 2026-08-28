@@ -29,12 +29,30 @@ public partial class App : System.Windows.Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         var settings = AppSettings.Load();
+        try
+        {
+            var api = new HrmApiClient(settings);
+            api.TryApplyPresenceSettingsAsync(settings).GetAwaiter().GetResult();
+            api.TrySendHeartbeatAsync(settings).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            /* offline — continue with local settings */
+        }
+
+        if (settings.AgentsRetired)
+        {
+            AutoStartHelper.TryDisable();
+            Shutdown();
+            return;
+        }
+
         AutoStartHelper.EnsureEnabled();
 
-        var api = new HrmApiClient(settings);
+        var apiClient = new HrmApiClient(settings);
         var idle = new IdleDetector();
         var camera = new HrmFacePresenceChecker(settings);
-        var controller = new PresenceController(settings, idle, api, camera);
+        var controller = new PresenceController(settings, idle, apiClient, camera);
 
         _tray = new TrayHost(controller, settings);
         _tray.Show();

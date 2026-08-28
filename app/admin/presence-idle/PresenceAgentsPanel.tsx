@@ -79,6 +79,8 @@ export default function PresenceAgentsPanel({ employees }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [retiring, setRetiring] = React.useState(false);
+  const [starting, setStarting] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -109,7 +111,59 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     return () => clearInterval(t);
   }, [load]);
 
-  async function queueCommand(command: "restart" | "exit", opts?: { machineId?: string; all?: boolean }) {
+  async function startAllAgents() {
+    setStarting(true);
+    try {
+      const res = await fetch("/api/admin/presence-agents/start-all", { method: "POST" });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Start all failed");
+        return;
+      }
+      toastSuccess(data.message || "All agents re-activated");
+      await load();
+    } catch {
+      toastError("Network error during start all");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function retireAllAgents() {
+    if (
+      !window.confirm(
+        "Permanently shut down InteractPresence on ALL employee PCs?\n\n" +
+          "• Running agents will exit within ~15 seconds\n" +
+          "• Auto-start on Windows login will be removed (v0.5.2+)\n" +
+          "• Publish agent 0.5.2 below so older installs update first\n\n" +
+          "Continue?"
+      )
+    ) {
+      return;
+    }
+    setRetiring(true);
+    try {
+      const res = await fetch("/api/admin/presence-agents/retire-all", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Permanent shutdown failed");
+        return;
+      }
+      toastSuccess(data.message || "Permanent shutdown enabled for all agents");
+      await load();
+    } catch {
+      toastError("Network error during permanent shutdown");
+    } finally {
+      setRetiring(false);
+    }
+  }
+
+  async function queueCommand(
+    command: "restart" | "exit" | "start",
+    opts?: { machineId?: string; all?: boolean }
+  ) {
     try {
       const res = await fetch("/api/admin/presence-agents", {
         method: "POST",
@@ -164,8 +218,9 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         <div>
           <h2 className={styles.agentsTitle}>Installed agents</h2>
           <p className={styles.tip} style={{ marginTop: 4 }}>
-            PCs register automatically when InteractPresence v0.5.0+ runs. Assign Employee ID
-            here — no need to visit each PC. Agents self-update when you publish a newer exe.
+            Remote control for all employee PCs (v0.5.0+). <strong>Start all</strong> re-enables
+            agents; <strong>Stop all</strong> closes the app (auto-start stays);{" "}
+            <strong>Permanent shutdown</strong> removes auto-start. Assign Employee ID here.
           </p>
         </div>
         <div className={styles.agentsHeaderActions}>
@@ -174,11 +229,11 @@ export default function PresenceAgentsPanel({ employees }: Props) {
           </button>
           <button
             type="button"
-            className={styles.chip}
-            disabled={!summary?.total}
-            onClick={() => void queueCommand("restart", { all: true })}
+            className={`${styles.chip} ${styles.chipSuccess}`}
+            disabled={starting}
+            onClick={() => void startAllAgents()}
           >
-            Restart all
+            {starting ? "Starting…" : "Start all (activate)"}
           </button>
           <button
             type="button"
@@ -186,7 +241,23 @@ export default function PresenceAgentsPanel({ employees }: Props) {
             disabled={!summary?.total}
             onClick={() => void queueCommand("exit", { all: true })}
           >
-            Exit all
+            Stop all
+          </button>
+          <button
+            type="button"
+            className={`${styles.chip} ${styles.chipDanger}`}
+            disabled={retiring}
+            onClick={() => void retireAllAgents()}
+          >
+            {retiring ? "Shutting down…" : "Permanent shutdown"}
+          </button>
+          <button
+            type="button"
+            className={styles.chip}
+            disabled={!summary?.total}
+            onClick={() => void queueCommand("restart", { all: true })}
+          >
+            Restart all
           </button>
         </div>
       </div>
@@ -291,6 +362,13 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                       </button>
                       <button
                         type="button"
+                        className={`${styles.chip} ${styles.chipSuccess}`}
+                        onClick={() => void queueCommand("start", { machineId: a.machineId })}
+                      >
+                        Start
+                      </button>
+                      <button
+                        type="button"
                         className={styles.chip}
                         onClick={() => void queueCommand("restart", { machineId: a.machineId })}
                       >
@@ -301,7 +379,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                         className={`${styles.chip} ${styles.chipDanger}`}
                         onClick={() => void queueCommand("exit", { machineId: a.machineId })}
                       >
-                        Exit
+                        Stop
                       </button>
                     </div>
                   </td>
