@@ -47,7 +47,7 @@ internal static class AgentUpdater
         bool force = false)
     {
         if (_updateInFlight) return;
-        if (!force && (DateTime.UtcNow - _lastCheckUtc).TotalMinutes < 10) return;
+        if (!force && (DateTime.UtcNow - _lastCheckUtc).TotalSeconds < 5) return;
 
         var baseUrl = (settings.HrmBaseUrl ?? "").TrimEnd('/');
         if (string.IsNullOrWhiteSpace(baseUrl)) return;

@@ -107,7 +107,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
 
   React.useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 30000);
+    const t = setInterval(() => void load(), 5000);
     return () => clearInterval(t);
   }, [load]);
 
@@ -203,7 +203,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         toastError(data.error || "Save failed");
         return;
       }
-      toastSuccess("Employee ID assigned — agent picks it up within ~15s.");
+      toastSuccess("Employee ID assigned — agent picks it up within ~5s.");
       await load();
     } catch {
       toastError("Network error saving assignment");
@@ -290,7 +290,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       ) : agents.length === 0 ? (
         <p className={styles.tip}>
           No agents registered yet. Publish agent <strong>0.5.0</strong> below — existing installs
-          auto-update within ~15 minutes, then appear here.
+          auto-update within ~30 seconds, then appear here.
         </p>
       ) : (
         <div className={styles.agentsTableWrap}>

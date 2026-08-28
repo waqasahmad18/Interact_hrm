@@ -275,7 +275,7 @@ export default function PresenceIdleSettingsPage() {
       }
       applySettings(data.settings as PresenceSettings);
       toastSuccess(
-        "Presence settings saved. Agent must point at THIS host (Staging vs Localhost). It pulls password on next tray action or within ~15s."
+        "Presence settings saved. Agents pull changes within ~5 seconds."
       );
     } catch {
       toastError("Network error saving settings");
@@ -339,7 +339,7 @@ export default function PresenceIdleSettingsPage() {
       setAgentFile(null);
       toastSuccess(
         data.release.hasBinary
-          ? `Agent ${data.release.version} published. Running agents update within ~15 min.`
+          ? `Agent ${data.release.version} published. Running agents update within ~5–30 seconds.`
           : `Version ${data.release.version} saved — upload .exe to enable downloads.`
       );
     } catch {
@@ -439,7 +439,7 @@ export default function PresenceIdleSettingsPage() {
               <h1 className={adminStyles.pageHeaderTitle}>Presence / Idle</h1>
               <p className={adminStyles.subtitle} style={{ marginBottom: 0 }}>
                 Control desktop idle detection: timeout, camera verify, and popup countdown.
-                Desktop agents refresh these settings about every 30 seconds.
+                Desktop agents refresh these settings about every 5 seconds.
               </p>
             </div>
           </div>

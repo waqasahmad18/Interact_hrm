@@ -1,4 +1,8 @@
 import { pool } from "@/lib/db";
+import {
+  getPresenceAgentRelease,
+  isRemoteVersionNewer,
+} from "@/lib/presence-agent-release";
 import { getPresenceSettings, savePresenceSettings } from "@/lib/presence-settings";
 
 const TABLE = "presence_agents";
@@ -133,6 +137,7 @@ export type HeartbeatResult = {
   assignedEmployeeId: string | null;
   assignedEmployeeName: string | null;
   command: AgentCommand | null;
+  updateAvailable: boolean;
 };
 
 export async function upsertAgentHeartbeat(
@@ -215,7 +220,12 @@ export async function upsertAgentHeartbeat(
     command = "exit";
   }
 
-  return { assignedEmployeeId, assignedEmployeeName, command };
+  const release = await getPresenceAgentRelease();
+  const updateAvailable =
+    release.hasBinary &&
+    isRemoteVersionNewer(release.version, agentVersion ?? undefined);
+
+  return { assignedEmployeeId, assignedEmployeeName, command, updateAvailable };
 }
 
 export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
