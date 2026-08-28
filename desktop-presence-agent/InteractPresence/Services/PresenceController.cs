@@ -61,12 +61,10 @@ public sealed class PresenceController : IDisposable
                 ? $"Active — idle {_settings.IdleWarningSeconds}s; camera={(_settings.CameraVerificationEnabled ? "on" : "off")}"
                 : "Presence disabled by admin (waiting for settings)");
         _ = _api.FlushQueueAsync();
-        // Immediate settings pull + update check
+        // Settings + heartbeat on start; updates only when server signals update_available.
         _ = Task.Run(async () =>
         {
             await ForceSyncSettingsAsync().ConfigureAwait(false);
-            // Do not force-update on every start — that caused restart loops after a bad publish.
-            await AgentUpdater.CheckAndUpdateAsync(_settings).ConfigureAwait(false);
         });
     }
 
@@ -317,11 +315,10 @@ public sealed class PresenceController : IDisposable
 
     private async Task MaybeCheckForUpdateAsync(bool updateAvailableFromServer)
     {
+        if (!updateAvailableFromServer) return;
         try
         {
-            await AgentUpdater.CheckAndUpdateAsync(
-                _settings,
-                force: updateAvailableFromServer).ConfigureAwait(false);
+            await AgentUpdater.CheckAndUpdateAsync(_settings, force: true).ConfigureAwait(false);
         }
         catch
         {

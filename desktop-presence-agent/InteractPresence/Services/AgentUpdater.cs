@@ -8,12 +8,13 @@ namespace InteractPresence;
 
 /// <summary>
 /// Polls HRM for a newer InteractPresence.exe and self-updates via a short cmd script.
+/// Guarded against restart loops when publish version and exe mismatch.
 /// </summary>
 internal static class AgentUpdater
 {
     private static readonly HttpClient Http = CreateHttp();
-    private static DateTime _lastCheckUtc = DateTime.MinValue;
     private static bool _updateInFlight;
+    private static bool _brokenPublishNotified;
 
     private static string UpdateStatePath =>
         Path.Combine(
@@ -35,6 +36,14 @@ internal static class AgentUpdater
     {
         get
         {
+            var exe = Environment.ProcessPath
+                      ?? Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(exe) && File.Exists(exe))
+            {
+                var fromFile = ReadExeFileVersion(exe);
+                if (!string.IsNullOrWhiteSpace(fromFile)) return fromFile!;
+            }
+
             var v = Assembly.GetExecutingAssembly().GetName().Version;
             if (v == null) return "0.0.0";
             return $"{v.Major}.{v.Minor}.{v.Build}";
@@ -47,12 +56,21 @@ internal static class AgentUpdater
         bool force = false)
     {
         if (_updateInFlight) return;
-        if (!force && (DateTime.UtcNow - _lastCheckUtc).TotalSeconds < 5) return;
 
         var baseUrl = (settings.HrmBaseUrl ?? "").TrimEnd('/');
         if (string.IsNullOrWhiteSpace(baseUrl)) return;
 
-        _lastCheckUtc = DateTime.UtcNow;
+        var state = LoadUpdateState();
+        var now = DateTime.UtcNow;
+        var minIntervalSec = force ? 60 : 1800;
+        if (!force && state.LastCheckUtc.HasValue &&
+            (now - state.LastCheckUtc.Value).TotalSeconds < minIntervalSec)
+        {
+            return;
+        }
+
+        state.LastCheckUtc = now;
+        SaveUpdateState(state);
 
         try
         {
@@ -67,10 +85,22 @@ internal static class AgentUpdater
             var remoteVer = root.TryGetProperty("version", out var verEl)
                 ? (verEl.GetString() ?? "")
                 : "";
-            if (!IsNewer(remoteVer, CurrentVersion)) return;
+            remoteVer = Normalize(remoteVer);
+            var localVer = Normalize(CurrentVersion);
 
-            var state = LoadUpdateState();
-            if (ShouldSkipDueToCooldown(state, remoteVer)) return;
+            if (!IsNewer(remoteVer, localVer))
+            {
+                ClearPendingForVersion(state, remoteVer);
+                return;
+            }
+
+            if (ShouldSkipBrokenPublish(state, remoteVer, localVer))
+            {
+                NotifyBrokenPublishOnce(remoteVer, localVer);
+                return;
+            }
+
+            if (!force && ShouldSkipDueToCooldown(state, remoteVer)) return;
 
             var downloadPath = root.TryGetProperty("downloadPath", out var dp)
                 ? (dp.GetString() ?? "/api/presence-agent/download")
@@ -89,11 +119,29 @@ internal static class AgentUpdater
         }
     }
 
+    private static bool ShouldSkipBrokenPublish(UpdateState state, string remoteVer, string localVer)
+    {
+        if (!string.Equals(state.LastAppliedVersion, remoteVer, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (IsNewer(remoteVer, localVer) && state.AttemptCount >= 1)
+            return true;
+        return false;
+    }
+
+    private static void NotifyBrokenPublishOnce(string remoteVer, string localVer)
+    {
+        if (_brokenPublishNotified) return;
+        _brokenPublishNotified = true;
+        DesktopNotify.Failed(
+            $"Update paused — server says {remoteVer} but this PC is still {localVer}. " +
+            "Republish the correct InteractPresence.exe from admin.");
+    }
+
     private static bool ShouldSkipDueToCooldown(UpdateState state, string remoteVer)
     {
         if (!string.Equals(state.LastRemoteVersion, remoteVer, StringComparison.OrdinalIgnoreCase))
             return false;
-        if (state.AttemptCount < 3) return false;
+        if (state.AttemptCount < 2) return false;
         if (!state.LastAttemptUtc.HasValue) return false;
         return (DateTime.UtcNow - state.LastAttemptUtc.Value).TotalHours < 6;
     }
@@ -106,8 +154,18 @@ internal static class AgentUpdater
         {
             state.LastRemoteVersion = remoteVer;
             state.AttemptCount = 1;
+            _brokenPublishNotified = false;
         }
         state.LastAttemptUtc = DateTime.UtcNow;
+        SaveUpdateState(state);
+    }
+
+    private static void ClearPendingForVersion(UpdateState state, string remoteVer)
+    {
+        if (!string.Equals(state.LastRemoteVersion, remoteVer, StringComparison.OrdinalIgnoreCase)) return;
+        state.AttemptCount = 0;
+        state.LastAppliedVersion = remoteVer;
+        state.LastAttemptUtc = null;
         SaveUpdateState(state);
     }
 
@@ -187,6 +245,15 @@ internal static class AgentUpdater
             return;
         }
 
+        if (!string.Equals(Normalize(version), Normalize(downloadedVer), StringComparison.OrdinalIgnoreCase))
+        {
+            try { File.Delete(newPath); } catch { /* ignore */ }
+            _updateInFlight = false;
+            DesktopNotify.Failed(
+                $"Update skipped — admin published {version} but exe file is {downloadedVer}. Republish matching version.");
+            return;
+        }
+
         var state = LoadUpdateState();
         state.LastAppliedVersion = version;
         state.LastAttemptUtc = DateTime.UtcNow;
@@ -194,8 +261,13 @@ internal static class AgentUpdater
 
         var bat = $"""
 @echo off
-timeout /t 2 /nobreak >nul
-copy /y "{newPath}" "{exe}" >nul
+ping 127.0.0.1 -n 6 >nul
+:retry
+copy /y "{newPath}" "{exe}"
+if errorlevel 1 (
+  ping 127.0.0.1 -n 3 >nul
+  goto retry
+)
 if exist "{newPath}" del /f /q "{newPath}"
 start "" "{exe}"
 del /f /q "%~f0"
@@ -252,6 +324,7 @@ del /f /q "%~f0"
         public string? LastRemoteVersion { get; set; }
         public string? LastAppliedVersion { get; set; }
         public DateTime? LastAttemptUtc { get; set; }
+        public DateTime? LastCheckUtc { get; set; }
         public int AttemptCount { get; set; }
     }
 }
