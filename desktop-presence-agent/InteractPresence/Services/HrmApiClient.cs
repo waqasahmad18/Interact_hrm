@@ -141,10 +141,7 @@ public sealed class HrmApiClient
                 if (c is "restart" or "exit" or "start") command = c;
             }
 
-            var updateAvailable = root.TryGetProperty("update_available", out var uaEl) &&
-                                  uaEl.ValueKind is JsonValueKind.True;
-
-            return new HeartbeatResult { Command = command, UpdateAvailable = updateAvailable };
+            return new HeartbeatResult { Command = command };
         }
         catch
         {
@@ -155,7 +152,6 @@ public sealed class HrmApiClient
     public sealed class HeartbeatResult
     {
         public string? Command { get; init; }
-        public bool UpdateAvailable { get; init; }
     }
 
     public async Task<bool> TryApplyPresenceSettingsAsync(AppSettings target, CancellationToken ct = default)

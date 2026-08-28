@@ -7,20 +7,16 @@ using System.Text.Json;
 namespace InteractPresence;
 
 /// <summary>
-/// Polls HRM for a newer InteractPresence.exe and self-updates via a short cmd script.
-/// Guarded against restart loops when publish version and exe mismatch.
+/// Manual + guarded self-update. Automatic polling is disabled — admin publishes;
+/// users update via tray "Check for updates" or one controlled background check/day.
 /// </summary>
 internal static class AgentUpdater
 {
     private static readonly HttpClient Http = CreateHttp();
     private static bool _updateInFlight;
-    private static bool _brokenPublishNotified;
 
     private static string UpdateStatePath =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "InteractPresence",
-            "update-state.json");
+        Path.Combine(AgentInstallPaths.AppDir, "update-state.json");
 
     private static HttpClient CreateHttp()
     {
@@ -36,9 +32,8 @@ internal static class AgentUpdater
     {
         get
         {
-            var exe = Environment.ProcessPath
-                      ?? Process.GetCurrentProcess().MainModule?.FileName;
-            if (!string.IsNullOrWhiteSpace(exe) && File.Exists(exe))
+            var exe = AgentInstallPaths.ResolveUpdateTargetExe();
+            if (File.Exists(exe))
             {
                 var fromFile = ReadExeFileVersion(exe);
                 if (!string.IsNullOrWhiteSpace(fromFile)) return fromFile!;
@@ -50,11 +45,14 @@ internal static class AgentUpdater
         }
     }
 
+    /// <param name="force">true = tray admin "Check for updates". false = ignored (no auto-update).</param>
     public static async Task CheckAndUpdateAsync(
         AppSettings settings,
         CancellationToken ct = default,
         bool force = false)
     {
+        // Permanent fix: never auto-update from background sync / heartbeat.
+        if (!force) return;
         if (_updateInFlight) return;
 
         var baseUrl = (settings.HrmBaseUrl ?? "").TrimEnd('/');
@@ -62,14 +60,12 @@ internal static class AgentUpdater
 
         var state = LoadUpdateState();
         var now = DateTime.UtcNow;
-        var minIntervalSec = force ? 60 : 1800;
-        if (!force && state.LastCheckUtc.HasValue &&
-            (now - state.LastCheckUtc.Value).TotalSeconds < minIntervalSec)
+        if (state.LastManualCheckUtc.HasValue &&
+            (now - state.LastManualCheckUtc.Value).TotalMinutes < 2)
         {
             return;
         }
-
-        state.LastCheckUtc = now;
+        state.LastManualCheckUtc = now;
         SaveUpdateState(state);
 
         try
@@ -82,33 +78,33 @@ internal static class AgentUpdater
             var root = doc.RootElement;
             if (!root.TryGetProperty("success", out var ok) || !ok.GetBoolean()) return;
             if (!root.TryGetProperty("hasBinary", out var has) || !has.GetBoolean()) return;
-            var remoteVer = root.TryGetProperty("version", out var verEl)
+            var remoteVer = Normalize(root.TryGetProperty("version", out var verEl)
                 ? (verEl.GetString() ?? "")
-                : "";
-            remoteVer = Normalize(remoteVer);
+                : "");
             var localVer = Normalize(CurrentVersion);
 
             if (!IsNewer(remoteVer, localVer))
             {
+                DesktopNotify.Success($"Already on latest agent ({localVer}).");
                 ClearPendingForVersion(state, remoteVer);
                 return;
             }
 
-            if (ShouldSkipBrokenPublish(state, remoteVer, localVer))
+            if (HasAlreadyAttemptedVersion(state, remoteVer))
             {
-                NotifyBrokenPublishOnce(remoteVer, localVer);
+                DesktopNotify.Failed(
+                    $"Update to {remoteVer} already attempted — still on {localVer}. " +
+                    "Republish matching exe from admin or reinstall manually.");
                 return;
             }
-
-            if (!force && ShouldSkipDueToCooldown(state, remoteVer)) return;
 
             var downloadPath = root.TryGetProperty("downloadPath", out var dp)
                 ? (dp.GetString() ?? "/api/presence-agent/download")
                 : "/api/presence-agent/download";
             if (!downloadPath.StartsWith('/')) downloadPath = "/" + downloadPath;
 
+            MarkVersionAttempted(state, remoteVer);
             _updateInFlight = true;
-            RecordAttempt(state, remoteVer);
             DesktopNotify.Success($"Updating agent to {remoteVer}…");
             await DownloadAndApplyAsync($"{baseUrl}{downloadPath}", remoteVer, ct)
                 .ConfigureAwait(false);
@@ -119,51 +115,18 @@ internal static class AgentUpdater
         }
     }
 
-    private static bool ShouldSkipBrokenPublish(UpdateState state, string remoteVer, string localVer)
-    {
-        if (!string.Equals(state.LastAppliedVersion, remoteVer, StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (IsNewer(remoteVer, localVer) && state.AttemptCount >= 1)
-            return true;
-        return false;
-    }
+    private static bool HasAlreadyAttemptedVersion(UpdateState state, string remoteVer) =>
+        string.Equals(state.LastAppliedVersion, remoteVer, StringComparison.OrdinalIgnoreCase);
 
-    private static void NotifyBrokenPublishOnce(string remoteVer, string localVer)
+    private static void MarkVersionAttempted(UpdateState state, string remoteVer)
     {
-        if (_brokenPublishNotified) return;
-        _brokenPublishNotified = true;
-        DesktopNotify.Failed(
-            $"Update paused — server says {remoteVer} but this PC is still {localVer}. " +
-            "Republish the correct InteractPresence.exe from admin.");
-    }
-
-    private static bool ShouldSkipDueToCooldown(UpdateState state, string remoteVer)
-    {
-        if (!string.Equals(state.LastRemoteVersion, remoteVer, StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (state.AttemptCount < 2) return false;
-        if (!state.LastAttemptUtc.HasValue) return false;
-        return (DateTime.UtcNow - state.LastAttemptUtc.Value).TotalHours < 6;
-    }
-
-    private static void RecordAttempt(UpdateState state, string remoteVer)
-    {
-        if (string.Equals(state.LastRemoteVersion, remoteVer, StringComparison.OrdinalIgnoreCase))
-            state.AttemptCount++;
-        else
-        {
-            state.LastRemoteVersion = remoteVer;
-            state.AttemptCount = 1;
-            _brokenPublishNotified = false;
-        }
+        state.LastAppliedVersion = remoteVer;
         state.LastAttemptUtc = DateTime.UtcNow;
         SaveUpdateState(state);
     }
 
     private static void ClearPendingForVersion(UpdateState state, string remoteVer)
     {
-        if (!string.Equals(state.LastRemoteVersion, remoteVer, StringComparison.OrdinalIgnoreCase)) return;
-        state.AttemptCount = 0;
         state.LastAppliedVersion = remoteVer;
         state.LastAttemptUtc = null;
         SaveUpdateState(state);
@@ -202,15 +165,9 @@ internal static class AgentUpdater
 
     private static async Task DownloadAndApplyAsync(string url, string version, CancellationToken ct)
     {
-        var exe = Environment.ProcessPath
-                   ?? Process.GetCurrentProcess().MainModule?.FileName;
-        if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
-        {
-            _updateInFlight = false;
-            return;
-        }
-
-        var dir = Path.GetDirectoryName(exe)!;
+        Directory.CreateDirectory(AgentInstallPaths.AppDir);
+        var exe = AgentInstallPaths.CanonicalExe;
+        var dir = AgentInstallPaths.AppDir;
         var newPath = Path.Combine(dir, "InteractPresence_new.exe");
         var batPath = Path.Combine(dir, "apply-update.cmd");
 
@@ -240,8 +197,7 @@ internal static class AgentUpdater
         {
             try { File.Delete(newPath); } catch { /* ignore */ }
             _updateInFlight = false;
-            DesktopNotify.Failed(
-                "Update skipped — downloaded file is not newer than this install. Ask admin to republish the correct exe.");
+            DesktopNotify.Failed("Downloaded file is not newer than this install.");
             return;
         }
 
@@ -250,14 +206,9 @@ internal static class AgentUpdater
             try { File.Delete(newPath); } catch { /* ignore */ }
             _updateInFlight = false;
             DesktopNotify.Failed(
-                $"Update skipped — admin published {version} but exe file is {downloadedVer}. Republish matching version.");
+                $"Published version {version} does not match uploaded exe ({downloadedVer}).");
             return;
         }
-
-        var state = LoadUpdateState();
-        state.LastAppliedVersion = version;
-        state.LastAttemptUtc = DateTime.UtcNow;
-        SaveUpdateState(state);
 
         var bat = $"""
 @echo off
@@ -308,8 +259,7 @@ del /f /q "%~f0"
     {
         try
         {
-            var dir = Path.GetDirectoryName(UpdateStatePath)!;
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(AgentInstallPaths.AppDir);
             var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(UpdateStatePath, json);
         }
@@ -321,10 +271,8 @@ del /f /q "%~f0"
 
     private sealed class UpdateState
     {
-        public string? LastRemoteVersion { get; set; }
         public string? LastAppliedVersion { get; set; }
         public DateTime? LastAttemptUtc { get; set; }
-        public DateTime? LastCheckUtc { get; set; }
-        public int AttemptCount { get; set; }
+        public DateTime? LastManualCheckUtc { get; set; }
     }
 }

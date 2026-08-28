@@ -61,7 +61,7 @@ public sealed class PresenceController : IDisposable
                 ? $"Active — idle {_settings.IdleWarningSeconds}s; camera={(_settings.CameraVerificationEnabled ? "on" : "off")}"
                 : "Presence disabled by admin (waiting for settings)");
         _ = _api.FlushQueueAsync();
-        // Settings + heartbeat on start; updates only when server signals update_available.
+        // Settings + heartbeat on start — no automatic exe updates (manual tray only).
         _ = Task.Run(async () =>
         {
             await ForceSyncSettingsAsync().ConfigureAwait(false);
@@ -175,7 +175,6 @@ public sealed class PresenceController : IDisposable
             var applied = await _api.TryApplyPresenceSettingsAsync(_settings, ct).ConfigureAwait(false);
             var hb = await _api.TrySendHeartbeatAsync(_settings, ct).ConfigureAwait(false);
             await HandleRemoteCommandAsync(hb?.Command).ConfigureAwait(false);
-            await MaybeCheckForUpdateAsync(hb?.UpdateAvailable == true).ConfigureAwait(false);
             MaybePermanentShutdownIfRetired();
             if (ct.IsCancellationRequested) return false;
             if (applied) MaybeEnsureAutoStartIfActive();
@@ -281,7 +280,6 @@ public sealed class PresenceController : IDisposable
                 var applied = await _api.TryApplyPresenceSettingsAsync(_settings).ConfigureAwait(false);
                 var hb = await _api.TrySendHeartbeatAsync(_settings).ConfigureAwait(false);
                 await HandleRemoteCommandAsync(hb?.Command).ConfigureAwait(false);
-                await MaybeCheckForUpdateAsync(hb?.UpdateAvailable == true).ConfigureAwait(false);
                 MaybePermanentShutdownIfRetired();
                 if (applied)
                 {
@@ -304,26 +302,12 @@ public sealed class PresenceController : IDisposable
                             $"Cannot reach HRM settings at {_settings.HrmBaseUrl}. Password/settings will not update.");
                     });
                 }
-                await MaybeCheckForUpdateAsync(hb?.UpdateAvailable == true).ConfigureAwait(false);
             }
             catch
             {
                 /* keep local */
             }
         });
-    }
-
-    private async Task MaybeCheckForUpdateAsync(bool updateAvailableFromServer)
-    {
-        if (!updateAvailableFromServer) return;
-        try
-        {
-            await AgentUpdater.CheckAndUpdateAsync(_settings, force: true).ConfigureAwait(false);
-        }
-        catch
-        {
-            /* non-fatal */
-        }
     }
 
     private void HandleCameraResult(HrmFacePresenceChecker.FaceCheckResult result, TimeSpan threshold)

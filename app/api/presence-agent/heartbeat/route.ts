@@ -38,7 +38,6 @@ export async function POST(req: NextRequest) {
         assigned_employee_id: result.assignedEmployeeId,
         assigned_employee_name: result.assignedEmployeeName,
         command: result.command,
-        update_available: result.updateAvailable,
       },
       {
         headers: {

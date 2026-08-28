@@ -16,17 +16,18 @@ public partial class App : System.Windows.Application
         _singleInstance = new Mutex(true, mutexName, out var createdNew);
         if (!createdNew)
         {
-            System.Windows.MessageBox.Show(
-                "Interact Presence is already running in the system tray.",
-                "Interact Presence",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
             Shutdown();
             return;
         }
 
-        // No main window chrome — tray-only agent.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        // Always run from stable LocalAppData path (prevents dev-folder update loops).
+        if (AgentInstallPaths.TryMigrateToCanonicalInstall())
+        {
+            Shutdown();
+            return;
+        }
 
         var settings = AppSettings.Load();
         try
