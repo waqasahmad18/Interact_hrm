@@ -3,10 +3,7 @@ using System.IO;
 
 namespace InteractPresence;
 
-/// <summary>
-/// Single stable install location — updates and auto-start always use this path.
-/// Prevents restart loops when running from a dev/build folder.
-/// </summary>
+/// <summary>Single stable install location — auto-start and updates always use this path.</summary>
 internal static class AgentInstallPaths
 {
     public static string AppDir =>
@@ -36,9 +33,7 @@ internal static class AgentInstallPaths
         }
     }
 
-    /// <summary>
-    /// Copy current exe to LocalAppData and launch it. Caller should exit when true.
-    /// </summary>
+    /// <summary>Hand off to LocalAppData install when launched from a build/dev folder.</summary>
     public static bool TryMigrateToCanonicalInstall()
     {
         try
@@ -47,11 +42,11 @@ internal static class AgentInstallPaths
             if (string.IsNullOrWhiteSpace(current) || !File.Exists(current)) return false;
             if (IsRunningFromCanonical()) return false;
 
-            Directory.CreateDirectory(AppDir);
+            var sourceDir = Path.GetDirectoryName(current)!;
+            CopyFullInstall(sourceDir, AppDir);
+
             var canonical = CanonicalExe;
-            var shouldCopy = !File.Exists(canonical) || IsNewerFile(current, canonical);
-            if (shouldCopy)
-                File.Copy(current, canonical, overwrite: true);
+            if (!File.Exists(canonical)) return false;
 
             Process.Start(new ProcessStartInfo
             {
@@ -67,6 +62,37 @@ internal static class AgentInstallPaths
         }
     }
 
+    /// <summary>Copy exe + all dll/config deps next to it (framework-dependent publish).</summary>
+    public static void CopyFullInstall(string sourceDir, string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        foreach (var pattern in new[] { "*.exe", "*.dll", "*.json", "*.deps.json", "*.runtimeconfig.json" })
+        {
+            foreach (var file in Directory.GetFiles(sourceDir, pattern))
+            {
+                var name = Path.GetFileName(file);
+                if (name.Equals("InteractPresence_new.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                File.Copy(file, Path.Combine(targetDir, name), overwrite: true);
+            }
+        }
+
+        var runtimesSrc = Path.Combine(sourceDir, "runtimes");
+        if (Directory.Exists(runtimesSrc))
+        {
+            var runtimesDst = Path.Combine(targetDir, "runtimes");
+            CopyDirectoryRecursive(runtimesSrc, runtimesDst);
+        }
+    }
+
+    private static void CopyDirectoryRecursive(string sourceDir, string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+            File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)), overwrite: true);
+        foreach (var dir in Directory.GetDirectories(sourceDir))
+            CopyDirectoryRecursive(dir, Path.Combine(targetDir, Path.GetFileName(dir)));
+    }
+
     public static string ResolveUpdateTargetExe()
     {
         if (File.Exists(CanonicalExe)) return CanonicalExe;
@@ -75,30 +101,44 @@ internal static class AgentInstallPaths
         return CanonicalExe;
     }
 
-    private static bool IsNewerFile(string source, string target)
+    public static string? ReadFileVersion(string path)
     {
         try
         {
-            var s = ReadVersion(source);
-            var t = ReadVersion(target);
-            if (Version.TryParse(s, out var sv) && Version.TryParse(t, out var tv))
-                return sv > tv;
-        }
-        catch { /* ignore */ }
-        try
-        {
-            return File.GetLastWriteTimeUtc(source) > File.GetLastWriteTimeUtc(target);
+            var vi = FileVersionInfo.GetVersionInfo(path);
+            var raw = (vi.FileVersion ?? vi.ProductVersion ?? "").Trim();
+            if (raw.Length == 0) return null;
+            return NormalizeVersion(raw);
         }
         catch
         {
-            return true;
+            return null;
         }
     }
 
-    private static string ReadVersion(string path)
+    public static string RunningAssemblyVersion()
     {
-        var vi = FileVersionInfo.GetVersionInfo(path);
-        var raw = (vi.FileVersion ?? vi.ProductVersion ?? "0.0.0").Trim();
-        return raw.Length > 0 ? raw : "0.0.0";
+        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        if (v == null) return "0.0.0";
+        return NormalizeVersion($"{v.Major}.{v.Minor}.{v.Build}");
+    }
+
+    public static bool IsVersionNewer(string remote, string local)
+    {
+        if (!Version.TryParse(NormalizeVersion(remote), out var r)) return false;
+        if (!Version.TryParse(NormalizeVersion(local), out var l)) return true;
+        return r > l;
+    }
+
+    public static bool IsSameVersion(string a, string b) =>
+        string.Equals(NormalizeVersion(a), NormalizeVersion(b), StringComparison.OrdinalIgnoreCase);
+
+    public static string NormalizeVersion(string v)
+    {
+        var parts = (v ?? "0").Trim().Split('.');
+        while (parts.Length < 3) Array.Resize(ref parts, parts.Length + 1);
+        for (var i = 0; i < parts.Length; i++)
+            if (string.IsNullOrWhiteSpace(parts[i])) parts[i] = "0";
+        return string.Join(".", parts.Take(4));
     }
 }

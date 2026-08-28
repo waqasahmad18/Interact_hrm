@@ -24,11 +24,12 @@ internal static class AutoStartHelper
             if (!File.Exists(exe))
             {
                 var running = AgentInstallPaths.RunningExe;
-                if (string.IsNullOrWhiteSpace(running) || !File.Exists(running)) return;
-                Directory.CreateDirectory(AgentInstallPaths.AppDir);
-                File.Copy(running, exe, overwrite: true);
+                var dir = Path.GetDirectoryName(running);
+                if (string.IsNullOrWhiteSpace(dir) || !File.Exists(running)) return;
+                AgentInstallPaths.CopyFullInstall(dir, AgentInstallPaths.AppDir);
             }
 
+            if (!File.Exists(exe)) return;
             CreateShortcut(exe);
         }
         catch
