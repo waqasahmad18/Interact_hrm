@@ -52,6 +52,7 @@ import {
   loadTungstenPunchContext,
   monthlyDash,
   type EmployeeReportSession,
+  type EmployeeShiftResolver,
   type HrmEmployeeRef,
   type TungstenPunchContext,
 } from "../../../lib/tungsten-punch-pairing";
@@ -295,6 +296,9 @@ export default function MonthlyAttendancePage() {
   const [importedSnapshot, setImportedSnapshot] = useState<ImportedMonthlySnapshot | null>(null);
   const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
   const [hrmEmployeesList, setHrmEmployeesList] = useState<HrmEmployeeRef[]>([]);
+  const [shiftAssignments, setShiftAssignments] = useState<
+    { employeeId: string; startTime: string; endTime: string; assignedDate: string }[]
+  >([]);
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   /** Collapsed by default — full month tables for every employee freeze the browser */
   const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Record<string, boolean>>({});
@@ -331,6 +335,31 @@ export default function MonthlyAttendancePage() {
         if (data.success && Array.isArray(data.employees)) {
           setHrmEmployeesList(hrmEmployeesFromList(data.employees));
         }
+      })
+      .catch(() => {});
+    fetch("/api/hrm-shifts-assignments", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success || !Array.isArray(data.employees)) return;
+        setShiftAssignments(
+          data.employees
+            .filter((e: { id?: number; start_time?: string; end_time?: string }) =>
+              Boolean(e.id && e.start_time && e.end_time),
+            )
+            .map(
+              (e: {
+                id: number;
+                start_time: string;
+                end_time: string;
+                assigned_date?: string;
+              }) => ({
+                employeeId: String(e.id),
+                startTime: String(e.start_time).slice(0, 8),
+                endTime: String(e.end_time).slice(0, 8),
+                assignedDate: String(e.assigned_date || "").slice(0, 10),
+              }),
+            ),
+        );
       })
       .catch(() => {});
   }, []);
@@ -890,6 +919,15 @@ export default function MonthlyAttendancePage() {
     };
   }
 
+  function shiftResolverForEmployee(employeeId: string): EmployeeShiftResolver {
+    const row = shiftAssignments.find((s) => s.employeeId === String(employeeId));
+    if (!row) return () => null;
+    return (sessionDate: string) => {
+      if (row.assignedDate && sessionDate < row.assignedDate) return null;
+      return { startTime: row.startTime, endTime: row.endTime };
+    };
+  }
+
   /** Pair T.Punch for this employee even if their card is collapsed (export needs every sheet). */
   function pairSessionsForEmployee(
     employee: {
@@ -915,6 +953,7 @@ export default function MonthlyAttendancePage() {
       Date.now(),
       zkFrom,
       zkTo,
+      shiftResolverForEmployee(employee.employeeId),
     );
   }
 
@@ -1648,6 +1687,7 @@ export default function MonthlyAttendancePage() {
           pairingNow,
           zkFrom,
           zkTo,
+          shiftResolverForEmployee(empId),
         ),
       );
     });
@@ -1660,6 +1700,7 @@ export default function MonthlyAttendancePage() {
     fromDate,
     toDate,
     pairingNow,
+    shiftAssignments,
   ]);
 
   // Narrow search → auto-expand matched employees so results are one click less
