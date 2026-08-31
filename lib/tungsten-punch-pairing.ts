@@ -61,18 +61,57 @@ function normalizeName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function rawZkNameFromRow(z: Record<string, unknown>) {
+  const first = String(z.first_name ?? "").trim();
+  const last = String(z.last_name ?? "").trim();
+  return `${first} ${last}`.trim();
+}
+
+/** PIN match, exact name, or partial name (e.g. Tungsten "Zahid Ali" vs HRM "Zahid Ali Parviz"). */
+function namesLooselyMatch(a: string, b: string) {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const ta = na.split(" ").filter(Boolean);
+  const tb = nb.split(" ").filter(Boolean);
+  if (ta.length >= 2 && tb.length >= 2) {
+    const shared = tb.filter((t) => ta.includes(t)).length;
+    if (shared >= 2) return true;
+    if (ta[0] === tb[0] && ta[ta.length - 1] === tb[tb.length - 1]) return true;
+  }
+  return false;
+}
+
 export function punchMatchesEmployee(
   pin: string,
   zkResolvedName: string,
   hrmPinMatch: HrmCodeProfile | undefined,
   target: EmployeeMatchKeys,
+  rawZkRowName?: string,
 ): boolean {
   const code = String(target.employeeCode ?? "").trim();
   if (code && pin && pin === code) return true;
 
   const targetName = normalizeName(target.employeeName);
-  const punchName = normalizeName(hrmPinMatch?.employeeName || zkResolvedName);
-  if (targetName && punchName && targetName === punchName) return true;
+  const candidates = [
+    hrmPinMatch?.employeeName || "",
+    zkResolvedName,
+    rawZkRowName || "",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (namesLooselyMatch(target.employeeName, candidate)) return true;
+  }
+
+  if (
+    hrmPinMatch?.employeeId &&
+    target.employeeId &&
+    hrmPinMatch.employeeId === String(target.employeeId)
+  ) {
+    return true;
+  }
 
   return false;
 }
@@ -92,7 +131,8 @@ export function employeeHasZkPunchesInRange(
       ctx.hrmByCode,
     );
     const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
-    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target)) continue;
+    const rawName = rawZkNameFromRow(z);
+    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;
@@ -240,7 +280,8 @@ function appendTungstenRows(
       ctx.hrmByCode,
     );
     const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
-    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target)) continue;
+    const rawName = rawZkNameFromRow(z);
+    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;

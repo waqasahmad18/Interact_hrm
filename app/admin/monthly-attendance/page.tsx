@@ -1597,10 +1597,10 @@ export default function MonthlyAttendancePage() {
       list.push(record);
       recordsByEmployeeId.set(id, list);
     });
-    // Only pair Tungsten for expanded cards — pairing everyone on load freezes the UI
+    // Pair Tungsten for every employee so T.Punch shows without expanding the card.
     attendanceByEmployeeAllMerged.forEach((emp) => {
       const empId = String(emp.employeeId);
-      if (!expandedEmployeeIds[empId]) return;
+      if (!tungstenCtx) return;
       const allRecords = recordsByEmployeeId.get(empId) || [];
       out.set(
         emp.employeeId,
@@ -1619,7 +1619,6 @@ export default function MonthlyAttendancePage() {
   }, [
     attendance,
     attendanceByEmployeeAllMerged,
-    expandedEmployeeIds,
     tungstenCtx,
     showingImported,
     fromDate,
