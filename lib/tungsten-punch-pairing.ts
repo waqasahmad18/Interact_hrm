@@ -157,7 +157,7 @@ export function employeeHasZkPunchesInRange(
   return false;
 }
 
-function hrmEmployeesFromList(
+export function hrmEmployeesFromList(
   employees: {
     id?: string | number;
     first_name?: string;

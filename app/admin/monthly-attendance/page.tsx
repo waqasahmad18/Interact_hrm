@@ -48,9 +48,11 @@ import {
 import {
   buildEmployeeReportSessions,
   employeeHasZkPunchesInRange,
+  hrmEmployeesFromList,
   loadTungstenPunchContext,
   monthlyDash,
   type EmployeeReportSession,
+  type HrmEmployeeRef,
   type TungstenPunchContext,
 } from "../../../lib/tungsten-punch-pairing";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
@@ -292,6 +294,7 @@ export default function MonthlyAttendancePage() {
   const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
   const [importedSnapshot, setImportedSnapshot] = useState<ImportedMonthlySnapshot | null>(null);
   const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
+  const [hrmEmployeesList, setHrmEmployeesList] = useState<HrmEmployeeRef[]>([]);
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   /** Collapsed by default — full month tables for every employee freeze the browser */
   const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Record<string, boolean>>({});
@@ -316,9 +319,21 @@ export default function MonthlyAttendancePage() {
         .then(setTungstenCtx)
         .catch(() => {});
     };
+    refreshPairing();
     const id = setInterval(refreshPairing, 60_000);
     return () => clearInterval(id);
   }, [fromDate, toDate, showingImported]);
+
+  useEffect(() => {
+    fetch("/api/employee-list", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.employees)) {
+          setHrmEmployeesList(hrmEmployeesFromList(data.employees));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch departments
   useEffect(() => {
@@ -1495,14 +1510,21 @@ export default function MonthlyAttendancePage() {
     return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
   }, [attendance, showingImported, importedSnapshot, selectedDepartment, fromDate, toDate]);
 
-  /** Enrich employee_code + include training employees with Tungsten punches but no HRM clock-in. */
+  /** Enrich employee_code + include Tungsten-only employees (no HRM clock-in). */
   const attendanceByEmployeeAllMerged = useMemo((): MonthlyAttendanceEmployeeRow[] => {
-    if (showingImported || !tungstenCtx?.hrmEmployees?.length) {
+    if (showingImported) {
       return attendanceByEmployeeAll;
     }
 
+    const allHrmEmployees =
+      tungstenCtx?.hrmEmployees?.length ? tungstenCtx.hrmEmployees : hrmEmployeesList;
+    if (!allHrmEmployees.length) {
+      return attendanceByEmployeeAll;
+    }
+
+    const searchTerm = deferredSearchName.trim().toLowerCase();
     const hrmById = new Map(
-      tungstenCtx.hrmEmployees.map((e) => [e.employeeId, e] as const),
+      allHrmEmployees.map((e) => [e.employeeId, e] as const),
     );
     const enriched = attendanceByEmployeeAll.map((row) => {
       const hrm = hrmById.get(row.employeeId);
@@ -1524,7 +1546,7 @@ export default function MonthlyAttendancePage() {
     const existing = new Set(enriched.map((e) => e.employeeId));
     const extra: MonthlyAttendanceEmployeeRow[] = [];
 
-    for (const hrm of tungstenCtx.hrmEmployees) {
+    for (const hrm of allHrmEmployees) {
       if (existing.has(hrm.employeeId)) continue;
       if (
         selectedDepartment &&
@@ -1532,11 +1554,20 @@ export default function MonthlyAttendancePage() {
       ) {
         continue;
       }
-      if (
-        !fromDate ||
-        !toDate ||
-        !employeeHasZkPunchesInRange(
-          tungstenCtx,
+
+      const matchesSearch =
+        Boolean(searchTerm) &&
+        (hrm.employeeName.toLowerCase().includes(searchTerm) ||
+          hrm.pseudonym.toLowerCase().includes(searchTerm) ||
+          String(hrm.employeeId).includes(searchTerm) ||
+          hrm.employeeCode.toLowerCase().includes(searchTerm));
+
+      const hasPunches =
+        Boolean(tungstenCtx) &&
+        Boolean(fromDate) &&
+        Boolean(toDate) &&
+        employeeHasZkPunchesInRange(
+          tungstenCtx as TungstenPunchContext,
           {
             employeeName: hrm.employeeName,
             employeeCode: hrm.employeeCode,
@@ -1545,10 +1576,10 @@ export default function MonthlyAttendancePage() {
           },
           fromDate,
           toDate,
-        )
-      ) {
-        continue;
-      }
+        );
+
+      if (!hasPunches && !matchesSearch) continue;
+
       extra.push({
         employeeId: hrm.employeeId,
         employeeName: hrm.employeeName,
@@ -1568,10 +1599,12 @@ export default function MonthlyAttendancePage() {
   }, [
     attendanceByEmployeeAll,
     tungstenCtx,
+    hrmEmployeesList,
     showingImported,
     selectedDepartment,
     fromDate,
     toDate,
+    deferredSearchName,
   ]);
 
   /** Cheap name / pseudo / ID filter — deferred so typing does not block the input */
