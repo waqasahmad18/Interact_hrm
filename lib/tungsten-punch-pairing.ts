@@ -96,7 +96,7 @@ export function employeeHasZkPunchesInRange(
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;
-    const punchMs = parseZkbioDateTimeMs(String(rawVal));
+    const punchMs = parseAttendanceDateTimeMs(String(rawVal));
     if (punchMs == null) continue;
     const eventDate = getDateStringInTimeZone(punchMs, SERVER_TIMEZONE);
     if (eventDate < dateFrom || eventDate > dateTo) continue;
