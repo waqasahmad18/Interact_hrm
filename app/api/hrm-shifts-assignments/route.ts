@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "../../../lib/db";
+import type { PoolConnection } from "mysql2/promise";
+import { upsertShiftAssignment } from "@/lib/shift-assignment-upsert";
+import { pool, query } from "../../../lib/db";
 
 function parseAllowOvertime(value: unknown, defaultValue = false): boolean {
   if (value === undefined || value === null || value === "") return defaultValue;
@@ -86,6 +88,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let conn: PoolConnection | undefined;
   try {
     const body = await req.json();
     const {
@@ -108,85 +111,79 @@ export async function POST(req: NextRequest) {
     }
 
     const assignDate = assigned_date || new Date().toISOString().split("T")[0];
+    const allowOT = parseAllowOvertime(allow_overtime, false);
+    const shiftName = String(shift_name).trim();
+    const startTime = String(start_time).trim();
+    const endTime = String(end_time).trim();
 
-    // Helper to upsert one employee
-    const upsertOne = async (empId: number, allowOT: boolean = false) => {
-      const [existing] = (await query(
-        `SELECT id FROM shift_assignments 
-         WHERE employee_id = ? AND assigned_date = ?`,
-        [empId, assignDate]
-      )) as any;
+    conn = await pool.getConnection();
 
-      if (existing.length > 0) {
-        await query(
-          `UPDATE shift_assignments 
-           SET shift_name = ?, start_time = ?, end_time = ?, allow_overtime = ?, updated_at = CURRENT_TIMESTAMP
-           WHERE employee_id = ? AND assigned_date = ?`,
-          [shift_name, start_time, end_time, allowOT ? 1 : 0, empId, assignDate]
-        );
-      } else {
-        await query(
-          `INSERT INTO shift_assignments 
-           (employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [empId, shift_name, start_time, end_time, assignDate, allowOT ? 1 : 0]
-        );
+    const upsertOne = async (rawEmpId: number | string) => {
+      const empId = Number(rawEmpId);
+      if (!Number.isFinite(empId) || empId <= 0) {
+        throw new Error(`Invalid employee id: ${rawEmpId}`);
       }
+      await upsertShiftAssignment(
+        conn!,
+        empId,
+        shiftName,
+        startTime,
+        endTime,
+        assignDate,
+        allowOT,
+      );
     };
 
     // Assign to all active employees
     if (assign_all) {
-      const [allEmployees] = (await query(
-        `SELECT id FROM hrm_employees WHERE status IN ('enabled', 'active')`
-      )) as any;
-
-      const allowOT = parseAllowOvertime(allow_overtime, false);
-      await Promise.all(
-        allEmployees.map((row: { id: number }) => upsertOne(row.id, allowOT)),
+      const [allEmployees] = await conn.execute(
+        `SELECT id FROM hrm_employees WHERE status IN ('enabled', 'active')`,
       );
+      for (const row of allEmployees as { id: number }[]) {
+        await upsertOne(row.id);
+      }
 
       return NextResponse.json({ success: true, message: "Shift assigned to all employees" });
     }
 
     // Assign to a department
     if (department_id) {
-      // First try employee_jobs table
-      let [deptEmployees] = (await query(
+      let [deptEmployees] = await conn.execute(
         `SELECT DISTINCT employee_id FROM employee_jobs WHERE department_id = ?`,
-        [department_id]
-      )) as any;
+        [department_id],
+      );
 
-      // If no employees found, try hrm_employees table directly
-      if (deptEmployees.length === 0) {
-        const [deptEmployeesFallback] = (await query(
+      if ((deptEmployees as unknown[]).length === 0) {
+        const [deptEmployeesFallback] = await conn.execute(
           `SELECT id as employee_id FROM hrm_employees WHERE department_id = ? AND status IN ('enabled', 'active')`,
-          [department_id]
-        )) as any;
+          [department_id],
+        );
         deptEmployees = deptEmployeesFallback;
       }
 
-      if (deptEmployees.length === 0) {
+      const deptRows = deptEmployees as { employee_id: number }[];
+      if (deptRows.length === 0) {
         return NextResponse.json(
           { success: false, error: "No employees found for this department" },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
-      const allowOT = parseAllowOvertime(allow_overtime, false);
-      await Promise.all(
-        deptEmployees.map((row: { employee_id: number }) => upsertOne(row.employee_id, allowOT)),
-      );
+      for (const row of deptRows) {
+        await upsertOne(row.employee_id);
+      }
 
-      return NextResponse.json({ 
-        success: true, 
-        message: `Shift assigned to ${deptEmployees.length} employee(s) in department` 
+      return NextResponse.json({
+        success: true,
+        message: `Shift assigned to ${deptRows.length} employee(s) in department`,
       });
     }
 
     // Multiple specific employees
     if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
-      const allowOT = parseAllowOvertime(allow_overtime, false);
-      await Promise.all(employee_ids.map((empId: number) => upsertOne(empId, allowOT)));
+      for (const empId of employee_ids) {
+        await upsertOne(empId);
+      }
 
       return NextResponse.json({ success: true, message: "Shift assigned to selected employees" });
     }
@@ -195,12 +192,11 @@ export async function POST(req: NextRequest) {
     if (!employee_id) {
       return NextResponse.json(
         { success: false, error: "Employee ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const allowOT = parseAllowOvertime(allow_overtime, false);
-    await upsertOne(employee_id, allowOT);
+    await upsertOne(employee_id);
 
     return NextResponse.json({
       success: true,
@@ -210,8 +206,10 @@ export async function POST(req: NextRequest) {
     console.error("Error saving shift assignment:", error);
     return NextResponse.json(
       { success: false, error: error.message },
-      { status: 500 }
+      { status: 500 },
     );
+  } finally {
+    conn?.release();
   }
 }
 
@@ -258,13 +256,6 @@ export async function PATCH(req: NextRequest) {
              SET allow_overtime = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
             [allowOTValue, latestAssignment[0].id]
-          );
-        } else {
-          await query(
-            `INSERT INTO shift_assignments
-             (employee_id, shift_name, start_time, end_time, assigned_date, allow_overtime)
-             VALUES (?, NULL, NULL, NULL, ?, ?)`,
-            [empId, assignDate, allowOTValue]
           );
         }
       }

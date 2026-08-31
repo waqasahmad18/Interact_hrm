@@ -30,6 +30,7 @@ const CHILD_TABLES = [
   "loan_installments",
   "advance_salary",
   "employee_credentials",
+  "employees",
 ];
 
 async function reassignEmployeeId(
@@ -80,9 +81,7 @@ async function reassignEmployeeId(
     }
 
     const nextAuto = Math.max(toId, fromId) + 1;
-    await conn.execute(`ALTER TABLE hrm_employees AUTO_INCREMENT = ?`, [
-      nextAuto,
-    ]);
+    await conn.query(`ALTER TABLE hrm_employees AUTO_INCREMENT = ${nextAuto}`);
   } finally {
     await conn.query("SET FOREIGN_KEY_CHECKS=1");
   }

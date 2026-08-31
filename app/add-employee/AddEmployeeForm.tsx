@@ -234,7 +234,7 @@ export default function AddEmployeeForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          employee_id: employeeId,
+          employee_id: Number(employeeId),
           shift_name: selectedMasterShift.name,
           start_time: toShiftTime(selectedMasterShift.shift_in),
           end_time: toShiftTime(selectedMasterShift.shift_out),
