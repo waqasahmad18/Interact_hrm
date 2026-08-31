@@ -47,6 +47,7 @@ import {
 } from "../../../lib/monthly-attendance-import";
 import {
   buildEmployeeReportSessions,
+  employeeHasZkPunchesInRange,
   loadTungstenPunchContext,
   monthlyDash,
   type EmployeeReportSession,
@@ -60,6 +61,7 @@ import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 type MonthlyAttendanceEmployeeRow = {
   employeeId: string;
   employeeName: string;
+  employeeCode?: string;
   pseudonym: string;
   departmentName: string;
   gender: string;
@@ -859,9 +861,26 @@ export default function MonthlyAttendancePage() {
     return weekday !== 0 && weekday !== 6;
   }
 
+  function employeeMatchKeys(employee: {
+    employeeId: string;
+    employeeName: string;
+    employeeCode?: string;
+  }) {
+    return {
+      employeeName: employee.employeeName,
+      employeeCode: employee.employeeCode,
+      employeeId: employee.employeeId,
+    };
+  }
+
   /** Pair T.Punch for this employee even if their card is collapsed (export needs every sheet). */
   function pairSessionsForEmployee(
-    employee: { employeeId: string; employeeName: string; isImported?: boolean },
+    employee: {
+      employeeId: string;
+      employeeName: string;
+      employeeCode?: string;
+      isImported?: boolean;
+    },
     ctx: TungstenPunchContext | null,
   ): EmployeeReportSession[] {
     if (employee.isImported) return [];
@@ -872,7 +891,7 @@ export default function MonthlyAttendancePage() {
       (record: any) => String(record.employee_id) === String(employee.employeeId),
     );
     return buildEmployeeReportSessions(
-      employee.employeeName,
+      employeeMatchKeys(employee),
       allRecords,
       ctx,
       todayKey,
@@ -1474,17 +1493,95 @@ export default function MonthlyAttendancePage() {
     return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
   }, [attendance, showingImported, importedSnapshot, selectedDepartment, fromDate, toDate]);
 
+  /** Enrich employee_code + include training employees with Tungsten punches but no HRM clock-in. */
+  const attendanceByEmployeeAllMerged = useMemo((): MonthlyAttendanceEmployeeRow[] => {
+    if (showingImported || !tungstenCtx?.hrmEmployees?.length) {
+      return attendanceByEmployeeAll;
+    }
+
+    const hrmById = new Map(
+      tungstenCtx.hrmEmployees.map((e) => [e.employeeId, e] as const),
+    );
+    const enriched = attendanceByEmployeeAll.map((row) => {
+      const hrm = hrmById.get(row.employeeId);
+      return {
+        ...row,
+        employeeCode: row.employeeCode || hrm?.employeeCode || "",
+        departmentName:
+          row.departmentName && row.departmentName !== "-"
+            ? row.departmentName
+            : hrm?.departmentName || row.departmentName,
+        gender: row.gender || hrm?.gender || "",
+        pseudonym:
+          row.pseudonym && row.pseudonym !== "-"
+            ? row.pseudonym
+            : hrm?.pseudonym || row.pseudonym,
+      };
+    });
+
+    const existing = new Set(enriched.map((e) => e.employeeId));
+    const extra: MonthlyAttendanceEmployeeRow[] = [];
+
+    for (const hrm of tungstenCtx.hrmEmployees) {
+      if (existing.has(hrm.employeeId)) continue;
+      if (
+        selectedDepartment &&
+        hrm.departmentName.toLowerCase() !== selectedDepartment.toLowerCase()
+      ) {
+        continue;
+      }
+      if (
+        !fromDate ||
+        !toDate ||
+        !employeeHasZkPunchesInRange(
+          tungstenCtx,
+          {
+            employeeName: hrm.employeeName,
+            employeeCode: hrm.employeeCode,
+            employeeId: hrm.employeeId,
+          },
+          fromDate,
+          toDate,
+        )
+      ) {
+        continue;
+      }
+      extra.push({
+        employeeId: hrm.employeeId,
+        employeeName: hrm.employeeName,
+        employeeCode: hrm.employeeCode,
+        pseudonym: hrm.pseudonym,
+        departmentName: hrm.departmentName,
+        gender: hrm.gender,
+        byDate: {},
+        dateMeta: {},
+      });
+    }
+
+    if (!extra.length) return enriched;
+    return [...enriched, ...extra].sort((a, b) =>
+      a.employeeName.localeCompare(b.employeeName),
+    );
+  }, [
+    attendanceByEmployeeAll,
+    tungstenCtx,
+    showingImported,
+    selectedDepartment,
+    fromDate,
+    toDate,
+  ]);
+
   /** Cheap name / pseudo / ID filter — deferred so typing does not block the input */
   const attendanceByEmployee = useMemo(() => {
     const term = deferredSearchName.trim().toLowerCase();
-    if (!term) return attendanceByEmployeeAll;
-    return attendanceByEmployeeAll.filter((e) => {
+    if (!term) return attendanceByEmployeeAllMerged;
+    return attendanceByEmployeeAllMerged.filter((e) => {
       const name = (e.employeeName || "").toLowerCase();
       const pseudo = (e.pseudonym || "").toLowerCase();
       const id = String(e.employeeId || "").toLowerCase();
       return name.includes(term) || pseudo.includes(term) || id.includes(term);
     });
-  }, [attendanceByEmployeeAll, deferredSearchName]);
+  }, [attendanceByEmployeeAllMerged, deferredSearchName]);
 
   const sessionsByEmployeeId = useMemo(() => {
     const out = new Map<string, EmployeeReportSession[]>();
@@ -1501,13 +1598,14 @@ export default function MonthlyAttendancePage() {
       recordsByEmployeeId.set(id, list);
     });
     // Only pair Tungsten for expanded cards — pairing everyone on load freezes the UI
-    attendanceByEmployeeAll.forEach((emp) => {
-      if (!expandedEmployeeIds[emp.employeeId]) return;
-      const allRecords = recordsByEmployeeId.get(emp.employeeId) || [];
+    attendanceByEmployeeAllMerged.forEach((emp) => {
+      const empId = String(emp.employeeId);
+      if (!expandedEmployeeIds[empId]) return;
+      const allRecords = recordsByEmployeeId.get(empId) || [];
       out.set(
         emp.employeeId,
         buildEmployeeReportSessions(
-          emp.employeeName,
+          employeeMatchKeys(emp),
           allRecords,
           tungstenCtx,
           todayKey,
@@ -1520,7 +1618,7 @@ export default function MonthlyAttendancePage() {
     return out;
   }, [
     attendance,
-    attendanceByEmployeeAll,
+    attendanceByEmployeeAllMerged,
     expandedEmployeeIds,
     tungstenCtx,
     showingImported,

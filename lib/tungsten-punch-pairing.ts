@@ -21,6 +21,23 @@ export type TungstenPunchContext = {
   batchPinProfiles: Map<string, PinProfile>;
   dbPinProfiles: Map<string, PinProfile>;
   hrmByCode: Map<string, HrmCodeProfile>;
+  hrmEmployees: HrmEmployeeRef[];
+};
+
+export type HrmEmployeeRef = {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  departmentName: string;
+  pseudonym: string;
+  gender: string;
+};
+
+/** Match Tungsten punches to an HRM employee by PIN (employee_code) and/or name. */
+export type EmployeeMatchKeys = {
+  employeeName: string;
+  employeeCode?: string | null;
+  employeeId?: string | null;
 };
 
 /** One row = one Employee Report session (same punch in/out logic). */
@@ -42,6 +59,80 @@ type InternalRow = {
 
 function normalizeName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function punchMatchesEmployee(
+  pin: string,
+  zkResolvedName: string,
+  hrmPinMatch: HrmCodeProfile | undefined,
+  target: EmployeeMatchKeys,
+): boolean {
+  const code = String(target.employeeCode ?? "").trim();
+  if (code && pin && pin === code) return true;
+
+  const targetName = normalizeName(target.employeeName);
+  const punchName = normalizeName(hrmPinMatch?.employeeName || zkResolvedName);
+  if (targetName && punchName && targetName === punchName) return true;
+
+  return false;
+}
+
+export function employeeHasZkPunchesInRange(
+  ctx: TungstenPunchContext,
+  target: EmployeeMatchKeys,
+  dateFrom: string,
+  dateTo: string,
+): boolean {
+  for (const z of ctx.zkRows) {
+    const pin = String(z.pin ?? "").trim();
+    const { employeeName: zkName } = resolveZkIdentity(
+      z,
+      ctx.batchPinProfiles,
+      ctx.dbPinProfiles,
+      ctx.hrmByCode,
+    );
+    const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
+    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target)) continue;
+
+    const rawVal = z.event_time ?? z.imported_at;
+    if (rawVal == null || rawVal === "") continue;
+    const punchMs = parseZkbioDateTimeMs(String(rawVal));
+    if (punchMs == null) continue;
+    const eventDate = getDateStringInTimeZone(punchMs, SERVER_TIMEZONE);
+    if (eventDate < dateFrom || eventDate > dateTo) continue;
+    return true;
+  }
+  return false;
+}
+
+function hrmEmployeesFromList(
+  employees: {
+    id?: string | number;
+    first_name?: string;
+    last_name?: string;
+    employee_code?: string | null;
+    department_name?: string | null;
+    pseudonym?: string | null;
+    gender?: string | null;
+  }[],
+): HrmEmployeeRef[] {
+  return employees
+    .map((e) => {
+      const employeeId = e.id != null ? String(e.id) : "";
+      if (!employeeId) return null;
+      const first = String(e.first_name ?? "").trim();
+      const last = String(e.last_name ?? "").trim();
+      const employeeName = `${first} ${last}`.trim() || "—";
+      return {
+        employeeId,
+        employeeName,
+        employeeCode: String(e.employee_code ?? "").trim(),
+        departmentName: String(e.department_name ?? "").trim() || "-",
+        pseudonym: String(e.pseudonym ?? "").trim() || "-",
+        gender: String(e.gender ?? "").trim(),
+      };
+    })
+    .filter((e): e is HrmEmployeeRef => e != null);
 }
 
 export function addDaysToDateKey(dateKey: string, days: number) {
@@ -126,17 +217,20 @@ export async function loadTungstenPunchContext(
       empListData.success && empListData.employees
         ? hrmMapFromEmployees(empListData.employees)
         : new Map(),
+    hrmEmployees:
+      empListData.success && empListData.employees
+        ? hrmEmployeesFromList(empListData.employees)
+        : [],
   };
 }
 
 function appendTungstenRows(
   merged: InternalRow[],
-  employeeName: string,
+  target: EmployeeMatchKeys,
   ctx: TungstenPunchContext,
   zkDateFrom: string,
   zkDateTo: string,
 ) {
-  const key = normalizeName(employeeName);
   for (const z of ctx.zkRows) {
     const pin = String(z.pin ?? "").trim();
     const { employeeName: zkName } = resolveZkIdentity(
@@ -146,8 +240,7 @@ function appendTungstenRows(
       ctx.hrmByCode,
     );
     const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
-    const rowName = (hrmMatch?.employeeName || zkName).trim().toLowerCase().replace(/\s+/g, " ");
-    if (rowName !== key) continue;
+    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target)) continue;
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;
@@ -283,6 +376,50 @@ function assignSessionPunchOut(
   return undefined;
 }
 
+/** Training / no-HRM-clock days: first and last Tungsten punch on the calendar day. */
+function firstLastPunchForDay(
+  tungstenByTime: TungstenEvent[],
+  sessionDate: string,
+): { first?: string; last?: string } {
+  const onDay = tungstenByTime.filter((t) => t.date === sessionDate);
+  if (!onDay.length) return {};
+  onDay.sort((a, b) => a.atMs - b.atMs);
+  return {
+    first: onDay[0].time,
+    last: onDay[onDay.length - 1].time,
+  };
+}
+
+function appendZkOnlyDaySessions(
+  sessions: EmployeeReportSession[],
+  tungstenByTime: TungstenEvent[],
+  zkDateFrom: string,
+  zkDateTo: string,
+): EmployeeReportSession[] {
+  const coveredDates = new Set(sessions.map((s) => s.sessionDate));
+  const punchDates = new Set(tungstenByTime.map((t) => t.date));
+  const extra: EmployeeReportSession[] = [];
+
+  for (const date of punchDates) {
+    if (date < zkDateFrom || date > zkDateTo) continue;
+    if (coveredDates.has(date)) continue;
+    const { first, last } = firstLastPunchForDay(tungstenByTime, date);
+    if (!first) continue;
+    extra.push({
+      sessionDate: date,
+      tungstenPunchIn: first,
+      hrmClockIn: "-",
+      hrmClockOut: "-",
+      tungstenPunchOut: last || "-",
+    });
+  }
+
+  if (!extra.length) return sessions;
+  return [...sessions, ...extra].sort((a, b) =>
+    a.sessionDate.localeCompare(b.sessionDate),
+  );
+}
+
 /**
  * T.Punch in: first Tungsten entry of the shift day.
  * T.Punch out: last exit punch for the session (never the day-first arrival).
@@ -402,7 +539,7 @@ export function pairTungstenWithSessions(
 }
 
 export function buildEmployeeReportSessions(
-  employeeName: string,
+  target: EmployeeMatchKeys | string,
   attendanceRecords: {
     clock_in?: string | null;
     clock_out?: string | null;
@@ -414,6 +551,8 @@ export function buildEmployeeReportSessions(
   zkDateFrom?: string,
   zkDateTo?: string,
 ): EmployeeReportSession[] {
+  const match: EmployeeMatchKeys =
+    typeof target === "string" ? { employeeName: target } : target;
   const shiftStartByDate = new Map<string, string>();
   for (const a of attendanceRecords) {
     if (!a.shift_start_time || !a.clock_in) continue;
@@ -439,7 +578,7 @@ export function buildEmployeeReportSessions(
   if (ctx) {
     const from = zkDateFrom || "0000-01-01";
     const to = zkDateTo || "9999-12-31";
-    appendTungstenRows(merged, employeeName, ctx, from, to);
+    appendTungstenRows(merged, match, ctx, from, to);
   }
 
   merged.sort((a, b) => a.sortAt.localeCompare(b.sortAt));
@@ -463,7 +602,7 @@ export function buildEmployeeReportSessions(
     }
   }
 
-  return pairTungstenWithSessions(
+  const paired = pairTungstenWithSessions(
     hrmIns,
     hrmOuts,
     tungsten,
@@ -471,6 +610,10 @@ export function buildEmployeeReportSessions(
     nowMs,
     (sessionDate) => shiftStartByDate.get(sessionDate) ?? null,
   );
+
+  const from = zkDateFrom || "0000-01-01";
+  const to = zkDateTo || "9999-12-31";
+  return appendZkOnlyDaySessions(paired, tungsten, from, to);
 }
 
 export function monthlyDash(value: string) {

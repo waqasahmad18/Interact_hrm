@@ -12,6 +12,7 @@ export type PinProfile = {
 export type HrmCodeProfile = {
   employeeName: string;
   department: string;
+  employeeId?: string;
 };
 
 function trimStr(v: unknown) {
@@ -98,6 +99,7 @@ export function profileMapsFromApi(
 
 export function hrmMapFromEmployees(
   employees: {
+    id?: string | number;
     first_name?: string;
     last_name?: string;
     employee_code?: string | null;
@@ -113,6 +115,7 @@ export function hrmMapFromEmployees(
     map.set(code, {
       employeeName,
       department: trimStr(e.department_name) || "-",
+      employeeId: e.id != null ? String(e.id) : undefined,
     });
   }
   return map;
