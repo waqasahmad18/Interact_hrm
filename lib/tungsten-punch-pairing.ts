@@ -7,6 +7,7 @@ import {
 import {
   buildPinProfilesFromRows,
   hrmMapFromEmployees,
+  hrmIdMapFromEmployees,
   profileMapsFromApi,
   resolveZkIdentity,
   type HrmCodeProfile,
@@ -21,6 +22,7 @@ export type TungstenPunchContext = {
   batchPinProfiles: Map<string, PinProfile>;
   dbPinProfiles: Map<string, PinProfile>;
   hrmByCode: Map<string, HrmCodeProfile>;
+  hrmById: Map<string, HrmCodeProfile>;
   hrmEmployees: HrmEmployeeRef[];
 };
 
@@ -38,7 +40,13 @@ export type EmployeeMatchKeys = {
   employeeName: string;
   employeeCode?: string | null;
   employeeId?: string | null;
+  pseudonym?: string | null;
 };
+
+function resolveHrmPinMatch(ctx: TungstenPunchContext, pin: string) {
+  if (!pin) return undefined;
+  return ctx.hrmByCode.get(pin) || ctx.hrmById.get(pin);
+}
 
 /** One row = one Employee Report session (same punch in/out logic). */
 export type EmployeeReportSession = {
@@ -91,24 +99,28 @@ export function punchMatchesEmployee(
   target: EmployeeMatchKeys,
   rawZkRowName?: string,
 ): boolean {
+  const empId = String(target.employeeId ?? "").trim();
+  if (empId && pin && pin === empId) return true;
+
   const code = String(target.employeeCode ?? "").trim();
   if (code && pin && pin === code) return true;
 
-  const targetName = normalizeName(target.employeeName);
   const candidates = [
     hrmPinMatch?.employeeName || "",
     zkResolvedName,
     rawZkRowName || "",
+    target.pseudonym || "",
   ].filter(Boolean);
 
   for (const candidate of candidates) {
     if (namesLooselyMatch(target.employeeName, candidate)) return true;
+    if (target.pseudonym && namesLooselyMatch(target.pseudonym, candidate)) return true;
   }
 
   if (
     hrmPinMatch?.employeeId &&
-    target.employeeId &&
-    hrmPinMatch.employeeId === String(target.employeeId)
+    empId &&
+    hrmPinMatch.employeeId === empId
   ) {
     return true;
   }
@@ -130,7 +142,7 @@ export function employeeHasZkPunchesInRange(
       ctx.dbPinProfiles,
       ctx.hrmByCode,
     );
-    const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
+    const hrmMatch = resolveHrmPinMatch(ctx, pin);
     const rawName = rawZkNameFromRow(z);
     if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
 
@@ -257,6 +269,10 @@ export async function loadTungstenPunchContext(
       empListData.success && empListData.employees
         ? hrmMapFromEmployees(empListData.employees)
         : new Map(),
+    hrmById:
+      empListData.success && empListData.employees
+        ? hrmIdMapFromEmployees(empListData.employees)
+        : new Map(),
     hrmEmployees:
       empListData.success && empListData.employees
         ? hrmEmployeesFromList(empListData.employees)
@@ -279,7 +295,7 @@ function appendTungstenRows(
       ctx.dbPinProfiles,
       ctx.hrmByCode,
     );
-    const hrmMatch = pin ? ctx.hrmByCode.get(pin) : undefined;
+    const hrmMatch = resolveHrmPinMatch(ctx, pin);
     const rawName = rawZkNameFromRow(z);
     if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
 

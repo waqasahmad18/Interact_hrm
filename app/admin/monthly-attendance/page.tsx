@@ -865,11 +865,13 @@ export default function MonthlyAttendancePage() {
     employeeId: string;
     employeeName: string;
     employeeCode?: string;
+    pseudonym?: string;
   }) {
     return {
       employeeName: employee.employeeName,
       employeeCode: employee.employeeCode,
       employeeId: employee.employeeId,
+      pseudonym: employee.pseudonym,
     };
   }
 
@@ -1539,6 +1541,7 @@ export default function MonthlyAttendancePage() {
             employeeName: hrm.employeeName,
             employeeCode: hrm.employeeCode,
             employeeId: hrm.employeeId,
+            pseudonym: hrm.pseudonym,
           },
           fromDate,
           toDate,

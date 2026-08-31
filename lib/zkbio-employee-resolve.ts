@@ -120,3 +120,27 @@ export function hrmMapFromEmployees(
   }
   return map;
 }
+
+/** Tungsten device PIN is often the HRM employee id (e.g. 83, 84). */
+export function hrmIdMapFromEmployees(
+  employees: {
+    id?: string | number;
+    first_name?: string;
+    last_name?: string;
+    department_name?: string | null;
+  }[],
+): Map<string, HrmCodeProfile> {
+  const map = new Map<string, HrmCodeProfile>();
+  for (const e of employees) {
+    const id = e.id != null ? String(e.id).trim() : "";
+    if (!id) continue;
+    const employeeName =
+      nameFromParts(trimStr(e.first_name), trimStr(e.last_name)) || "—";
+    map.set(id, {
+      employeeName,
+      department: trimStr(e.department_name) || "-",
+      employeeId: id,
+    });
+  }
+  return map;
+}
