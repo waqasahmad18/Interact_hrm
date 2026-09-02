@@ -99,7 +99,6 @@ export function profileMapsFromApi(
 
 export function hrmMapFromEmployees(
   employees: {
-    id?: string | number;
     first_name?: string;
     last_name?: string;
     employee_code?: string | null;
@@ -115,13 +114,12 @@ export function hrmMapFromEmployees(
     map.set(code, {
       employeeName,
       department: trimStr(e.department_name) || "-",
-      employeeId: e.id != null ? String(e.id) : undefined,
     });
   }
   return map;
 }
 
-/** Tungsten device PIN is often the HRM employee id (e.g. 83, 84). */
+/** Match punches by HRM employee id (hrm_employees.id as string key). */
 export function hrmIdMapFromEmployees(
   employees: {
     id?: string | number;
@@ -132,14 +130,14 @@ export function hrmIdMapFromEmployees(
 ): Map<string, HrmCodeProfile> {
   const map = new Map<string, HrmCodeProfile>();
   for (const e of employees) {
-    const id = e.id != null ? String(e.id).trim() : "";
-    if (!id) continue;
+    if (e.id == null || e.id === "") continue;
+    const idKey = String(e.id);
     const employeeName =
       nameFromParts(trimStr(e.first_name), trimStr(e.last_name)) || "—";
-    map.set(id, {
+    map.set(idKey, {
       employeeName,
       department: trimStr(e.department_name) || "-",
-      employeeId: id,
+      employeeId: idKey,
     });
   }
   return map;
