@@ -148,16 +148,22 @@ export function punchMatchesEmployee(
   return false;
 }
 
-/** Punch-only employees: match ZK rows by PIN only (no loose name matching). */
+/** ZKBio PIN must equal HRM employee_code and/or numeric employee id. */
+export function employeeZkPins(target: EmployeeMatchKeys): Set<string> {
+  const pins = new Set<string>();
+  const code = String(target.employeeCode ?? "").trim();
+  const empId = String(target.employeeId ?? "").trim();
+  if (code) pins.add(code);
+  if (empId) pins.add(empId);
+  return pins;
+}
+
 export function punchMatchesEmployeePinOnly(
   pin: string,
   target: EmployeeMatchKeys,
 ): boolean {
-  const code = String(target.employeeCode ?? "").trim();
-  if (code && pin && pin === code) return true;
-  const empId = String(target.employeeId ?? "").trim();
-  if (empId && pin && pin === empId) return true;
-  return false;
+  if (!pin) return false;
+  return employeeZkPins(target).has(pin);
 }
 
 export function employeeHasZkPunchesInRange(
@@ -168,15 +174,20 @@ export function employeeHasZkPunchesInRange(
 ): boolean {
   for (const z of ctx.zkRows) {
     const pin = String(z.pin ?? "").trim();
-    const { employeeName: zkName } = resolveZkIdentity(
-      z,
-      ctx.batchPinProfiles,
-      ctx.dbPinProfiles,
-      ctx.hrmByCode,
-    );
-    const hrmMatch = resolveHrmPinMatch(ctx, pin);
-    const rawName = rawZkNameFromRow(z);
-    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
+    const knownPins = employeeZkPins(target);
+    if (knownPins.size > 0) {
+      if (!knownPins.has(pin)) continue;
+    } else {
+      const { employeeName: zkName } = resolveZkIdentity(
+        z,
+        ctx.batchPinProfiles,
+        ctx.dbPinProfiles,
+        ctx.hrmByCode,
+      );
+      const hrmMatch = resolveHrmPinMatch(ctx, pin);
+      const rawName = rawZkNameFromRow(z);
+      if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
+    }
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;
@@ -324,19 +335,23 @@ function appendTungstenRows(
 ) {
   for (const z of ctx.zkRows) {
     const pin = String(z.pin ?? "").trim();
-    const { employeeName: zkName } = resolveZkIdentity(
-      z,
-      ctx.batchPinProfiles,
-      ctx.dbPinProfiles,
-      ctx.hrmByCode,
-    );
-    const hrmMatch = resolveHrmPinMatch(ctx, pin);
-    const rawName = rawZkNameFromRow(z);
-    if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
+    const knownPins = employeeZkPins(target);
+    if (knownPins.size > 0) {
+      if (!knownPins.has(pin)) continue;
+    } else {
+      const { employeeName: zkName } = resolveZkIdentity(
+        z,
+        ctx.batchPinProfiles,
+        ctx.dbPinProfiles,
+        ctx.hrmByCode,
+      );
+      const hrmMatch = resolveHrmPinMatch(ctx, pin);
+      const rawName = rawZkNameFromRow(z);
+      if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
+    }
 
     const rawVal = z.event_time ?? z.imported_at;
     if (rawVal == null || rawVal === "") continue;
-    const raw = String(rawVal);
     const punchMs = parseZkbioDateTimeMs(z);
     if (punchMs == null) continue;
     const eventDate = getDateStringInTimeZone(punchMs, SERVER_TIMEZONE);
@@ -620,9 +635,10 @@ function collectEmployeeTungstenEvents(
   pinOnly = false,
 ): TungstenEvent[] {
   const tungsten: TungstenEvent[] = [];
+  const knownPins = employeeZkPins(target);
   for (const z of ctx.zkRows) {
     const pin = String(z.pin ?? "").trim();
-    if (pinOnly) {
+    if (knownPins.size > 0 || pinOnly) {
       if (!punchMatchesEmployeePinOnly(pin, target)) continue;
     } else {
       const { employeeName: zkName } = resolveZkIdentity(

@@ -47,6 +47,7 @@ import {
 } from "../../../lib/monthly-attendance-import";
 import {
   buildEmployeeReportSessions,
+  buildShiftPunchOnlySessions,
   employeeHasZkPunchesInRange,
   hrmEmployeesFromList,
   loadTungstenPunchContext,
@@ -87,8 +88,7 @@ type MonthlyAttendanceEmployeeRow = {
 
 /** Billable late is already after 1h relaxation — show/sum any minutes > 0. */
 const EXCESS_LATE_SHOW_AFTER_MINUTES = 0;
-
-// ...existing code...
+const PUNCH_ONLY_EMPLOYEE_IDS = new Set(["83", "84", "153", "154", "155", "156"]);
 
 interface AttendanceRecord {
   id: number;
@@ -922,8 +922,9 @@ export default function MonthlyAttendancePage() {
   function shiftResolverForEmployee(employeeId: string): EmployeeShiftResolver {
     const row = shiftAssignments.find((s) => s.employeeId === String(employeeId));
     if (!row) return () => null;
+    const punchOnly = PUNCH_ONLY_EMPLOYEE_IDS.has(String(employeeId));
     return (sessionDate: string) => {
-      if (row.assignedDate && sessionDate < row.assignedDate) return null;
+      if (!punchOnly && row.assignedDate && sessionDate < row.assignedDate) return null;
       return { startTime: row.startTime, endTime: row.endTime };
     };
   }
@@ -939,11 +940,22 @@ export default function MonthlyAttendancePage() {
     ctx: TungstenPunchContext | null,
   ): EmployeeReportSession[] {
     if (employee.isImported) return [];
+    if (!ctx || !fromDate || !toDate) return [];
+    const empId = String(employee.employeeId);
+    if (PUNCH_ONLY_EMPLOYEE_IDS.has(empId)) {
+      return buildShiftPunchOnlySessions(
+        employeeMatchKeys(employee),
+        ctx,
+        fromDate,
+        toDate,
+        shiftResolverForEmployee(empId),
+      );
+    }
     const todayKey = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
-    const zkFrom = fromDate ? addDaysToDateKey(fromDate, -1) : "";
-    const zkTo = toDate ? addDaysToDateKey(toDate, 1) : "";
+    const zkFrom = addDaysToDateKey(fromDate, -1);
+    const zkTo = addDaysToDateKey(toDate, 1);
     const allRecords = attendance.filter(
-      (record: any) => String(record.employee_id) === String(employee.employeeId),
+      (record: any) => String(record.employee_id) === empId,
     );
     return buildEmployeeReportSessions(
       employeeMatchKeys(employee),
@@ -953,7 +965,7 @@ export default function MonthlyAttendancePage() {
       Date.now(),
       zkFrom,
       zkTo,
-      shiftResolverForEmployee(employee.employeeId),
+      shiftResolverForEmployee(empId),
     );
   }
 
@@ -1063,7 +1075,7 @@ export default function MonthlyAttendancePage() {
     }
 
     const employeeSessions =
-      pairedSessions ?? sessionsByEmployeeId.get(employee.employeeId) ?? [];
+      pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
 
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
@@ -1357,7 +1369,7 @@ export default function MonthlyAttendancePage() {
       });
     } else {
       const employeeSessions =
-        pairedSessions ?? sessionsByEmployeeId.get(employee.employeeId) ?? [];
+        pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
 
       monthInfo.days.forEach((day) => {
         if (!isWorkingDay(day.dateKey)) return;
@@ -1467,7 +1479,7 @@ export default function MonthlyAttendancePage() {
 
     attendance.forEach((record: any) => {
       if (!record.employee_id) return;
-      const empId = record.employee_id;
+      const empId = String(record.employee_id);
       if (!map[empId]) {
         map[empId] = {
           employeeId: empId,
@@ -1605,19 +1617,33 @@ export default function MonthlyAttendancePage() {
         Boolean(tungstenCtx) &&
         Boolean(fromDate) &&
         Boolean(toDate) &&
-        employeeHasZkPunchesInRange(
-          tungstenCtx as TungstenPunchContext,
-          {
-            employeeName: hrm.employeeName,
-            employeeCode: hrm.employeeCode,
-            employeeId: hrm.employeeId,
-            pseudonym: hrm.pseudonym,
-          },
-          fromDate,
-          toDate,
-        );
+        (PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId))
+          ? Boolean(hrm.employeeCode) &&
+            employeeHasZkPunchesInRange(
+              tungstenCtx as TungstenPunchContext,
+              {
+                employeeName: hrm.employeeName,
+                employeeCode: hrm.employeeCode,
+                employeeId: hrm.employeeId,
+                pseudonym: hrm.pseudonym,
+              },
+              fromDate,
+              toDate,
+            )
+          : employeeHasZkPunchesInRange(
+              tungstenCtx as TungstenPunchContext,
+              {
+                employeeName: hrm.employeeName,
+                employeeCode: hrm.employeeCode,
+                employeeId: hrm.employeeId,
+                pseudonym: hrm.pseudonym,
+              },
+              fromDate,
+              toDate,
+            ));
 
-      if (!hasPunches && !matchesSearch) continue;
+      const forcePunchOnlyCard = PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId));
+      if (!hasPunches && !matchesSearch && !forcePunchOnlyCard) continue;
 
       extra.push({
         employeeId: hrm.employeeId,
@@ -1675,10 +1701,23 @@ export default function MonthlyAttendancePage() {
     // Pair Tungsten for every employee so T.Punch shows without expanding the card.
     attendanceByEmployeeAllMerged.forEach((emp) => {
       const empId = String(emp.employeeId);
-      if (!tungstenCtx) return;
+      if (!tungstenCtx || !fromDate || !toDate) return;
+      if (PUNCH_ONLY_EMPLOYEE_IDS.has(empId)) {
+        out.set(
+          String(emp.employeeId),
+          buildShiftPunchOnlySessions(
+            employeeMatchKeys(emp),
+            tungstenCtx,
+            fromDate,
+            toDate,
+            shiftResolverForEmployee(empId),
+          ),
+        );
+        return;
+      }
       const allRecords = recordsByEmployeeId.get(empId) || [];
       out.set(
-        emp.employeeId,
+        String(emp.employeeId),
         buildEmployeeReportSessions(
           employeeMatchKeys(emp),
           allRecords,
@@ -1726,7 +1765,7 @@ export default function MonthlyAttendancePage() {
       const v = emp.importedFooter.extraHours.trim();
       return v && v !== "-" ? v : "-";
     }
-    const employeeSessions = sessionsByEmployeeId.get(emp.employeeId) || [];
+    const employeeSessions = sessionsByEmployeeId.get(String(emp.employeeId)) || [];
     const countedKeys = new Set<string>();
     let totalMinutes = 0;
 
@@ -1998,7 +2037,7 @@ export default function MonthlyAttendancePage() {
                           const dayRecords = employee.byDate[day.dateKey] || [];
                           const meta = rowCtx.meta;
                           const workingDay = isWorkingDay(day.dateKey);
-                          const employeeSessions = sessionsByEmployeeId.get(employee.employeeId) || [];
+                          const employeeSessions = sessionsByEmployeeId.get(String(employee.employeeId)) || [];
                           const daySessions = employeeSessions.filter(
                             (s) => s.sessionDate === day.dateKey,
                           );
