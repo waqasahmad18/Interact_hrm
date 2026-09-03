@@ -666,7 +666,7 @@ export function buildShiftPunchOnlySessions(
     ctx,
     addDaysToDateKey(dateFrom, -1),
     addDaysToDateKey(dateTo, 1),
-    true,
+    false, // use full match (name + code + id) — same as Tungsten IN/OUT page
   );
 
   const sessions: EmployeeReportSession[] = [];
