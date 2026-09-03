@@ -126,7 +126,6 @@ export function punchMatchesEmployee(
     hrmPinMatch?.employeeName || "",
     zkResolvedName,
     rawZkRowName || "",
-    target.pseudonym || "",
   ].filter(Boolean);
 
   for (const candidate of candidates) {
@@ -666,7 +665,7 @@ export function buildShiftPunchOnlySessions(
     ctx,
     addDaysToDateKey(dateFrom, -1),
     addDaysToDateKey(dateTo, 1),
-    false, // use full match (name + code + id) — same as Tungsten IN/OUT page
+    true, // punch-only rows must stay strict: pin(employee_code) or employee id only
   );
 
   const sessions: EmployeeReportSession[] = [];
