@@ -98,9 +98,11 @@ function namesLooselyMatch(a: string, b: string) {
   const nb = normalizeName(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
+  // "NA" must not match "Naveed" / "Hussain" via 2-letter substring.
+  if (na.length < 3 || nb.length < 3) return false;
   if (na.includes(nb) || nb.includes(na)) return true;
-  const ta = na.split(" ").filter(Boolean);
-  const tb = nb.split(" ").filter(Boolean);
+  const ta = na.split(" ").filter((t) => t.length >= 3);
+  const tb = nb.split(" ").filter((t) => t.length >= 3);
   if (ta.length >= 2 && tb.length >= 2) {
     const shared = tb.filter((t) => ta.includes(t)).length;
     if (shared >= 2) return true;
@@ -117,10 +119,13 @@ export function punchMatchesEmployee(
   rawZkRowName?: string,
 ): boolean {
   const empId = String(target.employeeId ?? "").trim();
-  if (empId && pin && pin === empId) return true;
-
   const code = String(target.employeeCode ?? "").trim();
-  if (code && pin && pin === code) return true;
+  // When HRM has a PIN/code or numeric id, never fall through to name/pseudonym.
+  if (code || empId) {
+    if (code && pin && pin === code) return true;
+    if (empId && pin && pin === empId) return true;
+    return false;
+  }
 
   const candidates = [
     hrmPinMatch?.employeeName || "",
@@ -130,7 +135,6 @@ export function punchMatchesEmployee(
 
   for (const candidate of candidates) {
     if (namesLooselyMatch(target.employeeName, candidate)) return true;
-    if (target.pseudonym && namesLooselyMatch(target.pseudonym, candidate)) return true;
   }
 
   if (
