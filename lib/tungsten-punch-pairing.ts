@@ -4,7 +4,7 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "./timezone";
-import { parseZkbioDateTimeMs, formatPunchTimeMs } from "./zkbio-time";
+import { parseZkbioDateTimeMs } from "./zkbio-time";
 import {
   buildPinProfilesFromRows,
   hrmMapFromEmployees,
@@ -86,6 +86,10 @@ function rawZkNameFromRow(z: Record<string, unknown>) {
   const first = String(z.first_name ?? "").trim();
   const last = String(z.last_name ?? "").trim();
   return `${first} ${last}`.trim();
+}
+
+function formatPunchTimeFromMs(ms: number) {
+  return getTimeStringInTimeZone(new Date(ms), SERVER_TIMEZONE);
 }
 
 /** PIN match, exact name, or partial name (e.g. Tungsten "Zahid Ali" vs HRM "Zahid Ali Parviz"). */
@@ -636,7 +640,7 @@ function collectEmployeeTungstenEvents(
 
     tungsten.push({
       atMs: punchMs,
-      time: formatPunchTimeMs(punchMs),
+      time: formatPunchTimeFromMs(punchMs),
       date: eventDate,
     });
   }
