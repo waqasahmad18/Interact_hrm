@@ -4,7 +4,7 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "./timezone";
-import { parseZkbioDateTimeMs } from "./zkbio-time";
+import { parseZkbioDateTimeMs, formatPunchTimeMs } from "./zkbio-time";
 import {
   buildPinProfilesFromRows,
   hrmMapFromEmployees,
@@ -17,6 +17,9 @@ import {
 
 export const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 const TUNGSTEN_AFTER_CLOCK_GRACE_MS = 30 * 60 * 1000;
+/** Exit window: up to 1h before shift end through 2h after (overnight AM outs). */
+const EXIT_BEFORE_SHIFT_END_MS = 60 * 60 * 1000;
+const EXIT_AFTER_SHIFT_END_MS = 2 * 60 * 60 * 1000;
 
 export type TungstenPunchContext = {
   zkRows: Record<string, unknown>[];
@@ -135,6 +138,18 @@ export function punchMatchesEmployee(
     return true;
   }
 
+  return false;
+}
+
+/** Punch-only employees: match ZK rows by PIN only (no loose name matching). */
+export function punchMatchesEmployeePinOnly(
+  pin: string,
+  target: EmployeeMatchKeys,
+): boolean {
+  const code = String(target.employeeCode ?? "").trim();
+  if (code && pin && pin === code) return true;
+  const empId = String(target.employeeId ?? "").trim();
+  if (empId && pin && pin === empId) return true;
   return false;
 }
 
@@ -469,46 +484,90 @@ function collectShiftDayPunches(
   return [...onDay, ...nextDay];
 }
 
-/**
- * T.Punch in: first punch on shift day (at/after shift start when shift is known).
- * T.Punch out: last punch at/after shift end; else last punch of the shift day.
- */
+type ShiftDayPunchOptions = {
+  /**
+   * When true, T.Punch Out must be a real punch at/after shift end.
+   * No fallback to "day last punch" before shift end.
+   */
+  requireOutAfterShiftEnd?: boolean;
+};
+
+/** Simple shift-day T.Punch: first punch at/after shift start; last punch near shift end (± window). */
 function firstLastPunchForShiftDay(
   tungstenByTime: TungstenEvent[],
   sessionDate: string,
   shift?: ShiftDayTiming | null,
-): { first?: string; last?: string } {
-  const onDay = collectShiftDayPunches(tungstenByTime, sessionDate, shift);
-  if (!onDay.length) return {};
-  const sorted = [...onDay].sort((a, b) => a.atMs - b.atMs);
-
-  const shiftStartMs = shift?.startTime
-    ? wallClockToEpochMs(sessionDate, shift.startTime)
-    : null;
-  const shiftEndMs =
-    shift?.startTime && shift?.endTime
-      ? computeShiftEndEpochMs(
-          {
-            start_time: shift.startTime,
-            end_time: shift.endTime,
-            assigned_date: sessionDate,
-          },
-          sessionDate,
-        )
-      : null;
-
-  let first = sorted[0];
-  if (shiftStartMs != null) {
-    first = sorted.find((t) => t.atMs >= shiftStartMs) ?? sorted[0];
+  options?: ShiftDayPunchOptions,
+): { punchIn: string; punchOut: string } {
+  if (!shift?.startTime || !shift?.endTime) {
+    const onDay = [...tungstenByTime.filter((t) => t.date === sessionDate)].sort(
+      (a, b) => a.atMs - b.atMs,
+    );
+    if (!onDay.length) return { punchIn: "-", punchOut: "-" };
+    const punchIn = onDay[0].time;
+    const punchOut = onDay.length > 1 ? onDay[onDay.length - 1].time : "-";
+    return { punchIn, punchOut: punchOut === punchIn ? "-" : punchOut };
   }
 
-  let last = sorted[sorted.length - 1];
-  if (shiftEndMs != null) {
-    const afterEnd = sorted.filter((t) => t.atMs >= shiftEndMs);
-    if (afterEnd.length) last = afterEnd[afterEnd.length - 1];
-  }
+  const shiftStartMs = wallClockToEpochMs(sessionDate, shift.startTime);
+  const shiftEndMs = computeShiftEndEpochMs(
+    {
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      assigned_date: sessionDate,
+    },
+    sessionDate,
+  );
+  if (shiftStartMs == null || shiftEndMs == null) return { punchIn: "-", punchOut: "-" };
 
-  return { first: first.time, last: last.time };
+  const collectUntilMs = shiftEndMs + EXIT_AFTER_SHIFT_END_MS;
+  const dayPunches = tungstenByTime
+    .filter((t) => t.atMs >= shiftStartMs && t.atMs <= collectUntilMs)
+    .sort((a, b) => a.atMs - b.atMs);
+  if (!dayPunches.length) return { punchIn: "-", punchOut: "-" };
+
+  const punchIn = dayPunches[0].time;
+  const requireOutAfterShiftEnd = options?.requireOutAfterShiftEnd === true;
+  const exitFromMs = requireOutAfterShiftEnd
+    ? shiftEndMs
+    : shiftEndMs - EXIT_BEFORE_SHIFT_END_MS;
+  const exitCandidates = dayPunches.filter(
+    (t) => t.atMs >= exitFromMs && t.atMs !== dayPunches[0].atMs,
+  );
+  let punchOut = "-";
+  if (exitCandidates.length) {
+    punchOut = exitCandidates[exitCandidates.length - 1].time;
+  } else if (!requireOutAfterShiftEnd && dayPunches.length > 1) {
+    punchOut = dayPunches[dayPunches.length - 1].time;
+  }
+  if (punchOut === punchIn) punchOut = "-";
+  return { punchIn, punchOut };
+}
+
+function punchesInShiftWindow(
+  tungstenByTime: TungstenEvent[],
+  sessionDate: string,
+  shift?: ShiftDayTiming | null,
+): TungstenEvent[] {
+  if (!shift?.startTime || !shift?.endTime) {
+    return [...tungstenByTime.filter((t) => t.date === sessionDate)].sort((a, b) => a.atMs - b.atMs);
+  }
+  const shiftStartMs = wallClockToEpochMs(sessionDate, shift.startTime);
+  const shiftEndMs = computeShiftEndEpochMs(
+    {
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      assigned_date: sessionDate,
+    },
+    sessionDate,
+  );
+  if (shiftStartMs == null || shiftEndMs == null) {
+    return [...tungstenByTime.filter((t) => t.date === sessionDate)].sort((a, b) => a.atMs - b.atMs);
+  }
+  const collectUntilMs = shiftEndMs + EXIT_AFTER_SHIFT_END_MS;
+  return tungstenByTime
+    .filter((t) => t.atMs >= shiftStartMs && t.atMs <= collectUntilMs)
+    .sort((a, b) => a.atMs - b.atMs);
 }
 
 function appendZkOnlyDaySessions(
@@ -525,18 +584,18 @@ function appendZkOnlyDaySessions(
   for (const date of punchDates) {
     if (date < zkDateFrom || date > zkDateTo) continue;
     if (coveredDates.has(date)) continue;
-    const { first, last } = firstLastPunchForShiftDay(
+    const { punchIn, punchOut } = firstLastPunchForShiftDay(
       tungstenByTime,
       date,
       resolveShift?.(date) ?? null,
     );
-    if (!first) continue;
+    if (punchIn === "-" && punchOut === "-") continue;
     extra.push({
       sessionDate: date,
-      tungstenPunchIn: first,
+      tungstenPunchIn: punchIn,
       hrmClockIn: "-",
       hrmClockOut: "-",
-      tungstenPunchOut: last || "-",
+      tungstenPunchOut: punchOut,
     });
   }
 
@@ -544,6 +603,89 @@ function appendZkOnlyDaySessions(
   return [...sessions, ...extra].sort((a, b) =>
     a.sessionDate.localeCompare(b.sessionDate),
   );
+}
+
+function collectEmployeeTungstenEvents(
+  target: EmployeeMatchKeys,
+  ctx: TungstenPunchContext,
+  zkDateFrom: string,
+  zkDateTo: string,
+  pinOnly = false,
+): TungstenEvent[] {
+  const tungsten: TungstenEvent[] = [];
+  for (const z of ctx.zkRows) {
+    const pin = String(z.pin ?? "").trim();
+    if (pinOnly) {
+      if (!punchMatchesEmployeePinOnly(pin, target)) continue;
+    } else {
+      const { employeeName: zkName } = resolveZkIdentity(
+        z,
+        ctx.batchPinProfiles,
+        ctx.dbPinProfiles,
+        ctx.hrmByCode,
+      );
+      const hrmMatch = resolveHrmPinMatch(ctx, pin);
+      const rawName = rawZkNameFromRow(z);
+      if (!punchMatchesEmployee(pin, zkName, hrmMatch, target, rawName)) continue;
+    }
+
+    const punchMs = parseZkbioDateTimeMs(z);
+    if (punchMs == null) continue;
+    const eventDate = getDateStringInTimeZone(punchMs, SERVER_TIMEZONE);
+    if (eventDate < zkDateFrom || eventDate > zkDateTo) continue;
+
+    tungsten.push({
+      atMs: punchMs,
+      time: formatPunchTimeMs(punchMs),
+      date: eventDate,
+    });
+  }
+  return tungsten.sort((a, b) => a.atMs - b.atMs);
+}
+
+/**
+ * Punch-only employees (no HRM clock in/out): per shift day,
+ * T.Punch In = first punch at/after shift start; T.Punch Out = last punch in shift window
+ * (overnight exits on next calendar morning count for the previous shift day).
+ */
+export function buildShiftPunchOnlySessions(
+  target: EmployeeMatchKeys,
+  ctx: TungstenPunchContext | null,
+  dateFrom: string,
+  dateTo: string,
+  resolveShift: EmployeeShiftResolver,
+): EmployeeReportSession[] {
+  if (!ctx || !dateFrom || !dateTo) return [];
+
+  const tungsten = collectEmployeeTungstenEvents(
+    target,
+    ctx,
+    addDaysToDateKey(dateFrom, -1),
+    addDaysToDateKey(dateTo, 1),
+    true,
+  );
+
+  const sessions: EmployeeReportSession[] = [];
+  let day = dateFrom;
+  while (day <= dateTo) {
+    const shift = resolveShift(day);
+    if (shift) {
+      const { punchIn, punchOut } = firstLastPunchForShiftDay(tungsten, day, shift, {
+        requireOutAfterShiftEnd: true,
+      });
+      if (punchIn !== "-" || punchOut !== "-") {
+        sessions.push({
+          sessionDate: day,
+          tungstenPunchIn: punchIn,
+          hrmClockIn: "-",
+          hrmClockOut: "-",
+          tungstenPunchOut: punchOut,
+        });
+      }
+    }
+    day = addDaysToDateKey(day, 1);
+  }
+  return sessions;
 }
 
 /**
@@ -624,14 +766,10 @@ export function pairTungstenWithSessions(
         : null);
 
     if (shiftTiming?.startTime) {
-      const shiftStartMs = wallClockToEpochMs(sessionDate, shiftTiming.startTime);
-      const onDay = collectShiftDayPunches(tungstenByTime, sessionDate, shiftTiming).sort(
-        (a, b) => a.atMs - b.atMs,
-      );
-      if (shiftStartMs != null && onDay.length) {
-        const first = onDay.find((t) => t.atMs >= shiftStartMs) ?? onDay[0];
-        punchIn = first.time;
-        excludeExitAtMs = first.atMs;
+      const inWindow = punchesInShiftWindow(tungstenByTime, sessionDate, shiftTiming);
+      if (inWindow.length) {
+        punchIn = inWindow[0].time;
+        excludeExitAtMs = inWindow[0].atMs;
       }
     } else {
       const shiftStart = resolveShiftStart?.(sessionDate);
@@ -689,7 +827,7 @@ export function pairTungstenWithSessions(
         ? shiftEndMs
         : (draft.outMs as number);
 
-    const { last } = firstLastPunchForShiftDay(
+    const { punchOut: last } = firstLastPunchForShiftDay(
       tungstenByTime,
       draft.sessionDate,
       draft.shiftTiming,
