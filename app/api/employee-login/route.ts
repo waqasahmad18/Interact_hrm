@@ -21,13 +21,15 @@ export async function POST(req: NextRequest) {
     const hrmEmployeeId = parseHrmEmployeeId(loginId);
     const idMatch = hrmEmployeeId ?? -1;
 
+    // Keep WHERE mongo-sql-adapter friendly: LOWER(TRIM(col)) = ? is supported;
+    // avoid nesting IS NOT NULL AND … which used to drop the whole login match.
     const [rows]: any = await pool.query(
       `SELECT e.*, ec.email_work AS email
        FROM hrm_employees e
        LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
        WHERE (
-         (e.username IS NOT NULL AND LOWER(TRIM(e.username)) = ?)
-         OR (ec.email_work IS NOT NULL AND LOWER(TRIM(ec.email_work)) = ?)
+         LOWER(TRIM(e.username)) = ?
+         OR LOWER(TRIM(ec.email_work)) = ?
          OR e.id = ?
        )
        LIMIT 1`,
