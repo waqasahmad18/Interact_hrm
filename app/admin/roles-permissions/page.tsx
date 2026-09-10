@@ -21,7 +21,6 @@ import {
   clonePermissionMap,
   FEATURE_MODULES,
   GLOBAL_FEATURES,
-  INITIAL_EMPLOYEES,
   TAB_HINT,
   isCustomRole,
   isDescendantOf,
@@ -34,9 +33,19 @@ import {
   type TabId,
 } from "./system-control-data";
 
+function toPermissionSets(map: Record<string, string[]>): Record<string, Set<string>> {
+  const base = clonePermissionMap();
+  for (const [roleId, keys] of Object.entries(map || {})) {
+    base[roleId] = new Set(keys);
+  }
+  return base;
+}
+
 export default function SystemControlPage() {
   const [activeTab, setActiveTab] = useState<TabId>("roles");
-  const [employees, setEmployees] = useState<DemoEmployee[]>(INITIAL_EMPLOYEES);
+  const [employees, setEmployees] = useState<DemoEmployee[]>([]);
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessSaving, setAccessSaving] = useState(false);
   const [customRoles, setCustomRoles] = useState<RoleDef[]>([]);
   const [deletedBaseIds, setDeletedBaseIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -64,17 +73,55 @@ export default function SystemControlPage() {
   const [toast, setToast] = useState("");
   const [rolePhotos, setRolePhotos] = useState<Record<string, string>>({});
 
+  function showToast(msg: string) {
+    setToast(msg);
+    window.setTimeout(() => setToast(""), 2800);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    fetchOrgChartPhotos()
-      .then(({ employeePhotos, rolePhotos: storedRolePhotos }) => {
+
+    async function loadAccessControl() {
+      setAccessLoading(true);
+      try {
+        const [accessRes, photoPayload] = await Promise.all([
+          fetch("/api/access-control/system-control", { cache: "no-store" }).then((r) =>
+            r.json(),
+          ),
+          fetchOrgChartPhotos().catch(() => ({
+            employeePhotos: {} as Record<string, string>,
+            rolePhotos: {} as Record<string, string>,
+          })),
+        ]);
         if (cancelled) return;
-        setEmployees(applyStoredEmployeePhotos(INITIAL_EMPLOYEES, employeePhotos));
-        setRolePhotos(storedRolePhotos);
-      })
-      .catch(() => {
-        /* table may not exist yet — photos stay empty until SQL is run */
-      });
+
+        if (accessRes?.success) {
+          if (accessRes.permissions) {
+            setPermissions(toPermissionSets(accessRes.permissions));
+          }
+          if (Array.isArray(accessRes.features)) {
+            setGlobalFeatures(accessRes.features);
+          }
+          if (Array.isArray(accessRes.employees)) {
+            const live = accessRes.employees as DemoEmployee[];
+            setEmployees(applyStoredEmployeePhotos(live, photoPayload.employeePhotos || {}));
+          }
+        } else {
+          setToast(accessRes?.error || "Failed to load access control");
+          window.setTimeout(() => setToast(""), 2800);
+        }
+        setRolePhotos(photoPayload.rolePhotos || {});
+      } catch (err) {
+        if (!cancelled) {
+          setToast(err instanceof Error ? err.message : "Failed to load access control");
+          window.setTimeout(() => setToast(""), 2800);
+        }
+      } finally {
+        if (!cancelled) setAccessLoading(false);
+      }
+    }
+
+    loadAccessControl();
     return () => {
       cancelled = true;
     };
@@ -105,11 +152,6 @@ export default function SystemControlPage() {
     [customRoles, deletedBaseIds, levelOverrides, nameOverrides, parentOverrides],
   );
   const totalPermCount = FEATURE_MODULES.reduce((n, m) => n + m.permissions.length, 0);
-
-  function showToast(msg: string) {
-    setToast(msg);
-    window.setTimeout(() => setToast(""), 2800);
-  }
 
   function employeeCountByRole(roleId: string) {
     return employees.filter((e) => e.roleId === roleId).length;
@@ -457,13 +499,77 @@ export default function SystemControlPage() {
     setActiveTab("permissions");
   }
 
-  function saveEmployeeRole(empId: string, roleId: string) {
+  async function saveEmployeeRole(empId: string, roleId: string) {
     const emp = employees.find((e) => e.id === empId);
     if (!emp) return;
-    setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, roleId } : e)));
-    showToast(
-      `${emp.name} → ${roleMeta(roleId, allRoles).name}. Portal: ${roleMeta(roleId, allRoles).portal} on next login.`,
-    );
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "assign", employeeId: empId, roleId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Assign failed");
+      setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, roleId } : e)));
+      showToast(
+        `${emp.name} → ${roleMeta(roleId, allRoles).name}. Access role saved.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to assign role");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function savePermissionsToDb(roleId: string) {
+    const targetRole = String(roleId || selectedRoleId || "").trim();
+    if (!targetRole) {
+      showToast("Select a role first");
+      return;
+    }
+    setAccessSaving(true);
+    try {
+      const keys = [...(permissions[targetRole] || [])];
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "permissions", roleId: targetRole, keys }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Save failed");
+      showToast(`Permissions saved for ${roleMeta(targetRole, allRoles).name}`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save permissions");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function saveFeaturesToDb() {
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "features",
+          features: globalFeatures.map((f) => ({
+            key: f.key,
+            on: f.on,
+            name: f.name,
+            desc: f.desc,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Save failed");
+      showToast("Global features saved");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save features");
+    } finally {
+      setAccessSaving(false);
+    }
   }
 
   async function updateEmployeePhoto(empId: string, photo: string) {
@@ -556,6 +662,10 @@ export default function SystemControlPage() {
             <h1 className={styles.scTitle}>System Control</h1>
             <p className={styles.scSubtitle}>
               Manage roles, permissions, user assignments, and features from one place.
+              {accessLoading
+                ? " Loading live employees…"
+                : ` ${employees.length} employees loaded from database.`}
+              {accessSaving ? " Saving…" : ""}
             </p>
           </div>
           <div className={styles.scHeaderBadge}>Super Admin</div>
@@ -624,7 +734,7 @@ export default function SystemControlPage() {
                 setPermissions(clonePermissionMap());
                 showToast("All roles reset to default templates");
               }}
-              onSave={() => showToast("Permissions saved (demo)")}
+              onSave={(roleId) => void savePermissionsToDb(roleId)}
               onAssignEmployee={saveEmployeeRole}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id, customRoles)}
@@ -640,7 +750,7 @@ export default function SystemControlPage() {
                   prev.map((f) => (f.key === key ? { ...f, on: !f.on } : f)),
                 );
               }}
-              onSave={() => showToast("Features saved (demo)")}
+              onSave={() => void saveFeaturesToDb()}
             />
           )}
 

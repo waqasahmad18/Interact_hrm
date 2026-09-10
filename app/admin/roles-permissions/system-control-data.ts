@@ -34,7 +34,10 @@ export type DemoEmployee = {
   profilePhoto?: string;
   roleId: string;
   departmentId: string;
+  departmentName?: string;
   reportsTo: string | null;
+  /** Live HRM role string (BOD/CEO, HOD, …) before System Control assign. */
+  legacyRole?: string;
 };
 
 export type FeatureModule = {
@@ -313,8 +316,8 @@ export const GLOBAL_FEATURES: GlobalFeature[] = [
 
 export const TAB_HINT: Record<TabId, string> = {
   roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. Changes sync to the other tabs.",
-  permissions: "Select a role to configure permissions, assign it to an employee, and toggle feature access.",
-  features: "Globally enable or disable features for the entire organization.",
+  permissions: "Select a role to configure permissions, assign it to a live employee, then Save — stored in the database.",
+  features: "Globally enable or disable features for the entire organization. Save writes to the database.",
   settings: "Session defaults, leave workflow, and who can access System Control.",
 };
 

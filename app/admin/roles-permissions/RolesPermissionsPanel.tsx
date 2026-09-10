@@ -17,7 +17,7 @@ type Props = {
   onTogglePermission: (roleId: string, key: string) => void;
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
   onResetAll: () => void;
-  onSave: () => void;
+  onSave: (roleId: string) => void;
   onAssignEmployee: (employeeId: string, roleId: string) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
@@ -90,8 +90,11 @@ export default function RolesPermissionsPanel({
         value: emp.id,
         label: emp.name,
         meta: [
+          `ID ${emp.id}`,
           emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
-          `Current: ${roleMeta(emp.roleId, allRoles).name}`,
+          emp.departmentName || null,
+          emp.legacyRole ? `HR role: ${emp.legacyRole}` : null,
+          `Access: ${roleMeta(emp.roleId, allRoles).name}`,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -330,7 +333,12 @@ export default function RolesPermissionsPanel({
           <button type="button" className={styles.btnOutlinePurple} onClick={onResetAll}>
             Reset to Default
           </button>
-          <button type="button" className={styles.btnSolidPurple} onClick={onSave}>
+          <button
+            type="button"
+            className={styles.btnSolidPurple}
+            onClick={() => onSave(activeRoleId)}
+            disabled={!activeRoleId}
+          >
             Save changes
           </button>
         </div>
