@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages, FaHome } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
@@ -16,6 +16,11 @@ import {
 	saveCompanyLogo,
 } from "./shell-branding-api";
 import { toastError } from "@/lib/app-toast";
+import {
+	allowedPathsFromPermissions,
+	filterAdminSidebarByPaths,
+	isPathAllowed,
+} from "@/lib/access-control/menu-registry";
 
 /** Sub-menu row ~44–48px; full height so items are not clipped inside scrollable nav */
 function sidebarDropdownMaxHeightPx(itemCount: number) {
@@ -114,6 +119,8 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
 	const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
 	const [adminAvatar, setAdminAvatar] = React.useState<string | null>(null);
+	const [navGroups, setNavGroups] = React.useState(sidebarLinks);
+	const [accessRestricted, setAccessRestricted] = React.useState(false);
 	const router = useRouter();
 	const pathname = usePathname();
 	const isTimePage = pathname === "/time";
@@ -129,6 +136,81 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 			});
 	}, []);
 
+	// Employee sessions: only show System Control–granted links (not full admin nav).
+	React.useEffect(() => {
+		if (typeof window === "undefined") return;
+		const employeeId = localStorage.getItem("employeeId") || "";
+		if (!/^\d+$/.test(employeeId)) {
+			setNavGroups(sidebarLinks);
+			setAccessRestricted(false);
+			return;
+		}
+
+		let cancelled = false;
+		fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
+			cache: "no-store",
+		})
+			.then((r) => r.json())
+			.then((data) => {
+				if (cancelled || !data?.success) return;
+				const perms: string[] = Array.isArray(data.permissions) ? data.permissions : [];
+				const portal = String(data.role?.portal_type || "");
+				const slug = String(data.role?.slug || "");
+				const isFullAdmin =
+					slug === "exec_board" ||
+					(portal === "admin-dashboard" && perms.length >= 20);
+
+				if (isFullAdmin) {
+					setNavGroups(sidebarLinks);
+					setAccessRestricted(false);
+					return;
+				}
+
+				const allowed = allowedPathsFromPermissions(perms);
+				const filtered = filterAdminSidebarByPaths(sidebarLinks as any, allowed);
+				const withHome = [
+					{
+						group: "Main",
+						links: [
+							{
+								name: "Employee Dashboard",
+								path: "/employee-dashboard",
+								icon: <FaHome />,
+							},
+							...(filtered.find((g) => g.group === "Main")?.links || []),
+						],
+					},
+					...filtered.filter((g) => g.group !== "Main"),
+				];
+				setNavGroups(withHome as typeof sidebarLinks);
+				setAccessRestricted(true);
+
+				const path = pathname || "";
+				const onEmployeeHome = path.startsWith("/employee-dashboard");
+				if (
+					path &&
+					!onEmployeeHome &&
+					(path.startsWith("/admin") ||
+						path.startsWith("/summaries") ||
+						path.startsWith("/leave") ||
+						path.startsWith("/attendance")) &&
+					!isPathAllowed(path, allowed)
+				) {
+					router.replace("/employee-dashboard");
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setNavGroups(sidebarLinks);
+					setAccessRestricted(false);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [pathname, router]);
+
 	// Close the mobile drawer whenever the route changes (after a nav tap).
 	React.useEffect(() => {
 		setSidebarOpen(false);
@@ -136,11 +218,13 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 
 	// Attendance dropdown should stay open if any of its links is active
 	React.useEffect(() => {
-		const attendanceLinks = sidebarLinks.find(g => g.group === "HR")?.links.find(l => l.name === "Attendance")?.dropdown || [];
-		if (attendanceLinks.some(l => pathname === l.path)) {
+		const attendanceLinks =
+			navGroups.find((g) => g.group === "HR")?.links.find((l) => l.name === "Attendance")
+				?.dropdown || [];
+		if (attendanceLinks.some((l) => pathname === l.path)) {
 			setAttendanceDropdownOpen(true);
 		}
-	}, [pathname]);
+	}, [pathname, navGroups]);
 
 	return (
 		<>
@@ -164,6 +248,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 							image={companyLogo}
 							title="Upload company logo"
 							onImage={(dataUrl, file) => {
+								if (accessRestricted) return;
 								const prev = companyLogo;
 								setCompanyLogo(dataUrl);
 								void saveCompanyLogo(file).catch(() => {
@@ -172,6 +257,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 								});
 							}}
 							onRemove={() => {
+								if (accessRestricted) return;
 								const prev = companyLogo;
 								setCompanyLogo(null);
 								void removeCompanyLogo().catch(() => {
@@ -207,7 +293,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 				)}
 				<aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
 					<nav className={styles.nav}>
-						{sidebarLinks.map((group, idx) => (
+						{navGroups.map((group, idx) => (
 							<div key={group.group}>
 								{group.group !== "Main" && (
 									<div className={styles.navGroupLabel}>

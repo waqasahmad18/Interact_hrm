@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /** Permission key → sidebar / quick-link entries for employee (and shared) portal. */
 
 export type AccessMenuItem = {
@@ -117,6 +119,58 @@ export function buildMenuFromPermissions(
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ name: item.name, path: item.path, group: item.group });
+  }
+  return out;
+}
+
+/** Paths this permission set may open (admin or employee). */
+export function allowedPathsFromPermissions(permissions: string[]): Set<string> {
+  const permSet = new Set(permissions);
+  const paths = new Set<string>();
+  for (const item of ACCESS_MENU_REGISTRY) {
+    if (permSet.has(item.permission)) paths.add(item.path);
+  }
+  paths.add("/employee-dashboard");
+  paths.add("/employee-dashboard/my-info");
+  paths.add("/employee-dashboard/generate-ticket");
+  return paths;
+}
+
+export function isPathAllowed(pathname: string, allowed: Set<string>): boolean {
+  if (!pathname) return false;
+  if (allowed.has(pathname)) return true;
+  for (const p of allowed) {
+    if (pathname === p || pathname.startsWith(`${p}/`)) return true;
+  }
+  return false;
+}
+
+type SidebarSubLink = { name: string; path: string; icon?: ReactNode };
+type SidebarLink = {
+  name: string;
+  path?: string;
+  icon?: ReactNode;
+  dropdown?: SidebarSubLink[];
+};
+type SidebarGroup = { group: string; links: SidebarLink[] };
+
+/** Keep only links whose path is permitted; drop empty dropdowns/groups. */
+export function filterAdminSidebarByPaths(
+  groups: SidebarGroup[],
+  allowed: Set<string>,
+): SidebarGroup[] {
+  const out: SidebarGroup[] = [];
+  for (const g of groups) {
+    const links: SidebarLink[] = [];
+    for (const link of g.links) {
+      if (link.dropdown?.length) {
+        const dropdown = link.dropdown.filter((d) => allowed.has(d.path));
+        if (dropdown.length) links.push({ ...link, dropdown });
+        continue;
+      }
+      if (link.path && allowed.has(link.path)) links.push(link);
+    }
+    if (links.length) out.push({ group: g.group, links });
   }
   return out;
 }
