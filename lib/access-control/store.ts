@@ -416,16 +416,16 @@ export async function assignEmployeeRole(employeeId: string, roleSlug: string) {
 
   if (getDbDriver() === "mongo") {
     const db = await getMongoDb();
-    const ids = /^\d+$/.test(eid) ? [eid, Number(eid)] : [eid];
-    const res = await db.collection("hrm_employees").updateOne(
-      { id: { $in: ids } },
-      { $set: { access_role_slug: slug, updated_at: new Date() } },
-    );
+    const numeric = /^\d+$/.test(eid) ? Number(eid) : null;
+    const filter =
+      numeric != null
+        ? { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] }
+        : { id: eid };
+    const res = await db.collection("hrm_employees").updateOne(filter, {
+      $set: { access_role_slug: slug, updated_at: new Date() },
+    });
     if (!res.matchedCount) {
-      await db.collection("hrm_employees").updateOne(
-        { _id: eid as any },
-        { $set: { access_role_slug: slug, updated_at: new Date() } },
-      );
+      throw new Error(`Employee ${eid} not found for role assign`);
     }
     return;
   }

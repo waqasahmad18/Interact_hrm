@@ -17,7 +17,8 @@ type Props = {
   onTogglePermission: (roleId: string, key: string) => void;
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
   onResetAll: () => void;
-  onSave: (roleId: string) => void;
+  /** roleId + optional employee to assign on save */
+  onSave: (roleId: string, employeeId?: string) => void;
   onAssignEmployee: (employeeId: string, roleId: string) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
@@ -160,7 +161,7 @@ export default function RolesPermissionsPanel({
   }
 
   function handleAssign() {
-    if (!assignEmployeeId || !activeRoleId || !assignChanged) return;
+    if (!assignEmployeeId || !activeRoleId) return;
     onAssignEmployee(assignEmployeeId, activeRoleId);
   }
 
@@ -213,7 +214,7 @@ export default function RolesPermissionsPanel({
           <button
             type="button"
             className={styles.permAssignBtn}
-            disabled={!assignChanged}
+            disabled={!assignEmployeeId || !activeRoleId || locked}
             onClick={handleAssign}
           >
             Assign role
@@ -326,8 +327,9 @@ export default function RolesPermissionsPanel({
 
       <div className={styles.matrixFooter}>
         <p className={styles.matrixFooterHint}>
-          <span className={styles.legendLocked} /> Only Super Admin is locked with
-          full access. Role changes apply on the employee&apos;s next login.
+          <span className={styles.legendLocked} /> Select an employee, click{" "}
+          <strong>Assign role</strong> (or Save), then have them refresh / re-login. Permissions
+          alone do not apply until the role is assigned.
         </p>
         <div className={styles.permFooterActions}>
           <button type="button" className={styles.btnOutlinePurple} onClick={onResetAll}>
@@ -336,7 +338,7 @@ export default function RolesPermissionsPanel({
           <button
             type="button"
             className={styles.btnSolidPurple}
-            onClick={() => onSave(activeRoleId)}
+            onClick={() => onSave(activeRoleId, assignEmployeeId || undefined)}
             disabled={!activeRoleId}
           >
             Save changes

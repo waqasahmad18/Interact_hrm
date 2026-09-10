@@ -522,7 +522,7 @@ export default function SystemControlPage() {
     }
   }
 
-  async function savePermissionsToDb(roleId: string) {
+  async function savePermissionsToDb(roleId: string, employeeId?: string) {
     const targetRole = String(roleId || selectedRoleId || "").trim();
     if (!targetRole) {
       showToast("Select a role first");
@@ -538,7 +538,29 @@ export default function SystemControlPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Save failed");
-      showToast(`Permissions saved for ${roleMeta(targetRole, allRoles).name}`);
+
+      const empId = String(employeeId || "").trim();
+      if (empId) {
+        const assignRes = await fetch("/api/access-control/system-control", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "assign", employeeId: empId, roleId: targetRole }),
+        });
+        const assignData = await assignRes.json();
+        if (!assignData.success) throw new Error(assignData.error || "Assign failed");
+        setEmployees((prev) =>
+          prev.map((e) => (e.id === empId ? { ...e, roleId: targetRole } : e)),
+        );
+        const emp = employees.find((e) => e.id === empId);
+        showToast(
+          `Saved ${roleMeta(targetRole, allRoles).name} permissions` +
+            (emp ? ` and assigned to ${emp.name}` : " and assigned employee"),
+        );
+      } else {
+        showToast(
+          `Permissions saved for ${roleMeta(targetRole, allRoles).name}. Select an employee and Assign/Save to apply.`,
+        );
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save permissions");
     } finally {
@@ -734,7 +756,7 @@ export default function SystemControlPage() {
                 setPermissions(clonePermissionMap());
                 showToast("All roles reset to default templates");
               }}
-              onSave={(roleId) => void savePermissionsToDb(roleId)}
+              onSave={(roleId, employeeId) => void savePermissionsToDb(roleId, employeeId)}
               onAssignEmployee={saveEmployeeRole}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id, customRoles)}
