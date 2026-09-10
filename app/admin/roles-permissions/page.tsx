@@ -512,8 +512,25 @@ export default function SystemControlPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Assign failed");
       setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, roleId } : e)));
+
+      let permNote = "";
+      try {
+        const meRes = await fetch(
+          `/api/access-control/me?employeeId=${encodeURIComponent(empId)}`,
+          { cache: "no-store" },
+        );
+        const me = await meRes.json();
+        if (me?.success) {
+          const n = Array.isArray(me.permissions) ? me.permissions.length : 0;
+          const links = Array.isArray(me.menu) ? me.menu.length : 0;
+          permNote = ` (${n} permissions → ${links} dashboard links)`;
+        }
+      } catch {
+        /* ignore verify errors */
+      }
+
       showToast(
-        `${emp.name} → ${roleMeta(roleId, allRoles).name}. Access role saved.`,
+        `${emp.name} → ${roleMeta(roleId, allRoles).name}${permNote}. Ask them to refresh.`,
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to assign role");

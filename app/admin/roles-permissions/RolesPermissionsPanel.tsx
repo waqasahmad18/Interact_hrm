@@ -54,7 +54,16 @@ export default function RolesPermissionsPanel({
   employeeCountByRole,
 }: Props) {
   const [permSearch, setPermSearch] = useState("");
-  const [assignEmployeeId, setAssignEmployeeId] = useState(() => employees[0]?.id ?? "");
+  const [assignEmployeeId, setAssignEmployeeId] = useState("");
+
+  // Employees load async from API — seed selection once the list arrives.
+  React.useEffect(() => {
+    if (!employees.length) return;
+    setAssignEmployeeId((prev) => {
+      if (prev && employees.some((e) => e.id === prev)) return prev;
+      return employees[0]?.id ?? "";
+    });
+  }, [employees]);
 
   const matrixRoles = useMemo(
     () => allRoles.filter((r) => !isRoleLocked(r.id)),
