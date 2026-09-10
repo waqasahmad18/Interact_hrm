@@ -1,6 +1,6 @@
 "use client";
 
-import LayoutDashboard from "../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -308,7 +308,7 @@ export default function LeavePage() {
   const selectedStatus = String(selectedLeave?.status || "pending").toLowerCase();
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
@@ -536,6 +536,6 @@ export default function LeavePage() {
         : null}
 
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

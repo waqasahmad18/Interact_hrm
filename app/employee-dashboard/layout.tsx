@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { EmployeeShellProvider } from "@/lib/access-control/employee-shell";
 import {
   FaTachometerAlt,
   FaUser,
@@ -309,6 +310,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     ) : null;
 
   return (
+    <EmployeeShellProvider>
     <div className={`${styles.layout} ${empStyles.noTopbar} ${empStyles.modernShell}`}>
       {sidebarOpen ? (
         <div
@@ -335,11 +337,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
               tab.path === "/employee-dashboard"
                 ? pathname === tab.path
                 : pathname === tab.path || (pathname?.startsWith(tab.path + "/") ?? false);
+            const isPermissionTab = accessTabs.some((t) => t.path === tab.path);
             return (
               <Link
                 key={tab.path || idx}
                 href={tab.path}
-                prefetch
+                prefetch={!isPermissionTab}
                 className={
                   isActive
                     ? `${styles.navItem} ${styles.navItemActive} ${empStyles.navItemPdf} ${empStyles.navItemPdfActive}`
@@ -348,6 +351,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 onClick={(e) => {
                   if (isActive) {
                     e.preventDefault();
+                    return;
+                  }
+                  // Full load keeps employee layout; soft-nav was swapping to admin chrome.
+                  if (isPermissionTab) {
+                    e.preventDefault();
+                    window.location.assign(tab.path);
                   }
                 }}
               >
@@ -425,5 +434,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
       </div>
     </div>
+    </EmployeeShellProvider>
   );
 }

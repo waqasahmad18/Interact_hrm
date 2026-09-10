@@ -1,6 +1,6 @@
 "use client";
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
@@ -28,11 +28,12 @@ function formatDateOnly(dateValue: string | null | undefined) {
   return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
 }
 
-// Helper to format duration
+// Helper to format duration (whole seconds — matches summary pages: 00h 18m 57s)
 function formatDuration(seconds: number) {
-  const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
-  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600).toString().padStart(2, "0");
+  const m = Math.floor((total % 3600) / 60).toString().padStart(2, "0");
+  const s = (total % 60).toString().padStart(2, "0");
   return `${h}h ${m}m ${s}s`;
 }
 
@@ -393,7 +394,7 @@ export default function ManageBreaksPage() {
   };
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={adminStyles.page}>
         <div className={styles.breakSummaryContainer}>
         <div className={adminStyles.pageHeader}>
@@ -789,7 +790,7 @@ export default function ManageBreaksPage() {
         </div>
       </div>
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }
 

@@ -144,55 +144,28 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 			return;
 		}
 
-		let cancelled = false;
-		fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
-			cache: "no-store",
-		})
-			.then((r) => r.json())
-			.then((data) => {
-				if (cancelled || !data?.success) return;
-				const perms: string[] = Array.isArray(data.permissions) ? data.permissions : [];
-				const portal = String(data.role?.portal_type || "");
-				const slug = String(data.role?.slug || "");
-				const isFullAdmin =
-					slug === "exec_board" ||
-					(portal === "admin-dashboard" && perms.length >= 20);
-
-				if (isFullAdmin) {
-					setAccessRestricted(false);
-					return;
-				}
-
-				setAccessRestricted(true);
-				const path = pathname || "";
-				const mapped = ADMIN_PATH_TO_EMPLOYEE[path];
-				if (mapped) {
-					router.replace(mapped);
-					return;
-				}
-				for (const [adminPath, empPath] of Object.entries(ADMIN_PATH_TO_EMPLOYEE)) {
-					if (path === adminPath || path.startsWith(`${adminPath}/`)) {
-						router.replace(empPath);
-						return;
-					}
-				}
-				if (
-					path.startsWith("/admin") ||
-					path.startsWith("/summaries") ||
-					path === "/leave" ||
-					path.startsWith("/attendance")
-				) {
-					router.replace("/employee-dashboard");
-				}
-			})
-			.catch(() => {
-				if (!cancelled) setAccessRestricted(false);
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [pathname, router]);
+		setAccessRestricted(true);
+		const path = pathname || "";
+		const mapped = ADMIN_PATH_TO_EMPLOYEE[path];
+		if (mapped) {
+			window.location.replace(mapped);
+			return;
+		}
+		for (const [adminPath, empPath] of Object.entries(ADMIN_PATH_TO_EMPLOYEE)) {
+			if (path === adminPath || path.startsWith(`${adminPath}/`)) {
+				window.location.replace(empPath);
+				return;
+			}
+		}
+		if (
+			path.startsWith("/admin") ||
+			path.startsWith("/summaries") ||
+			path === "/leave" ||
+			path.startsWith("/attendance")
+		) {
+			window.location.replace("/employee-dashboard");
+		}
+	}, [pathname]);
 
 	// Close the mobile drawer whenever the route changes (after a nav tap).
 	React.useEffect(() => {
@@ -209,8 +182,15 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 		}
 	}, [pathname, navGroups]);
 
-	// Permission pages re-exported under /employee-dashboard/* keep employee chrome only.
-	if (embedInEmployeeShell) {
+	const [employeeSession, setEmployeeSession] = React.useState(false);
+
+	React.useLayoutEffect(() => {
+		setEmployeeSession(/^\d+$/.test(localStorage.getItem("employeeId") || ""));
+	}, []);
+
+	// Permission pages under /employee-dashboard/* keep employee chrome only.
+	// Employee browser sessions must never paint the Admin avatar chrome.
+	if (embedInEmployeeShell || employeeSession) {
 		return <>{children}</>;
 	}
 

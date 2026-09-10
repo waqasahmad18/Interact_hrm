@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchAdvanceSalary } from "./advanceSalaryUtils";
 import { fetchLoanSalary } from "./loanSalaryUtils";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
@@ -1311,7 +1311,7 @@ export default function MonthlyAttendancePage() {
   });
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.breakSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
           <h1 className={styles.pageTitle}>Monthly Payroll</h1>
@@ -1561,7 +1561,7 @@ export default function MonthlyAttendancePage() {
         </div>
       </div>
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }
 

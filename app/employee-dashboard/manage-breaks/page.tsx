@@ -1,1 +1,7 @@
-export { default } from "../../admin/manage-breaks/page";
+"use client";
+
+import ManageBreaksPage from "../../admin/manage-breaks/page";
+
+export default function EmployeeManageBreaksPage() {
+  return <ManageBreaksPage />;
+}

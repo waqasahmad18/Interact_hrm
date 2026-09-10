@@ -1,1 +1,7 @@
-export { default } from "../../admin/commissions/page";
+"use client";
+
+import CommissionsPage from "../../admin/commissions/page";
+
+export default function EmployeeCommissionsPage() {
+  return <CommissionsPage />;
+}

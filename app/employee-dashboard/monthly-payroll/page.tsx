@@ -1,1 +1,7 @@
-export { default } from "../../admin/monthly-payroll/page";
+"use client";
+
+import MonthlyPayrollPage from "../../admin/monthly-payroll/page";
+
+export default function EmployeeMonthlyPayrollPage() {
+  return <MonthlyPayrollPage />;
+}

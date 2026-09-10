@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import FeaturesTab from "./FeaturesTab";
 import NewRoleModal from "./NewRoleModal";
 import OrgChartTab from "./OrgChartTab";
@@ -693,7 +693,7 @@ export default function SystemControlPage() {
   ];
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.page}>
         <header className={styles.scHeader}>
           <div>
@@ -874,6 +874,6 @@ export default function SystemControlPage() {
           </ModalPortal>
         )}
       </div>
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

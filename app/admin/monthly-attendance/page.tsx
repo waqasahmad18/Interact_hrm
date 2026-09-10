@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
@@ -911,10 +911,12 @@ export default function MonthlyAttendancePage() {
     employeeCode?: string;
     pseudonym?: string;
   }) {
+    const empId = String(employee.employeeId ?? "").trim();
+    const hrm = hrmEmployeesList.find((e) => String(e.employeeId) === empId);
     return {
       employeeName: employee.employeeName,
-      employeeCode: employee.employeeCode,
-      employeeId: employee.employeeId,
+      employeeCode: String(employee.employeeCode || hrm?.employeeCode || "").trim(),
+      employeeId: empId,
       pseudonym: employee.pseudonym,
     };
   }
@@ -1740,6 +1742,7 @@ export default function MonthlyAttendancePage() {
     toDate,
     pairingNow,
     shiftAssignments,
+    hrmEmployeesList,
   ]);
 
   // Narrow search → auto-expand matched employees so results are one click less
@@ -1815,7 +1818,7 @@ export default function MonthlyAttendancePage() {
   }
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.breakSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
           <h1 className={styles.pageTitle}>
@@ -2199,6 +2202,6 @@ export default function MonthlyAttendancePage() {
         )}
       </div>
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }
