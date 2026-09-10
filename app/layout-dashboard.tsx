@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages, FaHome } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
@@ -16,11 +16,7 @@ import {
 	saveCompanyLogo,
 } from "./shell-branding-api";
 import { toastError } from "@/lib/app-toast";
-import {
-	allowedPathsFromPermissions,
-	filterAdminSidebarByPaths,
-	isPathAllowed,
-} from "@/lib/access-control/menu-registry";
+import { ADMIN_PATH_TO_EMPLOYEE } from "@/lib/access-control/menu-registry";
 
 /** Sub-menu row ~44–48px; full height so items are not clipped inside scrollable nav */
 function sidebarDropdownMaxHeightPx(itemCount: number) {
@@ -119,11 +115,12 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
 	const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
 	const [adminAvatar, setAdminAvatar] = React.useState<string | null>(null);
-	const [navGroups, setNavGroups] = React.useState(sidebarLinks);
+	const navGroups = sidebarLinks;
 	const [accessRestricted, setAccessRestricted] = React.useState(false);
 	const router = useRouter();
 	const pathname = usePathname();
 	const isTimePage = pathname === "/time";
+	const embedInEmployeeShell = Boolean(pathname?.startsWith("/employee-dashboard"));
 
 	React.useEffect(() => {
 		void fetchShellBranding()
@@ -136,12 +133,13 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 			});
 	}, []);
 
-	// Employee sessions: only show System Control–granted links (not full admin nav).
+	// Employee sessions must stay in the employee shell — never admin chrome / "Admin" avatar.
 	React.useEffect(() => {
 		if (typeof window === "undefined") return;
+		if (pathname?.startsWith("/employee-dashboard")) return;
+
 		const employeeId = localStorage.getItem("employeeId") || "";
 		if (!/^\d+$/.test(employeeId)) {
-			setNavGroups(sidebarLinks);
 			setAccessRestricted(false);
 			return;
 		}
@@ -161,49 +159,34 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 					(portal === "admin-dashboard" && perms.length >= 20);
 
 				if (isFullAdmin) {
-					setNavGroups(sidebarLinks);
 					setAccessRestricted(false);
 					return;
 				}
 
-				const allowed = allowedPathsFromPermissions(perms);
-				const filtered = filterAdminSidebarByPaths(sidebarLinks as any, allowed);
-				const withHome = [
-					{
-						group: "Main",
-						links: [
-							{
-								name: "Employee Dashboard",
-								path: "/employee-dashboard",
-								icon: <FaHome />,
-							},
-							...(filtered.find((g) => g.group === "Main")?.links || []),
-						],
-					},
-					...filtered.filter((g) => g.group !== "Main"),
-				];
-				setNavGroups(withHome as typeof sidebarLinks);
 				setAccessRestricted(true);
-
 				const path = pathname || "";
-				const onEmployeeHome = path.startsWith("/employee-dashboard");
+				const mapped = ADMIN_PATH_TO_EMPLOYEE[path];
+				if (mapped) {
+					router.replace(mapped);
+					return;
+				}
+				for (const [adminPath, empPath] of Object.entries(ADMIN_PATH_TO_EMPLOYEE)) {
+					if (path === adminPath || path.startsWith(`${adminPath}/`)) {
+						router.replace(empPath);
+						return;
+					}
+				}
 				if (
-					path &&
-					!onEmployeeHome &&
-					(path.startsWith("/admin") ||
-						path.startsWith("/summaries") ||
-						path.startsWith("/leave") ||
-						path.startsWith("/attendance")) &&
-					!isPathAllowed(path, allowed)
+					path.startsWith("/admin") ||
+					path.startsWith("/summaries") ||
+					path === "/leave" ||
+					path.startsWith("/attendance")
 				) {
 					router.replace("/employee-dashboard");
 				}
 			})
 			.catch(() => {
-				if (!cancelled) {
-					setNavGroups(sidebarLinks);
-					setAccessRestricted(false);
-				}
+				if (!cancelled) setAccessRestricted(false);
 			});
 
 		return () => {
@@ -225,6 +208,11 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 			setAttendanceDropdownOpen(true);
 		}
 	}, [pathname, navGroups]);
+
+	// Permission pages re-exported under /employee-dashboard/* keep employee chrome only.
+	if (embedInEmployeeShell) {
+		return <>{children}</>;
+	}
 
 	return (
 		<>

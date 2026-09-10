@@ -1,16 +1,19 @@
 import type { ReactNode } from "react";
 
-/** Permission key → sidebar / quick-link entries for employee (and shared) portal. */
+/** Permission key → links shown inside the employee dashboard shell (never admin chrome). */
 
 export type AccessMenuItem = {
   permission: string;
-  /** Optional global feature key that must be ON (hrm_global_features). */
   featureGate?: string;
   name: string;
   path: string;
   group?: "core" | "attendance" | "leave" | "payroll" | "team" | "system";
 };
 
+/**
+ * All privileged links stay under `/employee-dashboard/*` so the employee
+ * sidebar/chrome never switches to the admin layout.
+ */
 export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "team.dashboard.view",
@@ -33,76 +36,91 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "leave.list.view",
     name: "Leave Inbox",
-    path: "/leave",
+    path: "/employee-dashboard/leave-inbox",
     group: "leave",
   },
   {
     permission: "leave.approve.manager",
     name: "Manage Leaves",
-    path: "/admin/manage-leaves",
+    path: "/employee-dashboard/manage-leaves",
     group: "leave",
   },
   {
     permission: "leave.approve.hr",
     name: "Manage Leaves",
-    path: "/admin/manage-leaves",
+    path: "/employee-dashboard/manage-leaves",
     group: "leave",
   },
   {
     permission: "attendance.summary.view",
     name: "Attendance Summary",
-    path: "/summaries",
+    path: "/employee-dashboard/summaries",
     group: "attendance",
   },
   {
     permission: "attendance.monthly.view",
     name: "Monthly Attendance",
-    path: "/admin/monthly-attendance",
+    path: "/employee-dashboard/monthly-attendance",
     group: "attendance",
   },
   {
     permission: "attendance.manage.edit",
     name: "Manage Attendance",
-    path: "/admin/manage-attendance",
+    path: "/employee-dashboard/manage-attendance",
     group: "attendance",
   },
   {
     permission: "attendance.breaks.manage",
     name: "Manage Breaks",
-    path: "/admin/manage-breaks",
+    path: "/employee-dashboard/manage-breaks",
     group: "attendance",
   },
   {
     permission: "payroll.monthly.view",
     name: "Monthly Payroll",
-    path: "/admin/monthly-payroll",
+    path: "/employee-dashboard/monthly-payroll",
     group: "payroll",
   },
   {
     permission: "payroll.commissions",
     name: "Commissions",
-    path: "/admin/commissions",
+    path: "/employee-dashboard/commissions",
     group: "payroll",
   },
   {
     permission: "payroll.advance",
     name: "Advance",
-    path: "/admin/advance",
+    path: "/employee-dashboard/advance",
     group: "payroll",
   },
   {
     permission: "payroll.loan",
     name: "Loan",
-    path: "/admin/loan",
+    path: "/employee-dashboard/loan",
     group: "payroll",
   },
   {
     permission: "system.control.access",
     name: "System Control",
-    path: "/admin/system-control",
+    path: "/employee-dashboard/system-control",
     group: "system",
   },
 ];
+
+/** Old admin URLs → employee-shell equivalents (for bookmarks / stale links). */
+export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
+  "/leave": "/employee-dashboard/leave-inbox",
+  "/summaries": "/employee-dashboard/summaries",
+  "/admin/manage-leaves": "/employee-dashboard/manage-leaves",
+  "/admin/monthly-attendance": "/employee-dashboard/monthly-attendance",
+  "/admin/manage-attendance": "/employee-dashboard/manage-attendance",
+  "/admin/manage-breaks": "/employee-dashboard/manage-breaks",
+  "/admin/monthly-payroll": "/employee-dashboard/monthly-payroll",
+  "/admin/commissions": "/employee-dashboard/commissions",
+  "/admin/advance": "/employee-dashboard/advance",
+  "/admin/loan": "/employee-dashboard/loan",
+  "/admin/system-control": "/employee-dashboard/system-control",
+};
 
 export function buildMenuFromPermissions(
   permissions: string[],
@@ -123,7 +141,6 @@ export function buildMenuFromPermissions(
   return out;
 }
 
-/** Paths this permission set may open (admin or employee). */
 export function allowedPathsFromPermissions(permissions: string[]): Set<string> {
   const permSet = new Set(permissions);
   const paths = new Set<string>();
@@ -154,7 +171,6 @@ type SidebarLink = {
 };
 type SidebarGroup = { group: string; links: SidebarLink[] };
 
-/** Keep only links whose path is permitted; drop empty dropdowns/groups. */
 export function filterAdminSidebarByPaths(
   groups: SidebarGroup[],
   allowed: Set<string>,
