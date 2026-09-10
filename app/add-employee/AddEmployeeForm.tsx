@@ -399,9 +399,8 @@ export default function AddEmployeeForm({
   const [employmentStatus, setEmploymentStatus] = useState("");
   const [employmentType, setEmploymentType] = useState("");
   const [workingHours, setWorkingHours] = useState<string>("");
-  // Role selection for hrm_employees
-  const roleOptions = ["BOD/CEO", "HOD", "Management", "Leader", "Officer"] as const;
-  const [role, setRole] = useState<string>("Officer");
+  // Role is fixed for add/edit form — System Control handles access roles separately.
+  const role = "Officer";
   const [createLogin, setCreateLogin] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState("");
@@ -570,7 +569,7 @@ export default function AddEmployeeForm({
             setUsername(data.employee.username || "");
               // Set status to "enabled" - default for login details
               setStatus("enabled");
-            setRole(data.employee.role || "Officer");
+            // Role stays fixed as Officer on this form.
             setCreateLogin(!!data.employee.username);
               // Pre-fill password fields in edit mode with existing password
               if (data.employee.password) {
@@ -1029,14 +1028,15 @@ export default function AddEmployeeForm({
               ) : null}
               <div>
                 <label className={styles.fieldLabel}>Role</label>
-                <select className={styles.select} value={role} onChange={e => setRole(e.target.value)} required>
-                  <option value="">Select Role</option>
-                  <option value="BOD/CEO">BOD/CEO</option>
-                  <option value="HOD">HOD</option>
-                  <option value="Management">Management</option>
-                  <option value="Leader">Leader</option>
-                  <option value="Officer">Officer</option>
-                </select>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={role}
+                  readOnly
+                  disabled
+                  aria-readonly="true"
+                  title="Role is fixed to Officer"
+                />
               </div>
               <div className={styles.toggleRow}>
                 <span className={styles.toggleLabel}>Create Login Details</span>
