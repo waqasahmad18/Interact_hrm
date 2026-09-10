@@ -10,6 +10,13 @@ import {
   FaUsers,
   FaSearch,
   FaTicketAlt,
+  FaClipboardList,
+  FaCalendarAlt,
+  FaDollarSign,
+  FaCog,
+  FaCoffee,
+  FaFileAlt,
+  FaEdit,
 } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 import empStyles from "./emp-shell.module.css";
@@ -63,12 +70,31 @@ function HeroSearch() {
   );
 }
 
-const employeeTabs = [
+type NavTab = { name: string; path: string; icon: React.ReactNode };
+
+const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
-  { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
 ];
+
+function iconForPath(path: string, name: string): React.ReactNode {
+  if (path.includes("my-team") || name.includes("Team")) return <FaUsers />;
+  if (path.includes("leave") || name.includes("Leave")) return <FaCalendarAlt />;
+  if (path.includes("break")) return <FaCoffee />;
+  if (
+    path.includes("payroll") ||
+    path.includes("commission") ||
+    path.includes("advance") ||
+    path.includes("loan")
+  ) {
+    return <FaDollarSign />;
+  }
+  if (path.includes("system-control")) return <FaCog />;
+  if (path.includes("manage-")) return <FaEdit />;
+  if (path.includes("monthly")) return <FaFileAlt />;
+  return <FaClipboardList />;
+}
 
 const PREFETCH_PATHS = [
   "/employee-dashboard",
@@ -77,6 +103,7 @@ const PREFETCH_PATHS = [
   "/employee-dashboard/generate-ticket",
   "/employee-dashboard/time",
   "/employee-dashboard/attendance",
+  "/employee-dashboard/leave",
 ];
 
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
@@ -87,13 +114,13 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   const [heroDateTime, setHeroDateTime] = React.useState(formatHeroDateTime);
   const isDashboardHome = pathname === "/employee-dashboard";
   const [todayStatusRoot, setTodayStatusRoot] = React.useState<HTMLElement | null>(null);
+  const [accessTabs, setAccessTabs] = React.useState<NavTab[]>([]);
 
   React.useEffect(() => {
     const id = window.setInterval(() => setHeroDateTime(formatHeroDateTime()), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
-  // Warm route JS so sidebar clicks switch immediately after refresh.
   React.useEffect(() => {
     for (const path of PREFETCH_PATHS) {
       try {
@@ -104,7 +131,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     }
   }, [router]);
 
-  // Portal target lives in page children; keep watching until home view mounts the slot.
   React.useLayoutEffect(() => {
     if (!isDashboardHome) {
       setTodayStatusRoot(null);
@@ -125,7 +151,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     };
   }, [isDashboardHome]);
 
-  // Resolve employeeId before paint so Clock/Break/Prayer can mount immediately.
   React.useLayoutEffect(() => {
     const loginId = localStorage.getItem("loginId");
     if (!loginId) {
@@ -151,7 +176,9 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     }
     Promise.all([
       fetch(apiUrl).then((res) => res.json()).catch(() => ({ success: false })),
-      fetch(`/api/hrm_employees?employeeId=${loginId}`).then((res) => res.json()).catch(() => ({ success: false })),
+      fetch(`/api/hrm_employees?employeeId=${loginId}`)
+        .then((res) => res.json())
+        .catch(() => ({ success: false })),
     ])
       .then(([data1, data2]) => {
         const data = data1.success ? data1 : data2;
@@ -173,6 +200,60 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         setEmployeeName((prev) => prev || "Employee");
       });
   }, []);
+
+  // System Control permissions → extra sidebar links for this employee.
+  React.useEffect(() => {
+    if (!employeeId || !/^\d+$/.test(employeeId)) {
+      setAccessTabs([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        const menu = Array.isArray(data.menu) ? data.menu : [];
+        const basePaths = new Set(BASE_EMPLOYEE_TABS.map((t) => t.path));
+        const tabs: NavTab[] = [];
+        for (const item of menu) {
+          const path = String(item.path || "");
+          const name = String(item.name || "");
+          if (!path || !name || basePaths.has(path)) continue;
+          if (tabs.some((t) => t.path === path)) continue;
+          tabs.push({ name, path, icon: iconForPath(path, name) });
+          try {
+            router.prefetch(path);
+          } catch {
+            /* ignore */
+          }
+        }
+        setAccessTabs(tabs);
+        try {
+          localStorage.setItem(
+            "accessPermissions",
+            JSON.stringify(Array.isArray(data.permissions) ? data.permissions : []),
+          );
+          localStorage.setItem("accessRoleSlug", String(data.role?.slug || ""));
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAccessTabs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, router]);
+
+  const employeeTabs = React.useMemo(() => {
+    const team = accessTabs.filter((t) => t.path === "/employee-dashboard/my-team");
+    const rest = accessTabs.filter((t) => t.path !== "/employee-dashboard/my-team");
+    const [home, ...tail] = BASE_EMPLOYEE_TABS;
+    return [home, ...team, ...tail, ...rest];
+  }, [accessTabs]);
 
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [employeeAvatar, setEmployeeAvatar] = React.useState<string | null>(null);
@@ -217,7 +298,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     .slice(0, 2)
     .toUpperCase();
 
-  // Only mount clock on dashboard home — keeps My Team / My Info / Tickets snappy.
   const clockWidget =
     employeeId && isDashboardHome ? (
       <ClockBreakPrayerWidget

@@ -480,3 +480,84 @@ export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
 export function permissionCatalogKeys() {
   return FEATURE_MODULES.flatMap((m) => m.permissions.map((p) => p.key));
 }
+
+export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise<{
+  employeeId: string;
+  name: string;
+  legacyRole: string;
+  roleSlug: string;
+}> {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  if (!eid) throw new Error("employeeId required");
+
+  const [rows] = await pool.query(
+    `SELECT id, first_name, last_name, role, access_role_slug
+     FROM hrm_employees
+     WHERE id = ?
+     LIMIT 1`,
+    [/^\d+$/.test(eid) ? Number(eid) : eid],
+  );
+  let row = (rows as any[])[0];
+
+  if (!row && getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const ids = /^\d+$/.test(eid) ? [Number(eid), eid] : [eid];
+    row = await db.collection("hrm_employees").findOne({ id: { $in: ids } });
+  }
+
+  if (!row) throw new Error("Employee not found");
+
+  const legacyRole = row.role != null ? String(row.role) : "";
+  const stored = row.access_role_slug != null ? String(row.access_role_slug).trim() : "";
+  const roleSlug = stored || mapLegacyEmployeeRole(legacyRole);
+  const name =
+    [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || `Employee ${eid}`;
+
+  return {
+    employeeId: String(row.id ?? eid),
+    name,
+    legacyRole,
+    roleSlug,
+  };
+}
+
+export async function loadPermissionsForRole(roleSlug: string): Promise<string[]> {
+  const map = await loadPermissionMap();
+  const slug = String(roleSlug || "").trim();
+  if (!slug) return [];
+  if (slug === "exec_board") {
+    // Board / locked role: full catalog
+    return permissionCatalogKeys();
+  }
+  return [...(map[slug] || [])];
+}
+
+export async function getEmployeeAccessPayload(employeeId: string) {
+  const emp = await resolveEmployeeAccessRoleSlug(employeeId);
+  const [permissions, features] = await Promise.all([
+    loadPermissionsForRole(emp.roleSlug),
+    loadGlobalFeatures(),
+  ]);
+  const enabledFeatures: Record<string, boolean> = {};
+  for (const f of features) enabledFeatures[f.key] = Boolean(f.on);
+
+  const { buildMenuFromPermissions } = await import("./menu-registry");
+  const menu = buildMenuFromPermissions(permissions, enabledFeatures);
+
+  return {
+    employeeId: emp.employeeId,
+    name: emp.name,
+    legacyRole: emp.legacyRole,
+    role: {
+      slug: emp.roleSlug,
+      display_name: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.name || emp.roleSlug,
+      portal_type: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.portal || "employee-dashboard",
+      data_scope: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.scope || "SELF",
+    },
+    permissions,
+    features_enabled: features.filter((f) => f.on).map((f) => f.key),
+    features,
+    menu,
+  };
+}
