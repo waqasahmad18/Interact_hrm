@@ -324,10 +324,11 @@
   scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 }
 
-/* Employee shell: compact nav — items at top, scroll when needed */
+/* Employee shell: scroll the nav list; never compress row height */
 .navEmployee {
-  flex: 0 1 auto;
-  max-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .nav::-webkit-scrollbar {
