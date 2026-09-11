@@ -86,9 +86,17 @@ type MonthlyAttendanceEmployeeRow = {
   importedFooter?: { totalDeduction?: string; extraHours?: string; workingDays?: string };
 };
 
+import {
+  PUNCH_ONLY_DEFAULT_SHIFT,
+  PUNCH_ONLY_EMPLOYEE_IDS,
+  PUNCH_ONLY_EMPLOYEES,
+  punchOnlyById,
+  punchOnlyDisplayName,
+  punchOnlyPinForId,
+} from "../../../lib/punch-only-employees";
+
 /** Billable late is already after 1h relaxation — show/sum any minutes > 0. */
 const EXCESS_LATE_SHOW_AFTER_MINUTES = 0;
-const PUNCH_ONLY_EMPLOYEE_IDS = new Set(["83", "84", "153", "154", "155", "156"]);
 
 interface AttendanceRecord {
   id: number;
@@ -913,9 +921,12 @@ export default function MonthlyAttendancePage() {
   }) {
     const empId = String(employee.employeeId ?? "").trim();
     const hrm = hrmEmployeesList.find((e) => String(e.employeeId) === empId);
+    const rosterPin = punchOnlyPinForId(empId) || "";
     return {
       employeeName: employee.employeeName,
-      employeeCode: String(employee.employeeCode || hrm?.employeeCode || "").trim(),
+      employeeCode: String(
+        employee.employeeCode || hrm?.employeeCode || rosterPin || "",
+      ).trim(),
       employeeId: empId,
       pseudonym: employee.pseudonym,
     };
@@ -923,8 +934,14 @@ export default function MonthlyAttendancePage() {
 
   function shiftResolverForEmployee(employeeId: string): EmployeeShiftResolver {
     const row = shiftAssignments.find((s) => s.employeeId === String(employeeId));
-    if (!row) return () => null;
     const punchOnly = PUNCH_ONLY_EMPLOYEE_IDS.has(String(employeeId));
+    if (!row) {
+      if (!punchOnly) return () => null;
+      return () => ({
+        startTime: PUNCH_ONLY_DEFAULT_SHIFT.startTime,
+        endTime: PUNCH_ONLY_DEFAULT_SHIFT.endTime,
+      });
+    }
     return (sessionDate: string) => {
       if (!punchOnly && row.assignedDate && sessionDate < row.assignedDate) return null;
       return { startTime: row.startTime, endTime: row.endTime };
@@ -1581,9 +1598,10 @@ export default function MonthlyAttendancePage() {
     );
     const enriched = attendanceByEmployeeAll.map((row) => {
       const hrm = hrmById.get(row.employeeId);
+      const rosterPin = punchOnlyPinForId(row.employeeId) || "";
       return {
         ...row,
-        employeeCode: row.employeeCode || hrm?.employeeCode || "",
+        employeeCode: row.employeeCode || hrm?.employeeCode || rosterPin || "",
         departmentName:
           row.departmentName && row.departmentName !== "-"
             ? row.departmentName
@@ -1620,12 +1638,12 @@ export default function MonthlyAttendancePage() {
         Boolean(fromDate) &&
         Boolean(toDate) &&
         (PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId))
-          ? Boolean(hrm.employeeCode) &&
+          ? Boolean(hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId))) &&
             employeeHasZkPunchesInRange(
               tungstenCtx as TungstenPunchContext,
               {
                 employeeName: hrm.employeeName,
-                employeeCode: hrm.employeeCode,
+                employeeCode: hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId)) || "",
                 employeeId: hrm.employeeId,
                 pseudonym: hrm.pseudonym,
               },
@@ -1647,13 +1665,35 @@ export default function MonthlyAttendancePage() {
       const forcePunchOnlyCard = PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId));
       if (!hasPunches && !matchesSearch && !forcePunchOnlyCard) continue;
 
+      const roster = punchOnlyById(String(hrm.employeeId));
       extra.push({
         employeeId: hrm.employeeId,
         employeeName: hrm.employeeName,
-        employeeCode: hrm.employeeCode,
+        employeeCode: hrm.employeeCode || roster?.pin || "",
         pseudonym: hrm.pseudonym,
         departmentName: hrm.departmentName,
         gender: hrm.gender,
+        byDate: {},
+        dateMeta: {},
+      });
+    }
+
+    // Restore punch-only cards even if HRM rows 153–156 were deleted from staging.
+    for (const roster of PUNCH_ONLY_EMPLOYEES) {
+      if (existing.has(roster.id) || extra.some((e) => e.employeeId === roster.id)) continue;
+      if (
+        selectedDepartment &&
+        roster.departmentName.toLowerCase() !== selectedDepartment.toLowerCase()
+      ) {
+        continue;
+      }
+      extra.push({
+        employeeId: roster.id,
+        employeeName: punchOnlyDisplayName(roster),
+        employeeCode: roster.pin,
+        pseudonym: "-",
+        departmentName: roster.departmentName,
+        gender: "",
         byDate: {},
         dateMeta: {},
       });
