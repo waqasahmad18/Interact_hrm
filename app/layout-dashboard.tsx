@@ -17,6 +17,11 @@ import {
 } from "./shell-branding-api";
 import { toastError } from "@/lib/app-toast";
 import { ADMIN_PATH_TO_EMPLOYEE } from "@/lib/access-control/menu-registry";
+import {
+	isEmployeeBrowserSession,
+	markAdminPortal,
+	isAdminBrowserSession,
+} from "@/lib/access-control/employee-shell";
 
 /** Sub-menu row ~44–48px; full height so items are not clipped inside scrollable nav */
 function sidebarDropdownMaxHeightPx(itemCount: number) {
@@ -120,6 +125,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const router = useRouter();
 	const pathname = usePathname();
 	const isTimePage = pathname === "/time";
+	// Only omit admin chrome when this page is nested under the employee layout route.
 	const embedInEmployeeShell = Boolean(pathname?.startsWith("/employee-dashboard"));
 
 	React.useEffect(() => {
@@ -133,13 +139,22 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 			});
 	}, []);
 
-	// Employee sessions must stay in the employee shell — never admin chrome / "Admin" avatar.
+	// Heal leftover employee keys when admin is logged in (restores full sidebar).
 	React.useEffect(() => {
 		if (typeof window === "undefined") return;
 		if (pathname?.startsWith("/employee-dashboard")) return;
+		if (isAdminBrowserSession()) {
+			markAdminPortal();
+			setAccessRestricted(false);
+		}
+	}, [pathname]);
 
-		const employeeId = localStorage.getItem("employeeId") || "";
-		if (!/^\d+$/.test(employeeId)) {
+	// Employee portal on an admin URL → send them back to employee-dashboard equivalents.
+	// Admin portal always keeps the full admin sidebar (never stripped).
+	React.useEffect(() => {
+		if (typeof window === "undefined") return;
+		if (pathname?.startsWith("/employee-dashboard")) return;
+		if (!isEmployeeBrowserSession()) {
 			setAccessRestricted(false);
 			return;
 		}
@@ -182,15 +197,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 		}
 	}, [pathname, navGroups]);
 
-	const [employeeSession, setEmployeeSession] = React.useState(false);
-
-	React.useLayoutEffect(() => {
-		setEmployeeSession(/^\d+$/.test(localStorage.getItem("employeeId") || ""));
-	}, []);
-
-	// Permission pages under /employee-dashboard/* keep employee chrome only.
-	// Employee browser sessions must never paint the Admin avatar chrome.
-	if (embedInEmployeeShell || employeeSession) {
+	if (embedInEmployeeShell) {
 		return <>{children}</>;
 	}
 

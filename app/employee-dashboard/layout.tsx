@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { EmployeeShellProvider } from "@/lib/access-control/employee-shell";
+import { EmployeeShellProvider, markEmployeePortal } from "@/lib/access-control/employee-shell";
 import {
   FaTachometerAlt,
   FaUser,
@@ -191,8 +191,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           const empId = String(data.employee.id || data.employee.employee_id || loginId);
           setEmployeeName(trimmedName);
           setEmployeeId(empId);
-          localStorage.setItem("employeeId", empId);
-          localStorage.setItem("employeeName", trimmedName);
+          markEmployeePortal(empId, trimmedName);
         } else {
           setEmployeeName((prev) => prev || "Employee");
         }

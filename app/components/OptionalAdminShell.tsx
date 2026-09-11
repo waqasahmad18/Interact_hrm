@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import LayoutDashboard from "../layout-dashboard";
 import {
   isEmployeeBrowserSession,
@@ -10,20 +10,17 @@ import {
 import { ADMIN_PATH_TO_EMPLOYEE } from "@/lib/access-control/menu-registry";
 
 /**
- * Admin chrome only for true admin sessions.
- * Under employee-dashboard (or any employee browser session) renders children only.
+ * Full admin sidebar chrome on admin routes.
+ * Under `/employee-dashboard` only renders page content (employee shell owns nav).
  */
 export default function OptionalAdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const inEmployeeLayout = useEmployeeShell();
-  const [employeeSession, setEmployeeSession] = React.useState(false);
+  const underEmployeeRoute = Boolean(pathname?.startsWith("/employee-dashboard"));
 
   React.useLayoutEffect(() => {
-    const isEmp = isEmployeeBrowserSession();
-    setEmployeeSession(isEmp);
-    if (!isEmp) return;
-    if (pathname?.startsWith("/employee-dashboard")) return;
+    if (underEmployeeRoute || inEmployeeLayout) return;
+    if (!isEmployeeBrowserSession()) return;
 
     const path = pathname || "";
     const mapped =
@@ -44,9 +41,10 @@ export default function OptionalAdminShell({ children }: { children: React.React
     ) {
       window.location.replace("/employee-dashboard");
     }
-  }, [pathname, router]);
+  }, [pathname, underEmployeeRoute, inEmployeeLayout]);
 
-  if (inEmployeeLayout || employeeSession || pathname?.startsWith("/employee-dashboard")) {
+  // Never strip admin chrome on admin URLs — only when nested in employee dashboard.
+  if (inEmployeeLayout || underEmployeeRoute) {
     return <>{children}</>;
   }
 
