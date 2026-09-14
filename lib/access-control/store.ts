@@ -5,6 +5,8 @@ import {
   DEFAULT_PERMISSIONS,
   FEATURE_MODULES,
   GLOBAL_FEATURES,
+  scopeLabelFromScope,
+  type RoleDef,
 } from "@/app/admin/roles-permissions/system-control-data";
 
 export const ROLES_COLLECTION = "hrm_roles";
@@ -481,6 +483,201 @@ export function permissionCatalogKeys() {
   return FEATURE_MODULES.flatMap((m) => m.permissions.map((p) => p.key));
 }
 
+function docToRoleDef(row: Record<string, unknown>): RoleDef {
+  const scope = String(row.data_scope || row.scope || "SELF");
+  return {
+    id: String(row.slug || row.id || ""),
+    name: String(row.display_name || row.name || ""),
+    description: String(row.description || ""),
+    portal: String(row.portal_type || row.portal || "employee-dashboard"),
+    scope,
+    scopeLabel: scopeLabelFromScope(scope),
+    hierarchyLevel: Number(row.hierarchy_level ?? 50),
+    system: row.is_system === true || row.is_system === 1 || row.is_system === "1",
+    parentId:
+      row.parent_slug == null || row.parent_slug === ""
+        ? null
+        : String(row.parent_slug),
+    tier: (row.tier as RoleDef["tier"]) || undefined,
+    accent: row.accent != null ? String(row.accent) : undefined,
+  };
+}
+
+/** Active org-chart roles from DB (Mongo/MySQL). */
+export async function loadOrgRoles(): Promise<RoleDef[]> {
+  await ensureAccessControlStore();
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const rows = await db
+      .collection(ROLES_COLLECTION)
+      .find({
+        $or: [
+          { is_active: { $in: [1, true, "1"] } },
+          { is_active: { $exists: false } },
+        ],
+      })
+      .toArray();
+    const roles = rows
+      .map((r) => docToRoleDef(r as Record<string, unknown>))
+      .filter((r) => r.id && r.name);
+    if (roles.length) {
+      return roles.sort((a, b) => a.hierarchyLevel - b.hierarchyLevel);
+    }
+    return BASE_ROLES.map((r) => ({ ...r }));
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT slug, display_name, description, portal_type, data_scope, hierarchy_level,
+            parent_slug, tier, accent, is_system
+     FROM ${ROLES_COLLECTION}
+     WHERE is_active = 1
+     ORDER BY hierarchy_level ASC, slug ASC`,
+  );
+  const roles = (rows as any[])
+    .map((r) => docToRoleDef(r))
+    .filter((r: RoleDef) => r.id && r.name);
+  if (roles.length) return roles;
+  return BASE_ROLES.map((r) => ({ ...r }));
+}
+
+/** Persist full org-chart role tree. Missing roles are soft-deactivated. */
+export async function saveOrgRoles(roles: RoleDef[]) {
+  await ensureAccessControlStore();
+  const list = roles
+    .map((r) => ({
+      ...r,
+      id: String(r.id || "").trim(),
+      name: String(r.name || "").trim(),
+    }))
+    .filter((r) => r.id && r.name);
+  if (!list.length) throw new Error("At least one role required");
+
+  const keep = new Set(list.map((r) => r.id));
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const col = db.collection(ROLES_COLLECTION);
+    for (const r of list) {
+      const existing = await col.findOne({ slug: r.id });
+      const doc = {
+        slug: r.id,
+        display_name: r.name,
+        description: r.description || "",
+        portal_type: r.portal || "employee-dashboard",
+        data_scope: r.scope || "SELF",
+        hierarchy_level: Number(r.hierarchyLevel) || 50,
+        parent_slug: r.parentId ?? null,
+        tier: r.tier ?? null,
+        accent: r.accent ?? null,
+        is_system: r.system ? 1 : 0,
+        is_active: 1,
+        updated_at: new Date(),
+      };
+      if (existing) {
+        await col.updateOne({ slug: r.id }, { $set: doc });
+      } else {
+        await col.insertOne({
+          id: await nextId(ROLES_COLLECTION),
+          ...doc,
+          created_at: new Date(),
+        });
+      }
+    }
+    await col.updateMany(
+      { slug: { $nin: [...keep] } },
+      { $set: { is_active: 0, updated_at: new Date() } },
+    );
+    return;
+  }
+
+  for (const r of list) {
+    await pool.execute(
+      `INSERT INTO ${ROLES_COLLECTION}
+        (slug, display_name, description, portal_type, data_scope, hierarchy_level,
+         parent_slug, tier, accent, is_system, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE
+         display_name = VALUES(display_name),
+         description = VALUES(description),
+         portal_type = VALUES(portal_type),
+         data_scope = VALUES(data_scope),
+         hierarchy_level = VALUES(hierarchy_level),
+         parent_slug = VALUES(parent_slug),
+         tier = VALUES(tier),
+         accent = VALUES(accent),
+         is_system = VALUES(is_system),
+         is_active = 1`,
+      [
+        r.id,
+        r.name,
+        r.description || "",
+        r.portal || "employee-dashboard",
+        r.scope || "SELF",
+        Number(r.hierarchyLevel) || 50,
+        r.parentId ?? null,
+        r.tier ?? null,
+        r.accent ?? null,
+        r.system ? 1 : 0,
+      ],
+    );
+  }
+  const placeholders = [...keep].map(() => "?").join(",");
+  await pool.execute(
+    `UPDATE ${ROLES_COLLECTION} SET is_active = 0 WHERE slug NOT IN (${placeholders})`,
+    [...keep],
+  );
+}
+
+/** Upsert catalog keys into global features without wiping existing toggles. */
+export async function syncAccessControlCatalog() {
+  await ensureAccessControlStore();
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    for (const f of GLOBAL_FEATURES) {
+      const existing = await db
+        .collection(GLOBAL_FEATURES_COLLECTION)
+        .findOne({ feature_key: f.key });
+      if (existing) {
+        await db.collection(GLOBAL_FEATURES_COLLECTION).updateOne(
+          { feature_key: f.key },
+          {
+            $set: {
+              display_name: f.name,
+              description: f.desc,
+              updated_at: new Date(),
+            },
+          },
+        );
+      } else {
+        await db.collection(GLOBAL_FEATURES_COLLECTION).insertOne({
+          id: await nextId(GLOBAL_FEATURES_COLLECTION),
+          feature_key: f.key,
+          display_name: f.name,
+          description: f.desc,
+          is_enabled: f.on ? 1 : 0,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      }
+    }
+    return;
+  }
+
+  for (const f of GLOBAL_FEATURES) {
+    await pool.execute(
+      `INSERT INTO ${GLOBAL_FEATURES_COLLECTION}
+        (feature_key, display_name, description, is_enabled)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         display_name = VALUES(display_name),
+         description = VALUES(description)`,
+      [f.key, f.name, f.desc, f.on ? 1 : 0],
+    );
+  }
+}
+
 export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise<{
   employeeId: string;
   name: string;
@@ -535,15 +732,19 @@ export async function loadPermissionsForRole(roleSlug: string): Promise<string[]
 
 export async function getEmployeeAccessPayload(employeeId: string) {
   const emp = await resolveEmployeeAccessRoleSlug(employeeId);
-  const [permissions, features] = await Promise.all([
+  const [permissions, features, roles] = await Promise.all([
     loadPermissionsForRole(emp.roleSlug),
     loadGlobalFeatures(),
+    loadOrgRoles(),
   ]);
   const enabledFeatures: Record<string, boolean> = {};
   for (const f of features) enabledFeatures[f.key] = Boolean(f.on);
 
   const { buildMenuFromPermissions } = await import("./menu-registry");
   const menu = buildMenuFromPermissions(permissions, enabledFeatures);
+  const roleMetaRow =
+    roles.find((r) => r.id === emp.roleSlug) ||
+    BASE_ROLES.find((r) => r.id === emp.roleSlug);
 
   return {
     employeeId: emp.employeeId,
@@ -551,9 +752,9 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     legacyRole: emp.legacyRole,
     role: {
       slug: emp.roleSlug,
-      display_name: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.name || emp.roleSlug,
-      portal_type: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.portal || "employee-dashboard",
-      data_scope: BASE_ROLES.find((r) => r.id === emp.roleSlug)?.scope || "SELF",
+      display_name: roleMetaRow?.name || emp.roleSlug,
+      portal_type: roleMetaRow?.portal || "employee-dashboard",
+      data_scope: roleMetaRow?.scope || "SELF",
     },
     permissions,
     features_enabled: features.filter((f) => f.on).map((f) => f.key),

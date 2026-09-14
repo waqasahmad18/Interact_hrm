@@ -46,21 +46,21 @@ export default function SystemControlPage() {
   const [employees, setEmployees] = useState<DemoEmployee[]>([]);
   const [accessLoading, setAccessLoading] = useState(true);
   const [accessSaving, setAccessSaving] = useState(false);
-  const [customRoles, setCustomRoles] = useState<RoleDef[]>([]);
-  const [deletedBaseIds, setDeletedBaseIds] = useState<string[]>([]);
+  /** Full org-chart role tree — loaded/saved to DB (hrm_roles). */
+  const [orgRoles, setOrgRoles] = useState<RoleDef[]>(() => BASE_ROLES.map((r) => ({ ...r })));
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-  const [levelOverrides, setLevelOverrides] = useState<Record<string, number>>({});
-  // Org-chart structure overrides (in-memory). parentOverrides re-parents roles
-  // via drag-drop; nameOverrides renames roles inline from the chart.
-  const [parentOverrides, setParentOverrides] = useState<Record<string, string | null>>({});
-  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
   const [newRoleParentId, setNewRoleParentId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState(clonePermissionMap);
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
+    dashboard: true,
     attendance: true,
     leave: true,
     payroll: true,
+    people: false,
+    shifts: false,
+    ops: false,
     team: true,
+    portal: false,
     system: true,
   });
 
@@ -72,10 +72,51 @@ export default function SystemControlPage() {
   const [systemControlRoles, setSystemControlRoles] = useState(["exec_board"]);
   const [toast, setToast] = useState("");
   const [rolePhotos, setRolePhotos] = useState<Record<string, string>>({});
+  const persistTimerRef = React.useRef<number | null>(null);
+
+  const customRoles = useMemo(
+    () => orgRoles.filter((r) => isCustomRole(r.id)),
+    [orgRoles],
+  );
 
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(""), 2800);
+  }
+
+  function schedulePersistRoles(next: RoleDef[]) {
+    if (persistTimerRef.current != null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setAccessSaving(true);
+          const res = await fetch("/api/access-control/system-control", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "org-roles", roles: next }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to save org chart");
+          if (Array.isArray(data.roles) && data.roles.length) {
+            setOrgRoles(data.roles as RoleDef[]);
+          }
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : "Failed to save org chart");
+        } finally {
+          setAccessSaving(false);
+        }
+      })();
+    }, 450);
+  }
+
+  function commitOrgRoles(updater: (prev: RoleDef[]) => RoleDef[]) {
+    setOrgRoles((prev) => {
+      const next = updater(prev);
+      schedulePersistRoles(next);
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -96,6 +137,9 @@ export default function SystemControlPage() {
         if (cancelled) return;
 
         if (accessRes?.success) {
+          if (Array.isArray(accessRes.roles) && accessRes.roles.length) {
+            setOrgRoles(accessRes.roles as RoleDef[]);
+          }
           if (accessRes.permissions) {
             setPermissions(toPermissionSets(accessRes.permissions));
           }
@@ -124,6 +168,9 @@ export default function SystemControlPage() {
     loadAccessControl();
     return () => {
       cancelled = true;
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
     };
   }, []);
 
@@ -134,22 +181,8 @@ export default function SystemControlPage() {
   const [newRoleScope, setNewRoleScope] = useState("DEPARTMENT");
 
   const allRoles = useMemo(
-    () =>
-      [
-        ...BASE_ROLES.filter((r) => !deletedBaseIds.includes(r.id)),
-        ...customRoles,
-      ]
-        .map((r) => ({
-          ...r,
-          name: nameOverrides[r.id] ?? r.name,
-          hierarchyLevel: levelOverrides[r.id] ?? r.hierarchyLevel,
-          parentId:
-            parentOverrides[r.id] !== undefined
-              ? parentOverrides[r.id]
-              : (r.parentId ?? null),
-        }))
-        .sort((a, b) => a.hierarchyLevel - b.hierarchyLevel),
-    [customRoles, deletedBaseIds, levelOverrides, nameOverrides, parentOverrides],
+    () => [...orgRoles].sort((a, b) => a.hierarchyLevel - b.hierarchyLevel),
+    [orgRoles],
   );
   const totalPermCount = FEATURE_MODULES.reduce((n, m) => n + m.permissions.length, 0);
 
@@ -234,8 +267,10 @@ export default function SystemControlPage() {
       scopeLabel: scopeLabelFromScope(newRoleScope),
       hierarchyLevel: clone.hierarchyLevel + 1,
       parentId,
+      tier: clone.tier,
+      accent: clone.accent,
     };
-    setCustomRoles((prev) => [...prev, newRole]);
+    commitOrgRoles((prev) => [...prev, newRole]);
     setPermissions((prev) => ({
       ...prev,
       [slug]: new Set(prev[newRoleCloneFrom] || []),
@@ -280,12 +315,15 @@ export default function SystemControlPage() {
       return;
     }
     const oldParent = effectiveParentOf(childId);
-    setParentOverrides((prev) => {
-      const next = { ...prev };
-      if (newParentId && isDescendantOf(allRoles, childId, newParentId)) {
-        next[newParentId] = oldParent;
+    commitOrgRoles((prev) => {
+      const next = prev.map((r) => ({ ...r }));
+      const byId = new Map(next.map((r) => [r.id, r]));
+      if (newParentId && isDescendantOf(next, childId, newParentId)) {
+        const loopNode = byId.get(newParentId);
+        if (loopNode) loopNode.parentId = oldParent;
       }
-      next[childId] = newParentId;
+      const child = byId.get(childId);
+      if (child) child.parentId = newParentId;
       return next;
     });
     const childName = roleMeta(childId, allRoles).name;
@@ -312,17 +350,20 @@ export default function SystemControlPage() {
     }
     const targetParent = effectiveParentOf(targetId);
     const draggedOldParent = effectiveParentOf(draggedId);
-    setParentOverrides((prev) => {
-      const next = { ...prev };
+    commitOrgRoles((prev) => {
+      const next = prev.map((r) => ({ ...r }));
+      const byId = new Map(next.map((r) => [r.id, r]));
       if (
         targetParent &&
-        (targetParent === draggedId ||
-          isDescendantOf(allRoles, draggedId, targetParent))
+        (targetParent === draggedId || isDescendantOf(next, draggedId, targetParent))
       ) {
-        next[targetParent] = draggedOldParent;
+        const loopNode = byId.get(targetParent);
+        if (loopNode) loopNode.parentId = draggedOldParent;
       }
-      next[draggedId] = targetParent;
-      next[targetId] = draggedId;
+      const dragged = byId.get(draggedId);
+      const target = byId.get(targetId);
+      if (dragged) dragged.parentId = targetParent;
+      if (target) target.parentId = draggedId;
       return next;
     });
 
@@ -364,16 +405,18 @@ export default function SystemControlPage() {
       showToast(`${roleMeta(draggedId, allRoles).name} is already parallel here`);
       return;
     }
-    setParentOverrides((prev) => {
-      const next = { ...prev };
+    commitOrgRoles((prev) => {
+      const next = prev.map((r) => ({ ...r }));
+      const byId = new Map(next.map((r) => [r.id, r]));
       if (
         targetParent &&
-        (targetParent === draggedId ||
-          isDescendantOf(allRoles, draggedId, targetParent))
+        (targetParent === draggedId || isDescendantOf(next, draggedId, targetParent))
       ) {
-        next[targetParent] = currentParent;
+        const loopNode = byId.get(targetParent);
+        if (loopNode) loopNode.parentId = currentParent;
       }
-      next[draggedId] = targetParent;
+      const dragged = byId.get(draggedId);
+      if (dragged) dragged.parentId = targetParent;
       return next;
     });
     const draggedName = roleMeta(draggedId, allRoles).name;
@@ -384,9 +427,9 @@ export default function SystemControlPage() {
   }
 
   function resetOrgChart() {
-    setParentOverrides({});
-    setLevelOverrides({});
-    setNameOverrides({});
+    const defaults = BASE_ROLES.map((r) => ({ ...r }));
+    setOrgRoles(defaults);
+    schedulePersistRoles(defaults);
     setPermissions(clonePermissionMap());
     showToast("Org chart reset to default hierarchy and permissions");
   }
@@ -394,7 +437,9 @@ export default function SystemControlPage() {
   function renameRole(roleId: string, newName: string) {
     const name = newName.trim();
     if (!name || name === roleMeta(roleId, allRoles).name) return;
-    setNameOverrides((prev) => ({ ...prev, [roleId]: name }));
+    commitOrgRoles((prev) =>
+      prev.map((r) => (r.id === roleId ? { ...r, name } : r)),
+    );
     showToast(`Role renamed to "${name}"`);
   }
 
@@ -422,25 +467,14 @@ export default function SystemControlPage() {
     const deletedParent = roleMeta(roleId, allRoles).parentId ?? null;
     const kids = childRoles(allRoles, roleId);
 
-    if (isCustomRole(roleId, customRoles)) {
-      setCustomRoles((prev) => prev.filter((r) => r.id !== roleId));
-    } else {
-      setDeletedBaseIds((prev) => [...prev, roleId]);
-    }
+    commitOrgRoles((prev) =>
+      prev
+        .filter((r) => r.id !== roleId)
+        .map((r) =>
+          kids.some((k) => k.id === r.id) ? { ...r, parentId: deletedParent } : r,
+        ),
+    );
     setPermissions((prev) => {
-      const next = { ...prev };
-      delete next[roleId];
-      return next;
-    });
-    // Reattach any children to the deleted role's parent so the tree stays
-    // connected, and drop the deleted role's own overrides.
-    setParentOverrides((prev) => {
-      const next = { ...prev };
-      for (const kid of kids) next[kid.id] = deletedParent;
-      delete next[roleId];
-      return next;
-    });
-    setNameOverrides((prev) => {
       const next = { ...prev };
       delete next[roleId];
       return next;
@@ -457,7 +491,7 @@ export default function SystemControlPage() {
   const deleteTargetMeta = deleteTargetId
     ? {
         name: roleMeta(deleteTargetId, allRoles).name,
-        isCustom: isCustomRole(deleteTargetId, customRoles),
+        isCustom: isCustomRole(deleteTargetId),
       }
     : null;
 
@@ -468,16 +502,12 @@ export default function SystemControlPage() {
     }
     if (!Number.isFinite(newLevel) || newLevel < 1) newLevel = 1;
 
-    const newOverrides = { ...levelOverrides, [roleId]: newLevel };
-    setLevelOverrides(newOverrides);
+    commitOrgRoles((prev) =>
+      prev.map((r) => (r.id === roleId ? { ...r, hierarchyLevel: newLevel } : r)),
+    );
 
-    const rawList = [
-      ...BASE_ROLES.filter((r) => !deletedBaseIds.includes(r.id)),
-      ...customRoles,
-    ];
-    const levelOf = (r: RoleDef) => newOverrides[r.id] ?? r.hierarchyLevel;
-    const belowRoles = rawList.filter(
-      (r) => r.id !== roleId && r.id !== "super_admin" && levelOf(r) > newLevel,
+    const belowRoles = orgRoles.filter(
+      (r) => r.id !== roleId && r.id !== "super_admin" && r.hierarchyLevel > newLevel,
     );
 
     setPermissions((prev) => {
@@ -749,7 +779,7 @@ export default function SystemControlPage() {
               onRemoveRolePhoto={removeRolePhoto}
               rolePhotos={rolePhotos}
               isRoleLocked={isRoleLocked}
-              isCustomRole={(id) => isCustomRole(id, customRoles)}
+              isCustomRole={(id) => isCustomRole(id)}
             />
           )}
 
@@ -776,7 +806,7 @@ export default function SystemControlPage() {
               onSave={(roleId, employeeId) => void savePermissionsToDb(roleId, employeeId)}
               onAssignEmployee={saveEmployeeRole}
               isRoleLocked={isRoleLocked}
-              isCustomRole={(id) => isCustomRole(id, customRoles)}
+              isCustomRole={(id) => isCustomRole(id)}
               employeeCountByRole={employeeCountByRole}
             />
           )}
@@ -810,8 +840,9 @@ export default function SystemControlPage() {
         </div>
 
         <p className={styles.scDemoNote}>
-          Static UI preview — production will save to MySQL (<code>hrm_roles</code>,{" "}
-          <code>hrm_role_permissions</code>).
+          Org chart, permissions, and features save to the database (
+          <code>hrm_roles</code>, <code>hrm_role_permissions</code>,{" "}
+          <code>hrm_global_features</code>).
         </p>
 
         {toast && <div className={styles.toast}>{toast}</div>}

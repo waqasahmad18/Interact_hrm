@@ -17,12 +17,14 @@ export type AccessMenuItem = {
 export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "team.dashboard.view",
+    featureGate: "team_lead_module",
     name: "My Team",
     path: "/employee-dashboard/my-team",
     group: "team",
   },
   {
     permission: "team.attendance.view",
+    featureGate: "team_lead_module",
     name: "My Team",
     path: "/employee-dashboard/my-team",
     group: "team",
@@ -98,6 +100,25 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     name: "Loan",
     path: "/employee-dashboard/loan",
     group: "payroll",
+  },
+  {
+    permission: "portal.tickets.create",
+    featureGate: "tickets",
+    name: "Generate Ticket",
+    path: "/employee-dashboard/generate-ticket",
+    group: "core",
+  },
+  {
+    permission: "portal.my_info.view",
+    name: "My Info",
+    path: "/employee-dashboard/my-info",
+    group: "core",
+  },
+  {
+    permission: "portal.time.view",
+    name: "Time",
+    path: "/employee-dashboard/time",
+    group: "attendance",
   },
   {
     permission: "system.control.access",

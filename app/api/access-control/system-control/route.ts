@@ -4,29 +4,40 @@ import {
   ensureAccessControlStore,
   loadAccessEmployees,
   loadGlobalFeatures,
+  loadOrgRoles,
   loadPermissionMap,
   saveGlobalFeatures,
+  saveOrgRoles,
   saveRolePermissions,
+  syncAccessControlCatalog,
 } from "@/lib/access-control/store";
-import { FEATURE_MODULES } from "@/app/admin/roles-permissions/system-control-data";
+import {
+  FEATURE_MODULES,
+  GLOBAL_FEATURES,
+  type RoleDef,
+} from "@/app/admin/roles-permissions/system-control-data";
 
 export const runtime = "nodejs";
 
-/** Full state for System Control Permissions + Features tabs. */
+/** Full state for System Control Org Chart + Permissions + Features tabs. */
 export async function GET() {
   try {
     await ensureAccessControlStore();
-    const [permissions, features, employees] = await Promise.all([
+    await syncAccessControlCatalog();
+    const [permissions, features, employees, roles] = await Promise.all([
       loadPermissionMap(),
       loadGlobalFeatures(),
       loadAccessEmployees(),
+      loadOrgRoles(),
     ]);
     return NextResponse.json({
       success: true,
       permissions,
       features,
       employees,
+      roles,
       modules: FEATURE_MODULES,
+      catalogFeatures: GLOBAL_FEATURES,
     });
   } catch (err) {
     return NextResponse.json(
@@ -41,6 +52,7 @@ export async function GET() {
  *  { type: "permissions", roleId, keys: string[] }
  *  { type: "features", features: [{ key, on }] }
  *  { type: "assign", employeeId, roleId }
+ *  { type: "org-roles", roles: RoleDef[] }
  */
 export async function PUT(req: NextRequest) {
   try {
@@ -81,6 +93,19 @@ export async function PUT(req: NextRequest) {
       }
       await assignEmployeeRole(employeeId, roleId);
       return NextResponse.json({ success: true });
+    }
+
+    if (type === "org-roles") {
+      const roles = Array.isArray(body.roles) ? (body.roles as RoleDef[]) : [];
+      if (!roles.length) {
+        return NextResponse.json(
+          { success: false, error: "roles array required" },
+          { status: 400 },
+        );
+      }
+      await saveOrgRoles(roles);
+      const saved = await loadOrgRoles();
+      return NextResponse.json({ success: true, roles: saved });
     }
 
     return NextResponse.json({ success: false, error: "Unknown type" }, { status: 400 });

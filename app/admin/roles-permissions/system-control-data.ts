@@ -55,28 +55,56 @@ export type GlobalFeature = {
 };
 
 const PERM_HINTS: Record<string, string> = {
+  "dashboard.view": "Open the main HRM dashboard.",
+  "admin.home.view": "Open the admin home page.",
   "attendance.summary.view": "View attendance summary reports and filters for employees in scope.",
   "attendance.summary.export": "Download attendance summary as Excel or PDF.",
   "attendance.manage.edit": "Correct punch times, add manual entries, or fix exceptions.",
   "attendance.monthly.view": "Open monthly attendance and deduction views.",
   "attendance.monthly.export": "Export monthly deduction summary for payroll handoff.",
   "attendance.breaks.manage": "Configure break rules and review break usage.",
+  "attendance.tungsten.view": "Open Tungsten biometric IN/OUT punch log.",
+  "attendance.presence.view": "Open desktop presence / idle monitoring.",
+  "attendance.employee_report.view": "Open per-employee attendance report.",
   "leave.list.view": "See leave requests for scoped employees (not only self).",
   "leave.apply.self": "Submit own leave / PTO requests from employee portal.",
   "leave.approve.manager": "First-step approval as direct manager in the chain.",
   "leave.approve.hr": "Final HR approval before leave is booked.",
   "leave.balances.edit": "Adjust leave balances and entitlements.",
+  "leave.calendar.view": "Open company leave calendar.",
+  "leave.monthly_summary.view": "Open monthly leave summary reports.",
   "payroll.monthly.view": "View monthly payroll sheets and totals.",
   "payroll.monthly.edit": "Edit payroll lines, allowances, and deductions.",
   "payroll.commissions": "Access commission calculation and payout screens.",
   "payroll.advance": "Process salary advance requests.",
   "payroll.loan": "Manage employee loan schedules and deductions.",
+  "payroll.financial_requests.view": "Review advance/loan financial request inbox.",
+  "people.employee_list.view": "Browse and search the employee directory.",
+  "people.employee.add": "Create new employee records.",
+  "people.credentials.manage": "Reset or issue employee login credentials.",
+  "people.face_enrollment.manage": "Enroll or update biometric face profiles.",
+  "people.files.view": "Access employee document files.",
+  "people.appraisals.view": "Review pending appraisal workflows.",
+  "people.formats.view": "Open HR formats library.",
+  "people.recruitment.view": "Open recruitment module.",
+  "shifts.scheduler.view": "Open shift scheduler.",
+  "shifts.management.view": "Manage shift templates and assignments.",
+  "ops.tickets.view": "Open ticket inbox and reply threads.",
+  "ops.events.view": "Manage upcoming company events.",
+  "ops.departments.view": "Manage departments.",
+  "ops.login_carousel.manage": "Edit login page carousel slides.",
+  "ops.company_policy.view": "View or edit company policies.",
   "team.dashboard.view": "Open team-lead dashboard with team KPIs.",
   "team.attendance.view": "View attendance for assigned team members only.",
   "team.management.assign": "Assign employees to team leads (HR function).",
+  "portal.my_info.view": "Open personal My Info page.",
+  "portal.time.view": "Open employee time / clock page.",
+  "portal.tickets.create": "Create support tickets from employee portal.",
+  "portal.performance.view": "Open performance page.",
   "system.control.access": "Open System Control administration area.",
   "system.permissions.edit": "Edit role permission matrix and save changes.",
   "system.users.assign": "Assign roles, departments, and reporting lines to users.",
+  "system.org_chart.edit": "Create, move, rename, or delete org chart role cards.",
 };
 
 function withPermissionHints(
@@ -202,6 +230,15 @@ export const INITIAL_EMPLOYEES: DemoEmployee[] = [
 
 export const FEATURE_MODULES = withPermissionHints([
   {
+    id: "dashboard",
+    name: "Dashboard & Admin",
+    icon: "🏠",
+    permissions: [
+      { key: "dashboard.view", label: "View main dashboard" },
+      { key: "admin.home.view", label: "View admin home" },
+    ],
+  },
+  {
     id: "attendance",
     name: "Attendance",
     icon: "⏱",
@@ -212,6 +249,9 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "attendance.monthly.view", label: "View monthly attendance" },
       { key: "attendance.monthly.export", label: "Export deduction summary" },
       { key: "attendance.breaks.manage", label: "Manage breaks" },
+      { key: "attendance.tungsten.view", label: "Tungsten IN/OUT page" },
+      { key: "attendance.presence.view", label: "Presence / Idle page" },
+      { key: "attendance.employee_report.view", label: "Employee attendance report" },
     ],
   },
   {
@@ -224,6 +264,8 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "leave.approve.manager", label: "Approve leave (Manager step)" },
       { key: "leave.approve.hr", label: "Approve leave (HR final)" },
       { key: "leave.balances.edit", label: "Edit leave balances" },
+      { key: "leave.calendar.view", label: "Leave calendar" },
+      { key: "leave.monthly_summary.view", label: "Monthly leave summary" },
     ],
   },
   {
@@ -236,6 +278,43 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "payroll.commissions", label: "Commissions" },
       { key: "payroll.advance", label: "Advance" },
       { key: "payroll.loan", label: "Loan" },
+      { key: "payroll.financial_requests.view", label: "Financial request inbox" },
+    ],
+  },
+  {
+    id: "people",
+    name: "People & Onboarding",
+    icon: "👤",
+    permissions: [
+      { key: "people.employee_list.view", label: "Employee list" },
+      { key: "people.employee.add", label: "Add employee" },
+      { key: "people.credentials.manage", label: "Employee credentials" },
+      { key: "people.face_enrollment.manage", label: "Face enrollment" },
+      { key: "people.files.view", label: "Employee files" },
+      { key: "people.appraisals.view", label: "Pending appraisals" },
+      { key: "people.formats.view", label: "Formats library" },
+      { key: "people.recruitment.view", label: "Recruitment" },
+    ],
+  },
+  {
+    id: "shifts",
+    name: "Shifts",
+    icon: "📅",
+    permissions: [
+      { key: "shifts.scheduler.view", label: "Shift scheduler" },
+      { key: "shifts.management.view", label: "Shift management" },
+    ],
+  },
+  {
+    id: "ops",
+    name: "Operations & Org",
+    icon: "🏢",
+    permissions: [
+      { key: "ops.tickets.view", label: "Ticket inbox" },
+      { key: "ops.events.view", label: "Events" },
+      { key: "ops.departments.view", label: "Departments" },
+      { key: "ops.login_carousel.manage", label: "Login carousel" },
+      { key: "ops.company_policy.view", label: "Company policy" },
     ],
   },
   {
@@ -249,6 +328,17 @@ export const FEATURE_MODULES = withPermissionHints([
     ],
   },
   {
+    id: "portal",
+    name: "Employee portal",
+    icon: "📱",
+    permissions: [
+      { key: "portal.my_info.view", label: "My Info" },
+      { key: "portal.time.view", label: "Time / clock page" },
+      { key: "portal.tickets.create", label: "Generate ticket" },
+      { key: "portal.performance.view", label: "Performance" },
+    ],
+  },
+  {
     id: "system",
     name: "System Control",
     icon: "⚙",
@@ -256,6 +346,7 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "system.control.access", label: "Open System Control" },
       { key: "system.permissions.edit", label: "Edit permission checkmarks" },
       { key: "system.users.assign", label: "Assign roles to employees" },
+      { key: "system.org_chart.edit", label: "Edit org chart cards" },
     ],
   },
 ]);
@@ -312,11 +403,20 @@ export const GLOBAL_FEATURES: GlobalFeature[] = [
   { key: "prayer", name: "Prayer break tracking", desc: "Prayer module on employee time page", on: true },
   { key: "two_step_leave", name: "Two-step leave approval", desc: "Manager first, then HR final", on: false },
   { key: "team_lead_module", name: "Team Lead module", desc: "Leader dashboard and team summaries", on: false },
+  { key: "tickets", name: "Ticket system", desc: "Employee tickets and admin ticket inbox", on: true },
+  { key: "recruitment", name: "Recruitment module", desc: "Recruitment workflows and pages", on: true },
+  { key: "presence_agent", name: "Desktop presence agent", desc: "Presence / idle monitoring integration", on: true },
+  { key: "login_carousel", name: "Login carousel", desc: "Branded login page slides", on: true },
+  { key: "employee_files", name: "Employee files", desc: "HR document library for employees", on: true },
+  { key: "appraisals", name: "Appraisals", desc: "Pending appraisal workflows", on: true },
+  { key: "financial_requests", name: "Financial requests", desc: "Advance/loan request inbox", on: true },
+  { key: "events", name: "Company events", desc: "Upcoming events module", on: true },
+  { key: "shift_management", name: "Shift management", desc: "Shift scheduler and management pages", on: true },
 ];
 
 export const TAB_HINT: Record<TabId, string> = {
-  roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. Changes sync to the other tabs.",
-  permissions: "Select a role to configure permissions, assign it to a live employee, then Save — stored in the database.",
+  roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. All card changes are saved to the database and survive refresh.",
+  permissions: "Select a role to configure permissions across every HRM module, assign it to a live employee, then Save — stored in Mongo/MySQL.",
   features: "Globally enable or disable features for the entire organization. Save writes to the database.",
   settings: "Session defaults, leave workflow, and who can access System Control.",
 };
@@ -453,8 +553,11 @@ export function isSystemRole(roleId: string) {
   return Boolean(base?.system);
 }
 
-export function isCustomRole(roleId: string, customRoles: RoleDef[]) {
-  return customRoles.some((r) => r.id === roleId);
+export function isCustomRole(roleId: string, customRoles?: RoleDef[]) {
+  if (customRoles && customRoles.length) {
+    return customRoles.some((r) => r.id === roleId);
+  }
+  return !BASE_ROLES.some((r) => r.id === roleId);
 }
 
 export function isRoleLocked(roleId: string) {
