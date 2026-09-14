@@ -6,24 +6,42 @@ import SearchableSelect, { type SelectGroup, type SelectOption } from "./Searcha
 import type { DemoEmployee, FeatureModule, RoleDef } from "./system-control-data";
 import { groupRolesByOrgSection, roleMeta } from "./system-control-data";
 
+export type SystemControlCaps = {
+  systemPermissionsEdit: boolean;
+  systemUsersAssign: boolean;
+  systemOrgChartEdit: boolean;
+  systemFeaturesEdit: boolean;
+  systemControlOpen: boolean;
+};
+
 type Props = {
   allRoles: RoleDef[];
   employees: DemoEmployee[];
   initialRoleId?: string;
   permissions: Record<string, Set<string>>;
+  /** employeeId → custom keys; missing key = using role defaults */
+  employeePermissions: Record<string, string[]>;
   modules: FeatureModule[];
   expandedModules: Record<string, boolean>;
   onToggleModuleExpand: (id: string) => void;
   onTogglePermission: (roleId: string, key: string) => void;
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
+  onToggleEmployeePermission: (employeeId: string, key: string) => void;
+  onToggleModuleForEmployee: (
+    employeeId: string,
+    module: FeatureModule,
+    checked: boolean,
+  ) => void;
   onResetAll: () => void;
-  /** Save permission matrix only (assign is separate). */
-  onSave: (roleId: string) => void;
+  onSaveRole: (roleId: string) => void;
+  onSaveEmployee: (employeeId: string) => void;
+  onClearEmployeeOverrides: (employeeId: string) => void;
   onAssignEmployees: (employeeIds: string[], roleId: string) => void;
   onUnassignEmployees: (employeeIds: string[]) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
   employeeCountByRole: (roleId: string) => number;
+  caps: SystemControlCaps;
 };
 
 function accentOf(role: RoleDef | undefined) {
@@ -50,21 +68,32 @@ export default function RolesPermissionsPanel({
   employees,
   initialRoleId,
   permissions,
+  employeePermissions,
   modules,
   onTogglePermission,
   onToggleModuleForRole,
+  onToggleEmployeePermission,
+  onToggleModuleForEmployee,
   onResetAll,
-  onSave,
+  onSaveRole,
+  onSaveEmployee,
+  onClearEmployeeOverrides,
   onAssignEmployees,
   onUnassignEmployees,
   isRoleLocked,
   isCustomRole,
   employeeCountByRole,
+  caps,
 }: Props) {
   const [permSearch, setPermSearch] = useState("");
   const [pickEmployeeId, setPickEmployeeId] = useState("");
   const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [selectedAssignedIds, setSelectedAssignedIds] = useState<string[]>([]);
+  /** When set, matrix edits that employee's custom permissions. */
+  const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
+
+  const canEditPerms = caps.systemPermissionsEdit;
+  const canAssign = caps.systemUsersAssign;
 
   React.useEffect(() => {
     if (!employees.length) return;
@@ -119,13 +148,31 @@ export default function RolesPermissionsPanel({
   React.useEffect(() => {
     setPendingIds([]);
     setSelectedAssignedIds([]);
+    setFocusEmployeeId(null);
   }, [selectedRoleId]);
 
   const activeRole =
     matrixRoles.find((r) => r.id === selectedRoleId) ?? matrixRoles[0];
   const activeRoleId = activeRole?.id ?? "";
   const locked = activeRoleId ? isRoleLocked(activeRoleId) : false;
+
+  const focusEmployee = focusEmployeeId
+    ? employees.find((e) => e.id === focusEmployeeId) || null
+    : null;
+  const editingUser = Boolean(focusEmployee);
+  const userHasCustom =
+    editingUser &&
+    focusEmployeeId != null &&
+    Object.prototype.hasOwnProperty.call(employeePermissions, focusEmployeeId);
+
   const roleSet = (activeRoleId && permissions[activeRoleId]) || new Set<string>();
+  const activeSet: Set<string> = editingUser
+    ? new Set(
+        userHasCustom
+          ? employeePermissions[focusEmployeeId!] || []
+          : [...roleSet],
+      )
+    : roleSet;
 
   const assignedUsers = useMemo(
     () =>
@@ -166,10 +213,12 @@ export default function RolesPermissionsPanel({
     [modules],
   );
 
+  const matrixLocked = locked || !canEditPerms;
+
   const grantedCount = locked
     ? totalPerms
     : modules.reduce(
-        (sum, m) => sum + m.permissions.filter((p) => roleSet.has(p.key)).length,
+        (sum, m) => sum + m.permissions.filter((p) => activeSet.has(p.key)).length,
         0,
       );
 
@@ -192,11 +241,11 @@ export default function RolesPermissionsPanel({
 
   function roleHasAll(module: FeatureModule) {
     if (locked) return true;
-    return module.permissions.every((p) => roleSet.has(p.key));
+    return module.permissions.every((p) => activeSet.has(p.key));
   }
 
   function addPendingFromPicker() {
-    if (!pickEmployeeId) return;
+    if (!pickEmployeeId || !canAssign) return;
     setPendingIds((prev) =>
       prev.includes(pickEmployeeId) ? prev : [...prev, pickEmployeeId],
     );
@@ -207,7 +256,7 @@ export default function RolesPermissionsPanel({
   }
 
   function handleAssign() {
-    if (!activeRoleId) return;
+    if (!activeRoleId || !canAssign) return;
     const ids = pendingIds.length
       ? pendingIds
       : pickEmployeeId
@@ -225,14 +274,37 @@ export default function RolesPermissionsPanel({
   }
 
   function handleUnassignSelected() {
-    if (!selectedAssignedIds.length) return;
+    if (!selectedAssignedIds.length || !canAssign) return;
     onUnassignEmployees(selectedAssignedIds);
     setSelectedAssignedIds([]);
+    if (focusEmployeeId && selectedAssignedIds.includes(focusEmployeeId)) {
+      setFocusEmployeeId(null);
+    }
   }
 
   function handleUnassignOne(id: string) {
+    if (!canAssign) return;
     onUnassignEmployees([id]);
     setSelectedAssignedIds((prev) => prev.filter((x) => x !== id));
+    if (focusEmployeeId === id) setFocusEmployeeId(null);
+  }
+
+  function onToggleKey(key: string) {
+    if (matrixLocked) return;
+    if (editingUser && focusEmployeeId) {
+      onToggleEmployeePermission(focusEmployeeId, key);
+    } else {
+      onTogglePermission(activeRoleId, key);
+    }
+  }
+
+  function onToggleModule(module: FeatureModule, checked: boolean) {
+    if (matrixLocked) return;
+    if (editingUser && focusEmployeeId) {
+      onToggleModuleForEmployee(focusEmployeeId, module, checked);
+    } else {
+      onToggleModuleForRole(activeRoleId, module, checked);
+    }
   }
 
   const pendingPeople = pendingIds
@@ -245,8 +317,8 @@ export default function RolesPermissionsPanel({
         <div>
           <h2 className={styles.matrixTitle}>Roles &amp; Permissions</h2>
           <p className={styles.matrixSubtitle}>
-            Select a role, assign one or more users, remove them anytime, then toggle what the
-            role can access.
+            Role defaults apply to everyone on that role. Click an assigned user to set{" "}
+            <strong>different permissions for that person only</strong>.
           </p>
         </div>
         <div className={styles.matrixSearchWrap}>
@@ -259,6 +331,13 @@ export default function RolesPermissionsPanel({
           />
         </div>
       </div>
+
+      {!canEditPerms && (
+        <div className={styles.permLockNote}>
+          View only — you can open System Control but cannot edit permissions (
+          <code>system.permissions.edit</code> required).
+        </div>
+      )}
 
       <div className={styles.permPickerBar}>
         <SearchableSelect
@@ -280,7 +359,7 @@ export default function RolesPermissionsPanel({
           searchPlaceholder="Search by name or P.Name…"
           emptyText="No employees available to assign"
           filterOption={employeeFilter}
-          disabled={employees.length === 0 || !activeRoleId}
+          disabled={!canAssign || employees.length === 0 || !activeRoleId}
         />
         <div className={styles.permAssignBtnCol}>
           <span className={styles.permSelectLabel} aria-hidden="true">
@@ -290,7 +369,7 @@ export default function RolesPermissionsPanel({
             <button
               type="button"
               className={styles.btnOutlinePurple}
-              disabled={!pickEmployeeId || !activeRoleId}
+              disabled={!canAssign || !pickEmployeeId || !activeRoleId}
               onClick={addPendingFromPicker}
             >
               Add to list
@@ -299,7 +378,10 @@ export default function RolesPermissionsPanel({
               type="button"
               className={styles.permAssignBtn}
               disabled={
-                (!pendingIds.length && !pickEmployeeId) || !activeRoleId || locked
+                !canAssign ||
+                (!pendingIds.length && !pickEmployeeId) ||
+                !activeRoleId ||
+                locked
               }
               onClick={handleAssign}
             >
@@ -340,7 +422,7 @@ export default function RolesPermissionsPanel({
             {activeRole ? ` — ${activeRole.name}` : ""}
           </strong>
           <span className={styles.permAssignedCount}>{assignedUsers.length}</span>
-          {assignedUsers.length > 0 && (
+          {assignedUsers.length > 0 && canAssign && (
             <button
               type="button"
               className={styles.permUnassignBtn}
@@ -360,36 +442,59 @@ export default function RolesPermissionsPanel({
           <div className={styles.permAssignedChips}>
             {assignedUsers.map((emp) => {
               const selected = selectedAssignedIds.includes(emp.id);
+              const focused = focusEmployeeId === emp.id;
+              const custom = Object.prototype.hasOwnProperty.call(
+                employeePermissions,
+                emp.id,
+              );
               return (
                 <label
                   key={emp.id}
-                  className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""}`}
+                  className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""} ${focused ? styles.permUserChipFocus : ""}`}
+                  title="Click name to edit this user's permissions"
                 >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => toggleAssignedSelect(emp.id)}
-                  />
-                  <span>
-                    {emp.name}
-                    <span className={styles.permUserChipMeta}>#{emp.id}</span>
-                  </span>
+                  {canAssign && (
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleAssignedSelect(emp.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
                   <button
                     type="button"
-                    className={styles.permUserChipX}
-                    aria-label={`Unassign ${emp.name}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleUnassignOne(emp.id);
-                    }}
+                    className={styles.permUserChipName}
+                    onClick={() =>
+                      setFocusEmployeeId((prev) => (prev === emp.id ? null : emp.id))
+                    }
                   >
-                    ×
+                    {emp.name}
+                    <span className={styles.permUserChipMeta}>
+                      #{emp.id}
+                      {custom ? " · custom" : ""}
+                    </span>
                   </button>
+                  {canAssign && (
+                    <button
+                      type="button"
+                      className={styles.permUserChipX}
+                      aria-label={`Unassign ${emp.name}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleUnassignOne(emp.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
                 </label>
               );
             })}
           </div>
         )}
+        <p className={styles.permAssignedHint}>
+          Tip: click a user&apos;s name to edit their personal permissions (not the whole role).
+        </p>
       </div>
 
       <div className={styles.permBody}>
@@ -399,8 +504,27 @@ export default function RolesPermissionsPanel({
               className={styles.permRoleChipDot}
               style={{ background: accentOf(activeRole) }}
             />
-            Configuring <strong>{activeRole?.name ?? "—"}</strong>
-            {locked && <span className={styles.permLockBadge}>Locked</span>}
+            {editingUser ? (
+              <>
+                Permissions for <strong>{focusEmployee?.name}</strong>
+                <span className={styles.permLockBadge}>
+                  {userHasCustom ? "Custom" : "From role"}
+                </span>
+                <button
+                  type="button"
+                  className={styles.btnOutlinePurple}
+                  style={{ marginLeft: 8, minHeight: 28, padding: "0 10px", fontSize: 12 }}
+                  onClick={() => setFocusEmployeeId(null)}
+                >
+                  Back to role defaults
+                </button>
+              </>
+            ) : (
+              <>
+                Role defaults — <strong>{activeRole?.name ?? "—"}</strong>
+                {locked && <span className={styles.permLockBadge}>Locked</span>}
+              </>
+            )}
           </div>
           <div className={styles.permProgress}>
             <span className={styles.permProgressText}>
@@ -420,7 +544,23 @@ export default function RolesPermissionsPanel({
           </div>
         </div>
 
-        {locked && (
+        {editingUser && (
+          <div className={styles.permUserBanner}>
+            Changes here apply only to <strong>{focusEmployee?.name}</strong>, even if others
+            share the same role.{" "}
+            {userHasCustom && canEditPerms && (
+              <button
+                type="button"
+                className={styles.permLinkBtn}
+                onClick={() => onClearEmployeeOverrides(focusEmployeeId!)}
+              >
+                Reset to role defaults
+              </button>
+            )}
+          </div>
+        )}
+
+        {locked && !editingUser && (
           <div className={styles.permLockNote}>
             This role has full system access by design and cannot be edited.
           </div>
@@ -439,11 +579,11 @@ export default function RolesPermissionsPanel({
                       {module.permissions.length}
                     </span>
                   </span>
-                  {!locked && (
+                  {!matrixLocked && (
                     <button
                       type="button"
                       className={`${styles.permAllBtn} ${all ? styles.permAllBtnOn : ""}`}
-                      onClick={() => onToggleModuleForRole(activeRoleId, module, !all)}
+                      onClick={() => onToggleModule(module, !all)}
                     >
                       {all ? "Clear all" : "Select all"}
                     </button>
@@ -452,17 +592,17 @@ export default function RolesPermissionsPanel({
 
                 <div className={styles.permGrid}>
                   {module.permissions.map((perm) => {
-                    const checked = locked || roleSet.has(perm.key);
+                    const checked = locked || activeSet.has(perm.key);
                     return (
                       <label
                         key={perm.key}
-                        className={`${styles.permItem} ${checked ? styles.permItemOn : ""} ${locked ? styles.permItemLocked : ""}`}
+                        className={`${styles.permItem} ${checked ? styles.permItemOn : ""} ${matrixLocked ? styles.permItemLocked : ""}`}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={locked}
-                          onChange={() => onTogglePermission(activeRoleId, perm.key)}
+                          disabled={matrixLocked}
+                          onChange={() => onToggleKey(perm.key)}
                         />
                         <span className={styles.permItemBox} />
                         <span className={styles.permItemLabel}>{perm.label}</span>
@@ -497,21 +637,35 @@ export default function RolesPermissionsPanel({
 
       <div className={styles.matrixFooter}>
         <p className={styles.matrixFooterHint}>
-          <span className={styles.legendLocked} /> One role can have many users. Use{" "}
-          <strong>×</strong> or <strong>Unassign selected</strong> to remove. Users must refresh
-          after assign/unassign.
+          <span className={styles.legendLocked} />{" "}
+          <code>system.control.access</code> only opens this page. Edit needs{" "}
+          <code>system.permissions.edit</code> / <code>system.users.assign</code>.
         </p>
         <div className={styles.permFooterActions}>
-          <button type="button" className={styles.btnOutlinePurple} onClick={onResetAll}>
-            Reset to Default
-          </button>
+          {!editingUser && (
+            <button
+              type="button"
+              className={styles.btnOutlinePurple}
+              onClick={onResetAll}
+              disabled={!canEditPerms}
+            >
+              Reset role to Default
+            </button>
+          )}
           <button
             type="button"
             className={styles.btnSolidPurple}
-            onClick={() => onSave(activeRoleId)}
-            disabled={!activeRoleId}
+            disabled={
+              !canEditPerms ||
+              (!editingUser && !activeRoleId) ||
+              (editingUser && !focusEmployeeId)
+            }
+            onClick={() => {
+              if (editingUser && focusEmployeeId) onSaveEmployee(focusEmployeeId);
+              else onSaveRole(activeRoleId);
+            }}
           >
-            Save permission changes
+            {editingUser ? "Save user permissions" : "Save role permissions"}
           </button>
         </div>
       </div>

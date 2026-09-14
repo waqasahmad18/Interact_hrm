@@ -41,6 +41,39 @@ function toPermissionSets(map: Record<string, string[]>): Record<string, Set<str
   return base;
 }
 
+type ViewerCaps = {
+  systemPermissionsEdit: boolean;
+  systemUsersAssign: boolean;
+  systemOrgChartEdit: boolean;
+  systemFeaturesEdit: boolean;
+  systemControlOpen: boolean;
+};
+
+const FULL_CAPS: ViewerCaps = {
+  systemControlOpen: true,
+  systemPermissionsEdit: true,
+  systemUsersAssign: true,
+  systemOrgChartEdit: true,
+  systemFeaturesEdit: true,
+};
+
+function accessApiHeaders(extra?: Record<string, string>): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(extra || {}),
+  };
+  if (typeof window === "undefined") return headers;
+  const path = window.location.pathname || "";
+  const empId =
+    localStorage.getItem("employeeId") || localStorage.getItem("loginId") || "";
+  if (path.startsWith("/employee-dashboard") && empId) {
+    headers["x-employee-id"] = empId;
+  } else {
+    headers["x-hrm-portal"] = "admin";
+  }
+  return headers;
+}
+
 export default function SystemControlPage() {
   const [activeTab, setActiveTab] = useState<TabId>("roles");
   const [employees, setEmployees] = useState<DemoEmployee[]>([]);
@@ -51,6 +84,10 @@ export default function SystemControlPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [newRoleParentId, setNewRoleParentId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState(clonePermissionMap);
+  const [employeePermissions, setEmployeePermissions] = useState<Record<string, string[]>>(
+    {},
+  );
+  const [viewerCaps, setViewerCaps] = useState<ViewerCaps>(FULL_CAPS);
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
     dashboard: true,
     attendance: true,
@@ -79,12 +116,22 @@ export default function SystemControlPage() {
     [orgRoles],
   );
 
+  const viewOnlyBanner =
+    !viewerCaps.systemPermissionsEdit &&
+    !viewerCaps.systemUsersAssign &&
+    !viewerCaps.systemOrgChartEdit &&
+    !viewerCaps.systemFeaturesEdit;
+
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(""), 2800);
   }
 
   function schedulePersistRoles(next: RoleDef[]) {
+    if (!viewerCaps.systemOrgChartEdit) {
+      showToast("Missing permission: system.org_chart.edit");
+      return;
+    }
     if (persistTimerRef.current != null) {
       window.clearTimeout(persistTimerRef.current);
     }
@@ -94,7 +141,7 @@ export default function SystemControlPage() {
           setAccessSaving(true);
           const res = await fetch("/api/access-control/system-control", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: accessApiHeaders(),
             body: JSON.stringify({ type: "org-roles", roles: next }),
           });
           const data = await res.json();
@@ -126,9 +173,10 @@ export default function SystemControlPage() {
       setAccessLoading(true);
       try {
         const [accessRes, photoPayload] = await Promise.all([
-          fetch("/api/access-control/system-control", { cache: "no-store" }).then((r) =>
-            r.json(),
-          ),
+          fetch("/api/access-control/system-control", {
+            cache: "no-store",
+            headers: accessApiHeaders(),
+          }).then((r) => r.json()),
           fetchOrgChartPhotos().catch(() => ({
             employeePhotos: {} as Record<string, string>,
             rolePhotos: {} as Record<string, string>,
@@ -142,6 +190,12 @@ export default function SystemControlPage() {
           }
           if (accessRes.permissions) {
             setPermissions(toPermissionSets(accessRes.permissions));
+          }
+          if (accessRes.employeePermissions && typeof accessRes.employeePermissions === "object") {
+            setEmployeePermissions(accessRes.employeePermissions as Record<string, string[]>);
+          }
+          if (accessRes.viewer?.capabilities) {
+            setViewerCaps({ ...FULL_CAPS, ...accessRes.viewer.capabilities });
           }
           if (Array.isArray(accessRes.features)) {
             setGlobalFeatures(accessRes.features);
@@ -227,6 +281,46 @@ export default function SystemControlPage() {
       }
       next[roleId] = set;
       return next;
+    });
+  }
+
+  function toggleEmployeePermission(employeeId: string, key: string) {
+    setEmployeePermissions((prev) => {
+      const roleId =
+        employees.find((e) => e.id === employeeId)?.accessRoleSlug ||
+        employees.find((e) => e.id === employeeId)?.roleId ||
+        "";
+      const base =
+        prev[employeeId] != null
+          ? [...prev[employeeId]]
+          : [...(permissions[roleId] || new Set())];
+      const set = new Set(base);
+      if (set.has(key)) set.delete(key);
+      else set.add(key);
+      return { ...prev, [employeeId]: [...set] };
+    });
+  }
+
+  function toggleModuleForEmployee(
+    employeeId: string,
+    module: { permissions: { key: string }[] },
+    checked: boolean,
+  ) {
+    setEmployeePermissions((prev) => {
+      const roleId =
+        employees.find((e) => e.id === employeeId)?.accessRoleSlug ||
+        employees.find((e) => e.id === employeeId)?.roleId ||
+        "";
+      const base =
+        prev[employeeId] != null
+          ? [...prev[employeeId]]
+          : [...(permissions[roleId] || new Set())];
+      const set = new Set(base);
+      for (const p of module.permissions) {
+        if (checked) set.add(p.key);
+        else set.delete(p.key);
+      }
+      return { ...prev, [employeeId]: [...set] };
     });
   }
 
@@ -542,6 +636,7 @@ export default function SystemControlPage() {
     try {
       const accessRes = await fetch("/api/access-control/system-control", {
         cache: "no-store",
+        headers: accessApiHeaders(),
       }).then((r) => r.json());
       if (accessRes?.success && Array.isArray(accessRes.employees)) {
         const photoPayload = await fetchOrgChartPhotos().catch(() => ({
@@ -553,6 +648,9 @@ export default function SystemControlPage() {
             photoPayload.employeePhotos || {},
           ),
         );
+        if (accessRes.employeePermissions && typeof accessRes.employeePermissions === "object") {
+          setEmployeePermissions(accessRes.employeePermissions as Record<string, string[]>);
+        }
       }
     } catch {
       /* keep local state */
@@ -566,7 +664,7 @@ export default function SystemControlPage() {
     try {
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: accessApiHeaders(),
         body: JSON.stringify({ type: "assign", employeeId: empId, roleId }),
       });
       const data = await res.json();
@@ -606,7 +704,7 @@ export default function SystemControlPage() {
     try {
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: accessApiHeaders(),
         body: JSON.stringify({ type: "assign-many", employeeIds: ids, roleId }),
       });
       const data = await res.json();
@@ -634,7 +732,7 @@ export default function SystemControlPage() {
     try {
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: accessApiHeaders(),
         body: JSON.stringify({ type: "unassign-many", employeeIds: ids }),
       });
       const data = await res.json();
@@ -661,14 +759,74 @@ export default function SystemControlPage() {
       const keys = [...(permissions[targetRole] || [])];
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: accessApiHeaders(),
         body: JSON.stringify({ type: "permissions", roleId: targetRole, keys }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Save failed");
-      showToast(`Permissions saved for ${roleMeta(targetRole, allRoles).name}.`);
+      showToast(`Role permissions saved for ${roleMeta(targetRole, allRoles).name}.`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save permissions");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function saveEmployeePermissionsToDb(employeeId: string) {
+    const eid = String(employeeId || "").trim();
+    if (!eid) return;
+    setAccessSaving(true);
+    try {
+      const roleId =
+        employees.find((e) => e.id === eid)?.accessRoleSlug ||
+        employees.find((e) => e.id === eid)?.roleId ||
+        "";
+      const keys =
+        employeePermissions[eid] != null
+          ? employeePermissions[eid]
+          : [...(permissions[roleId] || new Set())];
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({ type: "employee-permissions", employeeId: eid, keys }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Save failed");
+      setEmployeePermissions((prev) => ({ ...prev, [eid]: keys }));
+      const name = employees.find((e) => e.id === eid)?.name || eid;
+      showToast(`Custom permissions saved for ${name}. Ask them to refresh.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save user permissions");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function clearEmployeeOverrides(employeeId: string) {
+    const eid = String(employeeId || "").trim();
+    if (!eid) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({
+          type: "employee-permissions",
+          employeeId: eid,
+          clear: true,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Clear failed");
+      setEmployeePermissions((prev) => {
+        const next = { ...prev };
+        delete next[eid];
+        return next;
+      });
+      const name = employees.find((e) => e.id === eid)?.name || eid;
+      showToast(`${name} now uses role default permissions.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to reset user permissions");
     } finally {
       setAccessSaving(false);
     }
@@ -679,7 +837,7 @@ export default function SystemControlPage() {
     try {
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: accessApiHeaders(),
         body: JSON.stringify({
           type: "features",
           features: globalFeatures.map((f) => ({
@@ -801,6 +959,14 @@ export default function SystemControlPage() {
 
         <div className={styles.scHintBar}>{TAB_HINT[activeTab]}</div>
 
+        {viewOnlyBanner && (
+          <div className={styles.scViewOnlyBanner}>
+            View only — <code>system.control.access</code> lets you open this page. Editing
+            needs <code>system.permissions.edit</code>, <code>system.users.assign</code>,{" "}
+            <code>system.org_chart.edit</code>, or <code>system.features.edit</code>.
+          </div>
+        )}
+
         <nav className={styles.scTabs} aria-label="System Control sections">
           {tabs.map((tab) => (
             <button
@@ -839,6 +1005,7 @@ export default function SystemControlPage() {
               rolePhotos={rolePhotos}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id)}
+              readOnly={!viewerCaps.systemOrgChartEdit}
             />
           )}
 
@@ -848,6 +1015,7 @@ export default function SystemControlPage() {
               employees={employees}
               initialRoleId={selectedRoleId}
               permissions={permissions}
+              employeePermissions={employeePermissions}
               modules={FEATURE_MODULES}
               expandedModules={expandedModules}
               onToggleModuleExpand={(id) =>
@@ -858,16 +1026,21 @@ export default function SystemControlPage() {
               }
               onTogglePermission={togglePermission}
               onToggleModuleForRole={toggleModuleForRole}
+              onToggleEmployeePermission={toggleEmployeePermission}
+              onToggleModuleForEmployee={toggleModuleForEmployee}
               onResetAll={() => {
                 setPermissions(clonePermissionMap());
                 showToast("All roles reset to default templates");
               }}
-              onSave={(roleId) => void savePermissionsToDb(roleId)}
+              onSaveRole={(roleId) => void savePermissionsToDb(roleId)}
+              onSaveEmployee={(empId) => void saveEmployeePermissionsToDb(empId)}
+              onClearEmployeeOverrides={(empId) => void clearEmployeeOverrides(empId)}
               onAssignEmployees={(ids, roleId) => void assignEmployeesToRole(ids, roleId)}
               onUnassignEmployees={(ids) => void unassignEmployeesFromRole(ids)}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id)}
               employeeCountByRole={employeeCountByRole}
+              caps={viewerCaps}
             />
           )}
 
@@ -875,11 +1048,13 @@ export default function SystemControlPage() {
             <FeaturesTab
               features={globalFeatures}
               onToggle={(key) => {
+                if (!viewerCaps.systemFeaturesEdit) return;
                 setGlobalFeatures((prev) =>
                   prev.map((f) => (f.key === key ? { ...f, on: !f.on } : f)),
                 );
               }}
               onSave={() => void saveFeaturesToDb()}
+              readOnly={!viewerCaps.systemFeaturesEdit}
             />
           )}
 

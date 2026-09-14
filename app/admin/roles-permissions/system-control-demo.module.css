@@ -2963,10 +2963,59 @@
   background: #f3e8ff;
 }
 
-.permUserChipMeta {
-  margin-left: 4px;
-  color: #a78bfa;
-  font-weight: 500;
+.permUserChipFocus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+  background: #ede9fe;
+}
+
+.permUserChipName {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.permAssignedHint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.permUserBanner {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #5b21b6;
+  font-size: 13px;
+}
+
+.permLinkBtn {
+  border: none;
+  background: none;
+  color: #7c3aed;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.scViewOnlyBanner {
+  margin: 0 24px 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 13px;
 }
 
 .permUserChipX {

@@ -36,6 +36,7 @@ type Props = {
   rolePhotos: Record<string, string>;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (roleId: string) => boolean;
+  readOnly?: boolean;
 };
 
 function accentOf(role: RoleDef | undefined) {
@@ -188,8 +189,29 @@ export default function OrgChartTab({
   rolePhotos,
   isRoleLocked,
   isCustomRole,
+  readOnly = false,
 }: Props) {
   const roots = useMemo(() => childRoles(allRoles, null), [allRoles]);
+
+  const guard =
+    <T extends (...args: any[]) => void>(fn: T): T =>
+      ((...args: any[]) => {
+        if (readOnly) return;
+        fn(...args);
+      }) as T;
+
+  const reparent = guard(onReparent);
+  const insertAbove = guard(onInsertAbove);
+  const makeSibling = guard(onMakeSibling);
+  const resetChart = guard(onResetChart);
+  const addChild = guard(onAddChild);
+  const rename = guard(onRename);
+  const deleteRole = guard(onDelete);
+  const updateLevel = guard(onUpdateLevel);
+  const updateProfilePhoto = guard(onUpdateProfilePhoto);
+  const removeProfilePhoto = guard(onRemoveProfilePhoto);
+  const updateRolePhoto = guard(onUpdateRolePhoto);
+  const removeRolePhoto = guard(onRemoveRolePhoto);
 
   function primaryEmployee(roleId: string) {
     return employees.find((e) => e.roleId === roleId) ?? null;
@@ -284,9 +306,9 @@ export default function OrgChartTab({
     reader.onload = () => {
       if (typeof reader.result !== "string") return;
       if (panelEmployee) {
-        onUpdateProfilePhoto(panelEmployee.id, reader.result);
+        updateProfilePhoto(panelEmployee.id, reader.result);
       } else {
-        onUpdateRolePhoto(panelRole.id, reader.result);
+        updateRolePhoto(panelRole.id, reader.result);
       }
     };
     reader.readAsDataURL(file);
@@ -300,11 +322,11 @@ export default function OrgChartTab({
 
   function removePhotoForRole(roleId: string, emp: DemoEmployee | null) {
     if (emp?.profilePhoto) {
-      onRemoveProfilePhoto(emp.id);
+      removeProfilePhoto(emp.id);
       return;
     }
     if (rolePhotos[roleId]) {
-      onRemoveRolePhoto(roleId);
+      removeRolePhoto(roleId);
     }
   }
 
@@ -319,9 +341,9 @@ export default function OrgChartTab({
     const sourceId = dragIdRef.current ?? dragId;
     if (sourceId && sourceId !== targetId) {
       const mode = dropModeRef.current;
-      if (mode === "above") onInsertAbove(sourceId, targetId);
-      else if (mode === "sibling") onMakeSibling(sourceId, targetId);
-      else onReparent(sourceId, targetId);
+      if (mode === "above") insertAbove(sourceId, targetId);
+      else if (mode === "sibling") makeSibling(sourceId, targetId);
+      else reparent(sourceId, targetId);
     }
     dragIdRef.current = null;
     setDragId(null);
@@ -423,10 +445,10 @@ export default function OrgChartTab({
   function commitEdit() {
     if (!editing) return;
     const name = nameDraft.trim();
-    if (name && name !== editing.name) onRename(editing.id, name);
+    if (name && name !== editing.name) rename(editing.id, name);
     const lvl = parseInt(levelDraft, 10);
     if (!Number.isNaN(lvl) && lvl !== editing.hierarchyLevel) {
-      onUpdateLevel(editing.id, lvl);
+      updateLevel(editing.id, lvl);
     }
     setEditId(null);
   }
@@ -648,7 +670,7 @@ export default function OrgChartTab({
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(role.id);
+                deleteRole(role.id);
               }}
             >
               <IconTrash />
@@ -800,7 +822,7 @@ export default function OrgChartTab({
         <button
           type="button"
           className={styles.orgResetBtn}
-          onClick={onResetChart}
+          onClick={resetChart}
           title="Reset all drag-drop hierarchy, names, levels and permissions to default"
         >
           ⟲ Reset chart
@@ -903,7 +925,7 @@ export default function OrgChartTab({
                   type="button"
                   className={styles.btnSolidPurple}
                   onClick={() => {
-                    onAddChild(editing.id);
+                    addChild(editing.id);
                     setEditId(null);
                   }}
                 >
@@ -931,7 +953,7 @@ export default function OrgChartTab({
                   onClick={() => {
                     const id = editing.id;
                     setEditId(null);
-                    onDelete(id);
+                    deleteRole(id);
                   }}
                 >
                   Delete role

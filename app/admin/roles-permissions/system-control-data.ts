@@ -103,10 +103,11 @@ const PERM_HINTS: Record<string, string> = {
   "portal.time.view": "Open employee time / clock page.",
   "portal.tickets.create": "Create support tickets from employee portal.",
   "portal.performance.view": "Open performance page.",
-  "system.control.access": "Open System Control administration area.",
-  "system.permissions.edit": "Edit role permission matrix and save changes.",
-  "system.users.assign": "Assign roles, departments, and reporting lines to users.",
+  "system.control.access": "Open System Control in view mode (does not grant edit rights by itself).",
+  "system.permissions.edit": "Edit role/user permission checkmarks and save changes.",
+  "system.users.assign": "Assign or unassign roles to employees.",
   "system.org_chart.edit": "Create, move, rename, or delete org chart role cards.",
+  "system.features.edit": "Toggle organization-wide feature switches.",
 };
 
 function withPermissionHints(
@@ -349,6 +350,7 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "system.permissions.edit", label: "Edit permission checkmarks" },
       { key: "system.users.assign", label: "Assign roles to employees" },
       { key: "system.org_chart.edit", label: "Edit org chart cards" },
+      { key: "system.features.edit", label: "Edit global features toggles" },
     ],
   },
 ]);

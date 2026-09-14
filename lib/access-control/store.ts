@@ -12,6 +12,7 @@ import {
 export const ROLES_COLLECTION = "hrm_roles";
 export const ROLE_PERMS_COLLECTION = "hrm_role_permissions";
 export const GLOBAL_FEATURES_COLLECTION = "hrm_global_features";
+export const EMPLOYEE_PERMS_COLLECTION = "hrm_employee_permissions";
 
 export type AccessEmployee = {
   id: string;
@@ -103,6 +104,19 @@ async function ensureMysqlTables() {
         UNIQUE KEY uq_global_feature (feature_key)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS ${EMPLOYEE_PERMS_COLLECTION} (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        employee_id VARCHAR(64) NOT NULL,
+        feature_key VARCHAR(128) NOT NULL,
+        allowed TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uq_emp_perm (employee_id, feature_key),
+        KEY idx_emp_perm_employee (employee_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
     try {
       await conn.execute(
         `ALTER TABLE hrm_employees ADD COLUMN access_role_slug VARCHAR(64) NULL`,
@@ -124,6 +138,9 @@ async function ensureMongoIndexes() {
   await db
     .collection(GLOBAL_FEATURES_COLLECTION)
     .createIndex({ feature_key: 1 }, { unique: true });
+  await db
+    .collection(EMPLOYEE_PERMS_COLLECTION)
+    .createIndex({ employee_id: 1, feature_key: 1 }, { unique: true });
 }
 
 async function nextId(collection: string): Promise<number> {
@@ -785,13 +802,178 @@ export async function loadPermissionsForRole(roleSlug: string): Promise<string[]
   return [...(map[slug] || [])];
 }
 
+/** All employees that have custom permission overrides (full key lists). */
+export async function loadAllEmployeePermissionOverrides(): Promise<
+  Record<string, string[]>
+> {
+  await ensureAccessControlStore();
+  const out: Record<string, string[]> = {};
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const rows = await db
+      .collection(EMPLOYEE_PERMS_COLLECTION)
+      .find({ allowed: { $in: [1, true, "1"] } })
+      .toArray();
+    for (const row of rows) {
+      const eid = String(row.employee_id ?? "").trim();
+      const key = String(row.feature_key ?? "").trim();
+      if (!eid || !key || key === "__custom__") continue;
+      if (!out[eid]) out[eid] = [];
+      out[eid].push(key);
+    }
+    // Include employees who only have the __custom__ marker (empty custom set)
+    const markers = await db
+      .collection(EMPLOYEE_PERMS_COLLECTION)
+      .find({ feature_key: "__custom__" })
+      .toArray();
+    for (const row of markers) {
+      const eid = String(row.employee_id ?? "").trim();
+      if (eid && out[eid] == null) out[eid] = [];
+    }
+    return out;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT employee_id, feature_key FROM ${EMPLOYEE_PERMS_COLLECTION} WHERE allowed = 1`,
+  );
+  for (const row of rows as any[]) {
+    const eid = String(row.employee_id ?? "").trim();
+    const key = String(row.feature_key ?? "").trim();
+    if (!eid || !key) continue;
+    if (!out[eid]) out[eid] = [];
+    out[eid].push(key);
+  }
+  return out;
+}
+
+export async function loadEmployeePermissionOverrides(
+  employeeId: string,
+): Promise<string[] | null> {
+  const eid = String(employeeId || "").trim();
+  if (!eid) return null;
+  await ensureAccessControlStore();
+
+  const idVariants: Array<string | number> = [eid];
+  if (/^\d+$/.test(eid)) idVariants.push(Number(eid));
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const rows = await db
+      .collection(EMPLOYEE_PERMS_COLLECTION)
+      .find({ employee_id: { $in: idVariants } })
+      .toArray();
+    if (!rows.length) return null;
+    return rows
+      .filter((r) => r.allowed === true || r.allowed === 1 || r.allowed === "1")
+      .map((r) => String(r.feature_key || ""))
+      .filter((k) => k && k !== "__custom__");
+  }
+
+  const placeholders = idVariants.map(() => "?").join(",");
+  const [anyRows] = await pool.execute(
+    `SELECT COUNT(*) AS c FROM ${EMPLOYEE_PERMS_COLLECTION} WHERE employee_id IN (${placeholders})`,
+    idVariants.map(String),
+  );
+  if (Number((anyRows as any[])[0]?.c ?? 0) === 0) return null;
+
+  const [rows] = await pool.execute(
+    `SELECT feature_key FROM ${EMPLOYEE_PERMS_COLLECTION}
+     WHERE employee_id IN (${placeholders}) AND allowed = 1 AND feature_key <> '__custom__'`,
+    idVariants.map(String),
+  );
+  return (rows as any[]).map((r) => String(r.feature_key)).filter(Boolean);
+}
+
+/**
+ * Replace employee custom permission set.
+ * Pass `null` / empty with clear=true to delete overrides (fall back to role).
+ */
+export async function saveEmployeePermissions(
+  employeeId: string,
+  keys: string[] | null,
+  opts?: { clear?: boolean },
+) {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  if (!eid) throw new Error("employeeId required");
+
+  const clear = opts?.clear === true || keys == null;
+  const uniqueKeys = clear
+    ? []
+    : [...new Set((keys || []).map((k) => String(k).trim()).filter(Boolean))];
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const idFilter = {
+      $or: [
+        { employee_id: eid },
+        ...( /^\d+$/.test(eid) ? [{ employee_id: Number(eid) }, { employee_id: String(Number(eid)) }] : []),
+      ],
+    };
+    await db.collection(EMPLOYEE_PERMS_COLLECTION).deleteMany(idFilter);
+    if (clear || !uniqueKeys.length) {
+      // Empty custom set: store a sentinel so we know overrides exist with zero grants?
+      // Prefer: clear means delete all → fall back to role. Empty array after edit with no checks:
+      // treat as custom empty (user intentionally has no perms).
+      if (clear) return;
+      // Save a marker row? Simpler: insert nothing and use a `_custom` flag doc
+      await db.collection(EMPLOYEE_PERMS_COLLECTION).insertOne({
+        id: await nextId(EMPLOYEE_PERMS_COLLECTION),
+        employee_id: eid,
+        feature_key: "__custom__",
+        allowed: 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      return;
+    }
+    let id = await nextId(EMPLOYEE_PERMS_COLLECTION);
+    await db.collection(EMPLOYEE_PERMS_COLLECTION).insertMany(
+      uniqueKeys.map((feature_key) => ({
+        id: id++,
+        employee_id: eid,
+        feature_key,
+        allowed: 1,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })),
+    );
+    return;
+  }
+
+  await pool.execute(`DELETE FROM ${EMPLOYEE_PERMS_COLLECTION} WHERE employee_id = ?`, [eid]);
+  if (clear) return;
+  if (!uniqueKeys.length) {
+    await pool.execute(
+      `INSERT INTO ${EMPLOYEE_PERMS_COLLECTION} (employee_id, feature_key, allowed) VALUES (?, '__custom__', 0)`,
+      [eid],
+    );
+    return;
+  }
+  for (const key of uniqueKeys) {
+    await pool.execute(
+      `INSERT INTO ${EMPLOYEE_PERMS_COLLECTION} (employee_id, feature_key, allowed) VALUES (?, ?, 1)`,
+      [eid, key],
+    );
+  }
+}
+
 export async function getEmployeeAccessPayload(employeeId: string) {
   const emp = await resolveEmployeeAccessRoleSlug(employeeId);
-  const [permissions, features, roles] = await Promise.all([
+  const [rolePermissions, features, roles, empOverride] = await Promise.all([
     loadPermissionsForRole(emp.roleSlug),
     loadGlobalFeatures(),
     loadOrgRoles(),
+    loadEmployeePermissionOverrides(emp.employeeId),
   ]);
+
+  // Custom employee set replaces role defaults; otherwise use role template.
+  const permissions =
+    empOverride != null
+      ? empOverride.filter((k) => k !== "__custom__")
+      : rolePermissions;
+
   const enabledFeatures: Record<string, boolean> = {};
   for (const f of features) enabledFeatures[f.key] = Boolean(f.on);
 
@@ -812,8 +994,19 @@ export async function getEmployeeAccessPayload(employeeId: string) {
       data_scope: roleMetaRow?.scope || "SELF",
     },
     permissions,
+    permission_source: empOverride != null ? "employee" : "role",
+    role_permissions: rolePermissions,
     features_enabled: features.filter((f) => f.on).map((f) => f.key),
     features,
     menu,
+    capabilities: {
+      systemControlOpen: permissions.includes("system.control.access"),
+      systemPermissionsEdit: permissions.includes("system.permissions.edit"),
+      systemUsersAssign: permissions.includes("system.users.assign"),
+      systemOrgChartEdit: permissions.includes("system.org_chart.edit"),
+      systemFeaturesEdit:
+        permissions.includes("system.features.edit") ||
+        permissions.includes("system.permissions.edit"),
+    },
   };
 }
