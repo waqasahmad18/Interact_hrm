@@ -187,7 +187,13 @@ export default function SystemControlPage() {
   const totalPermCount = FEATURE_MODULES.reduce((n, m) => n + m.permissions.length, 0);
 
   function employeeCountByRole(roleId: string) {
-    return employees.filter((e) => e.roleId === roleId).length;
+    return employees.filter((e) => {
+      const slug =
+        e.accessRoleSlug != null && String(e.accessRoleSlug).trim()
+          ? String(e.accessRoleSlug).trim()
+          : null;
+      return slug === roleId;
+    }).length;
   }
 
   function permCountByRole(roleId: string) {
@@ -449,8 +455,8 @@ export default function SystemControlPage() {
       return;
     }
     const name = roleMeta(roleId, allRoles).name;
-    if (employees.some((e) => e.roleId === roleId)) {
-      showToast(`Reassign employees first — "${name}" still has users`);
+    if (employees.some((e) => e.accessRoleSlug === roleId)) {
+      showToast(`Unassign employees first — "${name}" still has users`);
       return;
     }
     setDeleteTargetId(roleId);
@@ -459,7 +465,10 @@ export default function SystemControlPage() {
   function confirmDeleteRole() {
     const roleId = deleteTargetId;
     if (!roleId) return;
-    if (isRoleLocked(roleId) || employees.some((e) => e.roleId === roleId)) {
+    if (
+      isRoleLocked(roleId) ||
+      employees.some((e) => e.accessRoleSlug === roleId)
+    ) {
       setDeleteTargetId(null);
       return;
     }
@@ -529,6 +538,27 @@ export default function SystemControlPage() {
     setActiveTab("permissions");
   }
 
+  async function refreshEmployeesFromApi() {
+    try {
+      const accessRes = await fetch("/api/access-control/system-control", {
+        cache: "no-store",
+      }).then((r) => r.json());
+      if (accessRes?.success && Array.isArray(accessRes.employees)) {
+        const photoPayload = await fetchOrgChartPhotos().catch(() => ({
+          employeePhotos: {} as Record<string, string>,
+        }));
+        setEmployees(
+          applyStoredEmployeePhotos(
+            accessRes.employees as DemoEmployee[],
+            photoPayload.employeePhotos || {},
+          ),
+        );
+      }
+    } catch {
+      /* keep local state */
+    }
+  }
+
   async function saveEmployeeRole(empId: string, roleId: string) {
     const emp = employees.find((e) => e.id === empId);
     if (!emp) return;
@@ -541,7 +571,7 @@ export default function SystemControlPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Assign failed");
-      setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, roleId } : e)));
+      await refreshEmployeesFromApi();
 
       let permNote = "";
       try {
@@ -569,7 +599,58 @@ export default function SystemControlPage() {
     }
   }
 
-  async function savePermissionsToDb(roleId: string, employeeId?: string) {
+  async function assignEmployeesToRole(employeeIds: string[], roleId: string) {
+    const ids = [...new Set(employeeIds.map(String).filter(Boolean))];
+    if (!ids.length || !roleId) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "assign-many", employeeIds: ids, roleId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Assign failed");
+      await refreshEmployeesFromApi();
+      const names = ids
+        .map((id) => employees.find((e) => e.id === id)?.name || id)
+        .slice(0, 3)
+        .join(", ");
+      const extra = ids.length > 3 ? ` +${ids.length - 3}` : "";
+      showToast(
+        `${ids.length} user(s) → ${roleMeta(roleId, allRoles).name}: ${names}${extra}. Ask them to refresh.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to assign role");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function unassignEmployeesFromRole(employeeIds: string[]) {
+    const ids = [...new Set(employeeIds.map(String).filter(Boolean))];
+    if (!ids.length) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "unassign-many", employeeIds: ids }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Unassign failed");
+      await refreshEmployeesFromApi();
+      showToast(
+        `${ids.length} user(s) unassigned from System Control role. Ask them to refresh.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to unassign");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function savePermissionsToDb(roleId: string) {
     const targetRole = String(roleId || selectedRoleId || "").trim();
     if (!targetRole) {
       showToast("Select a role first");
@@ -585,29 +666,7 @@ export default function SystemControlPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Save failed");
-
-      const empId = String(employeeId || "").trim();
-      if (empId) {
-        const assignRes = await fetch("/api/access-control/system-control", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "assign", employeeId: empId, roleId: targetRole }),
-        });
-        const assignData = await assignRes.json();
-        if (!assignData.success) throw new Error(assignData.error || "Assign failed");
-        setEmployees((prev) =>
-          prev.map((e) => (e.id === empId ? { ...e, roleId: targetRole } : e)),
-        );
-        const emp = employees.find((e) => e.id === empId);
-        showToast(
-          `Saved ${roleMeta(targetRole, allRoles).name} permissions` +
-            (emp ? ` and assigned to ${emp.name}` : " and assigned employee"),
-        );
-      } else {
-        showToast(
-          `Permissions saved for ${roleMeta(targetRole, allRoles).name}. Select an employee and Assign/Save to apply.`,
-        );
-      }
+      showToast(`Permissions saved for ${roleMeta(targetRole, allRoles).name}.`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save permissions");
     } finally {
@@ -803,8 +862,9 @@ export default function SystemControlPage() {
                 setPermissions(clonePermissionMap());
                 showToast("All roles reset to default templates");
               }}
-              onSave={(roleId, employeeId) => void savePermissionsToDb(roleId, employeeId)}
-              onAssignEmployee={saveEmployeeRole}
+              onSave={(roleId) => void savePermissionsToDb(roleId)}
+              onAssignEmployees={(ids, roleId) => void assignEmployeesToRole(ids, roleId)}
+              onUnassignEmployees={(ids) => void unassignEmployeesFromRole(ids)}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id)}
               employeeCountByRole={employeeCountByRole}

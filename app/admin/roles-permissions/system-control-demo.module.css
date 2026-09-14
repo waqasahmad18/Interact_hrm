@@ -2866,6 +2866,13 @@
   gap: 6px;
 }
 
+.permAssignBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .permAssignBtn {
   min-height: 42px;
   padding: 0 18px;
@@ -2889,12 +2896,139 @@
   cursor: not-allowed;
 }
 
+.permAssignedBar {
+  padding: 14px 24px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff;
+}
+
+.permAssignedHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.permAssignedCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f3e8ff;
+  color: #7e22ce;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.permAssignedEmpty {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.permAssignedChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permUserChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 8px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e9d5ff;
+  background: #faf5ff;
+  color: #581c87;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.permUserChip input {
+  margin: 0;
+  accent-color: #9333ea;
+}
+
+.permUserChipOn {
+  border-color: #9333ea;
+  background: #f3e8ff;
+}
+
+.permUserChipMeta {
+  margin-left: 4px;
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.permUserChipX {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #6b21a8;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.permUserChipX:hover {
+  background: #ddd6fe;
+}
+
+.permUnassignBtn {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.permUnassignBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.permUnassignBtn:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+
 @media (max-width: 900px) {
   .permAssignBtnCol .permSelectLabel {
     display: none;
   }
 
   .permAssignBtn {
+    width: 100%;
+  }
+
+  .permAssignBtnRow {
+    width: 100%;
+  }
+
+  .permAssignBtnRow > * {
+    flex: 1;
+  }
+
+  .permUnassignBtn {
+    margin-left: 0;
     width: 100%;
   }
 }

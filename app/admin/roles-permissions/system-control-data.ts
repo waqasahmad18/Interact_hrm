@@ -33,6 +33,8 @@ export type DemoEmployee = {
   pseudonym?: string;
   profilePhoto?: string;
   roleId: string;
+  /** Explicit System Control assignment; null/undefined = not assigned via Permissions. */
+  accessRoleSlug?: string | null;
   departmentId: string;
   departmentName?: string;
   reportsTo: string | null;

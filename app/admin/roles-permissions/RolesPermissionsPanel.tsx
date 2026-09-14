@@ -17,9 +17,10 @@ type Props = {
   onTogglePermission: (roleId: string, key: string) => void;
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
   onResetAll: () => void;
-  /** roleId + optional employee to assign on save */
-  onSave: (roleId: string, employeeId?: string) => void;
-  onAssignEmployee: (employeeId: string, roleId: string) => void;
+  /** Save permission matrix only (assign is separate). */
+  onSave: (roleId: string) => void;
+  onAssignEmployees: (employeeIds: string[], roleId: string) => void;
+  onUnassignEmployees: (employeeIds: string[]) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
   employeeCountByRole: (roleId: string) => number;
@@ -38,6 +39,12 @@ function employeeFilter(opt: SelectOption, query: string) {
   return hay.includes(query);
 }
 
+function explicitSlug(emp: DemoEmployee) {
+  return emp.accessRoleSlug != null && String(emp.accessRoleSlug).trim()
+    ? String(emp.accessRoleSlug).trim()
+    : null;
+}
+
 export default function RolesPermissionsPanel({
   allRoles,
   employees,
@@ -48,18 +55,20 @@ export default function RolesPermissionsPanel({
   onToggleModuleForRole,
   onResetAll,
   onSave,
-  onAssignEmployee,
+  onAssignEmployees,
+  onUnassignEmployees,
   isRoleLocked,
   isCustomRole,
   employeeCountByRole,
 }: Props) {
   const [permSearch, setPermSearch] = useState("");
-  const [assignEmployeeId, setAssignEmployeeId] = useState("");
+  const [pickEmployeeId, setPickEmployeeId] = useState("");
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [selectedAssignedIds, setSelectedAssignedIds] = useState<string[]>([]);
 
-  // Employees load async from API — seed selection once the list arrives.
   React.useEffect(() => {
     if (!employees.length) return;
-    setAssignEmployeeId((prev) => {
+    setPickEmployeeId((prev) => {
       if (prev && employees.some((e) => e.id === prev)) return prev;
       return employees[0]?.id ?? "";
     });
@@ -87,29 +96,11 @@ export default function RolesPermissionsPanel({
             value: role.id,
             label: role.name,
             accent: accentOf(role),
-            meta: `${count} ${count === 1 ? "user" : "users"}${custom ? " · custom" : ""}`,
+            meta: `${count} assigned${custom ? " · custom" : ""}`,
           };
         }),
       })),
     [roleSections, employeeCountByRole, isCustomRole],
-  );
-
-  const employeeOptions: SelectOption[] = useMemo(
-    () =>
-      employees.map((emp) => ({
-        value: emp.id,
-        label: emp.name,
-        meta: [
-          `ID ${emp.id}`,
-          emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
-          emp.departmentName || null,
-          emp.legacyRole ? `HR role: ${emp.legacyRole}` : null,
-          `Access: ${roleMeta(emp.roleId, allRoles).name}`,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      })),
-    [employees, allRoles],
   );
 
   const [selectedRoleId, setSelectedRoleId] = useState<string>(() => {
@@ -125,15 +116,50 @@ export default function RolesPermissionsPanel({
     }
   }, [initialRoleId, matrixRoles]);
 
+  React.useEffect(() => {
+    setPendingIds([]);
+    setSelectedAssignedIds([]);
+  }, [selectedRoleId]);
+
   const activeRole =
     matrixRoles.find((r) => r.id === selectedRoleId) ?? matrixRoles[0];
   const activeRoleId = activeRole?.id ?? "";
   const locked = activeRoleId ? isRoleLocked(activeRoleId) : false;
   const roleSet = (activeRoleId && permissions[activeRoleId]) || new Set<string>();
 
-  const assignEmployee = employees.find((e) => e.id === assignEmployeeId);
-  const assignChanged =
-    Boolean(assignEmployee && activeRoleId && assignEmployee.roleId !== activeRoleId);
+  const assignedUsers = useMemo(
+    () =>
+      employees
+        .filter((e) => explicitSlug(e) === activeRoleId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [employees, activeRoleId],
+  );
+
+  const assignableOptions: SelectOption[] = useMemo(
+    () =>
+      employees
+        .filter((e) => explicitSlug(e) !== activeRoleId)
+        .map((emp) => {
+          const assigned = explicitSlug(emp);
+          return {
+            value: emp.id,
+            label: emp.name,
+            meta: [
+              `ID ${emp.id}`,
+              emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
+              emp.departmentName || null,
+              assigned
+                ? `Assigned: ${roleMeta(assigned, allRoles).name}`
+                : emp.legacyRole
+                  ? `Default from HR: ${emp.legacyRole}`
+                  : "Not assigned",
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          };
+        }),
+    [employees, allRoles, activeRoleId],
+  );
 
   const totalPerms = useMemo(
     () => modules.reduce((sum, m) => sum + m.permissions.length, 0),
@@ -169,10 +195,49 @@ export default function RolesPermissionsPanel({
     return module.permissions.every((p) => roleSet.has(p.key));
   }
 
-  function handleAssign() {
-    if (!assignEmployeeId || !activeRoleId) return;
-    onAssignEmployee(assignEmployeeId, activeRoleId);
+  function addPendingFromPicker() {
+    if (!pickEmployeeId) return;
+    setPendingIds((prev) =>
+      prev.includes(pickEmployeeId) ? prev : [...prev, pickEmployeeId],
+    );
   }
+
+  function removePending(id: string) {
+    setPendingIds((prev) => prev.filter((x) => x !== id));
+  }
+
+  function handleAssign() {
+    if (!activeRoleId) return;
+    const ids = pendingIds.length
+      ? pendingIds
+      : pickEmployeeId
+        ? [pickEmployeeId]
+        : [];
+    if (!ids.length) return;
+    onAssignEmployees(ids, activeRoleId);
+    setPendingIds([]);
+  }
+
+  function toggleAssignedSelect(id: string) {
+    setSelectedAssignedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  function handleUnassignSelected() {
+    if (!selectedAssignedIds.length) return;
+    onUnassignEmployees(selectedAssignedIds);
+    setSelectedAssignedIds([]);
+  }
+
+  function handleUnassignOne(id: string) {
+    onUnassignEmployees([id]);
+    setSelectedAssignedIds((prev) => prev.filter((x) => x !== id));
+  }
+
+  const pendingPeople = pendingIds
+    .map((id) => employees.find((e) => e.id === id))
+    .filter(Boolean) as DemoEmployee[];
 
   return (
     <div className={styles.permWrap}>
@@ -180,7 +245,8 @@ export default function RolesPermissionsPanel({
         <div>
           <h2 className={styles.matrixTitle}>Roles &amp; Permissions</h2>
           <p className={styles.matrixSubtitle}>
-            Select a role, assign it to an employee, then toggle what it can access.
+            Select a role, assign one or more users, remove them anytime, then toggle what the
+            role can access.
           </p>
         </div>
         <div className={styles.matrixSearchWrap}>
@@ -207,28 +273,123 @@ export default function RolesPermissionsPanel({
         />
         <SearchableSelect
           id="perm-employee"
-          label="Assign to user"
-          value={assignEmployeeId}
-          onChange={setAssignEmployeeId}
-          options={employeeOptions}
+          label="Add user to this role"
+          value={pickEmployeeId}
+          onChange={setPickEmployeeId}
+          options={assignableOptions}
           searchPlaceholder="Search by name or P.Name…"
-          emptyText="No employees match your search"
+          emptyText="No employees available to assign"
           filterOption={employeeFilter}
-          disabled={employees.length === 0}
+          disabled={employees.length === 0 || !activeRoleId}
         />
         <div className={styles.permAssignBtnCol}>
           <span className={styles.permSelectLabel} aria-hidden="true">
             &nbsp;
           </span>
-          <button
-            type="button"
-            className={styles.permAssignBtn}
-            disabled={!assignEmployeeId || !activeRoleId || locked}
-            onClick={handleAssign}
-          >
-            Assign role
-          </button>
+          <div className={styles.permAssignBtnRow}>
+            <button
+              type="button"
+              className={styles.btnOutlinePurple}
+              disabled={!pickEmployeeId || !activeRoleId}
+              onClick={addPendingFromPicker}
+            >
+              Add to list
+            </button>
+            <button
+              type="button"
+              className={styles.permAssignBtn}
+              disabled={
+                (!pendingIds.length && !pickEmployeeId) || !activeRoleId || locked
+              }
+              onClick={handleAssign}
+            >
+              Assign{pendingIds.length > 1 ? ` (${pendingIds.length})` : ""}
+            </button>
+          </div>
         </div>
+      </div>
+
+      {pendingPeople.length > 0 && (
+        <div className={styles.permAssignedBar}>
+          <div className={styles.permAssignedHead}>
+            <strong>Ready to assign</strong>
+            <span className={styles.permAssignedCount}>{pendingPeople.length}</span>
+          </div>
+          <div className={styles.permAssignedChips}>
+            {pendingPeople.map((emp) => (
+              <span key={emp.id} className={styles.permUserChip}>
+                {emp.name}
+                <button
+                  type="button"
+                  className={styles.permUserChipX}
+                  aria-label={`Remove ${emp.name} from list`}
+                  onClick={() => removePending(emp.id)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={styles.permAssignedBar}>
+        <div className={styles.permAssignedHead}>
+          <strong>
+            Assigned users
+            {activeRole ? ` — ${activeRole.name}` : ""}
+          </strong>
+          <span className={styles.permAssignedCount}>{assignedUsers.length}</span>
+          {assignedUsers.length > 0 && (
+            <button
+              type="button"
+              className={styles.permUnassignBtn}
+              disabled={!selectedAssignedIds.length}
+              onClick={handleUnassignSelected}
+            >
+              Unassign selected
+              {selectedAssignedIds.length ? ` (${selectedAssignedIds.length})` : ""}
+            </button>
+          )}
+        </div>
+        {assignedUsers.length === 0 ? (
+          <p className={styles.permAssignedEmpty}>
+            No users assigned to this role yet. Add one or more users above.
+          </p>
+        ) : (
+          <div className={styles.permAssignedChips}>
+            {assignedUsers.map((emp) => {
+              const selected = selectedAssignedIds.includes(emp.id);
+              return (
+                <label
+                  key={emp.id}
+                  className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleAssignedSelect(emp.id)}
+                  />
+                  <span>
+                    {emp.name}
+                    <span className={styles.permUserChipMeta}>#{emp.id}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.permUserChipX}
+                    aria-label={`Unassign ${emp.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleUnassignOne(emp.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </label>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className={styles.permBody}>
@@ -336,9 +497,9 @@ export default function RolesPermissionsPanel({
 
       <div className={styles.matrixFooter}>
         <p className={styles.matrixFooterHint}>
-          <span className={styles.legendLocked} /> Select an employee, click{" "}
-          <strong>Assign role</strong> (or Save), then have them refresh / re-login. Permissions
-          alone do not apply until the role is assigned.
+          <span className={styles.legendLocked} /> One role can have many users. Use{" "}
+          <strong>×</strong> or <strong>Unassign selected</strong> to remove. Users must refresh
+          after assign/unassign.
         </p>
         <div className={styles.permFooterActions}>
           <button type="button" className={styles.btnOutlinePurple} onClick={onResetAll}>
@@ -347,10 +508,10 @@ export default function RolesPermissionsPanel({
           <button
             type="button"
             className={styles.btnSolidPurple}
-            onClick={() => onSave(activeRoleId, assignEmployeeId || undefined)}
+            onClick={() => onSave(activeRoleId)}
             disabled={!activeRoleId}
           >
-            Save changes
+            Save permission changes
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   assignEmployeeRole,
+  assignEmployeesToRole,
   ensureAccessControlStore,
   loadAccessEmployees,
   loadGlobalFeatures,
@@ -10,6 +11,8 @@ import {
   saveOrgRoles,
   saveRolePermissions,
   syncAccessControlCatalog,
+  unassignEmployeeRole,
+  unassignEmployees,
 } from "@/lib/access-control/store";
 import {
   FEATURE_MODULES,
@@ -52,6 +55,9 @@ export async function GET() {
  *  { type: "permissions", roleId, keys: string[] }
  *  { type: "features", features: [{ key, on }] }
  *  { type: "assign", employeeId, roleId }
+ *  { type: "assign-many", employeeIds: string[], roleId }
+ *  { type: "unassign", employeeId }
+ *  { type: "unassign-many", employeeIds: string[] }
  *  { type: "org-roles", roles: RoleDef[] }
  */
 export async function PUT(req: NextRequest) {
@@ -93,6 +99,47 @@ export async function PUT(req: NextRequest) {
       }
       await assignEmployeeRole(employeeId, roleId);
       return NextResponse.json({ success: true });
+    }
+
+    if (type === "assign-many") {
+      const roleId = String(body.roleId || "").trim();
+      const employeeIds = Array.isArray(body.employeeIds)
+        ? body.employeeIds.map(String)
+        : [];
+      if (!roleId || !employeeIds.length) {
+        return NextResponse.json(
+          { success: false, error: "roleId and employeeIds required" },
+          { status: 400 },
+        );
+      }
+      const count = await assignEmployeesToRole(employeeIds, roleId);
+      return NextResponse.json({ success: true, count });
+    }
+
+    if (type === "unassign") {
+      const employeeId = String(body.employeeId || "").trim();
+      if (!employeeId) {
+        return NextResponse.json(
+          { success: false, error: "employeeId required" },
+          { status: 400 },
+        );
+      }
+      await unassignEmployeeRole(employeeId);
+      return NextResponse.json({ success: true });
+    }
+
+    if (type === "unassign-many") {
+      const employeeIds = Array.isArray(body.employeeIds)
+        ? body.employeeIds.map(String)
+        : [];
+      if (!employeeIds.length) {
+        return NextResponse.json(
+          { success: false, error: "employeeIds required" },
+          { status: 400 },
+        );
+      }
+      const count = await unassignEmployees(employeeIds);
+      return NextResponse.json({ success: true, count });
     }
 
     if (type === "org-roles") {
