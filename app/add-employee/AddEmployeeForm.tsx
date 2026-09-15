@@ -396,6 +396,7 @@ export default function AddEmployeeForm({
   const [cnicNumber, setCnicNumber] = useState("");
   const [cnicIssuanceDate, setCnicIssuanceDate] = useState("");
   const [cnicExpiryDate, setCnicExpiryDate] = useState("");
+  const [cnicAddress, setCnicAddress] = useState("");
   const [employmentStatus, setEmploymentStatus] = useState("");
   const [employmentType, setEmploymentType] = useState("");
   const [workingHours, setWorkingHours] = useState<string>("");
@@ -558,6 +559,7 @@ export default function AddEmployeeForm({
             setCnicNumber(data.employee.cnic_number || "");
             setCnicIssuanceDate(formatDateForInput(data.employee.cnic_issuance_date));
             setCnicExpiryDate(formatDateForInput(data.employee.cnic_expiry_date));
+            setCnicAddress(data.employee.cnic_address || "");
             setEmploymentStatus(data.employee.employment_status || "");
             setEmploymentType(data.employee.employment_type || "");
             setWorkingHours(
@@ -763,6 +765,7 @@ export default function AddEmployeeForm({
       cnic_number: cnicNumber || '',
       cnic_issuance_date: cnicIssuanceDate || '',
       cnic_expiry_date: cnicExpiryDate || '',
+      cnic_address: cnicAddress || '',
       employment_status: employmentStatus || '',
       employment_type: employmentType || '',
       working_hours:
@@ -956,6 +959,16 @@ export default function AddEmployeeForm({
                   <label className={styles.fieldLabel}>CNIC Expiry Date</label>
                   <input className={styles.input} type="date" value={cnicExpiryDate} onChange={e => setCnicExpiryDate(e.target.value)} />
                 </div>
+              </div>
+              <div>
+                <label className={styles.fieldLabel}>CNIC Address</label>
+                <input
+                  className={styles.input}
+                  type="text"
+                  placeholder="Address as on CNIC"
+                  value={cnicAddress}
+                  onChange={e => setCnicAddress(e.target.value)}
+                />
               </div>
               <div>
                 <label className={styles.fieldLabel}>Employment Status</label>
