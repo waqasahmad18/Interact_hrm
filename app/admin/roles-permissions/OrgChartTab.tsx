@@ -9,6 +9,11 @@ import {
   deptRootForRole,
   deptSectionLabel,
   empNameById,
+  employeesInOrgDept,
+  findOrgDeptManager,
+  listOrgDeptChips,
+  ORG_DEPT_MANAGER_NAME,
+  resolveOrgCeoCards,
   type DemoEmployee,
   type RoleDef,
 } from "./system-control-data";
@@ -248,6 +253,9 @@ export default function OrgChartTab({
   const [editId, setEditId] = useState<string | null>(null);
   // role open in the right-side detail drawer
   const [panelRoleId, setPanelRoleId] = useState<string | null>(null);
+  /** "all" = full role tree; otherwise HRM department chip label */
+  const [deptView, setDeptView] = useState<string>("all");
+  const [panelEmployeeId, setPanelEmployeeId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState<string>("");
   const [levelDraft, setLevelDraft] = useState<string>("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -290,9 +298,34 @@ export default function OrgChartTab({
 
   const editing = editId ? allRoles.find((r) => r.id === editId) ?? null : null;
   const panelRole = panelRoleId ? allRoles.find((r) => r.id === panelRoleId) ?? null : null;
-  const panelEmployee = panelRole ? primaryEmployee(panelRole.id) : null;
+  const panelEmployee = panelEmployeeId
+    ? employees.find((e) => e.id === panelEmployeeId) ?? null
+    : panelRole
+      ? primaryEmployee(panelRole.id)
+      : null;
   const filledRoles = allRoles.filter((r) => employeeCountByRole(r.id) > 0).length;
   const openRoles = allRoles.length - filledRoles;
+
+  const deptChips = useMemo(() => listOrgDeptChips(employees), [employees]);
+  const ceoCards = useMemo(() => resolveOrgCeoCards(employees), [employees]);
+  const deptManager =
+    deptView === "all" ? null : findOrgDeptManager(employees, deptView);
+  const deptStaff =
+    deptView === "all"
+      ? []
+      : employeesInOrgDept(employees, deptView).filter(
+          (e) => !deptManager || e.id !== deptManager.id,
+        );
+  const managerHint =
+    deptView === "all"
+      ? null
+      : ORG_DEPT_MANAGER_NAME[deptView] ||
+        ORG_DEPT_MANAGER_NAME[
+          Object.keys(ORG_DEPT_MANAGER_NAME).find(
+            (k) => k.toLowerCase() === deptView.toLowerCase(),
+          ) || ""
+        ] ||
+        null;
 
   function photoForRole(roleId: string, emp: DemoEmployee | null) {
     if (emp?.profilePhoto) return emp.profilePhoto;
@@ -301,13 +334,13 @@ export default function OrgChartTab({
 
   function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !panelRole) return;
+    if (!file || (!panelRole && !panelEmployee)) return;
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== "string") return;
       if (panelEmployee) {
         updateProfilePhoto(panelEmployee.id, reader.result);
-      } else {
+      } else if (panelRole) {
         updateRolePhoto(panelRole.id, reader.result);
       }
     };
@@ -316,7 +349,7 @@ export default function OrgChartTab({
   }
 
   function openPhotoPicker() {
-    if (!panelRole) return;
+    if (!panelRole && !panelEmployee) return;
     fileInputRef.current?.click();
   }
 
@@ -603,6 +636,7 @@ export default function OrgChartTab({
             className={styles.orgCardMain}
             onClick={() => {
               if (dragMovedRef.current) return;
+              setPanelEmployeeId(null);
               setPanelRoleId(role.id);
             }}
           >
@@ -711,18 +745,21 @@ export default function OrgChartTab({
   return (
     <div className={styles.orgWrap}>
       <div className={styles.orgTopBar}>
-        <div className={styles.orgTopStats}>
-          <span>
-            <strong>{allRoles.length}</strong> roles
-          </span>
-          <span className={styles.orgTopDivider}>·</span>
-          <span>
-            <strong>{filledRoles}</strong> filled
-          </span>
-          <span className={styles.orgTopDivider}>·</span>
-          <span>
-            <strong>{openRoles}</strong> open
-          </span>
+        <div className={styles.orgTopIntro}>
+          <p className={styles.orgTopEyebrow}>System Control</p>
+          <div className={styles.orgTopStats}>
+            <span>
+              <strong>{allRoles.length}</strong> roles
+            </span>
+            <span className={styles.orgTopDivider}>·</span>
+            <span>
+              <strong>{filledRoles}</strong> filled
+            </span>
+            <span className={styles.orgTopDivider}>·</span>
+            <span>
+              <strong>{openRoles}</strong> open
+            </span>
+          </div>
         </div>
         <div className={styles.orgTopActions}>
           <input
@@ -735,13 +772,13 @@ export default function OrgChartTab({
           <button
             type="button"
             className={styles.orgPhotoBtn}
-            disabled={!panelRole}
+            disabled={!panelRole && !panelEmployee}
             title={
-              panelRole
+              panelRole || panelEmployee
                 ? panelEmployee
                   ? `Upload photo for ${panelEmployee.name}`
-                  : `Upload photo for ${panelRole.name}`
-                : "Select a role card first"
+                  : `Upload photo for ${panelRole?.name}`
+                : "Select a role or person first"
             }
             onClick={openPhotoPicker}
           >
@@ -751,11 +788,43 @@ export default function OrgChartTab({
       </div>
 
       <div className={styles.orgHintBar}>
-        <strong>Drag</strong> a card onto another and aim at an edge — drop near
-        the <strong>top</strong> to make it the manager, the{" "}
-        <strong>bottom</strong> to make it report, or the{" "}
-        <strong>left/right</strong> to place it parallel. Hierarchy, arrows, and
-        permissions update live.
+        Drag a card onto another — aim <strong>top</strong> to make manager,{" "}
+        <strong>bottom</strong> to report, <strong>sides</strong> for parallel.
+        Use department filters to inspect each team.
+      </div>
+
+      <div className={styles.orgDeptChipBar} role="tablist" aria-label="Department filter">
+        <span className={styles.orgDeptChipLabel}>View</span>
+        <div className={styles.orgDeptChipTrack}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={deptView === "all"}
+            className={`${styles.orgDeptChip} ${deptView === "all" ? styles.orgDeptChipActive : ""}`}
+            onClick={() => {
+              setDeptView("all");
+              setPanelEmployeeId(null);
+            }}
+          >
+            All
+          </button>
+          {deptChips.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              role="tab"
+              aria-selected={deptView === chip}
+              className={`${styles.orgDeptChip} ${deptView === chip ? styles.orgDeptChipActive : ""}`}
+              onClick={() => {
+                setDeptView(chip);
+                setPanelRoleId(null);
+                setPanelEmployeeId(null);
+              }}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.orgCanvasWrap}>
@@ -810,11 +879,172 @@ export default function OrgChartTab({
             ref={treeRef}
             style={{ zoom } as React.CSSProperties}
           >
-            <h2 className={styles.orgChartTitle}>Organizational Chart</h2>
-            {roots.length > 0 ? (
-              <ul className={styles.orgList}>{roots.map((r) => renderNode(r))}</ul>
+            <header className={styles.orgChartHeader}>
+              <p className={styles.orgChartEyebrow}>
+                {deptView === "all" ? "Company overview" : "Department view"}
+              </p>
+              <h2 className={styles.orgChartTitle}>
+                {deptView === "all"
+                  ? "Organizational Chart"
+                  : `${deptView} Department`}
+              </h2>
+              <p className={styles.orgChartSub}>
+                {deptView === "all"
+                  ? "Leadership at the top, then full reporting structure."
+                  : deptView === "IT"
+                    ? "Manager and team — Marketing staff included under IT."
+                    : "Manager and assigned employees for this department."}
+              </p>
+            </header>
+
+            {deptView === "all" ? (
+              <>
+                <section className={styles.orgCeoSection} aria-label="Executive leadership">
+                  <div className={styles.orgSectionHead}>
+                    <span className={styles.orgSectionRule} />
+                    <h3 className={styles.orgSectionTitle}>Executive leadership</h3>
+                    <span className={styles.orgSectionRule} />
+                  </div>
+                  <div className={styles.orgCeoRow}>
+                    {ceoCards.map((ceo) => (
+                      <button
+                        key={ceo.id}
+                        type="button"
+                        data-orgcard
+                        className={`${styles.orgPersonCard} ${styles.orgPersonCardCeo}`}
+                        onClick={() => {
+                          setPanelEmployeeId(
+                            ceo.id.startsWith("ceo-placeholder") ? null : ceo.id,
+                          );
+                          setPanelRoleId(ceo.roleId || null);
+                        }}
+                      >
+                        <span className={styles.orgPersonAvatar}>
+                          {ceo.profilePhoto ? (
+                            <img
+                              src={ceo.profilePhoto}
+                              alt=""
+                              className={styles.orgPersonPhoto}
+                            />
+                          ) : (
+                            <span>{ceo.initials || initials(ceo.name)}</span>
+                          )}
+                        </span>
+                        <span className={styles.orgPersonName}>{ceo.name}</span>
+                        <span className={styles.orgPersonMeta}>Chief Executive</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <div className={styles.orgSectionHead}>
+                  <span className={styles.orgSectionRule} />
+                  <h3 className={styles.orgSectionTitle}>Reporting structure</h3>
+                  <span className={styles.orgSectionRule} />
+                </div>
+                {roots.length > 0 ? (
+                  <ul className={styles.orgList}>{roots.map((r) => renderNode(r))}</ul>
+                ) : (
+                  <p className={styles.orgEmpty}>No roles yet.</p>
+                )}
+              </>
             ) : (
-              <p className={styles.orgEmpty}>No roles yet.</p>
+              <div className={styles.orgDeptPeople}>
+                <div className={styles.orgDeptManagerBlock}>
+                  <div className={styles.orgSectionHead}>
+                    <span className={styles.orgSectionRule} />
+                    <h3 className={styles.orgSectionTitle}>Department manager</h3>
+                    <span className={styles.orgSectionRule} />
+                  </div>
+                  {deptManager ? (
+                    <button
+                      type="button"
+                      data-orgcard
+                      className={`${styles.orgPersonCard} ${styles.orgPersonCardManager}`}
+                      onClick={() => {
+                        setPanelEmployeeId(deptManager.id);
+                        setPanelRoleId(deptManager.roleId || null);
+                      }}
+                    >
+                      <span className={styles.orgPersonBadge}>Manager</span>
+                      <span className={styles.orgPersonAvatar}>
+                        {deptManager.profilePhoto ? (
+                          <img
+                            src={deptManager.profilePhoto}
+                            alt=""
+                            className={styles.orgPersonPhoto}
+                          />
+                        ) : (
+                          <span>
+                            {deptManager.initials || initials(deptManager.name)}
+                          </span>
+                        )}
+                      </span>
+                      <span className={styles.orgPersonName}>{deptManager.name}</span>
+                      <span className={styles.orgPersonMeta}>
+                        {managerHint ? `${deptView} · ${managerHint}` : deptView}
+                      </span>
+                    </button>
+                  ) : (
+                    <div
+                      className={`${styles.orgPersonCard} ${styles.orgPersonCardManager} ${styles.orgPersonCardEmpty}`}
+                    >
+                      <span className={styles.orgPersonBadge}>Manager</span>
+                      <span className={styles.orgPersonName}>
+                        {managerHint
+                          ? `${managerHint} — not found in HRM`
+                          : "No manager mapped"}
+                      </span>
+                      <span className={styles.orgPersonMeta}>{deptView}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.orgDeptStaffBlock}>
+                  <div className={styles.orgSectionHead}>
+                    <span className={styles.orgSectionRule} />
+                    <h3 className={styles.orgSectionTitle}>
+                      Team
+                      {deptView === "IT" ? " · includes Marketing" : ""}
+                      <span className={styles.orgSectionCount}>{deptStaff.length}</span>
+                    </h3>
+                    <span className={styles.orgSectionRule} />
+                  </div>
+                  {deptStaff.length === 0 ? (
+                    <p className={styles.orgEmpty}>No employees in this department.</p>
+                  ) : (
+                    <div className={styles.orgDeptStaffGrid}>
+                      {deptStaff.map((emp) => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          data-orgcard
+                          className={styles.orgPersonCard}
+                          onClick={() => {
+                            setPanelEmployeeId(emp.id);
+                            setPanelRoleId(emp.roleId || null);
+                          }}
+                        >
+                          <span className={styles.orgPersonAvatar}>
+                            {emp.profilePhoto ? (
+                              <img
+                                src={emp.profilePhoto}
+                                alt=""
+                                className={styles.orgPersonPhoto}
+                              />
+                            ) : (
+                              <span>{emp.initials || initials(emp.name)}</span>
+                            )}
+                          </span>
+                          <span className={styles.orgPersonName}>{emp.name}</span>
+                          <span className={styles.orgPersonMeta}>
+                            {emp.departmentName || emp.pseudonym || "Staff"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -825,7 +1055,7 @@ export default function OrgChartTab({
           onClick={resetChart}
           title="Reset all drag-drop hierarchy, names, levels and permissions to default"
         >
-          ⟲ Reset chart
+          Reset chart
         </button>
       </div>
 
@@ -988,20 +1218,26 @@ export default function OrgChartTab({
         </ModalPortal>
       )}
 
-      {panelRole && (
+      {(panelRole || panelEmployee) && (
         <>
           <button
             type="button"
             className={styles.orgDrawerBackdrop}
             aria-label="Close details"
-            onClick={() => setPanelRoleId(null)}
+            onClick={() => {
+              setPanelRoleId(null);
+              setPanelEmployeeId(null);
+            }}
           />
           <aside className={styles.orgDrawer} aria-label="Role details">
             <button
               type="button"
               className={styles.orgDrawerClose}
               aria-label="Close"
-              onClick={() => setPanelRoleId(null)}
+              onClick={() => {
+                setPanelRoleId(null);
+                setPanelEmployeeId(null);
+              }}
             >
               ×
             </button>
@@ -1009,33 +1245,40 @@ export default function OrgChartTab({
             <div className={styles.orgDrawerHero}>
               <span className={styles.orgDrawerAvatar}>
                 <ProfilePhoto
-                  photo={photoForRole(panelRole.id, panelEmployee)}
+                  photo={
+                    panelEmployee?.profilePhoto ||
+                    (panelRole ? photoForRole(panelRole.id, panelEmployee) : null)
+                  }
                   wrapClass={styles.orgPhotoWrapDrawer}
                   imgClass={styles.orgDrawerPhotoImg}
-                  onRemove={() =>
-                    removePhotoForRole(panelRole.id, panelEmployee)
+                  onRemove={
+                    panelRole
+                      ? () => removePhotoForRole(panelRole.id, panelEmployee)
+                      : panelEmployee?.profilePhoto
+                        ? () => removeProfilePhoto(panelEmployee.id)
+                        : undefined
                   }
                   initialsNode={
                     <span
                       style={{
-                        background: `${accentOf(panelRole)}18`,
-                        color: accentOf(panelRole),
+                        background: `${accentOf(panelRole ?? undefined)}18`,
+                        color: accentOf(panelRole ?? undefined),
                       }}
                     >
                       {panelEmployee
                         ? panelEmployee.initials
-                        : initials(panelRole.name)}
+                        : initials(panelRole?.name || "?")}
                     </span>
                   }
                 />
               </span>
               <h3 className={styles.orgDrawerName}>
-                {panelEmployee?.name ?? panelRole.name}
+                {panelEmployee?.name ?? panelRole?.name}
               </h3>
-              {panelEmployee && (
+              {panelEmployee && panelRole && (
                 <p className={styles.orgDrawerTitle}>{panelRole.name}</p>
               )}
-              {isCustomRole(panelRole.id) && (
+              {panelRole && isCustomRole(panelRole.id) && (
                 <span className={styles.orgDrawerBadge}>Custom role</span>
               )}
             </div>
@@ -1045,16 +1288,20 @@ export default function OrgChartTab({
             </div>
 
             <dl className={styles.orgDrawerDetails}>
-              <div className={styles.orgDrawerRow}>
-                <dt>Reports to</dt>
-                <dd>
-                  {parentRole(allRoles, panelRole)?.name ?? "— Top level —"}
-                </dd>
-              </div>
-              <div className={styles.orgDrawerRow}>
-                <dt>Direct reports</dt>
-                <dd>{childRoles(allRoles, panelRole.id).length}</dd>
-              </div>
+              {panelRole && (
+                <>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Reports to</dt>
+                    <dd>
+                      {parentRole(allRoles, panelRole)?.name ?? "— Top level —"}
+                    </dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Direct reports</dt>
+                    <dd>{childRoles(allRoles, panelRole.id).length}</dd>
+                  </div>
+                </>
+              )}
               {panelEmployee && (
                 <>
                   <div className={styles.orgDrawerRow}>
@@ -1067,7 +1314,10 @@ export default function OrgChartTab({
                   </div>
                   <div className={styles.orgDrawerRow}>
                     <dt>Department</dt>
-                    <dd>{deptNameById(panelEmployee.departmentId)}</dd>
+                    <dd>
+                      {panelEmployee.departmentName ||
+                        deptNameById(panelEmployee.departmentId)}
+                    </dd>
                   </div>
                   <div className={styles.orgDrawerRow}>
                     <dt>Reports to (person)</dt>
@@ -1079,31 +1329,35 @@ export default function OrgChartTab({
                   </div>
                 </>
               )}
-              <div className={styles.orgDrawerRow}>
-                <dt>Portal</dt>
-                <dd>{panelRole.portal}</dd>
-              </div>
-              <div className={styles.orgDrawerRow}>
-                <dt>Scope</dt>
-                <dd>{panelRole.scopeLabel}</dd>
-              </div>
-              <div className={styles.orgDrawerRow}>
-                <dt>Hierarchy level</dt>
-                <dd>{panelRole.hierarchyLevel}</dd>
-              </div>
-              <div className={styles.orgDrawerRow}>
-                <dt>Users in role</dt>
-                <dd>{employeeCountByRole(panelRole.id)}</dd>
-              </div>
-              <div className={styles.orgDrawerRow}>
-                <dt>Permissions</dt>
-                <dd>
-                  {permCountByRole(panelRole.id)}/{totalPermCount}
-                </dd>
-              </div>
+              {panelRole && (
+                <>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Portal</dt>
+                    <dd>{panelRole.portal}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Scope</dt>
+                    <dd>{panelRole.scopeLabel}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Hierarchy level</dt>
+                    <dd>{panelRole.hierarchyLevel}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Users in role</dt>
+                    <dd>{employeeCountByRole(panelRole.id)}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
+                    <dt>Permissions</dt>
+                    <dd>
+                      {permCountByRole(panelRole.id)}/{totalPermCount}
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
 
-            {employeesForRole(panelRole.id).length > 1 && (
+            {panelRole && employeesForRole(panelRole.id).length > 1 && (
               <div className={styles.orgDrawerMore}>
                 <div className={styles.orgDrawerMoreTitle}>Also in this role</div>
                 <ul className={styles.orgDrawerMoreList}>
@@ -1121,29 +1375,36 @@ export default function OrgChartTab({
                 type="button"
                 className={styles.btnOutlinePurple}
                 onClick={openPhotoPicker}
+                disabled={!panelRole && !panelEmployee}
               >
                 Upload profile photo
               </button>
-              <button
-                type="button"
-                className={styles.btnSolidPurple}
-                onClick={() => {
-                  setEditId(panelRole.id);
-                  setPanelRoleId(null);
-                }}
-              >
-                Edit role
-              </button>
-              <button
-                type="button"
-                className={styles.btnOutlinePurple}
-                onClick={() => {
-                  onManage(panelRole.id);
-                  setPanelRoleId(null);
-                }}
-              >
-                Manage permissions
-              </button>
+              {panelRole && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.btnSolidPurple}
+                    onClick={() => {
+                      setEditId(panelRole.id);
+                      setPanelRoleId(null);
+                      setPanelEmployeeId(null);
+                    }}
+                  >
+                    Edit role
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnOutlinePurple}
+                    onClick={() => {
+                      onManage(panelRole.id);
+                      setPanelRoleId(null);
+                      setPanelEmployeeId(null);
+                    }}
+                  >
+                    Manage permissions
+                  </button>
+                </>
+              )}
             </div>
           </aside>
         </>

@@ -600,3 +600,131 @@ export function empNameById(employees: DemoEmployee[], id: string | null) {
 export function deptNameById(deptId: string) {
   return DEPARTMENTS.find((d) => d.id === deptId)?.name || deptId;
 }
+
+/** Top CEO cards on Org Chart → All (match live employee names). */
+export const ORG_CEO_NAME_HINTS = ["Joe", "Max", "Mubeen"] as const;
+
+/**
+ * Department manager map (display keys).
+ * Marketing is folded under IT (not a separate manager chip bucket).
+ * Mubeen → CEst. + IT | Max → HIT + HR + Finance | Joe → DM
+ */
+export const ORG_DEPT_MANAGER_NAME: Record<string, string> = {
+  IT: "Mubeen",
+  "CEst.": "Mubeen",
+  HIT: "Max",
+  HR: "Max",
+  Finance: "Max",
+  DM: "Joe",
+};
+
+function normDeptToken(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ");
+}
+
+/** Canonical chip label for an HRM department name (Marketing → IT). */
+export function orgDeptChipLabel(departmentName: string | undefined | null): string | null {
+  const t = normDeptToken(departmentName || "");
+  if (!t) return null;
+  if (t === "marketing" || t.includes("marketing")) return "IT";
+  if (t === "it" || t === "tech" || t.includes("technology")) return "IT";
+  if (t === "cest" || t === "c est") return "CEst.";
+  if (t === "hit") return "HIT";
+  if (t === "hr" || t === "human resources") return "HR";
+  if (t === "finance" || t === "accounts") return "Finance";
+  if (t === "dm" || t === "digital marketing") return "DM";
+  // Keep original casing from first non-empty name later — use trimmed raw for others
+  return String(departmentName || "").trim() || null;
+}
+
+/** Whether an employee belongs in a selected org-dept chip view. */
+export function employeeMatchesOrgDept(
+  emp: DemoEmployee,
+  chipLabel: string,
+): boolean {
+  const empChip = orgDeptChipLabel(emp.departmentName || emp.departmentId);
+  if (!empChip) return false;
+  if (chipLabel === "IT") {
+    const raw = normDeptToken(emp.departmentName || "");
+    return empChip === "IT" || raw === "marketing" || raw.includes("marketing");
+  }
+  return empChip.toLowerCase() === chipLabel.toLowerCase();
+}
+
+/** Unique department chips for Org Chart (All + depts). Marketing folded into IT. */
+export function listOrgDeptChips(employees: DemoEmployee[]): string[] {
+  const seen = new Map<string, string>();
+  for (const e of employees) {
+    const label = orgDeptChipLabel(e.departmentName || e.departmentId);
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (!seen.has(key)) seen.set(key, label);
+  }
+  // Prefer known order, then the rest A–Z
+  const preferred = ["IT", "CEst.", "HIT", "HR", "Finance", "DM"];
+  const rest = [...seen.values()]
+    .filter((l) => !preferred.some((p) => p.toLowerCase() === l.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  const ordered = [
+    ...preferred.filter((p) => seen.has(p.toLowerCase())),
+    ...rest,
+  ];
+  return ordered;
+}
+
+export function employeesInOrgDept(
+  employees: DemoEmployee[],
+  chipLabel: string,
+): DemoEmployee[] {
+  return employees
+    .filter((e) => employeeMatchesOrgDept(e, chipLabel))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function nameLooksLike(empName: string, hint: string): boolean {
+  const n = empName.trim().toLowerCase();
+  const h = hint.trim().toLowerCase();
+  if (!n || !h) return false;
+  return n === h || n.startsWith(h + " ") || n.includes(" " + h) || n.includes(h);
+}
+
+/** Resolve department manager from live employees by configured name hint. */
+export function findOrgDeptManager(
+  employees: DemoEmployee[],
+  chipLabel: string,
+): DemoEmployee | null {
+  const hint =
+    ORG_DEPT_MANAGER_NAME[chipLabel] ||
+    ORG_DEPT_MANAGER_NAME[
+      Object.keys(ORG_DEPT_MANAGER_NAME).find(
+        (k) => k.toLowerCase() === chipLabel.toLowerCase(),
+      ) || ""
+    ];
+  if (!hint) return null;
+  const inDept = employeesInOrgDept(employees, chipLabel);
+  const fromDept = inDept.find((e) => nameLooksLike(e.name, hint));
+  if (fromDept) return fromDept;
+  return employees.find((e) => nameLooksLike(e.name, hint)) ?? null;
+}
+
+/** Top CEO cards for All view (ordered). Missing names → placeholder stubs. */
+export function resolveOrgCeoCards(employees: DemoEmployee[]): DemoEmployee[] {
+  return ORG_CEO_NAME_HINTS.map((hint, i) => {
+    const found = employees.find((e) => nameLooksLike(e.name, hint));
+    if (found) return found;
+    return {
+      id: `ceo-placeholder-${i}`,
+      name: hint,
+      initials: hint.slice(0, 2).toUpperCase(),
+      roleId: "",
+      departmentId: "executive",
+      departmentName: "Executive",
+      reportsTo: null,
+    };
+  });
+}
