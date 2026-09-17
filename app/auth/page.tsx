@@ -13,6 +13,10 @@ import {
   markAdminPortal,
   markEmployeePortal,
 } from "@/lib/access-control/employee-shell";
+import {
+  employeeDisplayNameFromRecord,
+  sanitizeEmployeeDisplayName,
+} from "@/lib/employee-login-lookup";
 import styles from "./login.module.css";
 import { AuthLoginCarousel } from "./AuthLoginCarousel";
 
@@ -140,13 +144,19 @@ export default function LoginPage() {
             localStorage.setItem("loginId", trimmedLoginId);
             localStorage.setItem("userRole", data.role || data.employee?.role || "Officer");
             const empId = String(data.employee?.id ?? data.employee?.employee_id ?? "").trim();
-            const empName = String(
-              data.employee?.full_name ||
+            const empName = sanitizeEmployeeDisplayName(
+              data.display_name ||
+                data.employee?.display_name ||
+                data.employee?.full_name ||
                 data.employee?.name ||
-                data.username ||
-                "",
-            ).trim();
-            markEmployeePortal(empId || undefined, empName || undefined);
+                employeeDisplayNameFromRecord(data.employee),
+              "Employee",
+            );
+            markEmployeePortal(empId || undefined, empName);
+            localStorage.setItem("employeeName", empName);
+            if (empId && /^\d+$/.test(empId)) {
+              localStorage.setItem("employeeId", empId);
+            }
           }
           await persistCredentials(trimmedLoginId, rawPassword);
           // Keep role in localStorage for My Team / hierarchy. Dedicated

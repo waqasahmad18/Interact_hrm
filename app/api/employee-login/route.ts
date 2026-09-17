@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
 import bcrypt from "bcryptjs";
 import {
+  employeeDisplayNameFromRecord,
   employeeLoginIdLower,
   normalizeEmployeeLoginId,
   parseHrmEmployeeId,
@@ -61,10 +62,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Account is inactive. Please contact admin." }, { status: 403 });
     }
 
+    const displayName = employeeDisplayNameFromRecord(employee);
+    const { password: _pw, ...safeEmployee } = employee;
+
     return NextResponse.json({
       success: true,
-      employee,
+      employee: {
+        ...safeEmployee,
+        full_name: displayName,
+        name: displayName,
+        display_name: displayName,
+      },
       username: employee.username || employee.email || loginId,
+      display_name: displayName,
     });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

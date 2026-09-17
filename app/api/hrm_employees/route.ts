@@ -7,9 +7,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
     const username = searchParams.get('username');
+    const email = searchParams.get('email');
     
     // At least one parameter is required
-    if (!employeeId && !username) {
+    if (!employeeId && !username && !email) {
       return NextResponse.json({ success: false, error: 'employeeId or username is required' }, { status: 400 });
     }
     
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
         FROM hrm_employees e
         LEFT JOIN employee_jobs j ON e.id = j.employee_id
         LEFT JOIN departments d ON j.department_id = d.id
+        LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
         WHERE `;
     let params: string[] = [];
     
@@ -29,6 +31,10 @@ export async function GET(req: NextRequest) {
       // Search by employee_code, id, or username
         query += '(e.employee_code = ? OR CAST(e.id AS CHAR) = ? OR e.username = ?)';
       params = [employeeId, employeeId, employeeId];
+    } else if (email) {
+      query += '(LOWER(TRIM(ec.email_work)) = ? OR LOWER(TRIM(e.username)) = ?)';
+      const emailLower = email.trim().toLowerCase();
+      params = [emailLower, emailLower];
     } else if (username) {
         query += 'e.username = ?';
       params = [username];
@@ -166,8 +172,20 @@ export async function PUT(req: NextRequest) {
     const bloodGroup = blood_group && String(blood_group).trim() !== "" ? String(blood_group).trim() : null;
     const cnicIssue = cnic_issuance_date && String(cnic_issuance_date).slice(0, 10) || null;
     const cnicExpiry = cnic_expiry_date && String(cnic_expiry_date).slice(0, 10) || null;
-    const cnicAddr =
+    let cnicAddr =
       cnic_address && String(cnic_address).trim() !== "" ? String(cnic_address).trim() : null;
+    // Do not wipe an existing CNIC address when the form submits an empty value
+    // (e.g. edit load race / field not yet hydrated).
+    if (!cnicAddr) {
+      const [existingRows]: any = await conn.execute(
+        `SELECT cnic_address FROM hrm_employees WHERE ${whereClause} LIMIT 1`,
+        [whereValue]
+      );
+      const existingAddr = existingRows?.[0]?.cnic_address;
+      if (existingAddr && String(existingAddr).trim() !== "") {
+        cnicAddr = String(existingAddr).trim();
+      }
+    }
     
     console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, father_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, blood_group = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_issuance_date = ?, cnic_expiry_date = ?, cnic_address = ?, employment_status = ?, employment_type = ?, working_hours = ? WHERE ${whereClause}`);
     console.log('Parameters:', [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, role, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal, whereValue]);

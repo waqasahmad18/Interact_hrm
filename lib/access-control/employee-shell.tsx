@@ -43,7 +43,13 @@ export function markEmployeePortal(employeeId?: string, employeeName?: string) {
     if (employeeId && /^\d+$/.test(employeeId)) {
       localStorage.setItem("employeeId", employeeId);
     }
-    if (employeeName) localStorage.setItem("employeeName", employeeName);
+    if (employeeName) {
+      const cleaned = String(employeeName).trim();
+      // Never persist email / numeric login id as the profile display name
+      if (cleaned && !cleaned.includes("@") && !/^\d+$/.test(cleaned)) {
+        localStorage.setItem("employeeName", cleaned);
+      }
+    }
   } catch {
     /* ignore */
   }

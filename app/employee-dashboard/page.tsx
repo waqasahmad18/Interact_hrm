@@ -9,6 +9,7 @@ import {
   saveTicketSeen,
   type TicketThreadMessage,
 } from "../../lib/ticket-thread";
+import { parseTicketInstant } from "@/lib/ticket-time";
 import { ATTENDANCE_DATA_CHANGED } from "../../lib/ui-sync/breakPrayerDataRefresh";
 import type { TicketCategory } from "../../lib/ticket-catalog";
 import { resolveEventColor } from "../../lib/event-colors";
@@ -24,6 +25,11 @@ import {
 import { normalizeAttendanceStatus } from "../../lib/attendance-status";
 import { useRouter } from "next/navigation";
 import React from "react";
+import {
+  employeeDisplayNameFromRecord,
+  sanitizeEmployeeDisplayName,
+} from "@/lib/employee-login-lookup";
+import { markEmployeePortal } from "@/lib/access-control/employee-shell";
 
 type AttendanceRow = {
   id?: number;
@@ -61,6 +67,7 @@ type TicketWidgetRow = {
   category: TicketCategory;
   ticket_type: string;
   messages?: TicketThreadMessage[];
+  requested_at?: string;
   updated_at: string;
 };
 
@@ -280,8 +287,54 @@ export default function EmployeeDashboardPage() {
     const empId =
       localStorage.getItem("employeeId") || localStorage.getItem("loginId") || "";
     setEmployeeId(empId);
-    setEmployeeName(localStorage.getItem("employeeName") || "Employee");
+    // Never show email/login id as the profile card title (even before API resolves)
+    setEmployeeName(
+      sanitizeEmployeeDisplayName(localStorage.getItem("employeeName"), "Employee"),
+    );
     if (empId) setTicketSeenMap(loadTicketSeenMap(empId));
+  }, []);
+
+  // Resolve real first+last name ASAP (HRM id or email login both)
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const loginId = localStorage.getItem("loginId") || "";
+    const empId = localStorage.getItem("employeeId") || "";
+    if (!loginId && !empId) return;
+
+    let cancelled = false;
+    const urls: string[] = [];
+    if (empId && /^\d+$/.test(empId)) {
+      urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(empId)}`);
+    }
+    if (loginId.includes("@")) {
+      urls.push(`/api/hrm_employees?email=${encodeURIComponent(loginId)}`);
+    } else if (loginId) {
+      urls.push(`/api/hrm_employees?username=${encodeURIComponent(loginId)}`);
+      if (/^\d+$/.test(loginId)) {
+        urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`);
+      }
+    }
+
+    void Promise.all(urls.map((u) => fetch(u, { cache: "no-store" }).then((r) => r.json()).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return;
+        const data = results.find((d) => d?.success && d.employee);
+        if (!data?.employee) return;
+        const name = employeeDisplayNameFromRecord(data.employee);
+        const id = String(data.employee.id || data.employee.employee_id || empId).trim();
+        setEmployeeName(name);
+        if (id && /^\d+$/.test(id)) setEmployeeId(id);
+        markEmployeePortal(id, name);
+        try {
+          localStorage.setItem("employeeName", name);
+        } catch {
+          /* ignore */
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   React.useEffect(() => {
@@ -792,7 +845,16 @@ export default function EmployeeDashboardPage() {
             ? 1
             : 0;
         if (bUnread !== aUnread) return bUnread - aUnread;
-        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        const aMs =
+          parseTicketInstant(a.requested_at)?.getTime() ||
+          parseTicketInstant(a.updated_at)?.getTime() ||
+          0;
+        const bMs =
+          parseTicketInstant(b.requested_at)?.getTime() ||
+          parseTicketInstant(b.updated_at)?.getTime() ||
+          0;
+        if (bMs !== aMs) return bMs - aMs;
+        return b.id - a.id;
       })
       .slice(0, 1);
   }, [tickets, ticketSeenMap]);

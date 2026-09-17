@@ -6,6 +6,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { EmployeeShellProvider, markEmployeePortal } from "@/lib/access-control/employee-shell";
 import {
+  employeeDisplayNameFromRecord,
+  sanitizeEmployeeDisplayName,
+} from "@/lib/employee-login-lookup";
+import {
   FaTachometerAlt,
   FaUser,
   FaUsers,
@@ -159,7 +163,10 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       return;
     }
     const cachedId = localStorage.getItem("employeeId");
-    const cachedName = localStorage.getItem("employeeName");
+    const cachedName = sanitizeEmployeeDisplayName(
+      localStorage.getItem("employeeName"),
+      "",
+    );
     setEmployeeId(cachedId || loginId);
     if (cachedName) setEmployeeName(cachedName);
   }, []);
@@ -171,33 +178,37 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
 
     let apiUrl = "/api/hrm_employees?";
     if (loginId.includes("@")) {
-      apiUrl += `email=${loginId}`;
+      apiUrl += `email=${encodeURIComponent(loginId)}`;
+    } else if (/^\d+$/.test(loginId)) {
+      apiUrl += `employeeId=${encodeURIComponent(loginId)}`;
     } else {
-      apiUrl += `username=${loginId}`;
+      apiUrl += `username=${encodeURIComponent(loginId)}`;
     }
     Promise.all([
       fetch(apiUrl).then((res) => res.json()).catch(() => ({ success: false })),
-      fetch(`/api/hrm_employees?employeeId=${loginId}`)
+      fetch(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`)
         .then((res) => res.json())
         .catch(() => ({ success: false })),
     ])
       .then(([data1, data2]) => {
         const data = data1.success ? data1 : data2;
         if (data.success && data.employee) {
-          const name =
-            (data.employee.first_name || "") +
-            (data.employee.last_name ? " " + data.employee.last_name : "");
-          const trimmedName = name.trim() || "Employee";
+          const trimmedName = employeeDisplayNameFromRecord(data.employee);
           const empId = String(data.employee.id || data.employee.employee_id || loginId);
           setEmployeeName(trimmedName);
           setEmployeeId(empId);
           markEmployeePortal(empId, trimmedName);
+          try {
+            localStorage.setItem("employeeName", trimmedName);
+          } catch {
+            /* ignore */
+          }
         } else {
-          setEmployeeName((prev) => prev || "Employee");
+          setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
         }
       })
       .catch(() => {
-        setEmployeeName((prev) => prev || "Employee");
+        setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
       });
   }, []);
 
