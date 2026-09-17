@@ -842,7 +842,8 @@ export async function saveOrgRoles(roles: RoleDef[]) {
   );
 }
 
-/** Upsert catalog keys into global features without wiping existing toggles. */
+/** Upsert catalog keys into global features without wiping existing toggles.
+ * Team module is force-enabled so assigned team.* permissions always surface. */
 export async function syncAccessControlCatalog() {
   await ensureAccessControlStore();
 
@@ -852,6 +853,7 @@ export async function syncAccessControlCatalog() {
       const existing = await db
         .collection(GLOBAL_FEATURES_COLLECTION)
         .findOne({ feature_key: f.key });
+      const forceOn = f.key === "team_lead_module";
       if (existing) {
         await db.collection(GLOBAL_FEATURES_COLLECTION).updateOne(
           { feature_key: f.key },
@@ -860,6 +862,7 @@ export async function syncAccessControlCatalog() {
               display_name: f.name,
               description: f.desc,
               updated_at: new Date(),
+              ...(forceOn ? { is_enabled: 1 } : {}),
             },
           },
         );
@@ -869,7 +872,7 @@ export async function syncAccessControlCatalog() {
           feature_key: f.key,
           display_name: f.name,
           description: f.desc,
-          is_enabled: f.on ? 1 : 0,
+          is_enabled: forceOn || f.on ? 1 : 0,
           created_at: new Date(),
           updated_at: new Date(),
         });
@@ -879,17 +882,32 @@ export async function syncAccessControlCatalog() {
   }
 
   for (const f of GLOBAL_FEATURES) {
-    await pool.execute(
-      `INSERT INTO ${GLOBAL_FEATURES_COLLECTION}
-        (feature_key, display_name, description, is_enabled)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         display_name = VALUES(display_name),
-         description = VALUES(description)`,
-      [f.key, f.name, f.desc, f.on ? 1 : 0],
-    );
+    const forceOn = f.key === "team_lead_module";
+    if (forceOn) {
+      await pool.execute(
+        `INSERT INTO ${GLOBAL_FEATURES_COLLECTION}
+          (feature_key, display_name, description, is_enabled)
+         VALUES (?, ?, ?, 1)
+         ON DUPLICATE KEY UPDATE
+           display_name = VALUES(display_name),
+           description = VALUES(description),
+           is_enabled = 1`,
+        [f.key, f.name, f.desc],
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO ${GLOBAL_FEATURES_COLLECTION}
+          (feature_key, display_name, description, is_enabled)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           display_name = VALUES(display_name),
+           description = VALUES(description)`,
+        [f.key, f.name, f.desc, f.on ? 1 : 0],
+      );
+    }
   }
 }
+
 
 export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise<{
   employeeId: string;

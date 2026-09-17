@@ -15,37 +15,34 @@ export type AccessMenuItem = {
  * sidebar/chrome never switches to the admin layout.
  */
 export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
+  // Team links: permission alone controls visibility (no featureGate).
+  // Assigned team.* perms must always appear in the employee sidebar.
   {
     permission: "team.dashboard.view",
-    featureGate: "team_lead_module",
     name: "My Team",
     path: "/employee-dashboard/my-team",
     group: "team",
   },
   {
     permission: "team.attendance.view",
-    featureGate: "team_lead_module",
     name: "Team Attendance",
     path: "/employee-dashboard/summaries?view=attendance",
     group: "team",
   },
   {
     permission: "team.breaks.view",
-    featureGate: "team_lead_module",
     name: "Team Breaks",
     path: "/employee-dashboard/summaries?view=break",
     group: "team",
   },
   {
     permission: "team.breaks.view",
-    featureGate: "team_lead_module",
     name: "Team Prayer Breaks",
     path: "/employee-dashboard/summaries?view=prayer",
     group: "team",
   },
   {
     permission: "team.leaves.view",
-    featureGate: "team_lead_module",
     name: "Team Leaves",
     path: "/employee-dashboard/leave-inbox",
     group: "team",

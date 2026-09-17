@@ -450,7 +450,12 @@ export const GLOBAL_FEATURES: GlobalFeature[] = [
     desc: "1st step then 2nd step required before leave is final",
     on: true,
   },
-  { key: "team_lead_module", name: "Team module", desc: "Team dashboard and team summaries", on: false },
+  {
+    key: "team_lead_module",
+    name: "Team module",
+    desc: "Org flag for team features; assigned team.* permissions still always show in the employee sidebar",
+    on: true,
+  },
   { key: "tickets", name: "Ticket system", desc: "Employee tickets and admin ticket inbox", on: true },
   { key: "recruitment", name: "Recruitment module", desc: "Recruitment workflows and pages", on: true },
   { key: "presence_agent", name: "Desktop presence agent", desc: "Presence / idle monitoring integration", on: true },
