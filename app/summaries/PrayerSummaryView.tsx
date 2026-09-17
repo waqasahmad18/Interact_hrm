@@ -12,6 +12,11 @@ import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
 import { FaFileExcel } from "react-icons/fa";
 import { getDateStringInTimeZone, getTimeStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
 import { toastError, toastSuccess } from "@/lib/app-toast";
+import {
+  filterDepartmentsByScope,
+  rowAllowedByScope,
+  useViewerDataScope,
+} from "@/lib/access-control/use-viewer-scope";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -36,6 +41,7 @@ function getSessionGroupingKey(record: any) {
 }
 
 export default function PrayerSummaryView() {
+  const viewerScope = useViewerDataScope();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [department, setDepartment] = useState("");
@@ -51,6 +57,11 @@ export default function PrayerSummaryView() {
   const [detail, setDetail] = useState<EmployeeDetailPayload | null>(null);
   const { getPhoto } = useEmployeePhotoMap();
 
+  const scopedDepartments = useMemo(
+    () => filterDepartmentsByScope(departments, viewerScope),
+    [departments, viewerScope],
+  );
+
   useEffect(() => {
     fetch("/api/departments")
       .then((res) => res.json())
@@ -59,6 +70,16 @@ export default function PrayerSummaryView() {
       })
       .catch(() => setDepartments([]));
   }, []);
+
+  useEffect(() => {
+    if (viewerScope.mode === "all") return;
+    if (
+      department &&
+      !scopedDepartments.some((d: any) => d.name === department)
+    ) {
+      setDepartment("");
+    }
+  }, [viewerScope.mode, scopedDepartments, department]);
 
   useEffect(() => {
     const effectiveFrom = fromDate || toDate || today;
@@ -84,6 +105,9 @@ export default function PrayerSummaryView() {
 
   const filteredPrayerBreaks = useMemo(() => {
     return prayerBreaks.filter((p) => {
+      if (!rowAllowedByScope(viewerScope, p.employee_id, p.department_name)) {
+        return false;
+      }
       const term = deferredSearch.trim().toLowerCase();
       if (term) {
         const employeeName = (p.employee_name || "").toLowerCase();
@@ -96,7 +120,7 @@ export default function PrayerSummaryView() {
       if (department && p.department_name !== department) return false;
       return true;
     });
-  }, [prayerBreaks, deferredSearch, department]);
+  }, [prayerBreaks, deferredSearch, department, viewerScope]);
 
   const staticTotals = useMemo(() => {
     const map = new Map<string, number>();
@@ -235,8 +259,10 @@ export default function PrayerSummaryView() {
             style={{ width: 180 }}
           />
           <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 180 }}>
-            <option value="">All Departments</option>
-            {departments.map((dept: any) => (
+            <option value="">
+              {viewerScope.mode === "all" ? "All Departments" : "All (your departments)"}
+            </option>
+            {scopedDepartments.map((dept: any) => (
               <option key={dept.id} value={dept.name}>{dept.name}</option>
             ))}
           </select>

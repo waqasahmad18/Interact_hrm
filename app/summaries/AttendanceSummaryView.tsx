@@ -17,6 +17,11 @@ import { getDateStringInTimeZone, getParts, getTimeStringInTimeZone, SERVER_TIME
 import { AutoClockOutBadge } from "../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../lib/attendance-auto-clock-out";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
+import {
+  filterDepartmentsByScope,
+  rowAllowedByScope,
+  useViewerDataScope,
+} from "@/lib/access-control/use-viewer-scope";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -88,6 +93,7 @@ function formatLateTime(minutes: number) {
 }
 
 export default function AttendanceSummaryView() {
+  const viewerScope = useViewerDataScope();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [department, setDepartment] = useState("");
@@ -110,6 +116,11 @@ export default function AttendanceSummaryView() {
       importedSnapshot.rows.length,
   );
 
+  const scopedDepartments = useMemo(
+    () => filterDepartmentsByScope(departments, viewerScope),
+    [departments, viewerScope],
+  );
+
   useEffect(() => {
     fetch("/api/departments")
       .then((res) => res.json())
@@ -118,6 +129,16 @@ export default function AttendanceSummaryView() {
       })
       .catch(() => setDepartments([]));
   }, []);
+
+  useEffect(() => {
+    if (viewerScope.mode === "all") return;
+    if (
+      department &&
+      !scopedDepartments.some((d: any) => d.name === department)
+    ) {
+      setDepartment("");
+    }
+  }, [viewerScope.mode, scopedDepartments, department]);
 
   useEffect(() => {
     setImportedSnapshot(loadImportedAttendanceSummarySnapshot(filterMonth));
@@ -156,6 +177,9 @@ export default function AttendanceSummaryView() {
     const term = deferredSearch.trim().toLowerCase();
     return attendance
       .filter((a) => {
+        if (!rowAllowedByScope(viewerScope, a.employee_id, a.department_name)) {
+          return false;
+        }
         if (term) {
           const employeeName = (a.employee_name || "").toLowerCase();
           const pseudonym = (a.pseudonym || "").toLowerCase();
@@ -168,7 +192,7 @@ export default function AttendanceSummaryView() {
         return true;
       })
       .sort(compareAttendanceRows);
-  }, [attendance, deferredSearch, department, showingImported]);
+  }, [attendance, deferredSearch, department, showingImported, viewerScope]);
 
   /** Closed sessions: total hours fixed (no live clock). */
   const closedDisplay = useMemo(() => {
@@ -299,8 +323,10 @@ export default function AttendanceSummaryView() {
             style={{ width: 220 }}
           />
           <select value={department} onChange={(e) => setDepartment(e.target.value)} className={styles.breakSummaryDate} style={{ width: 200 }}>
-            <option value="">All Departments</option>
-            {departments.map((dept: any) => (
+            <option value="">
+              {viewerScope.mode === "all" ? "All Departments" : "All (your departments)"}
+            </option>
+            {scopedDepartments.map((dept: any) => (
               <option key={dept.id} value={dept.name}>{dept.name}</option>
             ))}
           </select>

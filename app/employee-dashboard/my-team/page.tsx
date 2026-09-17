@@ -76,7 +76,9 @@ export default function MyTeamPage() {
           <div>
             <h1 className={styles.title}>My Team</h1>
             <p className={styles.sub}>
-              {hierarchy?.departmentName || "Direct reports"}
+              {hierarchy?.departmentName
+                ? `${hierarchy.departmentName} department (incl. related org units)`
+                : "Department colleagues"}
             </p>
           </div>
           <span className={styles.count}>{team.length} members</span>

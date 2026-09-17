@@ -1,5 +1,6 @@
 import { pool } from "@/lib/db";
 import { getAllOrgChartPhotos } from "@/lib/org-chart-photos-table";
+import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
 
 export const HIERARCHY_TABLE = "hrm_employee_hierarchy";
 export const TEAM_MEMBERS_TABLE = "hrm_team_members";
@@ -162,17 +163,6 @@ function inferReportsTo(emp: EmpRow, deptEmployees: EmpRow[]): EmpRow | null {
   return [...higher].sort((a, b) => roleRank(a.role) - roleRank(b.role))[0] ?? null;
 }
 
-function inferTeamMembers(emp: EmpRow, deptEmployees: EmpRow[]): EmpRow[] {
-  const rank = roleRank(emp.role);
-  if (rank > 4) return [];
-
-  return deptEmployees.filter((e) => {
-    if (e.id === emp.id) return false;
-    const manager = inferReportsTo(e, deptEmployees);
-    return manager?.id === emp.id;
-  });
-}
-
 function resolvePhoto(
   employeeId: string,
   employeePhotos: Record<string, string>,
@@ -205,6 +195,21 @@ function toPerson(
   };
 }
 
+function sameOrgFamily(a: EmpRow, b: EmpRow): boolean {
+  const ca = orgDeptChipLabel(a.department_name);
+  const cb = orgDeptChipLabel(b.department_name);
+  if (ca && cb) return ca.toLowerCase() === cb.toLowerCase();
+  if (a.department_id != null && b.department_id != null) {
+    return Number(a.department_id) === Number(b.department_id);
+  }
+  return false;
+}
+
+/** Employees in the same org-dept family (IT includes Marketing). */
+function orgFamilyEmployees(emp: EmpRow, all: EmpRow[]): EmpRow[] {
+  return all.filter((e) => sameOrgFamily(emp, e));
+}
+
 export async function getEmployeeHierarchy(
   employeeId: string | number,
 ): Promise<EmployeeHierarchyResult | null> {
@@ -216,10 +221,8 @@ export async function getEmployeeHierarchy(
     const emp = all.find((e) => e.id === targetId);
     if (!emp) return null;
 
-    const deptEmployees =
-      emp.department_id != null
-        ? all.filter((e) => e.department_id === emp.department_id)
-        : all;
+    // IT lead sees Marketing peers too (org chart fold).
+    const deptEmployees = orgFamilyEmployees(emp, all);
 
     const photos = await getAllOrgChartPhotos();
     const employeePhotos = photos.employeePhotos;
@@ -242,8 +245,17 @@ export async function getEmployeeHierarchy(
       teamRows = explicitMemberIds
         .map((id) => all.find((e) => e.id === id))
         .filter((e): e is EmpRow => Boolean(e));
+      // Still include rest of org-dept family so My Team shows full department
+      const byId = new Set(teamRows.map((r) => r.id));
+      for (const e of deptEmployees) {
+        if (e.id !== emp.id && !byId.has(e.id)) {
+          teamRows.push(e);
+          byId.add(e.id);
+        }
+      }
     } else {
-      teamRows = inferTeamMembers(emp, deptEmployees);
+      // My Team = all employees in same org department family (excl. self)
+      teamRows = deptEmployees.filter((e) => e.id !== emp.id);
     }
 
     const isTeamLead = teamRows.length > 0 || roleRank(emp.role) <= 4;

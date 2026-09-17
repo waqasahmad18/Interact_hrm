@@ -19,6 +19,7 @@ import {
   leaveStatusLabel,
   normStep,
 } from "@/lib/leave-approval";
+import { rowAllowedByScope, useViewerDataScope } from "@/lib/access-control/use-viewer-scope";
 
 type LeaveSortKey =
   | "employee_id"
@@ -78,6 +79,7 @@ function stepBadgeClass(step: string) {
 }
 
 export default function LeavePage() {
+  const viewerScope = useViewerDataScope();
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,14 +92,18 @@ export default function LeavePage() {
   );
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
-  const fetchLeaves = async () => {
+  const fetchLeaves = async (scope = viewerScope) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/leaves");
+      const leaveUrl =
+        scope.mode !== "all" && scope.employeeIds.length
+          ? `/api/leaves?employees=${encodeURIComponent(scope.employeeIds.join(","))}`
+          : "/api/leaves";
+      const res = await fetch(leaveUrl, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
-        const empRes = await fetch("/api/employee-list");
+        const empRes = await fetch("/api/employee-list", { cache: "no-store" });
         const empData = await empRes.json();
         const empMap = new Map<string, { employee_name: string; pseudonym: string; department_name: string }>();
         if (empData.success && Array.isArray(empData.employees)) {
@@ -116,16 +122,20 @@ export default function LeavePage() {
             }
           });
         }
-        const enrichedLeaves = (data.leaves || []).map((l: any) => {
-          const employeeKey = String(l?.employee_id ?? "").trim();
-          const emp = empMap.get(employeeKey);
-          return {
-            ...l,
-            employee_name: l?.employee_name || emp?.employee_name || "-",
-            pseudonym: emp?.pseudonym || "-",
-            department_name: emp?.department_name || "-",
-          };
-        });
+        const enrichedLeaves = (data.leaves || [])
+          .map((l: any) => {
+            const employeeKey = String(l?.employee_id ?? "").trim();
+            const emp = empMap.get(employeeKey);
+            return {
+              ...l,
+              employee_name: l?.employee_name || emp?.employee_name || "-",
+              pseudonym: emp?.pseudonym || "-",
+              department_name: emp?.department_name || "-",
+            };
+          })
+          .filter((l: any) =>
+            rowAllowedByScope(scope, l.employee_id, l.department_name),
+          );
         setLeaves(enrichedLeaves);
       } else {
         setError(data.error || "Failed to fetch leaves");
@@ -158,8 +168,10 @@ export default function LeavePage() {
   }, []);
 
   useEffect(() => {
-    void fetchLeaves();
-  }, []);
+    void fetchLeaves(viewerScope);
+    // Refetch when scope finishes loading / changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewerScope.mode, viewerScope.employeeIds.join(",")]);
 
   const stats = useMemo(() => {
     let pending = 0;

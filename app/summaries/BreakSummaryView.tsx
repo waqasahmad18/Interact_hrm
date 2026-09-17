@@ -14,6 +14,11 @@ import type { EmployeeDetailPayload } from "../components/EmployeeDetailPopup";
 import { buildEmployeeDetailPayload } from "@/lib/employee-detail-from-row";
 import { useEmployeePhotoMap } from "../components/use-employee-photo-map";
 import { toastError, toastSuccess } from "@/lib/app-toast";
+import {
+  filterDepartmentsByScope,
+  rowAllowedByScope,
+  useViewerDataScope,
+} from "@/lib/access-control/use-viewer-scope";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -54,6 +59,7 @@ function getSessionGroupingKey(record: any) {
 }
 
 export default function BreakSummaryView() {
+  const viewerScope = useViewerDataScope();
   const [breaks, setBreaks] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -69,6 +75,11 @@ export default function BreakSummaryView() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { getPhoto } = useEmployeePhotoMap();
 
+  const scopedDepartments = useMemo(
+    () => filterDepartmentsByScope(departments, viewerScope),
+    [departments, viewerScope],
+  );
+
   useEffect(() => {
     fetch("/api/departments")
       .then((res) => res.json())
@@ -77,6 +88,16 @@ export default function BreakSummaryView() {
       })
       .catch(() => setDepartments([]));
   }, []);
+
+  useEffect(() => {
+    if (viewerScope.mode === "all") return;
+    if (
+      department &&
+      !scopedDepartments.some((d: any) => d.name === department)
+    ) {
+      setDepartment("");
+    }
+  }, [viewerScope.mode, scopedDepartments, department]);
 
   useEffect(() => {
     const effectiveFrom = fromDate || toDate || today;
@@ -103,6 +124,9 @@ export default function BreakSummaryView() {
 
   const filteredBreaks = useMemo(() => {
     return breaks.filter((b) => {
+      if (!rowAllowedByScope(viewerScope, b.employee_id, b.department_name)) {
+        return false;
+      }
       const term = deferredSearch.trim().toLowerCase();
       if (term) {
         const employeeName = (b.employee_name || "").toLowerCase();
@@ -115,7 +139,7 @@ export default function BreakSummaryView() {
       if (department && b.department_name !== department) return false;
       return true;
     });
-  }, [breaks, deferredSearch, department]);
+  }, [breaks, deferredSearch, department, viewerScope]);
 
   /** Static totals for ended breaks (no live clock). Running rows get live end = now below. */
   const staticTotals = useMemo(() => {
@@ -266,8 +290,10 @@ export default function BreakSummaryView() {
             className={styles.breakSummaryDate}
             style={{ width: 180 }}
           >
-            <option value="">All Departments</option>
-            {departments.map((dept: any) => (
+            <option value="">
+              {viewerScope.mode === "all" ? "All Departments" : "All (your departments)"}
+            </option>
+            {scopedDepartments.map((dept: any) => (
               <option key={dept.id} value={dept.name}>
                 {dept.name}
               </option>

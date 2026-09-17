@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEmployeeAccessPayload } from "@/lib/access-control/store";
+import { resolveViewerDataScope } from "@/lib/access-control/data-scope";
 
 export const runtime = "nodejs";
 
@@ -19,8 +20,16 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       );
     }
-    const payload = await getEmployeeAccessPayload(employeeId.trim());
-    return NextResponse.json({ success: true, ...payload });
+    const id = employeeId.trim();
+    const [payload, dataScope] = await Promise.all([
+      getEmployeeAccessPayload(id),
+      resolveViewerDataScope(id),
+    ]);
+    return NextResponse.json({
+      success: true,
+      ...payload,
+      data_scope: dataScope,
+    });
   } catch (err) {
     return NextResponse.json(
       { success: false, error: err instanceof Error ? err.message : String(err) },
