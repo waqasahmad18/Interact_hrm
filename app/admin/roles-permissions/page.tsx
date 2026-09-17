@@ -242,11 +242,13 @@ export default function SystemControlPage() {
 
   function employeeCountByRole(roleId: string) {
     return employees.filter((e) => {
-      const slug =
-        e.accessRoleSlug != null && String(e.accessRoleSlug).trim()
-          ? String(e.accessRoleSlug).trim()
-          : null;
-      return slug === roleId;
+      const slugs =
+        Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
+          ? e.accessRoleSlugs
+          : e.accessRoleSlug
+            ? [String(e.accessRoleSlug)]
+            : [];
+      return slugs.includes(roleId);
     }).length;
   }
 
@@ -549,7 +551,17 @@ export default function SystemControlPage() {
       return;
     }
     const name = roleMeta(roleId, allRoles).name;
-    if (employees.some((e) => e.accessRoleSlug === roleId)) {
+    if (
+      employees.some((e) => {
+        const slugs =
+          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
+            ? e.accessRoleSlugs
+            : e.accessRoleSlug
+              ? [String(e.accessRoleSlug)]
+              : [];
+        return slugs.includes(roleId);
+      })
+    ) {
       showToast(`Unassign employees first — "${name}" still has users`);
       return;
     }
@@ -561,7 +573,15 @@ export default function SystemControlPage() {
     if (!roleId) return;
     if (
       isRoleLocked(roleId) ||
-      employees.some((e) => e.accessRoleSlug === roleId)
+      employees.some((e) => {
+        const slugs =
+          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
+            ? e.accessRoleSlugs
+            : e.accessRoleSlug
+              ? [String(e.accessRoleSlug)]
+              : [];
+        return slugs.includes(roleId);
+      })
     ) {
       setDeleteTargetId(null);
       return;
@@ -725,21 +745,21 @@ export default function SystemControlPage() {
     }
   }
 
-  async function unassignEmployeesFromRole(employeeIds: string[]) {
+  async function unassignEmployeesFromRole(employeeIds: string[], roleId: string) {
     const ids = [...new Set(employeeIds.map(String).filter(Boolean))];
-    if (!ids.length) return;
+    if (!ids.length || !roleId) return;
     setAccessSaving(true);
     try {
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
         headers: accessApiHeaders(),
-        body: JSON.stringify({ type: "unassign-many", employeeIds: ids }),
+        body: JSON.stringify({ type: "unassign-many", employeeIds: ids, roleId }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Unassign failed");
       await refreshEmployeesFromApi();
       showToast(
-        `${ids.length} user(s) unassigned from System Control role. Ask them to refresh.`,
+        `${ids.length} user(s) removed from ${roleMeta(roleId, allRoles).name}. Other roles kept.`,
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to unassign");
@@ -1036,7 +1056,7 @@ export default function SystemControlPage() {
               onSaveEmployee={(empId) => void saveEmployeePermissionsToDb(empId)}
               onClearEmployeeOverrides={(empId) => void clearEmployeeOverrides(empId)}
               onAssignEmployees={(ids, roleId) => void assignEmployeesToRole(ids, roleId)}
-              onUnassignEmployees={(ids) => void unassignEmployeesFromRole(ids)}
+              onUnassignEmployees={(ids, roleId) => void unassignEmployeesFromRole(ids, roleId)}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id)}
               employeeCountByRole={employeeCountByRole}

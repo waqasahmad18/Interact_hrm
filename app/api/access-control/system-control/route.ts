@@ -16,6 +16,7 @@ import {
   syncAccessControlCatalog,
   unassignEmployeeRole,
   unassignEmployees,
+  unassignEmployeesFromRole,
 } from "@/lib/access-control/store";
 import {
   FEATURE_MODULES,
@@ -259,7 +260,10 @@ export async function PUT(req: NextRequest) {
           { status: 400 },
         );
       }
-      const count = await unassignEmployees(employeeIds);
+      const roleId = String(body.roleId || "").trim();
+      const count = roleId
+        ? await unassignEmployeesFromRole(employeeIds, roleId)
+        : await unassignEmployees(employeeIds);
       return NextResponse.json({ success: true, count });
     }
 

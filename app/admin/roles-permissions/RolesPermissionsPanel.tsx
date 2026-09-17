@@ -37,7 +37,7 @@ type Props = {
   onSaveEmployee: (employeeId: string) => void;
   onClearEmployeeOverrides: (employeeId: string) => void;
   onAssignEmployees: (employeeIds: string[], roleId: string) => void;
-  onUnassignEmployees: (employeeIds: string[]) => void;
+  onUnassignEmployees: (employeeIds: string[], roleId: string) => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
   employeeCountByRole: (roleId: string) => number;
@@ -57,10 +57,23 @@ function employeeFilter(opt: SelectOption, query: string) {
   return hay.includes(query);
 }
 
+function explicitSlugs(emp: DemoEmployee): string[] {
+  if (Array.isArray(emp.accessRoleSlugs) && emp.accessRoleSlugs.length) {
+    return emp.accessRoleSlugs.map((s) => String(s).trim()).filter(Boolean);
+  }
+  const one =
+    emp.accessRoleSlug != null && String(emp.accessRoleSlug).trim()
+      ? String(emp.accessRoleSlug).trim()
+      : null;
+  return one ? [one] : [];
+}
+
 function explicitSlug(emp: DemoEmployee) {
-  return emp.accessRoleSlug != null && String(emp.accessRoleSlug).trim()
-    ? String(emp.accessRoleSlug).trim()
-    : null;
+  return explicitSlugs(emp)[0] || null;
+}
+
+function employeeHasRole(emp: DemoEmployee, roleId: string) {
+  return explicitSlugs(emp).includes(roleId);
 }
 
 export default function RolesPermissionsPanel({
@@ -177,7 +190,7 @@ export default function RolesPermissionsPanel({
   const assignedUsers = useMemo(
     () =>
       employees
-        .filter((e) => explicitSlug(e) === activeRoleId)
+        .filter((e) => employeeHasRole(e, activeRoleId))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [employees, activeRoleId],
   );
@@ -185,9 +198,9 @@ export default function RolesPermissionsPanel({
   const assignableOptions: SelectOption[] = useMemo(
     () =>
       employees
-        .filter((e) => explicitSlug(e) !== activeRoleId)
+        .filter((e) => !employeeHasRole(e, activeRoleId))
         .map((emp) => {
-          const assigned = explicitSlug(emp);
+          const assigned = explicitSlugs(emp);
           return {
             value: emp.id,
             label: emp.name,
@@ -195,8 +208,8 @@ export default function RolesPermissionsPanel({
               `ID ${emp.id}`,
               emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
               emp.departmentName || null,
-              assigned
-                ? `Assigned: ${roleMeta(assigned, allRoles).name}`
+              assigned.length
+                ? `Also on: ${assigned.map((s) => roleMeta(s, allRoles).name).join(", ")}`
                 : emp.legacyRole
                   ? `Default from HR: ${emp.legacyRole}`
                   : "Not assigned",
@@ -274,8 +287,8 @@ export default function RolesPermissionsPanel({
   }
 
   function handleUnassignSelected() {
-    if (!selectedAssignedIds.length || !canAssign) return;
-    onUnassignEmployees(selectedAssignedIds);
+    if (!selectedAssignedIds.length || !canAssign || !activeRoleId) return;
+    onUnassignEmployees(selectedAssignedIds, activeRoleId);
     setSelectedAssignedIds([]);
     if (focusEmployeeId && selectedAssignedIds.includes(focusEmployeeId)) {
       setFocusEmployeeId(null);
@@ -283,8 +296,8 @@ export default function RolesPermissionsPanel({
   }
 
   function handleUnassignOne(id: string) {
-    if (!canAssign) return;
-    onUnassignEmployees([id]);
+    if (!canAssign || !activeRoleId) return;
+    onUnassignEmployees([id], activeRoleId);
     setSelectedAssignedIds((prev) => prev.filter((x) => x !== id));
     if (focusEmployeeId === id) setFocusEmployeeId(null);
   }

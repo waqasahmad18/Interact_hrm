@@ -35,6 +35,8 @@ export type DemoEmployee = {
   roleId: string;
   /** Explicit System Control assignment; null/undefined = not assigned via Permissions. */
   accessRoleSlug?: string | null;
+  /** All System Control roles this person is on (org chart can show them on multiple cards). */
+  accessRoleSlugs?: string[];
   departmentId: string;
   departmentName?: string;
   reportsTo: string | null;

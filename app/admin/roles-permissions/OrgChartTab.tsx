@@ -219,11 +219,33 @@ export default function OrgChartTab({
   const removeRolePhoto = guard(onRemoveRolePhoto);
 
   function primaryEmployee(roleId: string) {
-    return employees.find((e) => e.roleId === roleId) ?? null;
+    return (
+      employees.find((e) => {
+        const slugs =
+          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
+            ? e.accessRoleSlugs
+            : e.accessRoleSlug
+              ? [String(e.accessRoleSlug)]
+              : e.roleId
+                ? [e.roleId]
+                : [];
+        return slugs.includes(roleId);
+      }) ?? null
+    );
   }
 
   function employeesForRole(roleId: string) {
-    return employees.filter((e) => e.roleId === roleId);
+    return employees.filter((e) => {
+      const slugs =
+        Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
+          ? e.accessRoleSlugs
+          : e.accessRoleSlug
+            ? [String(e.accessRoleSlug)]
+            : e.roleId
+              ? [e.roleId]
+              : [];
+      return slugs.includes(roleId);
+    });
   }
 
   const [dragId, setDragId] = useState<string | null>(null);

@@ -20,10 +20,12 @@ export type AccessEmployee = {
   initials: string;
   pseudonym?: string;
   profilePhoto?: string;
-  /** Effective role used for access (explicit assign or legacy map). */
+  /** Effective primary role used for access (first explicit assign or legacy map). */
   roleId: string;
-  /** Explicit System Control assign; null = not assigned via Permissions tab. */
+  /** Primary System Control assign; null = not assigned via Permissions tab. */
   accessRoleSlug: string | null;
+  /** All System Control roles this employee is assigned to (multi-card org chart). */
+  accessRoleSlugs: string[];
   departmentId: string;
   departmentName?: string;
   reportsTo: string | null;
@@ -124,9 +126,40 @@ async function ensureMysqlTables() {
     } catch {
       /* column exists */
     }
+    try {
+      await conn.execute(
+        `ALTER TABLE hrm_employees ADD COLUMN access_role_slugs JSON NULL`,
+      );
+    } catch {
+      /* column exists */
+    }
   } finally {
     conn.release();
   }
+}
+
+function parseAccessRoleSlugs(row: Record<string, unknown>): string[] {
+  const raw = row.access_role_slugs;
+  let list: string[] = [];
+  if (Array.isArray(raw)) {
+    list = raw.map((x) => String(x || "").trim()).filter(Boolean);
+  } else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        list = parsed.map((x) => String(x || "").trim()).filter(Boolean);
+      }
+    } catch {
+      list = raw
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+  }
+  const primary =
+    row.access_role_slug != null ? String(row.access_role_slug).trim() : "";
+  if (primary && !list.includes(primary)) list = [primary, ...list];
+  return [...new Set(list)];
 }
 
 async function ensureMongoIndexes() {
@@ -443,8 +476,17 @@ export async function assignEmployeeRole(employeeId: string, roleSlug: string) {
       numeric != null
         ? { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] }
         : { id: eid };
+    const doc = await db.collection("hrm_employees").findOne(filter);
+    if (!doc) throw new Error(`Employee ${eid} not found for role assign`);
+    const slugs = parseAccessRoleSlugs(doc as Record<string, unknown>);
+    if (!slugs.includes(slug)) slugs.push(slug);
+    const primary = slugs[0] || slug;
     const res = await db.collection("hrm_employees").updateOne(filter, {
-      $set: { access_role_slug: slug, updated_at: new Date() },
+      $set: {
+        access_role_slug: primary,
+        access_role_slugs: slugs,
+        updated_at: new Date(),
+      },
     });
     if (!res.matchedCount) {
       throw new Error(`Employee ${eid} not found for role assign`);
@@ -452,18 +494,82 @@ export async function assignEmployeeRole(employeeId: string, roleSlug: string) {
     return;
   }
 
+  const idParam = /^\d+$/.test(eid) ? Number(eid) : eid;
   try {
-    await pool.execute(`UPDATE hrm_employees SET access_role_slug = ? WHERE id = ?`, [
-      slug,
-      eid,
-    ]);
+    const [rows] = await pool.execute(
+      `SELECT access_role_slug, access_role_slugs FROM hrm_employees WHERE id = ? LIMIT 1`,
+      [idParam],
+    );
+    const row = (rows as any[])[0];
+    if (!row) throw new Error(`Employee ${eid} not found for role assign`);
+    const slugs = parseAccessRoleSlugs(row);
+    if (!slugs.includes(slug)) slugs.push(slug);
+    const primary = slugs[0] || slug;
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+      [primary, JSON.stringify(slugs), idParam],
+    );
   } catch (err) {
     await ensureMysqlTables();
-    await pool.execute(`UPDATE hrm_employees SET access_role_slug = ? WHERE id = ?`, [
-      slug,
-      eid,
-    ]);
+    const [rows] = await pool.execute(
+      `SELECT access_role_slug, access_role_slugs FROM hrm_employees WHERE id = ? LIMIT 1`,
+      [idParam],
+    );
+    const row = (rows as any[])[0];
+    if (!row) throw new Error(`Employee ${eid} not found for role assign`);
+    const slugs = parseAccessRoleSlugs(row);
+    if (!slugs.includes(slug)) slugs.push(slug);
+    const primary = slugs[0] || slug;
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+      [primary, JSON.stringify(slugs), idParam],
+    );
   }
+}
+
+/** Remove one role from an employee (keeps other role cards). */
+export async function unassignEmployeeFromRole(employeeId: string, roleSlug: string) {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  const slug = String(roleSlug || "").trim();
+  if (!eid || !slug) throw new Error("employeeId and roleSlug required");
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const numeric = /^\d+$/.test(eid) ? Number(eid) : null;
+    const filter =
+      numeric != null
+        ? { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] }
+        : { id: eid };
+    const doc = await db.collection("hrm_employees").findOne(filter);
+    if (!doc) throw new Error(`Employee ${eid} not found for role unassign`);
+    const slugs = parseAccessRoleSlugs(doc as Record<string, unknown>).filter(
+      (s) => s !== slug,
+    );
+    const primary = slugs[0] || null;
+    await db.collection("hrm_employees").updateOne(filter, {
+      $set: {
+        access_role_slug: primary,
+        access_role_slugs: slugs,
+        updated_at: new Date(),
+      },
+    });
+    return;
+  }
+
+  const idParam = /^\d+$/.test(eid) ? Number(eid) : eid;
+  const [rows] = await pool.execute(
+    `SELECT access_role_slug, access_role_slugs FROM hrm_employees WHERE id = ? LIMIT 1`,
+    [idParam],
+  );
+  const row = (rows as any[])[0];
+  if (!row) throw new Error(`Employee ${eid} not found for role unassign`);
+  const slugs = parseAccessRoleSlugs(row).filter((s) => s !== slug);
+  const primary = slugs[0] || null;
+  await pool.execute(
+    `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+    [primary, slugs.length ? JSON.stringify(slugs) : null, idParam],
+  );
 }
 
 /** Clear System Control role assign (`access_role_slug` → null). */
@@ -480,7 +586,11 @@ export async function unassignEmployeeRole(employeeId: string) {
         ? { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] }
         : { id: eid };
     const res = await db.collection("hrm_employees").updateOne(filter, {
-      $set: { access_role_slug: null, updated_at: new Date() },
+      $set: {
+        access_role_slug: null,
+        access_role_slugs: [],
+        updated_at: new Date(),
+      },
     });
     if (!res.matchedCount) {
       throw new Error(`Employee ${eid} not found for role unassign`);
@@ -489,10 +599,16 @@ export async function unassignEmployeeRole(employeeId: string) {
   }
 
   try {
-    await pool.execute(`UPDATE hrm_employees SET access_role_slug = NULL WHERE id = ?`, [eid]);
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = NULL WHERE id = ?`,
+      [eid],
+    );
   } catch (err) {
     await ensureMysqlTables();
-    await pool.execute(`UPDATE hrm_employees SET access_role_slug = NULL WHERE id = ?`, [eid]);
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = NULL WHERE id = ?`,
+      [eid],
+    );
   }
 }
 
@@ -516,25 +632,49 @@ export async function unassignEmployees(employeeIds: string[]) {
   return ids.length;
 }
 
+export async function unassignEmployeesFromRole(employeeIds: string[], roleSlug: string) {
+  const slug = String(roleSlug || "").trim();
+  if (!slug) throw new Error("roleSlug required");
+  const ids = [...new Set(employeeIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) throw new Error("employeeIds required");
+  for (const id of ids) {
+    await unassignEmployeeFromRole(id, slug);
+  }
+  return ids.length;
+}
+
 export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
   await ensureAccessControlStore();
 
-  const [rows] = await pool.query(
-    `SELECT e.id, e.first_name, e.last_name, e.pseudonym, e.role, e.access_role_slug,
-            d.name AS department_name, j.department_id
-     FROM hrm_employees e
-     LEFT JOIN employee_jobs j ON e.id = j.employee_id
-     LEFT JOIN departments d ON j.department_id = d.id
-     ORDER BY e.id ASC`,
-  );
+  let list: any[] = [];
+  try {
+    const [rows] = await pool.query(
+      `SELECT e.id, e.first_name, e.last_name, e.pseudonym, e.role, e.access_role_slug, e.access_role_slugs,
+              d.name AS department_name, j.department_id
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       ORDER BY e.id ASC`,
+    );
+    list = (rows as any[]) || [];
+  } catch {
+    const [rows] = await pool.query(
+      `SELECT e.id, e.first_name, e.last_name, e.pseudonym, e.role, e.access_role_slug,
+              d.name AS department_name, j.department_id
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       ORDER BY e.id ASC`,
+    );
+    list = (rows as any[]) || [];
+  }
 
-  const list = (rows as any[]) || [];
   return list.map((row) => {
     const id = String(row.id ?? "");
     const name = [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || `Employee ${id}`;
     const legacyRole = row.role != null ? String(row.role) : "";
-    const stored = row.access_role_slug != null ? String(row.access_role_slug).trim() : "";
-    const accessRoleSlug = stored || null;
+    const accessRoleSlugs = parseAccessRoleSlugs(row);
+    const accessRoleSlug = accessRoleSlugs[0] || null;
     const roleId = accessRoleSlug || mapLegacyEmployeeRole(legacyRole);
     return {
       id,
@@ -543,6 +683,7 @@ export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
       pseudonym: row.pseudonym ? String(row.pseudonym) : undefined,
       roleId,
       accessRoleSlug,
+      accessRoleSlugs,
       departmentId: row.department_id != null ? String(row.department_id) : "",
       departmentName: row.department_name ? String(row.department_name) : undefined,
       reportsTo: null,
@@ -755,13 +896,14 @@ export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise
   name: string;
   legacyRole: string;
   roleSlug: string;
+  roleSlugs: string[];
 }> {
   await ensureAccessControlStore();
   const eid = String(employeeId || "").trim();
   if (!eid) throw new Error("employeeId required");
 
   const [rows] = await pool.query(
-    `SELECT id, first_name, last_name, role, access_role_slug
+    `SELECT id, first_name, last_name, role, access_role_slug, access_role_slugs
      FROM hrm_employees
      WHERE id = ?
      LIMIT 1`,
@@ -778,8 +920,8 @@ export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise
   if (!row) throw new Error("Employee not found");
 
   const legacyRole = row.role != null ? String(row.role) : "";
-  const stored = row.access_role_slug != null ? String(row.access_role_slug).trim() : "";
-  const roleSlug = stored || mapLegacyEmployeeRole(legacyRole);
+  const roleSlugs = parseAccessRoleSlugs(row);
+  const roleSlug = roleSlugs[0] || mapLegacyEmployeeRole(legacyRole);
   const name =
     [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || `Employee ${eid}`;
 
@@ -788,6 +930,7 @@ export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise
     name,
     legacyRole,
     roleSlug,
+    roleSlugs: roleSlugs.length ? roleSlugs : [roleSlug],
   };
 }
 
@@ -961,14 +1104,18 @@ export async function saveEmployeePermissions(
 
 export async function getEmployeeAccessPayload(employeeId: string) {
   const emp = await resolveEmployeeAccessRoleSlug(employeeId);
-  const [rolePermissions, features, roles, empOverride] = await Promise.all([
-    loadPermissionsForRole(emp.roleSlug),
+  const [features, roles, empOverride] = await Promise.all([
     loadGlobalFeatures(),
     loadOrgRoles(),
     loadEmployeePermissionOverrides(emp.employeeId),
   ]);
 
-  // Custom employee set replaces role defaults; otherwise use role template.
+  const rolePermSets = await Promise.all(
+    emp.roleSlugs.map((slug) => loadPermissionsForRole(slug)),
+  );
+  const rolePermissions = [...new Set(rolePermSets.flat())];
+
+  // Custom employee set replaces role defaults; otherwise union of all assigned roles.
   const permissions =
     empOverride != null
       ? empOverride.filter((k) => k !== "__custom__")
@@ -989,6 +1136,7 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     legacyRole: emp.legacyRole,
     role: {
       slug: emp.roleSlug,
+      slugs: emp.roleSlugs,
       display_name: roleMetaRow?.name || emp.roleSlug,
       portal_type: roleMetaRow?.portal || "employee-dashboard",
       data_scope: roleMetaRow?.scope || "SELF",
