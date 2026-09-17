@@ -22,6 +22,11 @@ import {
   rowAllowedByScope,
   useViewerDataScope,
 } from "@/lib/access-control/use-viewer-scope";
+import {
+  attendanceSessionDate,
+  filterAttendanceByClockInSessionDate,
+  overnightFetchRange,
+} from "@/lib/break-session-date";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -148,9 +153,11 @@ export default function AttendanceSummaryView() {
     if (showingImported) return;
     const effectiveFrom = fromDate || toDate || today;
     const effectiveTo = toDate || fromDate || today;
+    // ±1 day so overnight clock-in sessions (pre + post midnight) load together
+    const range = overnightFetchRange(effectiveFrom, effectiveTo);
     const params = new URLSearchParams({
-      fromDate: effectiveFrom,
-      toDate: effectiveTo,
+      fromDate: range.fromDate,
+      toDate: range.toDate,
       summary: "1",
     });
     setLoading(true);
@@ -174,25 +181,29 @@ export default function AttendanceSummaryView() {
 
   const filteredLive = useMemo(() => {
     if (showingImported) return [];
+    const effectiveFrom = fromDate || toDate || today;
+    const effectiveTo = toDate || fromDate || today;
     const term = deferredSearch.trim().toLowerCase();
-    return attendance
-      .filter((a) => {
-        if (!rowAllowedByScope(viewerScope, a.employee_id, a.department_name)) {
+    const scoped = attendance.filter((a) => {
+      if (!rowAllowedByScope(viewerScope, a.employee_id, a.department_name)) {
+        return false;
+      }
+      if (term) {
+        const employeeName = (a.employee_name || "").toLowerCase();
+        const pseudonym = (a.pseudonym || "").toLowerCase();
+        const id = String(a.employee_id || "");
+        if (!employeeName.includes(term) && !pseudonym.includes(term) && !id.includes(term)) {
           return false;
         }
-        if (term) {
-          const employeeName = (a.employee_name || "").toLowerCase();
-          const pseudonym = (a.pseudonym || "").toLowerCase();
-          const id = String(a.employee_id || "");
-          if (!employeeName.includes(term) && !pseudonym.includes(term) && !id.includes(term)) {
-            return false;
-          }
-        }
-        if (department && a.department_name !== department) return false;
-        return true;
-      })
-      .sort(compareAttendanceRows);
-  }, [attendance, deferredSearch, department, showingImported, viewerScope]);
+      }
+      if (department && a.department_name !== department) return false;
+      return true;
+    });
+    // Attribute to clock-in session date (overnight: keep open/cross-midnight sessions)
+    return filterAttendanceByClockInSessionDate(scoped, effectiveFrom, effectiveTo).sort(
+      compareAttendanceRows,
+    );
+  }, [attendance, deferredSearch, department, showingImported, viewerScope, fromDate, toDate, today]);
 
   /** Closed sessions: total hours fixed (no live clock). */
   const closedDisplay = useMemo(() => {
@@ -240,7 +251,7 @@ export default function AttendanceSummaryView() {
           .join(",") + "\n";
         return;
       }
-      const date = row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "";
+      const date = attendanceSessionDate(row) || (row.date ? getDateStringInTimeZone(row.date, SERVER_TIMEZONE) : "");
       const clockIn = row.clock_in ? getTimeStringInTimeZone(row.clock_in, SERVER_TIMEZONE) : "";
       const clockOut = row.clock_out ? getTimeStringInTimeZone(row.clock_out, SERVER_TIMEZONE) : "";
       const key = row.id ?? `${row.employee_id}-${row.clock_in}`;
@@ -452,7 +463,7 @@ export default function AttendanceSummaryView() {
                       </td>
                       <td>{a.pseudonym || "-"}</td>
                       <td>{a.department_name || "-"}</td>
-                      <td>{formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
+                      <td>{attendanceSessionDate(a) || formatDateOnly(a.clock_in || a.clock_out || a.date)}</td>
                       <td>{a.clock_in ? getTimeStringInTimeZone(a.clock_in, SERVER_TIMEZONE) : ""}</td>
                       <td>
                         {a.clock_out ? (
