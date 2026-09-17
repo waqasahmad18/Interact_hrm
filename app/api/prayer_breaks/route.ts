@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBiometricOrRespond } from "@/lib/require-biometric";
-import { pool } from "../../../lib/db";
+import { getDbDriver, pool } from "../../../lib/db";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../../lib/timezone";
 import { getActiveShiftAssignment } from "../../../lib/get-active-shift";
 import { ensureLegacyEmployeeRow } from "@/lib/ensure-legacy-employee-row";
+import { resolveEmployeeDbId } from "@/lib/resolve-employee-id";
+import {
+  mongoDeletePrayerBreak,
+  mongoEndPrayerBreak,
+  mongoListPrayerBreaks,
+  mongoStartPrayerBreak,
+  mongoUpdatePrayerBreak,
+} from "@/lib/mongo-breaks";
 
 const ATTENDANCE_TABLE = "employee_attendance";
 
@@ -33,6 +41,17 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get("date"); // YYYY-MM-DD format from frontend
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
+
+    if (getDbDriver() === "mongo") {
+      const prayer_breaks = await mongoListPrayerBreaks({
+        employeeId,
+        date,
+        fromDate,
+        toDate,
+      });
+      return NextResponse.json({ success: true, prayer_breaks });
+    }
+
     conn = await pool.getConnection();
     if (!conn) {
       throw new Error("Failed to get database connection from pool");
@@ -128,6 +147,54 @@ export async function POST(req: NextRequest) {
     if (!formattedDate) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
+
+    if (getDbDriver() === "mongo") {
+      const resolved = await resolveEmployeeDbId(String(employee_id));
+      const canonicalEmployeeId = resolved || String(employee_id);
+
+      if (prayer_break_start) {
+        const bioBlock = await enforceBiometricOrRespond(
+          biometric_token,
+          String(employee_id),
+          "prayer_start",
+          employee_name
+        );
+        if (bioBlock) return bioBlock;
+
+        const result = await mongoStartPrayerBreak({
+          employeeId: canonicalEmployeeId,
+          employeeName: employee_name,
+          date: formattedDate,
+          prayerBreakStart: prayer_break_start,
+        });
+        if (!result.ok) {
+          return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+        }
+        return NextResponse.json({ success: true });
+      }
+
+      if (prayer_break_end) {
+        const bioBlock = await enforceBiometricOrRespond(
+          biometric_token,
+          String(employee_id),
+          "prayer_end",
+          employee_name
+        );
+        if (bioBlock) return bioBlock;
+
+        const result = await mongoEndPrayerBreak({
+          employeeId: canonicalEmployeeId,
+          prayerBreakEnd: prayer_break_end,
+        });
+        if (!result.ok) {
+          return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+        }
+        return NextResponse.json({ success: true });
+      }
+
+      return NextResponse.json({ success: false, error: "Invalid prayer break action." }, { status: 400 });
+    }
+
     conn = await pool.getConnection();
     const canonicalEmployeeId = await ensureLegacyEmployeeRow(
       conn,
@@ -228,8 +295,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing required fields: id or employee_id" }, { status: 400 });
     }
 
-    conn = await pool.getConnection();
-
     const formattedDate = date
       ? /^\d{4}-\d{2}-\d{2}$/.test(String(date))
         ? String(date)
@@ -245,6 +310,20 @@ export async function PUT(req: NextRequest) {
       const endTime = new Date(prayer_break_end).getTime();
       prayerBreakDuration = Math.floor((endTime - startTime) / 1000); // Duration in seconds
     }
+
+    if (getDbDriver() === "mongo") {
+      await mongoUpdatePrayerBreak({
+        id,
+        employeeName: employee_name,
+        date: formattedDate,
+        prayerBreakStart: formattedPrayerBreakStart,
+        prayerBreakEnd: formattedPrayerBreakEnd,
+        duration: prayerBreakDuration,
+      });
+      return NextResponse.json({ success: true, message: 'Prayer break updated successfully' });
+    }
+
+    conn = await pool.getConnection();
 
     await conn.execute(
       `UPDATE prayer_breaks 
@@ -273,6 +352,11 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ success: false, error: "Missing required field: id" }, { status: 400 });
+    }
+
+    if (getDbDriver() === "mongo") {
+      await mongoDeletePrayerBreak(id);
+      return NextResponse.json({ success: true, message: 'Prayer break deleted successfully' });
     }
 
     conn = await pool.getConnection();

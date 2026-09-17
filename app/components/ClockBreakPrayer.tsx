@@ -308,8 +308,8 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
   }, [prayerTimerPaused]);
 
   const syncPrayerBreakFromServer = React.useCallback(() => {
-    if (prayerTimerPaused) return;
-    void forceSyncPrayerBreakState(
+    if (prayerTimerPaused) return Promise.resolve();
+    return forceSyncPrayerBreakState(
       employeeId,
       setIsPrayerOn,
       setPrayerBreakTimer,
@@ -683,7 +683,15 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
         setBreakTimer(0);
         breakStartMsRef.current = startTime.getTime();
         setLoadingBreak(false);
-        forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+        await forceSyncBreakState(
+          employeeId,
+          setIsOnBreak,
+          setBreakTimer,
+          setLoadingBreak,
+          setBreakIntervalId
+        );
+        // Keep started UI even if sync briefly misses the new row
+        setIsOnBreak(true);
         notifyBreakDataChanged();
         toastSuccess("Your break has started.", "Break started");
       } else if (res.status === 403 && isBiometricGateError(data.error)) {

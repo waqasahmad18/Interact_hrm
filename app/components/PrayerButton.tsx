@@ -44,7 +44,7 @@ interface PrayerButtonProps {
   pausePrayerTimerForVerify: () => void;
   resumePrayerTimerAfterVerify: () => void;
   resetPrayerPauseState: () => void;
-  onPrayerStateChanged: () => void;
+  onPrayerStateChanged: () => void | Promise<void>;
   disabled?: boolean;
   runWithVerify?: (
     action: BiometricAction,
@@ -100,7 +100,10 @@ export function PrayerButton({
         setIsPrayerOn(true);
         setPrayerStart(startTime);
         notifyPrayerDataChanged();
-        onPrayerStateChanged();
+        await Promise.resolve(onPrayerStateChanged());
+        // Keep started UI even if sync briefly misses the new row
+        setIsPrayerOn(true);
+        setPrayerStart(startTime);
         toastSuccess("Prayer break started.", "Prayer break");
       } else if (
         res.status === 403 &&
