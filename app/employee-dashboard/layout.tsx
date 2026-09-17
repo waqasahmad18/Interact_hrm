@@ -9,6 +9,7 @@ import {
   employeeDisplayNameFromRecord,
   sanitizeEmployeeDisplayName,
 } from "@/lib/employee-login-lookup";
+import { EmployeeSessionProvider } from "./employee-session-context";
 import {
   FaTachometerAlt,
   FaUser,
@@ -193,13 +194,17 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       .then(([data1, data2]) => {
         const data = data1.success ? data1 : data2;
         if (data.success && data.employee) {
-          const trimmedName = employeeDisplayNameFromRecord(data.employee);
+          const trimmedName = sanitizeEmployeeDisplayName(
+            employeeDisplayNameFromRecord(data.employee),
+            "Employee",
+          );
           const empId = String(data.employee.id || data.employee.employee_id || loginId);
           setEmployeeName(trimmedName);
           setEmployeeId(empId);
           markEmployeePortal(empId, trimmedName);
           try {
             localStorage.setItem("employeeName", trimmedName);
+            if (/^\d+$/.test(empId)) localStorage.setItem("employeeId", empId);
           } catch {
             /* ignore */
           }
@@ -321,6 +326,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
 
   return (
     <EmployeeShellProvider>
+    <EmployeeSessionProvider
+      employeeId={employeeId}
+      employeeName={employeeName || "Employee"}
+      setEmployeeId={setEmployeeId}
+      setEmployeeName={setEmployeeName}
+    >
     <div className={`${styles.layout} ${empStyles.noTopbar} ${empStyles.modernShell}`}>
       {sidebarOpen ? (
         <div
@@ -444,6 +455,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
       </div>
     </div>
+    </EmployeeSessionProvider>
     </EmployeeShellProvider>
   );
 }

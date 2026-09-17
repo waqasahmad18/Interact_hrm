@@ -144,18 +144,17 @@ export default function LoginPage() {
             localStorage.setItem("loginId", trimmedLoginId);
             localStorage.setItem("userRole", data.role || data.employee?.role || "Officer");
             const empId = String(data.employee?.id ?? data.employee?.employee_id ?? "").trim();
+            // Only first+last (or API display_name). Never username/email/`name` (dept leak).
             const empName = sanitizeEmployeeDisplayName(
-              data.display_name ||
-                data.employee?.display_name ||
-                data.employee?.full_name ||
-                data.employee?.name ||
-                employeeDisplayNameFromRecord(data.employee),
+              data.display_name || employeeDisplayNameFromRecord(data.employee),
               "Employee",
             );
             markEmployeePortal(empId || undefined, empName);
             localStorage.setItem("employeeName", empName);
             if (empId && /^\d+$/.test(empId)) {
               localStorage.setItem("employeeId", empId);
+            } else {
+              localStorage.removeItem("employeeId");
             }
           }
           await persistCredentials(trimmedLoginId, rawPassword);

@@ -30,6 +30,7 @@ import {
   sanitizeEmployeeDisplayName,
 } from "@/lib/employee-login-lookup";
 import { markEmployeePortal } from "@/lib/access-control/employee-shell";
+import { useEmployeeSession } from "./employee-session-context";
 
 type AttendanceRow = {
   id?: number;
@@ -212,7 +213,6 @@ function eventDateKey(startAt: string) {
 
 export default function EmployeeDashboardPage() {
   const router = useRouter();
-  const [employeeId, setEmployeeId] = React.useState("");
   const [calendarNow, setCalendarNow] = React.useState(() => new Date());
   const [eventsMonthOffset, setEventsMonthOffset] = React.useState(0);
   const eventsYearRef = React.useRef(new Date().getFullYear());
@@ -241,7 +241,13 @@ export default function EmployeeDashboardPage() {
   const [ticketSeenMap, setTicketSeenMap] = React.useState<Record<number, string>>({});
   const ticketsRef = React.useRef<TicketWidgetRow[]>([]);
   const ticketTimerRef = React.useRef<number | null>(null);
-  const [employeeName, setEmployeeName] = React.useState("Employee");
+  // Same name as Welcome Back (layout session) — never a separate local email cache
+  const {
+    employeeId,
+    employeeName,
+    setEmployeeId,
+    setEmployeeName,
+  } = useEmployeeSession();
   const [profilePhoto, setProfilePhoto] = React.useState<string | null>(null);
   const [profileContact, setProfileContact] = React.useState<{
     email: string;
@@ -284,15 +290,17 @@ export default function EmployeeDashboardPage() {
   }, []);
 
   React.useLayoutEffect(() => {
+    // Prefer layout session; only seed from storage when layout has not resolved yet
     const empId =
       localStorage.getItem("employeeId") || localStorage.getItem("loginId") || "";
-    setEmployeeId(empId);
-    // Never show email/login id as the profile card title (even before API resolves)
-    setEmployeeName(
-      sanitizeEmployeeDisplayName(localStorage.getItem("employeeName"), "Employee"),
+    if (empId && /^\d+$/.test(empId)) setEmployeeId(empId);
+    const cached = sanitizeEmployeeDisplayName(
+      localStorage.getItem("employeeName"),
+      "",
     );
+    if (cached) setEmployeeName(cached);
     if (empId) setTicketSeenMap(loadTicketSeenMap(empId));
-  }, []);
+  }, [setEmployeeId, setEmployeeName]);
 
   // Resolve real first+last name ASAP (HRM id or email login both)
   React.useEffect(() => {
@@ -308,11 +316,10 @@ export default function EmployeeDashboardPage() {
     }
     if (loginId.includes("@")) {
       urls.push(`/api/hrm_employees?email=${encodeURIComponent(loginId)}`);
+    } else if (/^\d+$/.test(loginId)) {
+      urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`);
     } else if (loginId) {
       urls.push(`/api/hrm_employees?username=${encodeURIComponent(loginId)}`);
-      if (/^\d+$/.test(loginId)) {
-        urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`);
-      }
     }
 
     void Promise.all(urls.map((u) => fetch(u, { cache: "no-store" }).then((r) => r.json()).catch(() => null)))
@@ -320,7 +327,10 @@ export default function EmployeeDashboardPage() {
         if (cancelled) return;
         const data = results.find((d) => d?.success && d.employee);
         if (!data?.employee) return;
-        const name = employeeDisplayNameFromRecord(data.employee);
+        const name = sanitizeEmployeeDisplayName(
+          employeeDisplayNameFromRecord(data.employee),
+          "Employee",
+        );
         const id = String(data.employee.id || data.employee.employee_id || empId).trim();
         setEmployeeName(name);
         if (id && /^\d+$/.test(id)) setEmployeeId(id);
@@ -335,7 +345,7 @@ export default function EmployeeDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setEmployeeId, setEmployeeName]);
 
   React.useEffect(() => {
     if (!employeeId) return;
