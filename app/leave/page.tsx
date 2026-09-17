@@ -13,6 +13,12 @@ import tableStyles from "../break-summary/break-summary.module.css";
 import styles from "./leave.module.css";
 import { EmployeeTableNameCell } from "../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../components/use-employee-detail-popup";
+import {
+  canApproveStep1,
+  canApproveStep2,
+  leaveStatusLabel,
+  normStep,
+} from "@/lib/leave-approval";
 
 type LeaveSortKey =
   | "employee_id"
@@ -23,6 +29,8 @@ type LeaveSortKey =
   | "start_date"
   | "total_days"
   | "status"
+  | "step1_status"
+  | "step2_status"
   | "requested_at";
 
 type SortDirection = "asc" | "desc";
@@ -56,8 +64,16 @@ function parseDocs(document_paths?: string | string[]) {
 }
 
 function statusBadgeClass(status: string) {
-  if (status === "approved") return styles.badgeApproved;
-  if (status === "rejected") return styles.badgeRejected;
+  const s = status.toLowerCase();
+  if (s === "approved" || s.startsWith("approved")) return styles.badgeApproved;
+  if (s === "rejected" || s.includes("rejected")) return styles.badgeRejected;
+  return styles.badgePending;
+}
+
+function stepBadgeClass(step: string) {
+  const s = normStep(step);
+  if (s === "approved") return styles.badgeApproved;
+  if (s === "rejected") return styles.badgeRejected;
   return styles.badgePending;
 }
 
@@ -166,15 +182,18 @@ export default function LeavePage() {
     link.click();
   };
 
-  const handleAction = async (id: number, status: "approved" | "rejected") => {
+  const handleAction = async (
+    id: number,
+    action: "approve_step1" | "approve_step2" | "approve" | "reject",
+  ) => {
     try {
       await fetch("/api/leaves", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id,
-          status,
-          admin_remark: status === "rejected" ? rejectRemark : undefined,
+          action,
+          admin_remark: action === "reject" ? rejectRemark : undefined,
         }),
       });
       void fetchLeaves();
@@ -249,7 +268,11 @@ export default function LeavePage() {
           cmp = getText(a[key]).localeCompare(getText(b[key]), undefined, { sensitivity: "base" });
           break;
         case "status":
-          cmp = getText(a.status).localeCompare(getText(b.status), undefined, { sensitivity: "base" });
+        case "step1_status":
+        case "step2_status":
+          cmp = getText(a[key] || a.status).localeCompare(getText(b[key] || b.status), undefined, {
+            sensitivity: "base",
+          });
           break;
         case "start_date":
           cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
@@ -305,14 +328,19 @@ export default function LeavePage() {
     );
   };
 
-  const selectedStatus = String(selectedLeave?.status || "pending").toLowerCase();
+  const selectedStatus = leaveStatusLabel(selectedLeave || {});
+  const selectedCanStep1 = selectedLeave ? canApproveStep1(selectedLeave) : false;
+  const selectedCanStep2 = selectedLeave ? canApproveStep2(selectedLeave) : false;
+  const selectedPending = selectedCanStep1 || selectedCanStep2;
 
   return (
     <OptionalAdminShell>
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
-          <p className={styles.subtitle}>Review and approve employee leave applications.</p>
+          <p className={styles.subtitle}>
+            Two-step approval: 1st step, then 2nd (final).
+          </p>
 
           <div className={styles.statRow}>
             <div className={`${styles.statCard} ${styles.statCardGold}`}>
@@ -346,6 +374,8 @@ export default function LeavePage() {
                       <th>{renderSortableHeader("Category", "leave_category")}</th>
                       <th>{renderSortableHeader("Dates", "start_date")}</th>
                       <th>{renderSortableHeader("Days", "total_days")}</th>
+                      <th>{renderSortableHeader("1st step", "step1_status")}</th>
+                      <th>{renderSortableHeader("2nd step", "step2_status")}</th>
                       <th>{renderSortableHeader("Status", "status")}</th>
                       <th>{renderSortableHeader("Requested", "requested_at")}</th>
                       <th>Actions</th>
@@ -354,13 +384,18 @@ export default function LeavePage() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
                           No leave requests yet.
                         </td>
                       </tr>
                     ) : (
                       sortedLeaves.map((l, idx) => {
-                        const status = String(l?.status || "pending").toLowerCase();
+                        const statusLabel = leaveStatusLabel(l);
+                        const s1 = normStep(l.step1_status);
+                        const s2 = normStep(l.step2_status);
+                        const showStep1 = canApproveStep1(l);
+                        const showStep2 = canApproveStep2(l);
+                        const pending = showStep1 || showStep2;
                         return (
                           <tr
                             key={
@@ -385,8 +420,14 @@ export default function LeavePage() {
                             </td>
                             <td>{l.total_days}</td>
                             <td>
-                              <span className={`${styles.badge} ${statusBadgeClass(status)}`}>
-                                {status}
+                              <span className={`${styles.badge} ${stepBadgeClass(s1)}`}>{s1}</span>
+                            </td>
+                            <td>
+                              <span className={`${styles.badge} ${stepBadgeClass(s2)}`}>{s2}</span>
+                            </td>
+                            <td>
+                              <span className={`${styles.badge} ${statusBadgeClass(statusLabel)}`}>
+                                {statusLabel}
                               </span>
                             </td>
                             <td>{l.requested_at ? formatDateTime(l.requested_at) : "—"}</td>
@@ -395,23 +436,32 @@ export default function LeavePage() {
                                 <button type="button" className={styles.btnView} onClick={() => openModal(l)}>
                                   View
                                 </button>
-                                {status === "pending" && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className={styles.btnApprove}
-                                      onClick={() => handleAction(l.id, "approved")}
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={styles.btnReject}
-                                      onClick={() => openModal(l)}
-                                    >
-                                      Reject
-                                    </button>
-                                  </>
+                                {showStep1 && (
+                                  <button
+                                    type="button"
+                                    className={styles.btnApprove}
+                                    onClick={() => handleAction(l.id, "approve_step1")}
+                                  >
+                                    Approve 1st
+                                  </button>
+                                )}
+                                {showStep2 && (
+                                  <button
+                                    type="button"
+                                    className={styles.btnApprove}
+                                    onClick={() => handleAction(l.id, "approve_step2")}
+                                  >
+                                    Approve 2nd
+                                  </button>
+                                )}
+                                {pending && (
+                                  <button
+                                    type="button"
+                                    className={styles.btnReject}
+                                    onClick={() => openModal(l)}
+                                  >
+                                    Reject
+                                  </button>
                                 )}
                               </div>
                             </td>
@@ -447,6 +497,18 @@ export default function LeavePage() {
                 <div className={styles.modalRow}>
                   <b>Dates:</b> {formatDate(selectedLeave.start_date)} –{" "}
                   {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)
+                </div>
+                <div className={styles.modalRow}>
+                  <b>1st step:</b>{" "}
+                  <span className={`${styles.badge} ${stepBadgeClass(selectedLeave.step1_status)}`}>
+                    {normStep(selectedLeave.step1_status)}
+                  </span>
+                </div>
+                <div className={styles.modalRow}>
+                  <b>2nd step:</b>{" "}
+                  <span className={`${styles.badge} ${stepBadgeClass(selectedLeave.step2_status)}`}>
+                    {normStep(selectedLeave.step2_status)}
+                  </span>
                 </div>
                 <div className={styles.modalRow}>
                   <b>Status:</b>{" "}
@@ -497,10 +559,10 @@ export default function LeavePage() {
                   <b>Requested:</b>{" "}
                   {selectedLeave.requested_at ? formatDateTime(selectedLeave.requested_at) : "—"}
                 </div>
-                {selectedStatus === "pending" ? (
+                {selectedPending ? (
                   <div style={{ marginTop: 14 }}>
                     <label className={styles.modalRow}>
-                      <b>Admin remarks (for rejection)</b>
+                      <b>Remarks (for rejection)</b>
                       <textarea
                         className={styles.textarea}
                         value={rejectRemark}
@@ -509,17 +571,28 @@ export default function LeavePage() {
                       />
                     </label>
                     <div className={styles.modalActions}>
-                      <button
-                        type="button"
-                        className={styles.btnApprove}
-                        onClick={() => handleAction(selectedLeave.id, "approved")}
-                      >
-                        Approve
-                      </button>
+                      {selectedCanStep1 ? (
+                        <button
+                          type="button"
+                          className={styles.btnApprove}
+                          onClick={() => handleAction(selectedLeave.id, "approve_step1")}
+                        >
+                          Approve 1st step
+                        </button>
+                      ) : null}
+                      {selectedCanStep2 ? (
+                        <button
+                          type="button"
+                          className={styles.btnApprove}
+                          onClick={() => handleAction(selectedLeave.id, "approve_step2")}
+                        >
+                          Approve 2nd (final)
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={styles.btnReject}
-                        onClick={() => handleAction(selectedLeave.id, "rejected")}
+                        onClick={() => handleAction(selectedLeave.id, "reject")}
                       >
                         Reject
                       </button>

@@ -156,6 +156,15 @@ function emptyWorkingDayStatus(
   return { statusLabel: "Absent", deduction: "100%" };
 }
 
+/** Final-approved leave zeroes deduction even if punches exist that day. */
+function isApprovedLeaveDay(
+  map: Record<string, Record<string, boolean>>,
+  employeeId: string,
+  dateKey: string,
+): boolean {
+  return Boolean(map[employeeId]?.[dateKey]);
+}
+
 /** Extra work beyond assigned shift before OT is shown/counted (1 hour). */
 const OVERTIME_MIN_SECONDS = 60 * 60;
 
@@ -853,10 +862,10 @@ export default function MonthlyAttendancePage() {
       const workingDay = isWorkingDay(day.dateKey);
       
       let dayDeduction = 0;
-      if (dayRecords.length === 0) {
-        const onLeave = Boolean(
-          approvedLeavesMap[employee.employeeId]?.[day.dateKey],
-        );
+      if (isApprovedLeaveDay(approvedLeavesMap, employee.employeeId, day.dateKey)) {
+        dayDeduction = 0;
+      } else if (dayRecords.length === 0) {
+        const onLeave = false;
         const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, onLeave);
         dayDeduction = parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
       } else {
@@ -1418,15 +1427,15 @@ export default function MonthlyAttendancePage() {
           return;
         }
 
-        const statusLabel = meta?.statusLabel || "On Time";
-        if (!shouldIncludeInDeductionSummary(statusLabel)) return;
-
-        const deduction = meta?.deduction || "";
+        const onLeave = isApprovedLeaveDay(approvedLeavesMap, employee.employeeId, day.dateKey);
+        const exportStatus = onLeave ? "Leave" : meta?.statusLabel || "On Time";
+        if (!shouldIncludeInDeductionSummary(exportStatus)) return;
+        const deduction = onLeave ? "0%" : meta?.deduction || "";
         const tardyCount = meta?.runningLate ?? "";
         const sessionsToExport = getDaySessionRows(day.dateKey, dayRecords, daySessions);
 
         sessionsToExport.forEach(({ session, record }) => {
-          pushDeductionSummaryRow(rows, employee, day.dateKey, statusLabel, deduction, tardyCount, {
+          pushDeductionSummaryRow(rows, employee, day.dateKey, exportStatus, deduction, tardyCount, {
             session,
             record,
           });
@@ -2120,7 +2129,15 @@ export default function MonthlyAttendancePage() {
                             );
                           }
 
-                          const recordStatus = normalizeAttendanceStatus(meta?.statusLabel || "-");
+                          const onLeaveDay = isApprovedLeaveDay(
+                            approvedLeavesMap,
+                            employee.employeeId,
+                            day.dateKey,
+                          );
+                          const recordStatus = onLeaveDay
+                            ? "Leave"
+                            : normalizeAttendanceStatus(meta?.statusLabel || "-");
+                          const dayDeductionDisplay = onLeaveDay ? "0%" : meta?.deduction || "";
                           const sessionsToShow = getDaySessionRows(
                             day.dateKey,
                             dayRecords,
@@ -2182,7 +2199,7 @@ export default function MonthlyAttendancePage() {
                                     dayRecords
                                   )}
                                 </td>
-                                <td>{meta?.deduction || ""}</td>
+                                <td>{dayDeductionDisplay}</td>
                               </tr>
                             );
                           });
