@@ -120,12 +120,16 @@ export function punchMatchesEmployee(
 ): boolean {
   const empId = String(target.employeeId ?? "").trim();
   const code = String(target.employeeCode ?? "").trim();
-  // When HRM has a PIN/code or numeric id, never fall through to name/pseudonym.
-  if (code || empId) {
-    if (code && pin && pin === code) return true;
+  // Strict PIN match only when HRM has a real device employee_code.
+  // (Staging often has empty codes after Mongo cutover — then name-match below.)
+  if (code) {
+    if (pin && pin === code) return true;
     if (empId && pin && pin === empId) return true;
     return false;
   }
+
+  // No employee_code: allow pin === HRM id (some devices use id as PIN).
+  if (empId && pin && pin === empId) return true;
 
   const candidates = [
     hrmPinMatch?.employeeName || "",
@@ -148,12 +152,17 @@ export function punchMatchesEmployee(
   return false;
 }
 
-/** ZKBio PIN must equal HRM employee_code and/or numeric employee id. */
+/**
+ * Device PINs we trust without name matching.
+ * Only when employee_code is set — otherwise callers fall back to name match
+ * (empty codes on staging must not block all T.Punch).
+ */
 export function employeeZkPins(target: EmployeeMatchKeys): Set<string> {
   const pins = new Set<string>();
   const code = String(target.employeeCode ?? "").trim();
   const empId = String(target.employeeId ?? "").trim();
-  if (code) pins.add(code);
+  if (!code) return pins;
+  pins.add(code);
   if (empId) pins.add(empId);
   return pins;
 }
