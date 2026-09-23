@@ -305,21 +305,19 @@ export async function loadTungstenPunchContext(
   });
   if (dept) zkParams.set("dept", dept);
 
-  const [zkResult, pinProfRes, empListRes] = await Promise.all([
+  const [zkResult, empListRes] = await Promise.all([
     fetchAllZkRows(zkParams),
-    fetch("/api/zkbio-pin-profiles"),
     fetch("/api/employee-list"),
   ]);
 
-  const pinProfData = await pinProfRes.json();
+  // Skip /api/zkbio-pin-profiles — full dump is multi‑MB and stalls Monthly Attendance.
+  // Month-window rows already feed batchPinProfiles for identity backfill.
   const empListData = await empListRes.json();
 
   return {
     zkRows: zkResult.rows,
     batchPinProfiles: buildPinProfilesFromRows(zkResult.rows),
-    dbPinProfiles: pinProfData.success
-      ? profileMapsFromApi(pinProfData.profiles || [])
-      : new Map(),
+    dbPinProfiles: new Map(),
     hrmByCode:
       empListData.success && empListData.employees
         ? hrmMapFromEmployees(empListData.employees)
