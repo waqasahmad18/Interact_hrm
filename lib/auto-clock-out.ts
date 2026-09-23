@@ -1,5 +1,10 @@
 import { ATTENDANCE_TABLE } from "./attendance-table";
-import { AUTO_PRESENCE_POPUP_MS } from "./shift-timing";
+import { getEmployeeMatchKeys } from "./biometric-employee";
+import { findLastTungstenPunchAfter } from "./mongo-zkbio-punch-log";
+import {
+  AUTO_PRESENCE_POPUP_MS,
+  parseAttendanceDateTimeMs,
+} from "./shift-timing";
 
 type Conn = {
   execute: (sql: string, params?: unknown[]) => Promise<unknown>;
@@ -107,6 +112,49 @@ export async function closeActiveBreaksForEmployee(
   );
 }
 
+/**
+ * Prefer last Tungsten (ZKBio) punch after clock-in as the HRM clock_out time
+ * so monthly status (early leave / on time / hours) matches T.Punch Out.
+ */
+async function resolveAutoClockOutMs(opts: {
+  conn: Conn;
+  attendanceId: number;
+  employeeId?: string | null;
+  scheduledMs: number;
+}): Promise<number> {
+  const scheduled = Number.isFinite(opts.scheduledMs) ? opts.scheduledMs : Date.now();
+  const eid = String(opts.employeeId ?? "").trim();
+  if (!eid) return scheduled;
+
+  try {
+    const [rows] = (await opts.conn.execute(
+      `SELECT DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in
+       FROM ${ATTENDANCE_TABLE}
+       WHERE id = ? AND clock_out IS NULL
+       LIMIT 1`,
+      [opts.attendanceId],
+    )) as [{ clock_in?: string }[], unknown];
+
+    const clockInRaw = rows[0]?.clock_in;
+    const clockInMs = clockInRaw ? parseAttendanceDateTimeMs(clockInRaw) : null;
+    if (clockInMs == null) return scheduled;
+
+    const { dbIds } = await getEmployeeMatchKeys(eid);
+    const pins = [...new Set(dbIds.map((p) => String(p).trim()).filter(Boolean))];
+    if (!pins.length) return scheduled;
+
+    const last = await findLastTungstenPunchAfter({
+      pins,
+      afterMs: clockInMs,
+      beforeMs: Math.max(scheduled, Date.now()) + 60_000,
+    });
+    if (last && last.atMs > clockInMs) return last.atMs;
+  } catch {
+    /* fall back to scheduled */
+  }
+  return scheduled;
+}
+
 export async function performAutoClockOut(
   conn: Conn,
   attendanceId: number,
@@ -115,7 +163,14 @@ export async function performAutoClockOut(
   clockOutAtMs?: number,
   employeeId?: string | null,
 ) {
-  const outDate = new Date(clockOutAtMs ?? Date.now());
+  const scheduledMs = clockOutAtMs ?? Date.now();
+  const outMs = await resolveAutoClockOutMs({
+    conn,
+    attendanceId,
+    employeeId,
+    scheduledMs,
+  });
+  const outDate = new Date(outMs);
   const formattedClockOut = outDate.toISOString().slice(0, 19).replace("T", " ");
 
   if (employeeId) {
