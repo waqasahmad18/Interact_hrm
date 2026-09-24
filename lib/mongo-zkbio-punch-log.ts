@@ -42,38 +42,49 @@ function punchInstant(doc: Document): Date | null {
   return coerceDate(doc.event_time) || coerceDate(doc.imported_at);
 }
 
+/** Date window on event_time only. Do NOT OR imported_at — backfill sets imported_at=now
+ *  and that was flooding every recent query with the whole history (T.Punch / Tungsten empty/hang). */
+function eventTimeRangeFilter(from?: string, to?: string): Filter<Document> {
+  const range: Record<string, Date> = {};
+  if (from) range.$gte = dayStartUtc(from);
+  if (to) range.$lt = dayEndUtc(to);
+  return {
+    $or: [
+      { event_time: range },
+      // Legacy rows with null event_time only
+      {
+        $and: [
+          {
+            $or: [
+              { event_time: null },
+              { event_time: { $exists: false } },
+            ],
+          },
+          { imported_at: range },
+        ],
+      },
+    ],
+  };
+}
+
 function buildFilter(opts: ZkbioPunchListOpts): Filter<Document> {
   const and: Filter<Document>[] = [];
 
   const from = opts.dateFrom?.trim();
   const to = opts.dateTo?.trim();
   if (from || to) {
-    const range: Record<string, Date> = {};
-    if (from) range.$gte = dayStartUtc(from);
-    if (to) range.$lt = dayEndUtc(to);
-    and.push({
-      $or: [{ event_time: range }, { imported_at: range }],
-    });
+    and.push(eventTimeRangeFilter(from || undefined, to || undefined));
   } else {
     const today = new Date();
     const y = today.getFullYear();
-    const m = today.getMonth();
-    and.push({
-      $or: [
-        {
-          event_time: {
-            $gte: new Date(Date.UTC(y, m, 1, -5, 0, 0, 0)),
-            $lt: new Date(Date.UTC(y, m + 1, 1, -5, 0, 0, 0)),
-          },
-        },
-        {
-          imported_at: {
-            $gte: new Date(Date.UTC(y, m, 1, -5, 0, 0, 0)),
-            $lt: new Date(Date.UTC(y, m + 1, 1, -5, 0, 0, 0)),
-          },
-        },
-      ],
-    });
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const lastDay = new Date(y, today.getMonth() + 1, 0).getDate();
+    and.push(
+      eventTimeRangeFilter(
+        `${y}-${m}-01`,
+        `${y}-${m}-${String(lastDay).padStart(2, "0")}`,
+      ),
+    );
   }
 
   if (opts.dept?.trim()) {
@@ -83,10 +94,15 @@ function buildFilter(opts: ZkbioPunchListOpts): Filter<Document> {
   if (opts.name?.trim()) {
     const core = opts.name.replace(/[%_\\]/g, " ").trim();
     if (core) {
-      const re = new RegExp(core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      and.push({
-        $or: [{ first_name: re }, { last_name: re }],
-      });
+      const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Tokenize so "Waqas Rafique" matches first/last separately (full-string regex never matched).
+      const tokens = core.split(/\s+/).filter(Boolean);
+      const nameOr: Filter<Document>[] = [];
+      for (const t of tokens) {
+        const re = new RegExp(escape(t), "i");
+        nameOr.push({ first_name: re }, { last_name: re });
+      }
+      and.push({ $or: nameOr });
     }
   }
 
