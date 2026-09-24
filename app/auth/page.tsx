@@ -1,14 +1,9 @@
-
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { FaEye, FaEyeSlash, FaUser } from "react-icons/fa";
-import {
-  loadSavedLogins,
-  persistSavedLogin,
-  type SavedLogin,
-} from "@/lib/saved-login-client";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { persistSavedLogin } from "@/lib/saved-login-client";
 import {
   markAdminPortal,
   markEmployeePortal,
@@ -34,8 +29,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [showSavedPicker, setShowSavedPicker] = useState(false);
-  const [savedLogins, setSavedLogins] = useState<SavedLogin[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [carouselImages, setCarouselImages] = useState<CarouselSlideDto[]>([]);
@@ -45,17 +38,6 @@ export default function LoginPage() {
     animation: "fade",
     includeBrandSlide: true,
   });
-
-  const syncSavedLogins = useCallback(async () => {
-    const saved = await loadSavedLogins();
-    setSavedLogins(saved);
-    if (saved.length > 0) setRememberMe(true);
-    return saved;
-  }, []);
-
-  useEffect(() => {
-    void syncSavedLogins();
-  }, [syncSavedLogins]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +59,7 @@ export default function LoginPage() {
             data.slides.map((s: { id: number; url: string }) => ({
               id: s.id,
               url: s.url,
-            }))
+            })),
           );
         }
       } catch {
@@ -92,13 +74,9 @@ export default function LoginPage() {
   const persistCredentials = useCallback(
     async (id: string, pass: string) => {
       if (!rememberMe) return;
-      const ok = await persistSavedLogin(id, pass);
-      if (ok) {
-        const updated = await loadSavedLogins();
-        setSavedLogins(updated);
-      }
+      await persistSavedLogin(id, pass);
     },
-    [rememberMe]
+    [rememberMe],
   );
 
   const performLogin = useCallback(
@@ -144,7 +122,6 @@ export default function LoginPage() {
             localStorage.setItem("loginId", trimmedLoginId);
             localStorage.setItem("userRole", data.role || data.employee?.role || "Officer");
             const empId = String(data.employee?.id ?? data.employee?.employee_id ?? "").trim();
-            // Only first+last (or API display_name). Never username/email/`name` (dept leak).
             const empName = sanitizeEmployeeDisplayName(
               data.display_name || employeeDisplayNameFromRecord(data.employee),
               "Employee",
@@ -158,8 +135,6 @@ export default function LoginPage() {
             }
           }
           await persistCredentials(trimmedLoginId, rawPassword);
-          // Keep role in localStorage for My Team / hierarchy. Dedicated
-          // bod|hod|management|leader dashboard routes do not exist → always employee-dashboard.
           router.push("/employee-dashboard");
         } else {
           setError(data.error || "Invalid credentials. Please try again.");
@@ -169,31 +144,13 @@ export default function LoginPage() {
       }
       setLoading(false);
     },
-    [persistCredentials, router]
+    [persistCredentials, router],
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await performLogin(loginId, password);
   };
-
-  const handleUseSaved = (saved: SavedLogin) => {
-    setLoginId(saved.loginId);
-    setPassword(saved.password);
-    setShowSavedPicker(false);
-  };
-
-  const openSavedPickerIfNeeded = () => {
-    void syncSavedLogins().then((saved) => {
-      if (saved.length > 0) setShowSavedPicker(true);
-    });
-  };
-
-  const closeSavedPicker = () => {
-    window.setTimeout(() => setShowSavedPicker(false), 180);
-  };
-
-  const hasSavedPanel = showSavedPicker && savedLogins.length > 0;
 
   return (
     <div className={styles.splitWrap}>
@@ -250,7 +207,7 @@ export default function LoginPage() {
       </section>
 
       <section className={styles.rightPanel}>
-        <div className={`${styles.formWrap} ${hasSavedPanel ? styles.formWrapWithSaved : ""}`}>
+        <div className={styles.formWrap}>
           <div className={styles.loginCard}>
             <div className={styles.logoWrap}>
               <Image
@@ -277,9 +234,6 @@ export default function LoginPage() {
                   className={styles.input}
                   value={loginId}
                   onChange={(e) => setLoginId(e.target.value)}
-                  onFocus={openSavedPickerIfNeeded}
-                  onClick={openSavedPickerIfNeeded}
-                  onBlur={closeSavedPicker}
                   required
                 />
                 <div className={styles.passwordBlock}>
@@ -292,9 +246,6 @@ export default function LoginPage() {
                       className={styles.input}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      onFocus={openSavedPickerIfNeeded}
-                      onClick={openSavedPickerIfNeeded}
-                      onBlur={closeSavedPicker}
                       required
                     />
                     <button
@@ -306,31 +257,6 @@ export default function LoginPage() {
                       {showPassword ? <FaEyeSlash /> : <FaEye />}
                     </button>
                   </div>
-                  {hasSavedPanel ? (
-                    <aside
-                      className={styles.savedPanel}
-                      onMouseDown={(e) => e.preventDefault()}
-                      aria-label="Saved logins on this device"
-                    >
-                      <div className={styles.savedPanelTitle}>Saved on this device</div>
-                      <div className={styles.savedPanelList}>
-                        {savedLogins.map((saved) => (
-                          <button
-                            key={saved.loginId}
-                            type="button"
-                            className={styles.savedAccountBtn}
-                            onClick={() => handleUseSaved(saved)}
-                          >
-                            <FaUser className={styles.savedAccountIcon} aria-hidden />
-                            <span className={styles.savedAccountText}>
-                              <strong>{saved.loginId}</strong>
-                              <span>Saved password</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </aside>
-                  ) : null}
                 </div>
                 <div className={styles.rowBetween}>
                   <label className={styles.remember}>
