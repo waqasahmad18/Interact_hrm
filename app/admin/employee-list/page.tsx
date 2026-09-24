@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import {
   FaUserEdit,
@@ -122,7 +122,12 @@ export default function EmployeeListStyledPage() {
   }, []);
 
   const refreshEmployees = () => {
-    fetch("/api/employee-list")
+    const viewerId =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    const qs = viewerId ? `?viewerId=${encodeURIComponent(viewerId)}` : "";
+    fetch(`/api/employee-list${qs}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -507,7 +512,7 @@ export default function EmployeeListStyledPage() {
   const tableColSpan = 9 + visibleExtraCols.length;
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.breakSummaryContainer}>
         <div className={styles.breakSummaryHeader}>Employee List</div>
 
@@ -986,6 +991,6 @@ export default function EmployeeListStyledPage() {
         </Modal>
         {popup}
       </div>
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

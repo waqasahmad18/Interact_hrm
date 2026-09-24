@@ -165,6 +165,12 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "ops",
   },
   {
+    permission: "people.employee_list.view",
+    name: "Employee List",
+    path: "/employee-dashboard/employee-list",
+    group: "ops",
+  },
+  {
     permission: "portal.tickets.create",
     featureGate: "tickets",
     name: "Generate Ticket",
@@ -205,6 +211,7 @@ export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
   "/admin/loan": "/employee-dashboard/loan",
   "/admin/system-control": "/employee-dashboard/system-control",
   "/admin/tickets": "/employee-dashboard/tickets",
+  "/admin/employee-list": "/employee-dashboard/employee-list",
 };
 
 export function buildMenuFromPermissions(
