@@ -8,7 +8,11 @@ import {
   type DbExecuteConn,
   type OpenAttendanceRow,
 } from "./attendance-presence";
-import { performAutoClockOut, shouldServerAutoClockOut } from "./auto-clock-out";
+import {
+  performAutoClockOut,
+  reconcileAutoClockOutsWithTPunch,
+  shouldServerAutoClockOut,
+} from "./auto-clock-out";
 import {
   AUTO_PRESENCE_POPUP_MS,
   clockInDateKey,
@@ -20,6 +24,7 @@ export type AutoPresenceSweepResult = {
   processed: number;
   clockedOut: number;
   attendanceIds: number[];
+  reconciled: number;
 };
 
 type OpenRow = OpenAttendanceRow & {
@@ -94,6 +99,7 @@ export async function sweepAutoPresenceClockOuts(
     processed: 0,
     clockedOut: 0,
     attendanceIds: [],
+    reconciled: 0,
   };
 
   try {
@@ -124,6 +130,12 @@ export async function sweepAutoPresenceClockOuts(
         result.attendanceIds.push(closedId);
       }
     }
+
+    // Past auto-outs closed at grace time before T.Punch Out existed → rewrite clock_out
+    result.reconciled = await reconcileAutoClockOutsWithTPunch(conn, {
+      lookbackDays: 7,
+      employeeId,
+    });
 
     return result;
   } finally {

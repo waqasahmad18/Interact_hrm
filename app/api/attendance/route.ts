@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { registerAutoPresenceCron } from "@/lib/register-auto-presence-cron";
 import { enforceBiometricOrRespond } from "@/lib/require-biometric";
 import { isGraceExpiredForEmployee } from "@/lib/attendance-presence";
-import { closeActiveBreaksForEmployee } from "@/lib/auto-clock-out";
+import { performAutoClockOut } from "@/lib/auto-clock-out";
 
 registerAutoPresenceCron();
 import { pool } from "../../../lib/db";
@@ -441,26 +441,30 @@ export async function POST(req: NextRequest) {
       );
       const pending = (pendingRows as any[])[0];
       if (pending) {
-        const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
+        // Auto clock-out: always prefer T.Punch Out (not browser "now"/grace time)
         if (isAutoClockOut) {
-          await closeActiveBreaksForEmployee(
+          await performAutoClockOut(
             conn,
+            pending.id,
+            employee_name || null,
+            clock_out ? new Date(clock_out).getTime() : undefined,
             String(employee_id),
-            formattedClockOut,
-            new Date(clock_out).toISOString(),
           );
+          console.log("Auto clock-out record updated from T.Punch Out");
+        } else {
+          const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
+          await conn.execute(
+            `UPDATE ${ATTENDANCE_TABLE}
+             SET clock_out = ?,
+                 auto_clock_out = 0,
+                 last_presence_ack_at = NULL,
+                 total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)),
+                 employee_name = ?
+             WHERE id = ?`,
+            [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
+          );
+          console.log("Clock-out record updated successfully");
         }
-        await conn.execute(
-          `UPDATE ${ATTENDANCE_TABLE}
-           SET clock_out = ?,
-               auto_clock_out = ?,
-               last_presence_ack_at = NULL,
-               total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2)),
-               employee_name = ?
-           WHERE id = ?`,
-          [formattedClockOut, isAutoClockOut ? 1 : 0, formattedClockOut, employee_name || null, pending.id]
-        );
-        console.log("Clock-out record updated successfully");
       } else {
         console.warn("No pending clock-in found for clock-out");
       }

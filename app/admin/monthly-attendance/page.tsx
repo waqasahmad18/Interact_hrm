@@ -61,7 +61,7 @@ import {
 } from "../../../lib/tungsten-punch-pairing";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { ManualStatusBadge } from "../../components/ManualStatusBadge";
-import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
+import { isAutoClockOutRecord, applyAutoClockOutTPunchDisplay } from "../../../lib/attendance-auto-clock-out";
 import { resolveBillableOvertimeSeconds } from "../../../lib/attendance-overtime";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
@@ -771,9 +771,15 @@ export default function MonthlyAttendancePage() {
       tungstenPunchOut: "-",
     });
 
+    const withAutoTPunch = (
+      session: EmployeeReportSession,
+      record: any | undefined,
+    ): EmployeeReportSession =>
+      applyAutoClockOutTPunchDisplay(session, record?.auto_clock_out);
+
     if (daySessions.length === 0) {
       return dayRecords.map((record) => ({
-        session: sessionFromRecord(record),
+        session: withAutoTPunch(sessionFromRecord(record), record),
         record,
       }));
     }
@@ -782,13 +788,16 @@ export default function MonthlyAttendancePage() {
     const rows = daySessions.map((session) => {
       const record = findRecordForSession(dayRecords, session, usedIds);
       if (record?.id != null) usedIds.add(record.id);
-      return { session, record };
+      return { session: withAutoTPunch(session, record), record };
     });
 
     dayRecords.forEach((record) => {
       if (record?.id != null && usedIds.has(record.id)) return;
       if (record?.id == null && rows.some((row) => row.record === record)) return;
-      rows.push({ session: sessionFromRecord(record), record });
+      rows.push({
+        session: withAutoTPunch(sessionFromRecord(record), record),
+        record,
+      });
       if (record?.id != null) usedIds.add(record.id);
     });
 

@@ -112,6 +112,9 @@ export async function closeActiveBreaksForEmployee(
   );
 }
 
+/** Search window after scheduled auto-out for a late T.Punch Out (overnight exits). */
+const T_PUNCH_OUT_LOOKAHEAD_MS = 3 * 60 * 60 * 1000;
+
 /**
  * Prefer last Tungsten (ZKBio) punch after clock-in as the HRM clock_out time
  * so monthly status (early leave / on time / hours) matches T.Punch Out.
@@ -121,6 +124,10 @@ async function resolveAutoClockOutMs(opts: {
   attendanceId: number;
   employeeId?: string | null;
   scheduledMs: number;
+  /** When reconciling an already-closed auto-out, allow reading clock_in even if clock_out is set. */
+  allowClosed?: boolean;
+  /** Cap punch search (reconcile: current clock_out + lookahead, not "now"). */
+  searchBeforeMs?: number;
 }): Promise<number> {
   const scheduled = Number.isFinite(opts.scheduledMs) ? opts.scheduledMs : Date.now();
   const eid = String(opts.employeeId ?? "").trim();
@@ -128,10 +135,15 @@ async function resolveAutoClockOutMs(opts: {
 
   try {
     const [rows] = (await opts.conn.execute(
-      `SELECT DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in
-       FROM ${ATTENDANCE_TABLE}
-       WHERE id = ? AND clock_out IS NULL
-       LIMIT 1`,
+      opts.allowClosed
+        ? `SELECT DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in
+           FROM ${ATTENDANCE_TABLE}
+           WHERE id = ?
+           LIMIT 1`
+        : `SELECT DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in
+           FROM ${ATTENDANCE_TABLE}
+           WHERE id = ? AND clock_out IS NULL
+           LIMIT 1`,
       [opts.attendanceId],
     )) as [{ clock_in?: string }[], unknown];
 
@@ -143,16 +155,102 @@ async function resolveAutoClockOutMs(opts: {
     const pins = [...new Set(dbIds.map((p) => String(p).trim()).filter(Boolean))];
     if (!pins.length) return scheduled;
 
+    const beforeMs =
+      opts.searchBeforeMs != null && Number.isFinite(opts.searchBeforeMs)
+        ? opts.searchBeforeMs
+        : Math.max(scheduled, Date.now()) + T_PUNCH_OUT_LOOKAHEAD_MS;
+
     const last = await findLastTungstenPunchAfter({
       pins,
       afterMs: clockInMs,
-      beforeMs: Math.max(scheduled, Date.now()) + 60_000,
+      // Include punches that arrive shortly after the grace/popup deadline
+      // (e.g. auto-out 01:05, T.Punch Out 01:15).
+      beforeMs,
     });
     if (last && last.atMs > clockInMs) return last.atMs;
   } catch {
     /* fall back to scheduled */
   }
   return scheduled;
+}
+
+/**
+ * After T.Punch sync, rewrite recent auto clock-outs so clock_out = T.Punch Out.
+ * Fixes rows closed at grace time before the Tungsten exit punch existed.
+ */
+export async function reconcileAutoClockOutsWithTPunch(
+  conn: Conn,
+  opts?: { lookbackDays?: number; employeeId?: string | null },
+): Promise<number> {
+  const lookbackDays = Math.max(1, Math.min(31, opts?.lookbackDays ?? 7));
+  const eid = String(opts?.employeeId ?? "").trim();
+  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 19)
+    .replace("T", " ");
+
+  const [rows] = (await conn.execute(
+    eid
+      ? `SELECT id, employee_id,
+                DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in,
+                DATE_FORMAT(clock_out, '%Y-%m-%dT%H:%i:%s') AS clock_out
+         FROM ${ATTENDANCE_TABLE}
+         WHERE auto_clock_out = 1
+           AND clock_out IS NOT NULL
+           AND clock_in >= ?
+           AND employee_id = ?`
+      : `SELECT id, employee_id,
+                DATE_FORMAT(clock_in, '%Y-%m-%dT%H:%i:%s') AS clock_in,
+                DATE_FORMAT(clock_out, '%Y-%m-%dT%H:%i:%s') AS clock_out
+         FROM ${ATTENDANCE_TABLE}
+         WHERE auto_clock_out = 1
+           AND clock_out IS NOT NULL
+           AND clock_in >= ?`,
+    eid ? [since, eid] : [since],
+  )) as [
+    {
+      id: number;
+      employee_id: string | number;
+      clock_in?: string;
+      clock_out?: string;
+    }[],
+    unknown,
+  ];
+
+  let updated = 0;
+  for (const row of rows) {
+    const currentOutMs = row.clock_out
+      ? parseAttendanceDateTimeMs(row.clock_out)
+      : null;
+    if (currentOutMs == null) continue;
+
+    const punchMs = await resolveAutoClockOutMs({
+      conn,
+      attendanceId: row.id,
+      employeeId: String(row.employee_id),
+      scheduledMs: currentOutMs,
+      allowClosed: true,
+      // Only look a few hours past the stored auto-out — not through "now"
+      // (would otherwise steal the next day's Tungsten punches).
+      searchBeforeMs: currentOutMs + T_PUNCH_OUT_LOOKAHEAD_MS,
+    });
+
+    // Only rewrite when Tungsten found a real exit different from stored clock_out
+    if (punchMs === currentOutMs || Math.abs(punchMs - currentOutMs) < 1000) continue;
+    if (punchMs <= (parseAttendanceDateTimeMs(row.clock_in ?? "") ?? 0)) continue;
+
+    const outDate = new Date(punchMs);
+    const formatted = outDate.toISOString().slice(0, 19).replace("T", " ");
+    await conn.execute(
+      `UPDATE ${ATTENDANCE_TABLE}
+       SET clock_out = ?,
+           total_hours = LEAST(999.99, ROUND(TIMESTAMPDIFF(MINUTE, clock_in, ?)/60, 2))
+       WHERE id = ? AND auto_clock_out = 1`,
+      [formatted, formatted, row.id],
+    );
+    updated += 1;
+  }
+  return updated;
 }
 
 export async function performAutoClockOut(
