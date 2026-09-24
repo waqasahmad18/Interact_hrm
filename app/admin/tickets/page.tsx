@@ -1,6 +1,6 @@
 "use client";
 
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import React from "react";
 import adminStyles from "../admin-page.module.css";
 import TicketThread from "../../components/TicketThread";
@@ -291,7 +291,7 @@ export default function AdminTicketsPage() {
   };
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
           <h1 className={adminStyles.title}>Ticket inbox</h1>
@@ -535,6 +535,6 @@ export default function AdminTicketsPage() {
           </div>
         </div>
       ) : null}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

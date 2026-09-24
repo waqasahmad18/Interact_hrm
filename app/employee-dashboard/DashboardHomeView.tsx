@@ -28,6 +28,8 @@ type TicketWidgetRow = {
   status: string;
   category: TicketCategory;
   ticket_type: string;
+  employee_name?: string | null;
+  employee_id?: string | null;
   messages?: TicketThreadMessage[];
   updated_at: string;
 };
@@ -146,6 +148,11 @@ export type DashboardHomeViewProps = {
   ticketSeenMap: Record<number, string>;
   newReplyCount: number;
   openTicketPage: (ticket?: TicketWidgetRow) => void;
+  /** HR: company-wide ticket inbox (all employees). */
+  isHrTicketInbox?: boolean;
+  inboxTicketItems?: TicketWidgetRow[];
+  inboxPendingCount?: number;
+  openTicketInbox?: () => void;
   onNavigate: (path: string) => void;
 };
 
@@ -167,6 +174,10 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     ticketSeenMap,
     newReplyCount,
     openTicketPage,
+    isHrTicketInbox = false,
+    inboxTicketItems = [],
+    inboxPendingCount = 0,
+    openTicketInbox,
     onNavigate,
   } = props;
 
@@ -380,81 +391,171 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                 </span>
                 Generate ticket
               </button>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={() => onNavigate("/employee-dashboard/my-team")}
-              >
-                <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
-                  <FaUsers />
-                </span>
-                My team
-              </button>
+              {isHrTicketInbox ? (
+                <button
+                  type="button"
+                  className={styles.actionBtn}
+                  onClick={() =>
+                    openTicketInbox
+                      ? openTicketInbox()
+                      : onNavigate("/employee-dashboard/tickets")
+                  }
+                >
+                  <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
+                    <FaTicketAlt />
+                  </span>
+                  Ticket Inbox
+                  {inboxPendingCount > 0 ? ` (${inboxPendingCount})` : ""}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.actionBtn}
+                  onClick={() => onNavigate("/employee-dashboard/my-team")}
+                >
+                  <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
+                    <FaUsers />
+                  </span>
+                  My team
+                </button>
+              )}
+              {isHrTicketInbox ? (
+                <button
+                  type="button"
+                  className={styles.actionBtn}
+                  onClick={() => onNavigate("/employee-dashboard/leave-inbox")}
+                >
+                  <span className={`${styles.actionIcon} ${styles.actionBlue}`}>
+                    <FaUsers />
+                  </span>
+                  Leaves
+                </button>
+              ) : null}
             </div>
           </article>
 
-          <article
-            className={`${styles.card} ${styles.ticketsCard}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => openTicketPage()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                openTicketPage();
+          {isHrTicketInbox ? (
+            <article
+              className={`${styles.card} ${styles.ticketsCard}`}
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                openTicketInbox
+                  ? openTicketInbox()
+                  : onNavigate("/employee-dashboard/tickets")
               }
-            }}
-          >
-            <div className={styles.ticketsHead}>
-              <h2 className={styles.ticketsHeadTitle}>Generate Tickets</h2>
-              <button
-                type="button"
-                className={styles.viewAll}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNavigate("/employee-dashboard/generate-ticket");
-                }}
-              >
-                View all
-              </button>
-            </div>
-            <div className={styles.ticketsBody}>
-              {newReplyCount > 0 ? (
-                <span className={styles.replyBadge}>
-                  {newReplyCount} New {newReplyCount === 1 ? "Reply" : "Replies"}
-                </span>
-              ) : null}
-              {ticketWidgetItems.length === 0 ? (
-                <div className={styles.ticketEmpty}>No pending tickets</div>
-              ) : (
-                ticketWidgetItems.map((ticket) => {
-                  const isLeave = ticket.ticket_type === "leave";
-                  const unread =
-                    !isLeave &&
-                    hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
-                  const lastAdmin = isLeave
-                    ? null
-                    : getLastAdminMessage(ticket.messages ?? []);
-                  return (
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openTicketInbox
+                    ? openTicketInbox()
+                    : onNavigate("/employee-dashboard/tickets");
+                }
+              }}
+            >
+              <div className={styles.ticketsHead}>
+                <h2 className={styles.ticketsHeadTitle}>Ticket Inbox</h2>
+                <button
+                  type="button"
+                  className={styles.viewAll}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigate("/employee-dashboard/tickets");
+                  }}
+                >
+                  View all
+                </button>
+              </div>
+              <div className={styles.ticketsBody}>
+                {inboxPendingCount > 0 ? (
+                  <span className={styles.replyBadge}>
+                    {inboxPendingCount} open
+                  </span>
+                ) : null}
+                {inboxTicketItems.length === 0 ? (
+                  <div className={styles.ticketEmpty}>No open tickets</div>
+                ) : (
+                  inboxTicketItems.map((ticket) => (
                     <div key={ticket.id} className={styles.ticketItem}>
                       <div className={styles.ticketTop}>
                         <span className={styles.ticketNum}>{ticket.ticket_number}</span>
-                        <span className={unread ? styles.badgeNew : styles.badgeMuted}>
-                          {unread
-                            ? "New reply"
-                            : ticketStatusLabel(ticket.status, ticket.ticket_type)}
+                        <span className={styles.badgeMuted}>
+                          {ticketStatusLabel(ticket.status, ticket.ticket_type)}
                         </span>
                       </div>
-                      <div className={styles.ticketSub}>{ticket.subject}</div>
-                      {lastAdmin ? (
-                        <div className={styles.ticketPreview}>Admin: {lastAdmin.body}</div>
-                      ) : null}
+                      <div className={styles.ticketSub}>
+                        {ticket.employee_name || ticket.employee_id || "Employee"}
+                        {ticket.subject ? ` · ${ticket.subject}` : ""}
+                      </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </article>
+                  ))
+                )}
+              </div>
+            </article>
+          ) : (
+            <article
+              className={`${styles.card} ${styles.ticketsCard}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => openTicketPage()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openTicketPage();
+                }
+              }}
+            >
+              <div className={styles.ticketsHead}>
+                <h2 className={styles.ticketsHeadTitle}>My Tickets</h2>
+                <button
+                  type="button"
+                  className={styles.viewAll}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigate("/employee-dashboard/generate-ticket");
+                  }}
+                >
+                  View all
+                </button>
+              </div>
+              <div className={styles.ticketsBody}>
+                {newReplyCount > 0 ? (
+                  <span className={styles.replyBadge}>
+                    {newReplyCount} New {newReplyCount === 1 ? "Reply" : "Replies"}
+                  </span>
+                ) : null}
+                {ticketWidgetItems.length === 0 ? (
+                  <div className={styles.ticketEmpty}>No pending tickets</div>
+                ) : (
+                  ticketWidgetItems.map((ticket) => {
+                    const isLeave = ticket.ticket_type === "leave";
+                    const unread =
+                      !isLeave &&
+                      hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
+                    const lastAdmin = isLeave
+                      ? null
+                      : getLastAdminMessage(ticket.messages ?? []);
+                    return (
+                      <div key={ticket.id} className={styles.ticketItem}>
+                        <div className={styles.ticketTop}>
+                          <span className={styles.ticketNum}>{ticket.ticket_number}</span>
+                          <span className={unread ? styles.badgeNew : styles.badgeMuted}>
+                            {unread
+                              ? "New reply"
+                              : ticketStatusLabel(ticket.status, ticket.ticket_type)}
+                          </span>
+                        </div>
+                        <div className={styles.ticketSub}>{ticket.subject}</div>
+                        {lastAdmin ? (
+                          <div className={styles.ticketPreview}>Admin: {lastAdmin.body}</div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </article>
+          )}
         </div>
       </div>
     </div>

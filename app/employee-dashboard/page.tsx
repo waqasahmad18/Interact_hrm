@@ -67,6 +67,8 @@ type TicketWidgetRow = {
   status: string;
   category: TicketCategory;
   ticket_type: string;
+  employee_name?: string | null;
+  employee_id?: string | null;
   messages?: TicketThreadMessage[];
   requested_at?: string;
   updated_at: string;
@@ -239,6 +241,8 @@ export default function EmployeeDashboardPage() {
   const [loadingTickets, setLoadingTickets] = React.useState(false);
   const [ticketPulseIds, setTicketPulseIds] = React.useState<number[]>([]);
   const [ticketSeenMap, setTicketSeenMap] = React.useState<Record<number, string>>({});
+  const [isHrTicketInbox, setIsHrTicketInbox] = React.useState(false);
+  const [inboxTickets, setInboxTickets] = React.useState<TicketWidgetRow[]>([]);
   const ticketsRef = React.useRef<TicketWidgetRow[]>([]);
   const ticketTimerRef = React.useRef<number | null>(null);
   // Same name as Welcome Back (layout session) — never a separate local email cache
@@ -409,6 +413,55 @@ export default function EmployeeDashboardPage() {
       if (!opts?.silent) setLoadingTickets(false);
     }
   }, [employeeId]);
+
+  const fetchHrInboxTickets = React.useCallback(async () => {
+    if (!employeeId || !isHrTicketInbox) return;
+    try {
+      const res = await fetch(
+        `/api/employee-tickets?status=open&limit=30&ts=${Date.now()}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      if (data?.success) {
+        setInboxTickets(Array.isArray(data.tickets) ? data.tickets : []);
+      }
+    } catch (err) {
+      console.error("hr inbox tickets fetch", err);
+    }
+  }, [employeeId, isHrTicketInbox]);
+
+  React.useEffect(() => {
+    if (!employeeId || !/^\d+$/.test(employeeId)) {
+      setIsHrTicketInbox(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        const perms = Array.isArray(data.permissions) ? data.permissions : [];
+        setIsHrTicketInbox(perms.includes("ops.tickets.view"));
+      })
+      .catch(() => {
+        if (!cancelled) setIsHrTicketInbox(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
+
+  React.useEffect(() => {
+    if (!isHrTicketInbox) {
+      setInboxTickets([]);
+      return;
+    }
+    void fetchHrInboxTickets();
+    const id = window.setInterval(() => void fetchHrInboxTickets(), 60_000);
+    return () => window.clearInterval(id);
+  }, [isHrTicketInbox, fetchHrInboxTickets]);
 
   const openTicketPage = React.useCallback(
     (ticket?: TicketWidgetRow) => {
@@ -869,6 +922,25 @@ export default function EmployeeDashboardPage() {
       .slice(0, 1);
   }, [tickets, ticketSeenMap]);
 
+  const inboxTicketItems = React.useMemo(() => {
+    return [...inboxTickets]
+      .sort((a, b) => {
+        const aMs =
+          parseTicketInstant(a.requested_at)?.getTime() ||
+          parseTicketInstant(a.updated_at)?.getTime() ||
+          0;
+        const bMs =
+          parseTicketInstant(b.requested_at)?.getTime() ||
+          parseTicketInstant(b.updated_at)?.getTime() ||
+          0;
+        if (bMs !== aMs) return bMs - aMs;
+        return b.id - a.id;
+      })
+      .slice(0, 5);
+  }, [inboxTickets]);
+
+  const inboxPendingCount = inboxTickets.length;
+
   const weekStats = React.useMemo(() => {
     let onTime = 0;
     let late = 0;
@@ -1017,6 +1089,10 @@ export default function EmployeeDashboardPage() {
       ticketSeenMap={ticketSeenMap}
       newReplyCount={newReplyCount}
       openTicketPage={openTicketPage}
+      isHrTicketInbox={isHrTicketInbox}
+      inboxTicketItems={inboxTicketItems}
+      inboxPendingCount={inboxPendingCount}
+      openTicketInbox={() => router.push("/employee-dashboard/tickets")}
       onNavigate={(path) => router.push(path)}
     />
   );

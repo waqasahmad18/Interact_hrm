@@ -88,6 +88,7 @@ function iconForPath(path: string, name: string): React.ReactNode {
   if (path.includes("my-team") || name.includes("Team")) return <FaUsers />;
   if (path.includes("leave") || name.includes("Leave")) return <FaCalendarAlt />;
   if (path.includes("break")) return <FaCoffee />;
+  if (path.includes("ticket") || name.includes("Ticket")) return <FaTicketAlt />;
   if (
     path.includes("payroll") ||
     path.includes("commission") ||
@@ -231,8 +232,17 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       .then((data) => {
         if (cancelled || !data?.success) return;
         const menu = Array.isArray(data.menu) ? data.menu : [];
+        const perms = Array.isArray(data.permissions) ? data.permissions : [];
         const basePaths = new Set(BASE_EMPLOYEE_TABS.map((t) => t.path));
         const tabs: NavTab[] = [];
+        // HR: Ticket Inbox right after Generate Ticket in the sidebar
+        if (perms.includes("ops.tickets.view")) {
+          tabs.push({
+            name: "Ticket Inbox",
+            path: "/employee-dashboard/tickets",
+            icon: iconForPath("/employee-dashboard/tickets", "Ticket Inbox"),
+          });
+        }
         for (const item of menu) {
           const path = String(item.path || "");
           const name = String(item.name || "");
@@ -249,7 +259,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         try {
           localStorage.setItem(
             "accessPermissions",
-            JSON.stringify(Array.isArray(data.permissions) ? data.permissions : []),
+            JSON.stringify(perms),
           );
           localStorage.setItem("accessRoleSlug", String(data.role?.slug || ""));
         } catch {
@@ -265,10 +275,24 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   }, [employeeId, router]);
 
   const employeeTabs = React.useMemo(() => {
+    const ticketInbox = accessTabs.filter((t) => t.path === "/employee-dashboard/tickets");
     const team = accessTabs.filter((t) => t.path === "/employee-dashboard/my-team");
-    const rest = accessTabs.filter((t) => t.path !== "/employee-dashboard/my-team");
-    const [home, ...tail] = BASE_EMPLOYEE_TABS;
-    return [home, ...team, ...tail, ...rest];
+    const rest = accessTabs.filter(
+      (t) =>
+        t.path !== "/employee-dashboard/my-team" &&
+        t.path !== "/employee-dashboard/tickets",
+    );
+    const [home, myInfo, generateTicket, ...tail] = BASE_EMPLOYEE_TABS;
+    // Home → My Info → Generate Ticket → Ticket Inbox (HR) → My Team → …
+    return [
+      home,
+      myInfo,
+      generateTicket,
+      ...ticketInbox,
+      ...team,
+      ...tail,
+      ...rest,
+    ].filter(Boolean);
   }, [accessTabs]);
 
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
