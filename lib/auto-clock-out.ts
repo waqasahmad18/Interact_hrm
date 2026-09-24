@@ -223,6 +223,16 @@ export async function reconcileAutoClockOutsWithTPunch(
       ? parseAttendanceDateTimeMs(row.clock_out)
       : null;
     if (currentOutMs == null) continue;
+    const clockInMs = row.clock_in
+      ? parseAttendanceDateTimeMs(row.clock_in)
+      : null;
+
+    // Overnight: early wrong auto-out (~evening) must still see next-morning T.Punch.
+    // Cap by clock_in + 14h (not currentOut+3h alone) so Fri 1:02 can rewrite Thu 6:46.
+    const searchBeforeMs = Math.max(
+      currentOutMs + T_PUNCH_OUT_LOOKAHEAD_MS,
+      clockInMs != null ? clockInMs + 14 * 60 * 60 * 1000 : currentOutMs,
+    );
 
     const punchMs = await resolveAutoClockOutMs({
       conn,
@@ -230,14 +240,14 @@ export async function reconcileAutoClockOutsWithTPunch(
       employeeId: String(row.employee_id),
       scheduledMs: currentOutMs,
       allowClosed: true,
-      // Only look a few hours past the stored auto-out — not through "now"
-      // (would otherwise steal the next day's Tungsten punches).
-      searchBeforeMs: currentOutMs + T_PUNCH_OUT_LOOKAHEAD_MS,
+      searchBeforeMs,
     });
 
     // Only rewrite when Tungsten found a real exit different from stored clock_out
     if (punchMs === currentOutMs || Math.abs(punchMs - currentOutMs) < 1000) continue;
-    if (punchMs <= (parseAttendanceDateTimeMs(row.clock_in ?? "") ?? 0)) continue;
+    if (punchMs <= (clockInMs ?? 0)) continue;
+    // Prefer a later exit (real overnight out) over keeping an early mid-shift close
+    if (punchMs < currentOutMs) continue;
 
     const outDate = new Date(punchMs);
     const formatted = outDate.toISOString().slice(0, 19).replace("T", " ");
