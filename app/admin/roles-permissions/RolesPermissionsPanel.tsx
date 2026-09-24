@@ -48,6 +48,8 @@ function accentOf(role: RoleDef | undefined) {
   return role?.accent || "#9333ea";
 }
 
+import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
+
 function roleFilter(opt: SelectOption, query: string) {
   return opt.label.toLowerCase().includes(query);
 }
@@ -58,16 +60,7 @@ function employeeFilter(opt: SelectOption, query: string) {
 }
 
 function explicitSlugs(emp: DemoEmployee): string[] {
-  if (Array.isArray(emp.accessRoleSlugs) && emp.accessRoleSlugs.length) {
-    return emp.accessRoleSlugs.map((s) => String(s).trim()).filter(Boolean);
-  }
-  const one =
-    emp.accessRoleSlug != null && String(emp.accessRoleSlug).trim()
-      ? String(emp.accessRoleSlug).trim()
-      : null;
-  // Only explicit System Control assigns — do not fall back to Add Employee org role,
-  // or Unassign would appear to fail after refresh.
-  return one ? [one] : [];
+  return effectiveAccessSlugs(emp);
 }
 
 function explicitSlug(emp: DemoEmployee) {

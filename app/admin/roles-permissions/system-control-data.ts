@@ -682,18 +682,30 @@ function normDeptToken(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Canonical chip label for an HRM department name (Marketing → IT). */
+/** Canonical chip label for an HRM department name.
+ *  Marketing (standalone) → IT; Digital Marketing / DM / Analytics → DM.
+ */
 export function orgDeptChipLabel(departmentName: string | undefined | null): string | null {
   const t = normDeptToken(departmentName || "");
   if (!t) return null;
-  if (t === "marketing" || t.includes("marketing")) return "IT";
+  // DM must win before generic "marketing" → IT (Digital Marketing contains "marketing")
+  if (
+    t === "dm" ||
+    t === "digital marketing" ||
+    t.startsWith("dm ") ||
+    t.includes("digital marketing") ||
+    (t.includes("analytics") && !t.includes("data mining")) ||
+    t === "dm / analytics" ||
+    t.includes("dm /")
+  ) {
+    return "DM";
+  }
+  if (t === "marketing") return "IT";
   if (t === "it" || t === "tech" || t.includes("technology")) return "IT";
   if (t === "cest" || t === "c est") return "CEst.";
   if (t === "hit") return "HIT";
   if (t === "hr" || t === "human resources") return "HR";
   if (t === "finance" || t === "accounts") return "Finance";
-  if (t === "dm" || t === "digital marketing") return "DM";
-  // Keep original casing from first non-empty name later — use trimmed raw for others
   return String(departmentName || "").trim() || null;
 }
 
@@ -706,7 +718,10 @@ export function employeeMatchesOrgDept(
   if (!empChip) return false;
   if (chipLabel === "IT") {
     const raw = normDeptToken(emp.departmentName || "");
-    return empChip === "IT" || raw === "marketing" || raw.includes("marketing");
+    // Marketing folds into IT; Digital Marketing is DM (handled by orgDeptChipLabel)
+    if (empChip === "IT") return true;
+    if (raw === "marketing") return true;
+    return false;
   }
   return empChip.toLowerCase() === chipLabel.toLowerCase();
 }

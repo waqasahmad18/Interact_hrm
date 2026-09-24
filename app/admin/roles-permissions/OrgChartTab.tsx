@@ -18,6 +18,7 @@ import {
   type RoleDef,
 } from "./system-control-data";
 import { orgRoleLabel } from "@/lib/org-role";
+import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 
 type Props = {
   allRoles: RoleDef[];
@@ -220,33 +221,22 @@ export default function OrgChartTab({
   const removeRolePhoto = guard(onRemoveRolePhoto);
 
   function primaryEmployee(roleId: string) {
+    const matches = employeesForRole(roleId);
+    // Prefer someone with an explicit System Control assign
     return (
-      employees.find((e) => {
-        const slugs =
-          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
-            ? e.accessRoleSlugs
-            : e.accessRoleSlug
-              ? [String(e.accessRoleSlug)]
-              : e.roleId
-                ? [e.roleId]
-                : [];
-        return slugs.includes(roleId);
-      }) ?? null
+      matches.find((e) => {
+        const explicit =
+          (Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length) ||
+          Boolean(e.accessRoleSlug);
+        return explicit;
+      }) ??
+      matches[0] ??
+      null
     );
   }
 
   function employeesForRole(roleId: string) {
-    return employees.filter((e) => {
-      const slugs =
-        Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
-          ? e.accessRoleSlugs
-          : e.accessRoleSlug
-            ? [String(e.accessRoleSlug)]
-            : e.roleId
-              ? [e.roleId]
-              : [];
-      return slugs.includes(roleId);
-    });
+    return employees.filter((e) => effectiveAccessSlugs(e).includes(roleId));
   }
 
   const [dragId, setDragId] = useState<string | null>(null);
@@ -1060,12 +1050,27 @@ export default function OrgChartTab({
                           </span>
                           <span className={styles.orgPersonName}>{emp.name}</span>
                           <span className={styles.orgPersonMeta}>
-                            {emp.legacyRole
-                              ? orgRoleLabel(emp.legacyRole)
-                              : allRoles.find((r) => r.id === emp.roleId)?.name ||
+                            {(() => {
+                              const slugs = effectiveAccessSlugs(emp);
+                              const leadSlug = slugs.find((s) => s.startsWith("team_lead_"));
+                              if (leadSlug) {
+                                return (
+                                  allRoles.find((r) => r.id === leadSlug)?.name ||
+                                  orgRoleLabel(emp.legacyRole || "Leader")
+                                );
+                              }
+                              if (emp.legacyRole) {
+                                const label = orgRoleLabel(emp.legacyRole);
+                                // Don't label Officers/others as Team Lead unless assigned
+                                if (label !== "Team Lead") return label;
+                              }
+                              return (
+                                allRoles.find((r) => r.id === emp.roleId)?.name ||
                                 emp.departmentName ||
                                 emp.pseudonym ||
-                                "Staff"}
+                                "Staff"
+                              );
+                            })()}
                           </span>
                         </button>
                       ))}

@@ -15,6 +15,7 @@ import RolesPermissionsPanel from "./RolesPermissionsPanel";
 import SettingsTab from "./SettingsTab";
 import styles from "./system-control-demo.module.css";
 import { ModalPortal } from "@/app/components/ModalPortal";
+import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 import {
   BASE_ROLES,
   childRoles,
@@ -241,15 +242,7 @@ export default function SystemControlPage() {
   const totalPermCount = FEATURE_MODULES.reduce((n, m) => n + m.permissions.length, 0);
 
   function employeeCountByRole(roleId: string) {
-    return employees.filter((e) => {
-      const slugs =
-        Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
-          ? e.accessRoleSlugs
-          : e.accessRoleSlug
-            ? [String(e.accessRoleSlug)]
-            : [];
-      return slugs.includes(roleId);
-    }).length;
+    return employees.filter((e) => effectiveAccessSlugs(e).includes(roleId)).length;
   }
 
   function permCountByRole(roleId: string) {

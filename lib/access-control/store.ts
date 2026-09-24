@@ -497,8 +497,9 @@ export async function syncEmployeeAccessRoleFromOrg(employeeId: string | number)
   return slug;
 }
 
-/** Fill access_role_slug only for employees never touched by System Control assign/unassign.
- *  Intentionally unassigned employees keep access_role_slugs = [] and are not re-filled.
+/** Fill / correct access_role_slug from Add Employee org role + department.
+ *  Skips intentionally unassigned employees (`access_role_slugs = []`).
+ *  Re-maps wrong auto slugs (e.g. Team Lead on billing instead of DM).
  */
 export async function backfillMissingOrgAccessRoles(): Promise<number> {
   await ensureAccessControlStore();
@@ -509,9 +510,7 @@ export async function backfillMissingOrgAccessRoles(): Promise<number> {
        FROM hrm_employees e
        LEFT JOIN employee_jobs j ON e.id = j.employee_id
        LEFT JOIN departments d ON j.department_id = d.id
-       WHERE e.role IS NOT NULL AND TRIM(e.role) <> ''
-         AND (e.access_role_slug IS NULL OR TRIM(COALESCE(e.access_role_slug, '')) = '')
-         AND e.access_role_slugs IS NULL`,
+       WHERE e.role IS NOT NULL AND TRIM(e.role) <> ''`,
     );
     for (const r of rows as {
       id: number;
@@ -520,6 +519,16 @@ export async function backfillMissingOrgAccessRoles(): Promise<number> {
       access_role_slugs?: unknown;
       department_name?: string | null;
     }[]) {
+      if (accessRolesIntentionallyCleared(r as Record<string, unknown>)) continue;
+
+      const expected = mapLegacyEmployeeRole(r.role, r.department_name);
+      const current = String(r.access_role_slug || "").trim();
+      if (current === expected) continue;
+
+      // Don't overwrite multi-role manual System Control assigns
+      const slugs = parseAccessRoleSlugs(r as Record<string, unknown>);
+      if (slugs.length > 1) continue;
+
       const slug = await syncEmployeeAccessRoleFromOrg(r.id);
       if (slug) updated += 1;
     }
