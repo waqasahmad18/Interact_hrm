@@ -5,6 +5,12 @@ import Image from "next/image";
 import styles from "./add-employee.module.css";
 import AttachmentsUploader from "./AttachmentsUploader";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
+import {
+  ORG_ROLE_OPTIONS,
+  normalizeOrgRole,
+  orgRoleNeedsDepartmentConfirm,
+  type OrgRoleDbValue,
+} from "@/lib/org-role";
 
 const employeeTabs = [
   { name: "Personal Details" },
@@ -164,6 +170,16 @@ export default function AddEmployeeForm({
     e.preventDefault();
     if (!employeeId) {
       toastInfo('Please save Personal Details first.');
+      return;
+    }
+    if (!jobDetails.departmentId) {
+      toastError("Please select a department.");
+      return;
+    }
+    if (orgRoleNeedsDepartmentConfirm(role) && !departmentScopeConfirmed) {
+      toastError(
+        "Please confirm the department — this becomes their attendance/leave scope.",
+      );
       return;
     }
     try {
@@ -400,8 +416,9 @@ export default function AddEmployeeForm({
   const [employmentStatus, setEmploymentStatus] = useState("");
   const [employmentType, setEmploymentType] = useState("");
   const [workingHours, setWorkingHours] = useState<string>("");
-  // Role is fixed for add/edit form — System Control handles access roles separately.
-  const role = "Officer";
+  // Overall org role (Add Employee). Feature permissions → System Control.
+  const [role, setRole] = useState<OrgRoleDbValue>("Officer");
+  const [departmentScopeConfirmed, setDepartmentScopeConfirmed] = useState(false);
   const [createLogin, setCreateLogin] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState("");
@@ -569,9 +586,8 @@ export default function AddEmployeeForm({
             );
             setProfileImg(data.employee.profile_img || null);
             setUsername(data.employee.username || "");
-              // Set status to "enabled" - default for login details
-              setStatus("enabled");
-            // Role stays fixed as Officer on this form.
+            setStatus("enabled");
+            setRole(normalizeOrgRole(data.employee.role));
             setCreateLogin(!!data.employee.username);
               // Pre-fill password fields in edit mode with existing password
               if (data.employee.password) {
@@ -660,6 +676,9 @@ export default function AddEmployeeForm({
             includeContract: !!data.job.include_contract,
             departmentId: data.job.department_id ? String(data.job.department_id) : ""
           });
+          if (data.job.department_id) {
+            setDepartmentScopeConfirmed(true);
+          }
         }
       })
       .catch(err => console.error('Error fetching job details:', err));
@@ -1040,16 +1059,31 @@ export default function AddEmployeeForm({
                 </div>
               ) : null}
               <div>
-                <label className={styles.fieldLabel}>Role</label>
-                <input
-                  className={styles.input}
-                  type="text"
+                <label className={styles.fieldLabel}>Role*</label>
+                <select
+                  className={styles.select}
                   value={role}
-                  readOnly
-                  disabled
-                  aria-readonly="true"
-                  title="Role is fixed to Officer"
-                />
+                  onChange={(e) => {
+                    const next = normalizeOrgRole(e.target.value);
+                    setRole(next);
+                    setDepartmentScopeConfirmed(false);
+                  }}
+                  required
+                  title="Overall role. Feature permissions are assigned in System Control."
+                >
+                  {ORG_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <div className={styles.note} style={{ marginTop: 6 }}>
+                  {role === "BOD/CEO"
+                    ? "CEO can see all departments. Feature access still comes from System Control."
+                    : orgRoleNeedsDepartmentConfirm(role)
+                      ? "Manager / Team Lead: confirm their department on Job Details — that becomes their scope."
+                      : "Officer: if System Control grants attendance/leave access, scope stays their own department only."}
+                </div>
               </div>
               <div className={styles.toggleRow}>
                 <span className={styles.toggleLabel}>Create Login Details</span>
@@ -1293,13 +1327,46 @@ export default function AddEmployeeForm({
                 </div>
                 <div className={styles.row}>
                   <div className={styles.field}>
-                    <label className={styles.fieldLabel}>Department</label>
-                    <select className={styles.select} value={jobDetails.departmentId || ""} onChange={e => setJobDetails(j => ({ ...j, departmentId: e.target.value }))} required>
+                    <label className={styles.fieldLabel}>Department*</label>
+                    <select
+                      className={styles.select}
+                      value={jobDetails.departmentId || ""}
+                      onChange={(e) => {
+                        setJobDetails((j) => ({ ...j, departmentId: e.target.value }));
+                        setDepartmentScopeConfirmed(false);
+                      }}
+                      required
+                    >
                       <option value="">-- Select Department --</option>
                       {departments.map(dep => (
                         <option key={dep.id} value={dep.id}>{dep.name}</option>
                       ))}
                     </select>
+                    {orgRoleNeedsDepartmentConfirm(role) ? (
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 8,
+                          marginTop: 10,
+                          fontSize: 13,
+                          color: "#334155",
+                          lineHeight: 1.4,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={departmentScopeConfirmed}
+                          onChange={(e) => setDepartmentScopeConfirmed(e.target.checked)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span>
+                          Confirm: this department is their scope (attendance / leave visibility
+                          for this {role === "Management" ? "Manager" : "Team Lead"}).
+                        </span>
+                      </label>
+                    ) : null}
                   </div>
                   <div className={styles.field}>
                     <label className={styles.fieldLabel}>Location</label>

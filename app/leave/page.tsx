@@ -20,6 +20,8 @@ import {
   normStep,
 } from "@/lib/leave-approval";
 import { rowAllowedByScope, useViewerDataScope } from "@/lib/access-control/use-viewer-scope";
+import { toastError } from "@/lib/app-toast";
+import { isCeoOrgRole, isManagerOrgRole } from "@/lib/org-role";
 
 type LeaveSortKey =
   | "employee_id"
@@ -80,6 +82,8 @@ function stepBadgeClass(step: string) {
 
 export default function LeavePage() {
   const viewerScope = useViewerDataScope();
+  const canApproveLeaves =
+    isManagerOrgRole(viewerScope.orgRole) || isCeoOrgRole(viewerScope.orgRole);
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -199,15 +203,28 @@ export default function LeavePage() {
     action: "approve_step1" | "approve_step2" | "approve" | "reject",
   ) => {
     try {
-      await fetch("/api/leaves", {
+      let actor: string | undefined;
+      try {
+        const eid = String(localStorage.getItem("employeeId") || "").trim();
+        if (/^\d+$/.test(eid)) actor = eid;
+      } catch {
+        /* ignore */
+      }
+      const res = await fetch("/api/leaves", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id,
           action,
+          actor,
           admin_remark: action === "reject" ? rejectRemark : undefined,
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        toastError(data?.error || "Leave action failed");
+        return;
+      }
       void fetchLeaves();
       setModalOpen(false);
       setSelectedLeave(null);
@@ -341,8 +358,10 @@ export default function LeavePage() {
   };
 
   const selectedStatus = leaveStatusLabel(selectedLeave || {});
-  const selectedCanStep1 = selectedLeave ? canApproveStep1(selectedLeave) : false;
-  const selectedCanStep2 = selectedLeave ? canApproveStep2(selectedLeave) : false;
+  const selectedCanStep1 =
+    Boolean(selectedLeave) && canApproveLeaves && canApproveStep1(selectedLeave);
+  const selectedCanStep2 =
+    Boolean(selectedLeave) && canApproveLeaves && canApproveStep2(selectedLeave);
   const selectedPending = selectedCanStep1 || selectedCanStep2;
 
   return (
@@ -405,8 +424,8 @@ export default function LeavePage() {
                         const statusLabel = leaveStatusLabel(l);
                         const s1 = normStep(l.step1_status);
                         const s2 = normStep(l.step2_status);
-                        const showStep1 = canApproveStep1(l);
-                        const showStep2 = canApproveStep2(l);
+                        const showStep1 = canApproveLeaves && canApproveStep1(l);
+                        const showStep2 = canApproveLeaves && canApproveStep2(l);
                         const pending = showStep1 || showStep2;
                         return (
                           <tr

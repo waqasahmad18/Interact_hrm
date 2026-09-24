@@ -49,8 +49,12 @@ export function mapLegacyEmployeeRole(role: unknown): string {
   if (r.includes("managing partner") || r === "partner") return "mp_it";
   if (r.includes("hr")) return "hr_manager";
   if (r === "hod" || r.includes("head")) return "it_manager";
-  if (r.includes("management") || r.includes("manager")) return "billing_ops_manager";
-  if (r.includes("leader") || r.includes("lead") || r.includes("supervisor")) {
+  // Add Employee "Manager" → Management
+  if (r === "management" || r === "manager" || r.includes("manager")) {
+    return "billing_ops_manager";
+  }
+  // Add Employee "Team Lead" → Leader
+  if (r === "leader" || r.includes("lead") || r.includes("supervisor")) {
     return "team_lead_billing";
   }
   if (r.includes("officer") || r.includes("staff") || r.includes("associate")) {

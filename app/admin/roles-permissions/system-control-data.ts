@@ -72,8 +72,8 @@ const PERM_HINTS: Record<string, string> = {
   "attendance.employee_report.view": "Open per-employee attendance report.",
   "leave.list.view": "See leave requests for scoped employees (not only self).",
   "leave.apply.self": "Submit own leave / PTO requests from employee portal.",
-  "leave.approve.manager": "1st-step leave approval. Assign to whoever should approve first (e.g. team lead).",
-  "leave.approve.hr": "2nd-step / final leave approval. Both steps required before leave is final.",
+  "leave.approve.manager": "Leave approval — Managers only, within their department scope (set on Add Employee).",
+  "leave.approve.hr": "Legacy 2nd-step leave approval. Prefer Manager dept scope for day-to-day approvals.",
   "leave.approval_status.view": "See 1st-step and 2nd-step pending vs approved status on leave requests.",
   "leave.balances.edit": "Adjust leave balances and entitlements.",
   "leave.calendar.view": "Open company leave calendar.",
@@ -412,8 +412,11 @@ function permissionsForTier(tier: RoleTier): string[] {
       ];
     case "manager":
       return [
+        "attendance.summary.view",
+        "attendance.manage.edit",
+        "attendance.monthly.view",
         "leave.list.view",
-        "leave.approve.hr",
+        "leave.approve.manager",
         "leave.approval_status.view",
         "department.attendance.view",
         "department.breaks.view",
@@ -424,7 +427,6 @@ function permissionsForTier(tier: RoleTier): string[] {
     case "lead":
       return [
         "leave.apply.self",
-        "leave.approve.manager",
         "leave.approval_status.view",
         "team.dashboard.view",
         "team.attendance.view",

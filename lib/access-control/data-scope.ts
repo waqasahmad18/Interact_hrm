@@ -9,6 +9,10 @@ import {
   getEmployeeHierarchy,
   TEAM_MEMBERS_TABLE,
 } from "@/lib/employee-hierarchy-table";
+import {
+  isCeoOrgRole,
+  permissionImpliesDepartmentScope,
+} from "@/lib/org-role";
 
 export type ViewerDataScope = {
   mode: "all" | "department" | "team" | "self";
@@ -18,10 +22,13 @@ export type ViewerDataScope = {
   departmentNames: string[];
   /** Employee ids in scope (string). Always includes self when scoped. */
   employeeIds: string[];
+  /** Viewer's overall org role from Add Employee (`hrm_employees.role`). */
+  orgRole: string | null;
 };
 
 type EmpDeptRow = {
   id: number;
+  role: string | null;
   department_id: number | null;
   department_name: string | null;
 };
@@ -45,6 +52,7 @@ async function loadEmployeesWithDept(): Promise<EmpDeptRow[]> {
   const [rows] = await pool.execute(`
     SELECT
       e.id,
+      e.role,
       j.department_id,
       d.name AS department_name
     FROM hrm_employees e
@@ -113,40 +121,48 @@ async function loadViewerPermissionKeys(eid: string): Promise<string[]> {
   return [...new Set(sets.flat())];
 }
 
+function emptyScope(orgRole: string | null = null): ViewerDataScope {
+  return {
+    mode: "all",
+    orgChip: null,
+    departmentNames: [],
+    employeeIds: [],
+    orgRole,
+  };
+}
+
 /**
- * Resolve which employees / departments a viewer may see for team|department scoped pages.
- * - department.* → entire org-dept family (IT includes Marketing)
- * - team.* → same family (My Team = department roster) + explicit team members
- * - otherwise → all (admin / unscoped)
+ * Resolve which employees / departments a viewer may see.
+ *
+ * Scope rules (overall role from Add Employee):
+ * - CEO (BOD/CEO) → all departments
+ * - Manager / Team Lead / Officer with attendance|leave|dept|team perms
+ *   → their confirmed department only (never company-wide)
+ * - No such perms → all (admin / unscoped pages)
  */
 export async function resolveViewerDataScope(
   viewerEmployeeId: string | number,
 ): Promise<ViewerDataScope> {
   const eid = String(viewerEmployeeId || "").trim();
   if (!eid || !/^\d+$/.test(eid)) {
-    return { mode: "all", orgChip: null, departmentNames: [], employeeIds: [] };
-  }
-
-  const perms = new Set(await loadViewerPermissionKeys(eid));
-
-  const hasDept =
-    perms.has("department.attendance.view") ||
-    perms.has("department.breaks.view") ||
-    perms.has("department.leaves.view") ||
-    perms.has("department.monthly.view");
-  const hasTeam =
-    perms.has("team.dashboard.view") ||
-    perms.has("team.attendance.view") ||
-    perms.has("team.breaks.view") ||
-    perms.has("team.leaves.view") ||
-    perms.has("team.management.assign");
-
-  if (!hasTeam && !hasDept) {
-    return { mode: "all", orgChip: null, departmentNames: [], employeeIds: [] };
+    return emptyScope();
   }
 
   const all = await loadEmployeesWithDept();
   const self = all.find((e) => String(e.id) === eid);
+  const orgRole = self?.role ? String(self.role) : null;
+
+  // CEO always sees every department
+  if (isCeoOrgRole(orgRole)) {
+    return emptyScope(orgRole);
+  }
+
+  const perms = new Set(await loadViewerPermissionKeys(eid));
+  const needsDeptScope = [...perms].some(permissionImpliesDepartmentScope);
+  if (!needsDeptScope) {
+    return emptyScope(orgRole);
+  }
+
   const selfDeptName = self?.department_name ? String(self.department_name).trim() : null;
   const orgChip = orgDeptChipLabel(selfDeptName);
 
@@ -166,7 +182,6 @@ export async function resolveViewerDataScope(
     /* ignore */
   }
 
-  // Explicit team table (in case hierarchy path missed)
   try {
     const [rows] = await pool.execute(
       `SELECT member_employee_id FROM ${TEAM_MEMBERS_TABLE} WHERE team_lead_employee_id = ?`,
@@ -179,11 +194,19 @@ export async function resolveViewerDataScope(
     /* table may not exist yet */
   }
 
+  const hasDept =
+    perms.has("department.attendance.view") ||
+    perms.has("department.breaks.view") ||
+    perms.has("department.leaves.view") ||
+    perms.has("department.monthly.view") ||
+    [...perms].some((k) => k.startsWith("attendance.") || k.startsWith("leave."));
+
   return {
     mode: hasDept ? "department" : "team",
     orgChip,
     departmentNames,
     employeeIds: [...idSet],
+    orgRole,
   };
 }
 

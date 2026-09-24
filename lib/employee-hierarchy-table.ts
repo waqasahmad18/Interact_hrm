@@ -42,9 +42,9 @@ type EmpRow = {
 const ROLE_RANK: Record<string, number> = {
   "BOD/CEO": 1,
   Management: 2,
-  HOD: 3,
-  Leader: 4,
-  Officer: 5,
+  HOD: 2,
+  Leader: 3,
+  Officer: 4,
 };
 
 function roleRank(role: string | null | undefined): number {
