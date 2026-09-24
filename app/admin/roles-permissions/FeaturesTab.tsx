@@ -20,7 +20,6 @@ export default function FeaturesTab({ features, onToggle, onSave, readOnly }: Pr
           <p className={styles.sectionSub}>
             If a feature is OFF, it is hidden for every role — even when the permission is checked
             in the matrix.
-            {readOnly ? " (View only — you cannot change these toggles.)" : ""}
           </p>
         </div>
         <button

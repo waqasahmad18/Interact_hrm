@@ -340,13 +340,6 @@ export default function RolesPermissionsPanel({
         </div>
       </div>
 
-      {!canEditPerms && (
-        <div className={styles.permLockNote}>
-          View only — you can open System Control but cannot edit permissions (
-          <code>system.permissions.edit</code> required).
-        </div>
-      )}
-
       <div className={styles.permPickerBar}>
         <SearchableSelect
           id="perm-role"
@@ -644,11 +637,6 @@ export default function RolesPermissionsPanel({
       </div>
 
       <div className={styles.matrixFooter}>
-        <p className={styles.matrixFooterHint}>
-          <span className={styles.legendLocked} />{" "}
-          <code>system.control.access</code> only opens this page. Edit needs{" "}
-          <code>system.permissions.edit</code> / <code>system.users.assign</code>.
-        </p>
         <div className={styles.permFooterActions}>
           {!editingUser && (
             <button

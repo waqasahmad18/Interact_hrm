@@ -117,12 +117,6 @@ export default function SystemControlPage() {
     [orgRoles],
   );
 
-  const viewOnlyBanner =
-    !viewerCaps.systemPermissionsEdit &&
-    !viewerCaps.systemUsersAssign &&
-    !viewerCaps.systemOrgChartEdit &&
-    !viewerCaps.systemFeaturesEdit;
-
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(""), 2800);
@@ -971,14 +965,6 @@ export default function SystemControlPage() {
         </header>
 
         <div className={styles.scHintBar}>{TAB_HINT[activeTab]}</div>
-
-        {viewOnlyBanner && (
-          <div className={styles.scViewOnlyBanner}>
-            View only — <code>system.control.access</code> lets you open this page. Editing
-            needs <code>system.permissions.edit</code>, <code>system.users.assign</code>,{" "}
-            <code>system.org_chart.edit</code>, or <code>system.features.edit</code>.
-          </div>
-        )}
 
         <nav className={styles.scTabs} aria-label="System Control sections">
           {tabs.map((tab) => (
