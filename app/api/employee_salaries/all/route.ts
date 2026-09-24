@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '../../../../lib/db';
+import {
+  filterSalariesForViewer,
+  viewerIdFromRequest,
+} from '@/lib/access-control/salary-visibility';
 
 // GET /api/employee_salaries/all - return all employees with their basic salary
+// Pass ?viewerId= or header x-hrm-employee-id to apply HR salary privacy.
 export async function GET(req: NextRequest) {
   try {
     const [rows]: any = await pool.execute(`
@@ -16,7 +21,11 @@ export async function GET(req: NextRequest) {
       GROUP BY e.id, e.first_name, e.last_name, e.pseudonym, d.name
       ORDER BY e.id DESC
     `);
-    return NextResponse.json({ success: true, salaries: rows });
+    const viewerId = viewerIdFromRequest(req);
+    const salaries = viewerId
+      ? await filterSalariesForViewer(viewerId, rows as Record<string, unknown>[])
+      : rows;
+    return NextResponse.json({ success: true, salaries });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }

@@ -137,6 +137,44 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    // HR salary privacy: redact basic_salary / bank when viewer cannot see target
+    const viewerId =
+      req.headers.get("x-hrm-employee-id") ||
+      req.headers.get("x-employee-id") ||
+      searchParams.get("viewerId") ||
+      "";
+    if (viewerId.trim()) {
+      try {
+        const { filterSalariesForViewer } = await import(
+          "@/lib/access-control/salary-visibility"
+        );
+        const forFilter = employees.map((e: any) => ({
+          employee_id: String(e.id),
+          amount: e.basic_salary,
+          account_number: e.account_number,
+          routing_number: e.bank_name,
+        }));
+        const filtered = await filterSalariesForViewer(
+          viewerId.trim(),
+          forFilter,
+        );
+        const hide = new Set(
+          filtered
+            .filter((r) => r.salary_hidden)
+            .map((r) => String(r.employee_id)),
+        );
+        for (const e of employees) {
+          if (!hide.has(String(e.id))) continue;
+          e.basic_salary = 0;
+          e.account_number = "";
+          e.bank_name = "";
+          e.salary_hidden = true;
+        }
+      } catch {
+        /* keep unfiltered if helper fails */
+      }
+    }
+
     return NextResponse.json({ success: true, employees });
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });

@@ -7,7 +7,7 @@ export type AccessMenuItem = {
   featureGate?: string;
   name: string;
   path: string;
-  group?: "core" | "attendance" | "leave" | "payroll" | "team" | "system";
+  group?: "core" | "attendance" | "leave" | "payroll" | "team" | "system" | "ops";
 };
 
 /**
@@ -85,7 +85,7 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   },
   {
     permission: "leave.list.view",
-    name: "Leave Inbox",
+    name: "Leaves",
     path: "/employee-dashboard/leave-inbox",
     group: "leave",
   },
@@ -105,6 +105,30 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     permission: "attendance.summary.view",
     name: "Attendance Summary",
     path: "/employee-dashboard/summaries",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.summary.view",
+    name: "Break Summary",
+    path: "/employee-dashboard/summaries?view=break",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.summary.view",
+    name: "Prayer Break Summary",
+    path: "/employee-dashboard/summaries?view=prayer",
+    group: "attendance",
+  },
+  {
+    permission: "department.breaks.view",
+    name: "Break Summary",
+    path: "/employee-dashboard/summaries?view=break",
+    group: "attendance",
+  },
+  {
+    permission: "department.breaks.view",
+    name: "Prayer Break Summary",
+    path: "/employee-dashboard/summaries?view=prayer",
     group: "attendance",
   },
   {
@@ -148,6 +172,13 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     name: "Loan",
     path: "/employee-dashboard/loan",
     group: "payroll",
+  },
+  {
+    permission: "ops.tickets.view",
+    featureGate: "tickets",
+    name: "Tickets Inbox",
+    path: "/employee-dashboard/tickets",
+    group: "ops",
   },
   {
     permission: "portal.tickets.create",

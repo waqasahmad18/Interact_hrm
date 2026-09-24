@@ -989,8 +989,17 @@ export default function MonthlyAttendancePage() {
         }
       })
       .catch(() => setAllEmployees([]));
-    // Fetch all salaries (all components, show amount)
-    fetch('/api/employee_salaries/all')
+    // Fetch all salaries (all components, show amount) — viewerId enforces HR privacy
+    const viewerId =
+      (typeof window !== "undefined" &&
+        (localStorage.getItem("employeeId") || localStorage.getItem("loginId"))) ||
+      "";
+    const salaryUrl = viewerId
+      ? `/api/employee_salaries/all?viewerId=${encodeURIComponent(viewerId)}`
+      : "/api/employee_salaries/all";
+    fetch(salaryUrl, {
+      headers: viewerId ? { "x-hrm-employee-id": viewerId } : {},
+    })
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.salaries)) {
@@ -998,6 +1007,7 @@ export default function MonthlyAttendancePage() {
           const fuelDefaults: Record<string, number> = {};
           const ctdDefaults: Record<string, number> = {};
           data.salaries.forEach((row: any) => {
+            if (row.salary_hidden) return;
             if (row.employee_id != null && row.amount !== undefined && row.amount !== null) {
               const amt = Number(row.amount);
               if (Number.isFinite(amt) && amt > 0) {

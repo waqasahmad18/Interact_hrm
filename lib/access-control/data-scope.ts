@@ -13,6 +13,7 @@ import {
   isCeoOrgRole,
   permissionImpliesDepartmentScope,
 } from "@/lib/org-role";
+import { isHrDepartment } from "@/lib/access-control/hr-access";
 
 export type ViewerDataScope = {
   mode: "all" | "department" | "team" | "self";
@@ -136,6 +137,8 @@ function emptyScope(orgRole: string | null = null): ViewerDataScope {
  *
  * Scope rules (overall role from Add Employee):
  * - CEO (BOD/CEO) → all departments
+ * - HR department → company-wide for attendance / leave / breaks / ops
+ *   (salary amounts still gated separately — see salary-visibility)
  * - Manager / Team Lead / Officer with attendance|leave|dept|team perms
  *   → their confirmed department only (never company-wide)
  * - No such perms → all (admin / unscoped pages)
@@ -151,9 +154,15 @@ export async function resolveViewerDataScope(
   const all = await loadEmployeesWithDept();
   const self = all.find((e) => String(e.id) === eid);
   const orgRole = self?.role ? String(self.role) : null;
+  const selfDeptName = self?.department_name ? String(self.department_name).trim() : null;
 
   // CEO always sees every department
   if (isCeoOrgRole(orgRole)) {
+    return emptyScope(orgRole);
+  }
+
+  // HR staff need company-wide ops data (payroll / attendance / leaves across depts)
+  if (isHrDepartment(selfDeptName)) {
     return emptyScope(orgRole);
   }
 
@@ -163,7 +172,6 @@ export async function resolveViewerDataScope(
     return emptyScope(orgRole);
   }
 
-  const selfDeptName = self?.department_name ? String(self.department_name).trim() : null;
   const orgChip = orgDeptChipLabel(selfDeptName);
 
   const departmentNames = collectDeptNamesForChip(all, orgChip, selfDeptName);

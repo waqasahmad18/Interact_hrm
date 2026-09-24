@@ -83,6 +83,8 @@ const PERM_HINTS: Record<string, string> = {
   "payroll.advance": "Process salary advance requests.",
   "payroll.loan": "Manage employee loan schedules and deductions.",
   "payroll.financial_requests.view": "Review advance/loan financial request inbox.",
+  "department.salary.view":
+    "View salaries of people in your own department (at or below your level). Off by default for HR — Managers can enable this in Permissions.",
   "people.employee_list.view": "Browse and search the employee directory.",
   "people.employee.add": "Create new employee records.",
   "people.credentials.manage": "Reset or issue employee login credentials.",
@@ -295,6 +297,10 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "payroll.advance", label: "Advance" },
       { key: "payroll.loan", label: "Loan" },
       { key: "payroll.financial_requests.view", label: "Financial request inbox" },
+      {
+        key: "department.salary.view",
+        label: "View own-department salaries (Manager toggle)",
+      },
     ],
   },
   {
@@ -425,6 +431,12 @@ function permissionsForTier(tier: RoleTier): string[] {
         "department.leaves.view",
         "department.monthly.view",
         "team.dashboard.view",
+        "system.control.access",
+        "system.permissions.edit",
+        "system.users.assign",
+        "system.org_chart.edit",
+        "system.features.edit",
+        // department.salary.view stays OFF by default — Manager enables in Permissions
       ];
     case "lead":
       return [
@@ -443,6 +455,36 @@ function permissionsForTier(tier: RoleTier): string[] {
 export const DEFAULT_PERMISSIONS: Record<string, Set<string>> = Object.fromEntries(
   BASE_ROLES.map((r) => [r.id, new Set(permissionsForTier(r.tier ?? "staff"))]),
 );
+
+/** Extra defaults for HR System Control roles (ops + payroll; no dept salary; System Control only on hr_manager). */
+const HR_ROLE_OPS = [
+  "attendance.summary.view",
+  "attendance.breaks.manage",
+  "attendance.monthly.view",
+  "attendance.manage.edit",
+  "department.attendance.view",
+  "department.breaks.view",
+  "department.leaves.view",
+  "department.monthly.view",
+  "leave.list.view",
+  "leave.approval_status.view",
+  "leave.monthly_summary.view",
+  "payroll.monthly.view",
+  "payroll.advance",
+  "payroll.loan",
+  "ops.tickets.view",
+];
+for (const roleId of ["hr_manager", "hr_coordinator", "team_lead_hr"]) {
+  const set = DEFAULT_PERMISSIONS[roleId];
+  if (!set) continue;
+  for (const k of HR_ROLE_OPS) set.add(k);
+  set.delete("department.salary.view");
+  if (roleId !== "hr_manager") {
+    for (const k of [...set]) {
+      if (k.startsWith("system.")) set.delete(k);
+    }
+  }
+}
 
 export const GLOBAL_FEATURES: GlobalFeature[] = [
   { key: "biometric", name: "Biometric face clock-in", desc: "Require face verify on clock in/out", on: true },

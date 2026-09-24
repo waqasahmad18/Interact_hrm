@@ -46,6 +46,22 @@ export async function GET(req: NextRequest) {
       [employeeId]
     );
     if (rows && rows.length > 0) {
+      const {
+        resolveSalaryVisibility,
+        viewerIdFromRequest,
+      } = await import("@/lib/access-control/salary-visibility");
+      const { redactSalaryRow } = await import("@/lib/access-control/hr-access");
+      const viewerId = viewerIdFromRequest(req) || searchParams.get("viewerId") || "";
+      if (viewerId) {
+        const ok = await resolveSalaryVisibility(viewerId, employeeId);
+        if (!ok) {
+          return NextResponse.json({
+            success: true,
+            salary: redactSalaryRow(rows[0] as Record<string, unknown>),
+            salary_hidden: true,
+          });
+        }
+      }
       return NextResponse.json({ success: true, salary: rows[0] });
     }
     return NextResponse.json({ success: false, error: "Salary not found" });

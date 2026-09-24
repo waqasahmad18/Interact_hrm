@@ -1372,16 +1372,41 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     loadEmployeePermissionOverrides(emp.employeeId),
   ]);
 
+  let deptName: string | null = null;
+  try {
+    const [deptRows] = await pool.execute(
+      `SELECT d.name AS department_name
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       WHERE e.id = ?
+       LIMIT 1`,
+      [/^\d+$/.test(emp.employeeId) ? Number(emp.employeeId) : emp.employeeId],
+    );
+    const drow = (deptRows as { department_name?: string }[])[0];
+    deptName = drow?.department_name ? String(drow.department_name) : null;
+  } catch {
+    deptName = null;
+  }
+
   const rolePermSets = await Promise.all(
     emp.roleSlugs.map((slug) => loadPermissionsForRole(slug)),
   );
   const rolePermissions = [...new Set(rolePermSets.flat())];
 
   // Custom employee set replaces role defaults; otherwise union of all assigned roles.
-  const permissions =
+  const basePermissions =
     empOverride != null
       ? empOverride.filter((k) => k !== "__custom__")
       : rolePermissions;
+
+  const { mergeHrAccessPermissions } = await import("@/lib/access-control/hr-access");
+  const { isManagerOrgRole } = await import("@/lib/org-role");
+  const permissions = mergeHrAccessPermissions({
+    permissions: basePermissions,
+    departmentName: deptName,
+    orgRole: emp.legacyRole,
+  });
 
   const enabledFeatures: Record<string, boolean> = {};
   for (const f of features) enabledFeatures[f.key] = Boolean(f.on);
@@ -1392,10 +1417,13 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     roles.find((r) => r.id === emp.roleSlug) ||
     BASE_ROLES.find((r) => r.id === emp.roleSlug);
 
+  const manager = isManagerOrgRole(emp.legacyRole);
+
   return {
     employeeId: emp.employeeId,
     name: emp.name,
     legacyRole: emp.legacyRole,
+    departmentName: deptName,
     role: {
       slug: emp.roleSlug,
       slugs: emp.roleSlugs,
@@ -1410,13 +1438,17 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     features,
     menu,
     capabilities: {
-      systemControlOpen: permissions.includes("system.control.access"),
-      systemPermissionsEdit: permissions.includes("system.permissions.edit"),
-      systemUsersAssign: permissions.includes("system.users.assign"),
-      systemOrgChartEdit: permissions.includes("system.org_chart.edit"),
+      // System Control: Managers only (permission + org role)
+      systemControlOpen:
+        manager && permissions.includes("system.control.access"),
+      systemPermissionsEdit:
+        manager && permissions.includes("system.permissions.edit"),
+      systemUsersAssign: manager && permissions.includes("system.users.assign"),
+      systemOrgChartEdit: manager && permissions.includes("system.org_chart.edit"),
       systemFeaturesEdit:
-        permissions.includes("system.features.edit") ||
-        permissions.includes("system.permissions.edit"),
+        manager &&
+        (permissions.includes("system.features.edit") ||
+          permissions.includes("system.permissions.edit")),
     },
   };
 }
