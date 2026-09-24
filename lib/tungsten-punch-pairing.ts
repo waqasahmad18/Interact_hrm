@@ -795,18 +795,20 @@ export function pairTungstenWithSessions(
           }
         : null);
 
-    if (shiftTiming?.startTime) {
-      const inWindow = punchesInShiftWindow(tungstenByTime, sessionDate, shiftTiming);
-      if (inWindow.length) {
-        punchIn = inWindow[0].time;
-        excludeExitAtMs = inWindow[0].atMs;
-      }
-    } else {
-      const shiftStart = resolveShiftStart?.(sessionDate);
+    // T.Punch In: always allow early arrival after noon / before shift start ("aty hoye").
+    // punchesInShiftWindow starts at shiftStart and was dropping real In punches
+    // (e.g. 2:31 PM / 4:57 PM when shift starts at 5:00 PM).
+    {
+      const shiftStart =
+        shiftTiming?.startTime ?? resolveShiftStart?.(sessionDate) ?? null;
       const cacheKey = `${sessionDate}|${shiftStart ?? ""}`;
       let arrival = arrivalPunchByShiftDay.get(cacheKey);
       if (arrival === undefined) {
-        const found = firstArrivalPunchForShiftDay(tungstenByTime, sessionDate, shiftStart);
+        const found = firstArrivalPunchForShiftDay(
+          tungstenByTime,
+          sessionDate,
+          shiftStart,
+        );
         arrival = found ?? "";
         arrivalPunchByShiftDay.set(cacheKey, arrival);
       }
@@ -816,6 +818,16 @@ export function pairTungstenWithSessions(
           (t) => t.date === sessionDate && t.time === arrival,
         );
         if (arrivalEvent) excludeExitAtMs = arrivalEvent.atMs;
+      } else if (shiftTiming?.startTime) {
+        const inWindow = punchesInShiftWindow(
+          tungstenByTime,
+          sessionDate,
+          shiftTiming,
+        );
+        if (inWindow.length) {
+          punchIn = inWindow[0].time;
+          excludeExitAtMs = inWindow[0].atMs;
+        }
       }
     }
 
@@ -852,17 +864,22 @@ export function pairTungstenWithSessions(
             draft.sessionDate,
           )
         : null;
+    // Prefer real HRM clock-out as exit anchor so overnight outs (after shift end)
+    // still pick the matching Tungsten exit (e.g. 1:05 AM out → 1:15 AM punch).
     const exitAnchorMs =
-      shiftEndMs != null && !Number.isNaN(shiftEndMs)
-        ? shiftEndMs
-        : (draft.outMs as number);
+      draft.outMs != null && !Number.isNaN(draft.outMs)
+        ? draft.outMs
+        : shiftEndMs != null && !Number.isNaN(shiftEndMs)
+          ? shiftEndMs
+          : null;
+    if (exitAnchorMs == null) continue;
 
     const { punchOut: last } = firstLastPunchForShiftDay(
       tungstenByTime,
       draft.sessionDate,
       draft.shiftTiming,
     );
-    if (last && last !== draft.tungstenPunchIn) {
+    if (last && last !== "-" && last !== draft.tungstenPunchIn) {
       draft.tungstenPunchOut = last;
       continue;
     }
