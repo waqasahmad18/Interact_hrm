@@ -13,67 +13,93 @@ export type AccessMenuItem = {
 /**
  * All privileged links stay under `/employee-dashboard/*` so the employee
  * sidebar/chrome never switches to the admin layout.
+ *
+ * Tab titles match the admin HR dashboard (no "Dept" / "Team" prefixes on
+ * attendance / breaks / leaves — HR needs company-wide views under the same names).
  */
 export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
-  // Team links: permission alone controls visibility (no featureGate).
-  // Assigned team.* perms must always appear in the employee sidebar.
   {
     permission: "team.dashboard.view",
     name: "My Team",
     path: "/employee-dashboard/my-team",
     group: "team",
   },
+  // Attendance / breaks / leaves — same labels as admin Attendance dropdown
   {
-    permission: "team.attendance.view",
-    name: "Team Attendance",
-    path: "/employee-dashboard/summaries?view=attendance",
-    group: "team",
-  },
-  {
-    permission: "team.breaks.view",
-    name: "Team Breaks",
-    path: "/employee-dashboard/summaries?view=break",
-    group: "team",
-  },
-  {
-    permission: "team.breaks.view",
-    name: "Team Prayer Breaks",
-    path: "/employee-dashboard/summaries?view=prayer",
-    group: "team",
-  },
-  {
-    permission: "team.leaves.view",
-    name: "Team Leaves",
-    path: "/employee-dashboard/leave-inbox",
-    group: "team",
+    permission: "attendance.summary.view",
+    name: "Attendance Summary",
+    path: "/employee-dashboard/summaries",
+    group: "attendance",
   },
   {
     permission: "department.attendance.view",
-    name: "Dept Attendance",
-    path: "/employee-dashboard/summaries?view=attendance",
+    name: "Attendance Summary",
+    path: "/employee-dashboard/summaries",
     group: "attendance",
   },
   {
-    permission: "department.breaks.view",
-    name: "Dept Breaks",
+    permission: "team.attendance.view",
+    name: "Attendance Summary",
+    path: "/employee-dashboard/summaries",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.summary.view",
+    name: "Break Summary",
     path: "/employee-dashboard/summaries?view=break",
     group: "attendance",
   },
   {
     permission: "department.breaks.view",
-    name: "Dept Prayer Breaks",
+    name: "Break Summary",
+    path: "/employee-dashboard/summaries?view=break",
+    group: "attendance",
+  },
+  {
+    permission: "team.breaks.view",
+    name: "Break Summary",
+    path: "/employee-dashboard/summaries?view=break",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.summary.view",
+    name: "Prayer Break Summary",
     path: "/employee-dashboard/summaries?view=prayer",
     group: "attendance",
   },
   {
-    permission: "department.leaves.view",
-    name: "Dept Leaves",
-    path: "/employee-dashboard/leave-inbox",
-    group: "leave",
+    permission: "department.breaks.view",
+    name: "Prayer Break Summary",
+    path: "/employee-dashboard/summaries?view=prayer",
+    group: "attendance",
+  },
+  {
+    permission: "team.breaks.view",
+    name: "Prayer Break Summary",
+    path: "/employee-dashboard/summaries?view=prayer",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.manage.edit",
+    name: "Manage Attendance",
+    path: "/employee-dashboard/manage-attendance",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.breaks.manage",
+    name: "Manage Breaks",
+    path: "/employee-dashboard/manage-breaks",
+    group: "attendance",
+  },
+  {
+    permission: "attendance.monthly.view",
+    name: "Monthly Attendance",
+    path: "/employee-dashboard/monthly-attendance",
+    group: "attendance",
   },
   {
     permission: "department.monthly.view",
-    name: "Dept Monthly Attendance",
+    name: "Monthly Attendance",
     path: "/employee-dashboard/monthly-attendance",
     group: "attendance",
   },
@@ -90,64 +116,28 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "leave",
   },
   {
+    permission: "department.leaves.view",
+    name: "Leaves",
+    path: "/employee-dashboard/leave-inbox",
+    group: "leave",
+  },
+  {
+    permission: "team.leaves.view",
+    name: "Leaves",
+    path: "/employee-dashboard/leave-inbox",
+    group: "leave",
+  },
+  {
     permission: "leave.approval_status.view",
-    name: "Leave Inbox",
+    name: "Leaves",
     path: "/employee-dashboard/leave-inbox",
     group: "leave",
   },
   {
     permission: "leave.approve.manager",
-    name: "Leave Inbox",
+    name: "Leaves",
     path: "/employee-dashboard/leave-inbox",
     group: "leave",
-  },
-  {
-    permission: "attendance.summary.view",
-    name: "Attendance Summary",
-    path: "/employee-dashboard/summaries",
-    group: "attendance",
-  },
-  {
-    permission: "attendance.summary.view",
-    name: "Break Summary",
-    path: "/employee-dashboard/summaries?view=break",
-    group: "attendance",
-  },
-  {
-    permission: "attendance.summary.view",
-    name: "Prayer Break Summary",
-    path: "/employee-dashboard/summaries?view=prayer",
-    group: "attendance",
-  },
-  {
-    permission: "department.breaks.view",
-    name: "Break Summary",
-    path: "/employee-dashboard/summaries?view=break",
-    group: "attendance",
-  },
-  {
-    permission: "department.breaks.view",
-    name: "Prayer Break Summary",
-    path: "/employee-dashboard/summaries?view=prayer",
-    group: "attendance",
-  },
-  {
-    permission: "attendance.monthly.view",
-    name: "Monthly Attendance",
-    path: "/employee-dashboard/monthly-attendance",
-    group: "attendance",
-  },
-  {
-    permission: "attendance.manage.edit",
-    name: "Manage Attendance",
-    path: "/employee-dashboard/manage-attendance",
-    group: "attendance",
-  },
-  {
-    permission: "attendance.breaks.manage",
-    name: "Manage Breaks",
-    path: "/employee-dashboard/manage-breaks",
-    group: "attendance",
   },
   {
     permission: "payroll.monthly.view",
@@ -176,7 +166,7 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "ops.tickets.view",
     featureGate: "tickets",
-    name: "Tickets Inbox",
+    name: "Ticket Inbox",
     path: "/employee-dashboard/tickets",
     group: "ops",
   },
@@ -220,6 +210,7 @@ export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
   "/admin/advance": "/employee-dashboard/advance",
   "/admin/loan": "/employee-dashboard/loan",
   "/admin/system-control": "/employee-dashboard/system-control",
+  "/admin/tickets": "/employee-dashboard/tickets",
 };
 
 export function buildMenuFromPermissions(
@@ -227,15 +218,15 @@ export function buildMenuFromPermissions(
   enabledFeatures: Record<string, boolean>,
 ): { name: string; path: string; group?: string }[] {
   const permSet = new Set(permissions);
-  const seen = new Set<string>();
+  const seenPath = new Set<string>();
   const out: { name: string; path: string; group?: string }[] = [];
 
   for (const item of ACCESS_MENU_REGISTRY) {
     if (!permSet.has(item.permission)) continue;
     if (item.featureGate && enabledFeatures[item.featureGate] === false) continue;
-    const key = `${item.path}::${item.name}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    // One tab per path — admin-style names, no Dept/Team duplicates
+    if (seenPath.has(item.path)) continue;
+    seenPath.add(item.path);
     out.push({ name: item.name, path: item.path, group: item.group });
   }
   return out;
@@ -257,7 +248,8 @@ export function isPathAllowed(pathname: string, allowed: Set<string>): boolean {
   if (!pathname) return false;
   if (allowed.has(pathname)) return true;
   for (const p of allowed) {
-    if (pathname === p || pathname.startsWith(`${p}/`)) return true;
+    const base = p.split("?")[0];
+    if (pathname === p || pathname === base || pathname.startsWith(`${base}/`)) return true;
   }
   return false;
 }
