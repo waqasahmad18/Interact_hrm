@@ -43,7 +43,6 @@ const sidebarLinks = [
 				name: "PTO",
 				icon: <FaCalendarAlt />,
 				dropdown: [
-					{ name: "Leave", path: "/leave", icon: <FaCalendarAlt /> },
 					{ name: "Manage Leave", path: "/admin/manage-leaves", icon: <FaEdit /> },
 					{ name: "Calendar", path: "/admin/calendar", icon: <FaCalendarAlt /> },
 					{ name: "Leave Summary", path: "/admin/monthly-leave-summary", icon: <FaClipboardList /> },
