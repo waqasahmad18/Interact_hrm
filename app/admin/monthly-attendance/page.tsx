@@ -61,6 +61,10 @@ import {
 } from "../../../lib/tungsten-punch-pairing";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { ManualStatusBadge } from "../../components/ManualStatusBadge";
+import {
+  StatusChangeReasonModal,
+  type StatusChangeReasonDraft,
+} from "../../components/StatusChangeReasonModal";
 import { isAutoClockOutRecord, applyAutoClockOutTPunchDisplay } from "../../../lib/attendance-auto-clock-out";
 import { resolveBillableOvertimeSeconds } from "../../../lib/attendance-overtime";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
@@ -297,7 +301,11 @@ export default function MonthlyAttendancePage() {
 
   const [attendance, setAttendance] = useState<any[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Record<string, string>>>({});
+  const [statusOverrideNotes, setStatusOverrideNotes] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [statusSavingKey, setStatusSavingKey] = useState<string>("");
+  const [statusReasonDraft, setStatusReasonDraft] = useState<StatusChangeReasonDraft | null>(null);
   const [tardyNotes, setTardyNotes] = useState<Record<string, Record<string, string>>>({});
   const [tardyNotesByAttendanceId, setTardyNotesByAttendanceId] = useState<Record<string, string>>({});
   const [departments, setDepartments] = useState<any[]>([]);
@@ -501,20 +509,36 @@ export default function MonthlyAttendancePage() {
             if (gen !== fetchGenRef.current) return;
             if (ovData.success && Array.isArray(ovData.overrides)) {
               const map: Record<string, Record<string, string>> = {};
+              const notes: Record<string, Record<string, string>> = {};
               ovData.overrides.forEach(
-                (o: { employee_id: string; attendance_date: string; status_label: string }) => {
+                (o: {
+                  employee_id: string;
+                  attendance_date: string;
+                  status_label: string;
+                  reason?: string | null;
+                }) => {
                   const eid = String(o.employee_id);
                   const dk = String(o.attendance_date).slice(0, 10);
                   if (!map[eid]) map[eid] = {};
                   map[eid][dk] = normalizeAttendanceStatus(o.status_label);
+                  const reason = String(o.reason || "").trim();
+                  if (reason) {
+                    if (!notes[eid]) notes[eid] = {};
+                    notes[eid][dk] = reason;
+                  }
                 },
               );
               setStatusOverrides(map);
+              setStatusOverrideNotes(notes);
             } else {
               setStatusOverrides({});
+              setStatusOverrideNotes({});
             }
           } catch {
-            if (gen === fetchGenRef.current) setStatusOverrides({});
+            if (gen === fetchGenRef.current) {
+              setStatusOverrides({});
+              setStatusOverrideNotes({});
+            }
           }
           try {
             const noteRes = await fetch(
@@ -876,6 +900,7 @@ export default function MonthlyAttendancePage() {
     employeeId: string,
     dateKey: string,
     nextValue: string,
+    reason?: string,
   ) {
     const key = `${employeeId}|${dateKey}`;
     if (statusSavingKey === key) return;
@@ -898,9 +923,23 @@ export default function MonthlyAttendancePage() {
           }
           return next;
         });
+        setStatusOverrideNotes((prev) => {
+          const next = { ...prev };
+          if (next[employeeId]) {
+            const dayMap = { ...next[employeeId] };
+            delete dayMap[dateKey];
+            if (Object.keys(dayMap).length) next[employeeId] = dayMap;
+            else delete next[employeeId];
+          }
+          return next;
+        });
         toastSuccess("Status reset to auto.", "Manual status");
       } else {
         const statusLabel = normalizeAttendanceStatus(nextValue);
+        const trimmedReason = String(reason || "").trim();
+        if (!trimmedReason) {
+          throw new Error("Reason is required when changing status manually");
+        }
         const res = await fetch("/api/monthly-attendance-status-overrides", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -908,6 +947,7 @@ export default function MonthlyAttendancePage() {
             employeeId,
             attendanceDate: dateKey,
             statusLabel,
+            reason: trimmedReason,
             updatedBy: "admin",
           }),
         });
@@ -920,13 +960,44 @@ export default function MonthlyAttendancePage() {
             [dateKey]: statusLabel,
           },
         }));
+        setStatusOverrideNotes((prev) => ({
+          ...prev,
+          [employeeId]: {
+            ...(prev[employeeId] || {}),
+            [dateKey]: trimmedReason,
+          },
+        }));
         toastSuccess(`Status set to ${statusLabel}`, "Manual status");
       }
     } catch (err) {
       toastError(err instanceof Error ? err.message : String(err), "Status update failed");
+      return false;
     } finally {
       setStatusSavingKey("");
     }
+    return true;
+  }
+
+  function requestManualStatusChange(
+    employeeId: string,
+    dateKey: string,
+    fromStatus: string,
+    nextValue: string,
+  ) {
+    if (!nextValue || nextValue === "__auto__") {
+      void saveManualStatus(employeeId, dateKey, "__auto__");
+      return;
+    }
+    const nextStatus = normalizeAttendanceStatus(nextValue);
+    if (nextStatus === normalizeAttendanceStatus(fromStatus) && overrideStatusFor(employeeId, dateKey)) {
+      return;
+    }
+    setStatusReasonDraft({
+      employeeId,
+      dateKey,
+      fromStatus: normalizeAttendanceStatus(fromStatus),
+      nextStatus,
+    });
   }
 
   function renderEditableStatusCell(opts: {
@@ -947,10 +1018,10 @@ export default function MonthlyAttendancePage() {
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
         <select
           value={current}
-          disabled={saving}
+          disabled={saving || Boolean(statusReasonDraft)}
           onChange={(e) => {
             const v = e.target.value;
-            void saveManualStatus(employeeId, dateKey, v);
+            requestManualStatusChange(employeeId, dateKey, current, v);
           }}
           title={
             isManual
@@ -1046,6 +1117,9 @@ export default function MonthlyAttendancePage() {
     attendanceId?: number | null,
     dayRecords?: Array<{ id?: number | null }>
   ): string {
+    const manualReason = String(statusOverrideNotes[String(employeeId)]?.[dateKey] || "").trim();
+    if (manualReason) return manualReason;
+
     const isTardy = normalizeAttendanceStatus(statusLabel) === "Tardy";
     if (!isTardy) return "";
 
@@ -1057,15 +1131,15 @@ export default function MonthlyAttendancePage() {
       return "-";
     }
 
-    for (const rec of dayRecords || []) {
-      if (rec?.id == null) continue;
-      const bySession = tardyNotesByAttendanceId[String(rec.id)];
-      if (bySession) return bySession;
+    if (dayRecords?.length) {
+      for (const rec of dayRecords) {
+        if (rec?.id == null) continue;
+        const bySession = tardyNotesByAttendanceId[String(rec.id)];
+        if (bySession) return bySession;
+      }
     }
-
     const saved = tardyNotes[employeeId]?.[dateKey];
-    if (saved) return saved;
-    return "-";
+    return saved || "-";
   }
 
   function isWorkingDay(dateKey: string) {
@@ -2190,7 +2264,7 @@ export default function MonthlyAttendancePage() {
                           <th>OverTime</th>
                           <th>Tardy Count</th>
                           <th>Status</th>
-                          <th style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280 }}>Tardy Note</th>
+                          <th style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280 }}>Note</th>
                           <th>Deduction</th>
                         </tr>
                       </thead>
@@ -2460,6 +2534,30 @@ export default function MonthlyAttendancePage() {
         )}
       </div>
       {popup}
+      <StatusChangeReasonModal
+        draft={statusReasonDraft}
+        saving={
+          Boolean(
+            statusReasonDraft &&
+              statusSavingKey ===
+                `${statusReasonDraft.employeeId}|${statusReasonDraft.dateKey}`,
+          )
+        }
+        onCancel={() => setStatusReasonDraft(null)}
+        onConfirm={(reason) => {
+          if (!statusReasonDraft) return;
+          const draft = statusReasonDraft;
+          void (async () => {
+            const ok = await saveManualStatus(
+              draft.employeeId,
+              draft.dateKey,
+              draft.nextStatus,
+              reason,
+            );
+            if (ok) setStatusReasonDraft(null);
+          })();
+        }}
+      />
     </OptionalAdminShell>
   );
 }

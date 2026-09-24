@@ -42,6 +42,7 @@ export async function PUT(req: NextRequest) {
       body.attendanceDate ?? body.attendance_date ?? body.date ?? "",
     ).trim();
     const statusLabel = String(body.statusLabel ?? body.status_label ?? body.status ?? "").trim();
+    const reason = String(body.reason ?? body.note ?? "").trim();
     const updatedBy = String(body.updatedBy ?? body.updated_by ?? "admin").trim() || "admin";
 
     if (!employeeId || !attendanceDate) {
@@ -56,11 +57,18 @@ export async function PUT(req: NextRequest) {
         { status: 400 },
       );
     }
+    if (!reason) {
+      return NextResponse.json(
+        { success: false, error: "Reason is required when changing status manually" },
+        { status: 400 },
+      );
+    }
 
     const row = await upsertMonthlyStatusOverride({
       employeeId,
       attendanceDate,
       statusLabel,
+      reason,
       updatedBy,
     });
     return NextResponse.json({ success: true, override: row });

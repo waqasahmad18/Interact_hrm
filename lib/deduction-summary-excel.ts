@@ -10,7 +10,7 @@ export const DEDUCTION_SUMMARY_HEADERS = [
   "Total Working Hours",
   "Status",
   "Tardy Count",
-  "Tardy Note",
+  "Note",
   "Deduction",
 ] as const;
 

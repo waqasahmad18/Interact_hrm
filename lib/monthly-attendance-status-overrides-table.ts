@@ -12,11 +12,17 @@ export type MonthlyStatusOverrideRow = {
   employee_id: string;
   attendance_date: string;
   status_label: string;
+  reason: string | null;
   updated_by: string | null;
 };
 
 function normalizeDateKey(value: string): string {
   return String(value || "").trim().slice(0, 10);
+}
+
+function normalizeReason(value: string | null | undefined): string | null {
+  const t = String(value ?? "").trim();
+  return t || null;
 }
 
 export async function ensureMonthlyStatusOverridesTable(): Promise<void> {
@@ -26,6 +32,7 @@ export async function ensureMonthlyStatusOverridesTable(): Promise<void> {
       employee_id VARCHAR(64) NOT NULL,
       attendance_date DATE NOT NULL,
       status_label VARCHAR(64) NOT NULL,
+      reason TEXT NULL,
       updated_by VARCHAR(128) NULL,
       created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -33,6 +40,16 @@ export async function ensureMonthlyStatusOverridesTable(): Promise<void> {
       KEY idx_monthly_att_status_date (attendance_date)
     )
   `);
+
+  try {
+    await pool.execute(
+      `ALTER TABLE ${MONTHLY_STATUS_OVERRIDES_TABLE} ADD COLUMN reason TEXT NULL`,
+    );
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    const errno = (err as { errno?: number })?.errno;
+    if (code !== "ER_DUP_FIELDNAME" && errno !== 1060) throw err;
+  }
 }
 
 export async function listMonthlyStatusOverridesInRange(
@@ -49,7 +66,7 @@ export async function listMonthlyStatusOverridesInRange(
     const [rows] = await pool.execute(
       `SELECT employee_id,
               DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
-              status_label, updated_by
+              status_label, reason, updated_by
        FROM ${MONTHLY_STATUS_OVERRIDES_TABLE}
        WHERE attendance_date BETWEEN ? AND ?
          AND employee_id = ?
@@ -62,7 +79,7 @@ export async function listMonthlyStatusOverridesInRange(
   const [rows] = await pool.execute(
     `SELECT employee_id,
             DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
-            status_label, updated_by
+            status_label, reason, updated_by
      FROM ${MONTHLY_STATUS_OVERRIDES_TABLE}
      WHERE attendance_date BETWEEN ? AND ?
      ORDER BY attendance_date ASC`,
@@ -75,34 +92,41 @@ export async function upsertMonthlyStatusOverride(opts: {
   employeeId: string;
   attendanceDate: string;
   statusLabel: string;
+  reason: string;
   updatedBy?: string | null;
 }): Promise<MonthlyStatusOverrideRow> {
   await ensureMonthlyStatusOverridesTable();
   const employeeId = String(opts.employeeId || "").trim();
   const attendanceDate = normalizeDateKey(opts.attendanceDate);
   const statusLabel = normalizeAttendanceStatus(opts.statusLabel);
+  const reason = normalizeReason(opts.reason);
   if (!employeeId || !attendanceDate) {
     throw new Error("employeeId and attendanceDate are required");
   }
   if (!isAllowedMonthlyAttendanceStatus(statusLabel)) {
     throw new Error("Invalid status");
   }
+  if (!reason) {
+    throw new Error("Reason is required when changing status manually");
+  }
 
   await pool.execute(
     `INSERT INTO ${MONTHLY_STATUS_OVERRIDES_TABLE}
-       (employee_id, attendance_date, status_label, updated_by)
-     VALUES (?, ?, ?, ?)
+       (employee_id, attendance_date, status_label, reason, updated_by)
+     VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        status_label = VALUES(status_label),
+       reason = VALUES(reason),
        updated_by = VALUES(updated_by),
        updated_at = CURRENT_TIMESTAMP`,
-    [employeeId, attendanceDate, statusLabel, opts.updatedBy || null],
+    [employeeId, attendanceDate, statusLabel, reason, opts.updatedBy || null],
   );
 
   return {
     employee_id: employeeId,
     attendance_date: attendanceDate,
     status_label: statusLabel,
+    reason,
     updated_by: opts.updatedBy || null,
   };
 }
