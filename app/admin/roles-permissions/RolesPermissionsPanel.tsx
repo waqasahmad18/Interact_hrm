@@ -65,7 +65,10 @@ function explicitSlugs(emp: DemoEmployee): string[] {
     emp.accessRoleSlug != null && String(emp.accessRoleSlug).trim()
       ? String(emp.accessRoleSlug).trim()
       : null;
-  return one ? [one] : [];
+  if (one) return [one];
+  // Fallback: Add Employee org role (mapped to System Control slug) until sync runs
+  if (emp.roleId) return [String(emp.roleId)];
+  return [];
 }
 
 function explicitSlug(emp: DemoEmployee) {

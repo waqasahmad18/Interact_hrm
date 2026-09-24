@@ -17,6 +17,7 @@ import {
   type DemoEmployee,
   type RoleDef,
 } from "./system-control-data";
+import { orgRoleLabel } from "@/lib/org-role";
 
 type Props = {
   allRoles: RoleDef[];
@@ -1059,7 +1060,12 @@ export default function OrgChartTab({
                           </span>
                           <span className={styles.orgPersonName}>{emp.name}</span>
                           <span className={styles.orgPersonMeta}>
-                            {emp.departmentName || emp.pseudonym || "Staff"}
+                            {emp.legacyRole
+                              ? orgRoleLabel(emp.legacyRole)
+                              : allRoles.find((r) => r.id === emp.roleId)?.name ||
+                                emp.departmentName ||
+                                emp.pseudonym ||
+                                "Staff"}
                           </span>
                         </button>
                       ))}

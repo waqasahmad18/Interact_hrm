@@ -14,6 +14,7 @@ import {
   saveOrgRoles,
   saveRolePermissions,
   syncAccessControlCatalog,
+  backfillMissingOrgAccessRoles,
   unassignEmployeeRole,
   unassignEmployees,
   unassignEmployeesFromRole,
@@ -104,6 +105,7 @@ export async function GET(req: NextRequest) {
   try {
     await ensureAccessControlStore();
     await syncAccessControlCatalog();
+    await backfillMissingOrgAccessRoles();
     const caller = await resolveCallerCaps(req);
     const [permissions, features, employees, roles, employeePermissions] =
       await Promise.all([

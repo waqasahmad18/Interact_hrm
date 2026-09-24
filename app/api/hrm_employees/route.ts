@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '../../../lib/db';
+import { syncEmployeeAccessRoleFromOrg } from '@/lib/access-control/store';
+import { normalizeOrgRole } from '@/lib/org-role';
 
 export async function GET(req: NextRequest) {
   let conn;
@@ -103,12 +105,18 @@ export async function POST(req: NextRequest) {
     const cnicExpiry = cnic_expiry_date && String(cnic_expiry_date).slice(0, 10) || null;
     const cnicAddr =
       cnic_address && String(cnic_address).trim() !== "" ? String(cnic_address).trim() : null;
+    const orgRole = normalizeOrgRole(role);
     const [result]: any = await conn.execute(
       `INSERT INTO hrm_employees (first_name, pseudonym, last_name, father_name, employee_code, dob, gender, marital_status, nationality, blood_group, profile_img, username, password, status, role, cnic_number, cnic_issuance_date, cnic_expiry_date, cnic_address, employment_status, employment_type, working_hours, face_verification_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, role, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal]
+      [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, orgRole, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal]
     );
     const insertedId = result.insertId;
     console.log('Insert successful, ID:', insertedId);
+    try {
+      await syncEmployeeAccessRoleFromOrg(insertedId);
+    } catch (syncErr) {
+      console.warn("access role sync after create:", syncErr);
+    }
     return NextResponse.json({ success: true, id: insertedId });
   } catch (err) {
     console.error('POST Error:', err);
@@ -187,12 +195,13 @@ export async function PUT(req: NextRequest) {
       }
     }
     
+    const orgRole = normalizeOrgRole(role);
     console.log('Update Query:', `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, father_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, blood_group = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_issuance_date = ?, cnic_expiry_date = ?, cnic_address = ?, employment_status = ?, employment_type = ?, working_hours = ? WHERE ${whereClause}`);
-    console.log('Parameters:', [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, role, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal, whereValue]);
+    console.log('Parameters:', [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, orgRole, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal, whereValue]);
     
     const [result]: any = await conn.execute(
       `UPDATE hrm_employees SET first_name = ?, pseudonym = ?, last_name = ?, father_name = ?, employee_code = ?, dob = ?, gender = ?, marital_status = ?, nationality = ?, blood_group = ?, profile_img = ?, username = ?, password = ?, status = ?, role = ?, cnic_number = ?, cnic_issuance_date = ?, cnic_expiry_date = ?, cnic_address = ?, employment_status = ?, employment_type = ?, working_hours = ? WHERE ${whereClause}`,
-      [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, role, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal, whereValue]
+      [first_name, middle_name, last_name, fatherName, empCode, dob, gender, marital_status, nationality, bloodGroup, profile_img, username, password, status, orgRole, cnic_number, cnicIssue, cnicExpiry, cnicAddr, employment_status, empType, hoursVal, whereValue]
     );
     
     console.log('Affected rows:', result.affectedRows);
@@ -208,6 +217,13 @@ export async function PUT(req: NextRequest) {
       } catch (jobErr) {
         console.log('Note: Could not update employee_jobs (may not exist yet):', jobErr);
       }
+    }
+
+    try {
+      const syncId = /^\d+$/.test(String(whereValue)) ? whereValue : id;
+      if (syncId) await syncEmployeeAccessRoleFromOrg(syncId);
+    } catch (syncErr) {
+      console.warn("access role sync after update:", syncErr);
     }
     
     console.log('Update successful');

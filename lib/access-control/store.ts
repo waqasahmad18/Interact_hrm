@@ -5,9 +5,11 @@ import {
   DEFAULT_PERMISSIONS,
   FEATURE_MODULES,
   GLOBAL_FEATURES,
+  orgDeptChipLabel,
   scopeLabelFromScope,
   type RoleDef,
 } from "@/app/admin/roles-permissions/system-control-data";
+import { normalizeOrgRole, ORG_ROLE_DB } from "@/lib/org-role";
 
 export const ROLES_COLLECTION = "hrm_roles";
 export const ROLE_PERMS_COLLECTION = "hrm_role_permissions";
@@ -39,27 +41,41 @@ function initialsFromName(name: string) {
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
-/** Map live HRM `hrm_employees.role` strings → System Control role slug. */
-export function mapLegacyEmployeeRole(role: unknown): string {
-  const r = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  if (!r) return "helpdesk";
-  if (r.includes("bod") || r.includes("ceo") || r.includes("board")) return "exec_board";
-  if (r.includes("managing partner") || r === "partner") return "mp_it";
-  if (r.includes("hr")) return "hr_manager";
-  if (r === "hod" || r.includes("head")) return "it_manager";
-  // Add Employee "Manager" → Management
-  if (r === "management" || r === "manager" || r.includes("manager")) {
+/**
+ * Map Add Employee org role (+ optional department) → System Control role slug.
+ * Used so Org Chart / Permissions reflect Team Lead, Manager, etc.
+ */
+export function mapLegacyEmployeeRole(
+  role: unknown,
+  departmentName?: string | null,
+): string {
+  const org = normalizeOrgRole(role);
+  const chip = (orgDeptChipLabel(departmentName) || "").toLowerCase();
+
+  if (org === ORG_ROLE_DB.CEO) return "exec_board";
+
+  if (org === ORG_ROLE_DB.MANAGER) {
+    if (chip === "it" || chip === "cest.") return "it_manager";
+    if (chip === "finance") return "finance_manager";
+    if (chip === "hr" || chip === "hit") return "hr_manager";
+    if (chip === "dm") return "bd_sourcing";
     return "billing_ops_manager";
   }
-  // Add Employee "Team Lead" → Leader
-  if (r === "leader" || r.includes("lead") || r.includes("supervisor")) {
+
+  if (org === ORG_ROLE_DB.TEAM_LEAD) {
+    if (chip === "it" || chip === "cest.") return "team_lead_it";
+    if (chip === "finance") return "team_lead_finance";
+    if (chip === "hr") return "team_lead_hr";
+    if (chip === "hit") return "team_lead_billing";
+    if (chip === "dm") return "team_lead_dm";
     return "team_lead_billing";
   }
-  if (r.includes("officer") || r.includes("staff") || r.includes("associate")) {
-    return "helpdesk";
-  }
+
+  // Officer
+  if (chip === "it" || chip === "cest.") return "helpdesk";
+  if (chip === "finance") return "accountant_billing";
+  if (chip === "hr" || chip === "hit") return "hr_coordinator";
+  if (chip === "dm") return "data_analyst";
   return "helpdesk";
 }
 
@@ -312,6 +328,186 @@ export async function ensureAccessControlStore() {
     await ensureMysqlTables();
   }
   await seedIfEmpty();
+  await ensureMissingBaseRoles();
+}
+
+/** Insert any BASE_ROLES slugs that are missing (e.g. new per-dept Team Lead cards). */
+async function ensureMissingBaseRoles() {
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    for (const r of BASE_ROLES) {
+      const exists = await db.collection(ROLES_COLLECTION).findOne({ slug: r.id });
+      if (exists) {
+        // Keep Team Lead display names current
+        if (r.id.startsWith("team_lead_") || r.name.includes("Team Lead")) {
+          await db.collection(ROLES_COLLECTION).updateOne(
+            { slug: r.id },
+            {
+              $set: {
+                display_name: r.name,
+                parent_slug: r.parentId ?? null,
+                tier: r.tier ?? null,
+                updated_at: new Date(),
+              },
+            },
+          );
+        }
+        continue;
+      }
+      const id = await nextId(ROLES_COLLECTION);
+      await db.collection(ROLES_COLLECTION).insertOne({
+        id,
+        slug: r.id,
+        display_name: r.name,
+        description: r.description,
+        portal_type: r.portal,
+        data_scope: r.scope,
+        hierarchy_level: r.hierarchyLevel,
+        parent_slug: r.parentId ?? null,
+        tier: r.tier ?? null,
+        accent: r.accent ?? null,
+        is_system: r.system ? 1 : 0,
+        is_active: 1,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      const defaults = DEFAULT_PERMISSIONS[r.id];
+      if (defaults) {
+        let pid = await nextId(ROLE_PERMS_COLLECTION);
+        for (const key of defaults) {
+          await db.collection(ROLE_PERMS_COLLECTION).insertOne({
+            id: pid++,
+            role_slug: r.id,
+            feature_key: key,
+            allowed: 1,
+            created_at: new Date(),
+          });
+        }
+      }
+    }
+    return;
+  }
+
+  for (const r of BASE_ROLES) {
+    const [existing] = await pool.execute(
+      `SELECT slug FROM ${ROLES_COLLECTION} WHERE slug = ? LIMIT 1`,
+      [r.id],
+    );
+    if ((existing as any[])?.length) {
+      if (r.id.startsWith("team_lead_") || r.name.includes("Team Lead")) {
+        await pool.execute(
+          `UPDATE ${ROLES_COLLECTION}
+           SET display_name = ?, parent_slug = ?, tier = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE slug = ?`,
+          [r.name, r.parentId ?? null, r.tier ?? null, r.id],
+        );
+      }
+      continue;
+    }
+    await pool.execute(
+      `INSERT INTO ${ROLES_COLLECTION}
+        (slug, display_name, description, portal_type, data_scope, hierarchy_level, parent_slug, tier, accent, is_system, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        r.id,
+        r.name,
+        r.description,
+        r.portal,
+        r.scope,
+        r.hierarchyLevel,
+        r.parentId ?? null,
+        r.tier ?? null,
+        r.accent ?? null,
+        r.system ? 1 : 0,
+      ],
+    );
+    const defaults = DEFAULT_PERMISSIONS[r.id];
+    if (defaults) {
+      for (const key of defaults) {
+        await pool.execute(
+          `INSERT IGNORE INTO ${ROLE_PERMS_COLLECTION} (role_slug, feature_key, allowed) VALUES (?, ?, 1)`,
+          [r.id, key],
+        );
+      }
+    }
+  }
+}
+
+/**
+ * After Add Employee / Edit sets overall org role (+ department), write
+ * access_role_slug so Org Chart + Permissions Assigned list stay in sync.
+ */
+export async function syncEmployeeAccessRoleFromOrg(employeeId: string | number): Promise<string | null> {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  if (!eid || !/^\d+$/.test(eid)) return null;
+
+  const [rows] = await pool.execute(
+    `SELECT e.role, d.name AS department_name
+     FROM hrm_employees e
+     LEFT JOIN employee_jobs j ON e.id = j.employee_id
+     LEFT JOIN departments d ON j.department_id = d.id
+     WHERE e.id = ?
+     LIMIT 1`,
+    [Number(eid)],
+  );
+  const row = (rows as { role?: string; department_name?: string }[])[0];
+  if (!row) return null;
+
+  const slug = mapLegacyEmployeeRole(row.role, row.department_name);
+  if (!slug) return null;
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const numeric = Number(eid);
+    await db.collection("hrm_employees").updateOne(
+      { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] },
+      {
+        $set: {
+          access_role_slug: slug,
+          access_role_slugs: [slug],
+          updated_at: new Date(),
+        },
+      },
+    );
+    return slug;
+  }
+
+  await pool.execute(
+    `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+    [slug, JSON.stringify([slug]), Number(eid)],
+  );
+  return slug;
+}
+
+/** Fill / refresh access_role_slug from Add Employee org role + department. */
+export async function backfillMissingOrgAccessRoles(): Promise<number> {
+  await ensureAccessControlStore();
+  let updated = 0;
+  try {
+    const [rows] = await pool.execute(
+      `SELECT e.id, e.role, e.access_role_slug, d.name AS department_name
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       WHERE e.role IS NOT NULL AND TRIM(e.role) <> ''`,
+    );
+    for (const r of rows as {
+      id: number;
+      role?: string;
+      access_role_slug?: string | null;
+      department_name?: string | null;
+    }[]) {
+      const expected = mapLegacyEmployeeRole(r.role, r.department_name);
+      const current = String(r.access_role_slug || "").trim();
+      if (current === expected) continue;
+      const slug = await syncEmployeeAccessRoleFromOrg(r.id);
+      if (slug) updated += 1;
+    }
+  } catch (err) {
+    console.warn("backfillMissingOrgAccessRoles:", err);
+  }
+  return updated;
 }
 
 export async function loadPermissionMap(): Promise<Record<string, string[]>> {
@@ -677,9 +873,11 @@ export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
     const id = String(row.id ?? "");
     const name = [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || `Employee ${id}`;
     const legacyRole = row.role != null ? String(row.role) : "";
+    const departmentName = row.department_name ? String(row.department_name) : undefined;
     const accessRoleSlugs = parseAccessRoleSlugs(row);
     const accessRoleSlug = accessRoleSlugs[0] || null;
-    const roleId = accessRoleSlug || mapLegacyEmployeeRole(legacyRole);
+    const roleId =
+      accessRoleSlug || mapLegacyEmployeeRole(legacyRole, departmentName);
     return {
       id,
       name,
@@ -689,7 +887,7 @@ export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
       accessRoleSlug,
       accessRoleSlugs,
       departmentId: row.department_id != null ? String(row.department_id) : "",
-      departmentName: row.department_name ? String(row.department_name) : undefined,
+      departmentName,
       reportsTo: null,
       legacyRole: legacyRole || undefined,
     };

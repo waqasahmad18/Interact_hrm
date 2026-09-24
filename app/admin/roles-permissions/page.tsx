@@ -247,7 +247,9 @@ export default function SystemControlPage() {
           ? e.accessRoleSlugs
           : e.accessRoleSlug
             ? [String(e.accessRoleSlug)]
-            : [];
+            : e.roleId
+              ? [e.roleId]
+              : [];
       return slugs.includes(roleId);
     }).length;
   }
