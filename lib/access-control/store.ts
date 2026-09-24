@@ -775,14 +775,17 @@ export async function unassignEmployeeFromRole(employeeId: string, roleSlug: str
       (s) => s !== slug,
     );
     const primary = slugs[0] || null;
-    await db.collection("hrm_employees").updateOne(filter, {
-      $set: {
-        access_role_slug: primary,
-        // Empty array = intentionally unassigned (backfill must not re-fill)
-        access_role_slugs: slugs,
-        updated_at: new Date(),
-      },
-    });
+    // No remaining System Control roles → Edit Profile org role defaults to Officer
+    const setDoc: Record<string, unknown> = {
+      access_role_slug: primary,
+      // Empty array = intentionally unassigned (backfill must not re-fill)
+      access_role_slugs: slugs,
+      updated_at: new Date(),
+    };
+    if (slugs.length === 0) {
+      setDoc.role = ORG_ROLE_DB.OFFICER;
+    }
+    await db.collection("hrm_employees").updateOne(filter, { $set: setDoc });
     return;
   }
 
@@ -795,10 +798,17 @@ export async function unassignEmployeeFromRole(employeeId: string, roleSlug: str
   if (!row) throw new Error(`Employee ${eid} not found for role unassign`);
   const slugs = parseAccessRoleSlugs(row).filter((s) => s !== slug);
   const primary = slugs[0] || null;
-  await pool.execute(
-    `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
-    [primary, JSON.stringify(slugs), idParam],
-  );
+  if (slugs.length === 0) {
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ?, role = ? WHERE id = ?`,
+      [primary, JSON.stringify(slugs), ORG_ROLE_DB.OFFICER, idParam],
+    );
+  } else {
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+      [primary, JSON.stringify(slugs), idParam],
+    );
+  }
 }
 
 /** Clear System Control role assign (`access_role_slug` → null). */
@@ -818,6 +828,7 @@ export async function unassignEmployeeRole(employeeId: string) {
       $set: {
         access_role_slug: null,
         access_role_slugs: [],
+        role: ORG_ROLE_DB.OFFICER,
         updated_at: new Date(),
       },
     });
@@ -829,14 +840,14 @@ export async function unassignEmployeeRole(employeeId: string) {
 
   try {
     await pool.execute(
-      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ? WHERE id = ?`,
-      [JSON.stringify([]), eid],
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ?, role = ? WHERE id = ?`,
+      [JSON.stringify([]), ORG_ROLE_DB.OFFICER, eid],
     );
   } catch (err) {
     await ensureMysqlTables();
     await pool.execute(
-      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ? WHERE id = ?`,
-      [JSON.stringify([]), eid],
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ?, role = ? WHERE id = ?`,
+      [JSON.stringify([]), ORG_ROLE_DB.OFFICER, eid],
     );
   }
 }
