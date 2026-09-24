@@ -102,12 +102,6 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "leave",
   },
   {
-    permission: "leave.approve.hr",
-    name: "Leave Inbox",
-    path: "/employee-dashboard/leave-inbox",
-    group: "leave",
-  },
-  {
     permission: "attendance.summary.view",
     name: "Attendance Summary",
     path: "/employee-dashboard/summaries",
