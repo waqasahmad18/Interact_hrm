@@ -182,6 +182,23 @@ function parseAccessRoleSlugs(row: Record<string, unknown>): string[] {
   return [...new Set(list)];
 }
 
+/** True when System Control cleared assigns (`access_role_slugs = []`) — do not re-map from org role. */
+function accessRolesIntentionallyCleared(row: Record<string, unknown>): boolean {
+  const raw = row.access_role_slugs;
+  if (Array.isArray(raw)) return raw.length === 0;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (t === "[]" || t === "") return true;
+    try {
+      const parsed = JSON.parse(t);
+      return Array.isArray(parsed) && parsed.length === 0;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 async function ensureMongoIndexes() {
   const db = await getMongoDb();
   await db.collection(ROLES_COLLECTION).createIndex({ slug: 1 }, { unique: true });
@@ -480,27 +497,29 @@ export async function syncEmployeeAccessRoleFromOrg(employeeId: string | number)
   return slug;
 }
 
-/** Fill / refresh access_role_slug from Add Employee org role + department. */
+/** Fill access_role_slug only for employees never touched by System Control assign/unassign.
+ *  Intentionally unassigned employees keep access_role_slugs = [] and are not re-filled.
+ */
 export async function backfillMissingOrgAccessRoles(): Promise<number> {
   await ensureAccessControlStore();
   let updated = 0;
   try {
     const [rows] = await pool.execute(
-      `SELECT e.id, e.role, e.access_role_slug, d.name AS department_name
+      `SELECT e.id, e.role, e.access_role_slug, e.access_role_slugs, d.name AS department_name
        FROM hrm_employees e
        LEFT JOIN employee_jobs j ON e.id = j.employee_id
        LEFT JOIN departments d ON j.department_id = d.id
-       WHERE e.role IS NOT NULL AND TRIM(e.role) <> ''`,
+       WHERE e.role IS NOT NULL AND TRIM(e.role) <> ''
+         AND (e.access_role_slug IS NULL OR TRIM(COALESCE(e.access_role_slug, '')) = '')
+         AND e.access_role_slugs IS NULL`,
     );
     for (const r of rows as {
       id: number;
       role?: string;
       access_role_slug?: string | null;
+      access_role_slugs?: unknown;
       department_name?: string | null;
     }[]) {
-      const expected = mapLegacyEmployeeRole(r.role, r.department_name);
-      const current = String(r.access_role_slug || "").trim();
-      if (current === expected) continue;
       const slug = await syncEmployeeAccessRoleFromOrg(r.id);
       if (slug) updated += 1;
     }
@@ -750,6 +769,7 @@ export async function unassignEmployeeFromRole(employeeId: string, roleSlug: str
     await db.collection("hrm_employees").updateOne(filter, {
       $set: {
         access_role_slug: primary,
+        // Empty array = intentionally unassigned (backfill must not re-fill)
         access_role_slugs: slugs,
         updated_at: new Date(),
       },
@@ -768,7 +788,7 @@ export async function unassignEmployeeFromRole(employeeId: string, roleSlug: str
   const primary = slugs[0] || null;
   await pool.execute(
     `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
-    [primary, slugs.length ? JSON.stringify(slugs) : null, idParam],
+    [primary, JSON.stringify(slugs), idParam],
   );
 }
 
@@ -800,14 +820,14 @@ export async function unassignEmployeeRole(employeeId: string) {
 
   try {
     await pool.execute(
-      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = NULL WHERE id = ?`,
-      [eid],
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ? WHERE id = ?`,
+      [JSON.stringify([]), eid],
     );
   } catch (err) {
     await ensureMysqlTables();
     await pool.execute(
-      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = NULL WHERE id = ?`,
-      [eid],
+      `UPDATE hrm_employees SET access_role_slug = NULL, access_role_slugs = ? WHERE id = ?`,
+      [JSON.stringify([]), eid],
     );
   }
 }
@@ -876,8 +896,10 @@ export async function loadAccessEmployees(): Promise<AccessEmployee[]> {
     const departmentName = row.department_name ? String(row.department_name) : undefined;
     const accessRoleSlugs = parseAccessRoleSlugs(row);
     const accessRoleSlug = accessRoleSlugs[0] || null;
-    const roleId =
-      accessRoleSlug || mapLegacyEmployeeRole(legacyRole, departmentName);
+    const cleared = accessRolesIntentionallyCleared(row);
+    const roleId = cleared
+      ? accessRoleSlug || ""
+      : accessRoleSlug || mapLegacyEmployeeRole(legacyRole, departmentName);
     return {
       id,
       name,
