@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  deleteAllPresenceAgents,
+  deletePresenceAgent,
   listPresenceAgents,
   queueAgentCommand,
   setAgentAdminEnabled,
@@ -85,6 +87,64 @@ export async function PATCH(req: NextRequest) {
       {
         success: false,
         error: err instanceof Error ? err.message : "Update failed",
+      },
+      { status: 400 },
+    );
+  }
+}
+
+/** Delete one agent (machine_id) or all registered agent rows. */
+export async function DELETE(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const all = url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true";
+    let machineId = url.searchParams.get("machine_id")?.trim() || "";
+    if (!machineId && !all) {
+      try {
+        const body = (await req.json()) as {
+          machine_id?: string;
+          all?: boolean;
+        };
+        if (body.all) {
+          const n = await deleteAllPresenceAgents();
+          return NextResponse.json({
+            success: true,
+            deleted: n,
+            message: `Deleted ${n} agent registration(s).`,
+          });
+        }
+        machineId = String(body.machine_id ?? "").trim();
+      } catch {
+        /* no body */
+      }
+    }
+    if (all) {
+      const n = await deleteAllPresenceAgents();
+      return NextResponse.json({
+        success: true,
+        deleted: n,
+        message: `Deleted ${n} agent registration(s).`,
+      });
+    }
+    if (!machineId) {
+      return NextResponse.json(
+        { success: false, error: "machine_id or all=1 required" },
+        { status: 400 },
+      );
+    }
+    const ok = await deletePresenceAgent(machineId);
+    if (!ok) {
+      return NextResponse.json(
+        { success: false, error: "Agent not found" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ success: true, deleted: 1 });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "Delete failed",
       },
       { status: 400 },
     );

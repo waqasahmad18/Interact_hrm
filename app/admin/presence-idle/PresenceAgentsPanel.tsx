@@ -81,33 +81,41 @@ export default function PresenceAgentsPanel({ employees }: Props) {
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [retiring, setRetiring] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
+  const [deletingAll, setDeletingAll] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
+  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/admin/presence-agents", { cache: "no-store" });
       const data = await res.json();
       if (!data.success) {
-        toastError(data.error || "Could not load agents");
+        if (!silent) toastError(data.error || "Could not load agents");
         return;
       }
-      setAgents(Array.isArray(data.agents) ? data.agents : []);
+      const list = (Array.isArray(data.agents) ? data.agents : []) as AgentRow[];
+      setAgents(list);
       setSummary(data.summary ?? null);
-      const next: Record<string, string> = {};
-      for (const a of data.agents as AgentRow[]) {
-        next[a.machineId] = a.assignedEmployeeId ?? "";
-      }
-      setDrafts(next);
+      // Only seed drafts for new rows — avoid resetting open dropdowns every poll
+      setDrafts((prev) => {
+        const next: Record<string, string> = {};
+        for (const a of list) {
+          next[a.machineId] =
+            a.machineId in prev ? prev[a.machineId] : (a.assignedEmployeeId ?? "");
+        }
+        return next;
+      });
     } catch {
-      toastError("Network error loading agents");
+      if (!silent) toastError("Network error loading agents");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 5000);
+    // Quiet poll — never toggle loading (that was the UI jerk)
+    const t = setInterval(() => void load({ silent: true }), 30000);
     return () => clearInterval(t);
   }, [load]);
 
@@ -186,6 +194,45 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     }
   }
 
+  async function deleteAllAgents() {
+    if (
+      !window.confirm(
+        "Delete ALL agent registrations from HRM?\n\n" +
+          "This only clears the list here (DB rows). It does not uninstall software on PCs.\n" +
+          "Stale/ghost entries after uninstall will disappear.\n\n" +
+          "Continue?"
+      )
+    ) {
+      return;
+    }
+    setDeletingAll(true);
+    try {
+      const res = await fetch("/api/admin/presence-agents?all=1", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Delete all failed");
+        return;
+      }
+      toastSuccess(data.message || "All agent entries deleted");
+      setAgents([]);
+      setSummary({
+        total: 0,
+        healthy: 0,
+        stale: 0,
+        offline: 0,
+        withAssignedId: 0,
+        withLocalId: 0,
+      });
+      setDrafts({});
+    } catch {
+      toastError("Network error deleting agents");
+    } finally {
+      setDeletingAll(false);
+    }
+  }
+
   async function saveAssignment(machineId: string) {
     setSavingId(machineId);
     try {
@@ -259,6 +306,14 @@ export default function PresenceAgentsPanel({ employees }: Props) {
           >
             Restart all
           </button>
+          <button
+            type="button"
+            className={`${styles.chip} ${styles.chipDanger}`}
+            disabled={deletingAll || !summary?.total}
+            onClick={() => void deleteAllAgents()}
+          >
+            {deletingAll ? "Deleting…" : "Delete all"}
+          </button>
         </div>
       </div>
 
@@ -285,7 +340,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         </div>
       ) : null}
 
-      {loading ? (
+      {loading && agents.length === 0 ? (
         <p className={styles.loading}>Loading agents…</p>
       ) : agents.length === 0 ? (
         <p className={styles.tip}>

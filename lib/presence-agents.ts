@@ -305,12 +305,6 @@ export async function upsertAgentHeartbeat(
 
 export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
   await ensurePresenceAgentsTable();
-  // Clean historical duplicates before listing (same PC must not appear 20×)
-  try {
-    await purgeDuplicatePresenceAgents();
-  } catch {
-    /* non-fatal */
-  }
   const [rows] = await pool.execute(
     `SELECT pa.*,
             e.first_name AS assigned_first_name,
@@ -512,6 +506,24 @@ export async function purgeDuplicatePresenceAgents(): Promise<number> {
     );
   }
   return removed;
+}
+
+/** Delete every registered agent row (admin cleanup). */
+export async function deleteAllPresenceAgents(): Promise<number> {
+  await ensurePresenceAgentsTable();
+  const [res] = await pool.execute(`DELETE FROM ${TABLE}`);
+  return (res as { affectedRows?: number }).affectedRows ?? 0;
+}
+
+/** Delete one agent by machine_id. */
+export async function deletePresenceAgent(machineId: string): Promise<boolean> {
+  await ensurePresenceAgentsTable();
+  const mid = String(machineId ?? "").trim();
+  if (!mid) throw new Error("machine_id required");
+  const [res] = await pool.execute(`DELETE FROM ${TABLE} WHERE machine_id = ?`, [
+    mid,
+  ]);
+  return ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
 }
 
 export async function queueAgentCommand(input: {

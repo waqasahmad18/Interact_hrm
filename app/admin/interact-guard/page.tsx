@@ -73,9 +73,11 @@ export default function InteractGuardAdminPage() {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [idleDrafts, setIdleDrafts] = React.useState<Record<string, string>>({});
+  const [deletingAll, setDeletingAll] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
+  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoading(true);
     try {
       const [aRes, eRes] = await Promise.all([
         fetch("/api/admin/presence-agents", { cache: "no-store" }),
@@ -84,34 +86,72 @@ export default function InteractGuardAdminPage() {
       const aData = await aRes.json();
       const eData = await eRes.json();
       if (!aData.success) {
-        toastError(aData.error || "Could not load agents");
+        if (!silent) toastError(aData.error || "Could not load agents");
         return;
       }
       const list = (Array.isArray(aData.agents) ? aData.agents : []) as AgentRow[];
       setAgents(list);
-      const next: Record<string, string> = {};
-      const idle: Record<string, string> = {};
-      for (const a of list) {
-        next[a.machineId] = a.assignedEmployeeId ?? "";
-        idle[a.machineId] = String(a.idleSeconds || 120);
-      }
-      setDrafts(next);
-      setIdleDrafts(idle);
+      setDrafts((prev) => {
+        const next: Record<string, string> = {};
+        for (const a of list) {
+          next[a.machineId] =
+            a.machineId in prev ? prev[a.machineId] : (a.assignedEmployeeId ?? "");
+        }
+        return next;
+      });
+      setIdleDrafts((prev) => {
+        const idle: Record<string, string> = {};
+        for (const a of list) {
+          idle[a.machineId] =
+            a.machineId in prev ? prev[a.machineId] : String(a.idleSeconds || 120);
+        }
+        return idle;
+      });
       if (eData.success && Array.isArray(eData.employees)) {
         setEmployees(eData.employees);
       }
     } catch {
-      toastError("Network error");
+      if (!silent) toastError("Network error");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
     void load();
-    const t = window.setInterval(() => void load(), 20000);
+    const t = window.setInterval(() => void load({ silent: true }), 30000);
     return () => window.clearInterval(t);
   }, [load]);
+
+  const deleteAll = async () => {
+    if (
+      !window.confirm(
+        "Delete ALL agent registrations from HRM?\n\n" +
+          "Clears this list only — does not uninstall Guard on PCs.\n\nContinue?"
+      )
+    ) {
+      return;
+    }
+    setDeletingAll(true);
+    try {
+      const res = await fetch("/api/admin/presence-agents?all=1", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Delete all failed");
+        return;
+      }
+      toastSuccess(data.message || "All entries deleted");
+      setAgents([]);
+      setDrafts({});
+      setIdleDrafts({});
+    } catch {
+      toastError("Network error");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
 
   const patch = async (machineId: string, body: Record<string, unknown>) => {
     setBusy(machineId);
@@ -163,6 +203,15 @@ export default function InteractGuardAdminPage() {
           </div>
           <button type="button" className={styles.refreshBtn} onClick={() => void load()}>
             Refresh
+          </button>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            disabled={deletingAll || agents.length === 0}
+            onClick={() => void deleteAll()}
+            style={{ borderColor: "#c62828", color: "#c62828" }}
+          >
+            {deletingAll ? "Deleting…" : "Delete all"}
           </button>
         </div>
 
