@@ -82,26 +82,45 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join("\n");
 
-    // Dedup: same employee open seat-absent ticket in last 30 minutes
+    // Dedup in JS — Mongo adapter mishandles NOW()-INTERVAL and was matching
+    // hours-old open seat_absent tickets forever (toast "sent", no new inbox row).
+    const DEDUP_MS = 30 * 60 * 1000;
     try {
-      const [dup] = await pool.query(
-        `SELECT id FROM ${EMPLOYEE_TICKETS_TABLE}
+      const [dupRows] = await pool.query(
+        `SELECT id, ticket_number, requested_at, status FROM ${EMPLOYEE_TICKETS_TABLE}
          WHERE employee_id = ?
            AND ticket_type = 'seat_absent'
            AND status IN ('pending', 'in_progress')
-           AND requested_at >= (NOW() - INTERVAL 30 MINUTE)
-         LIMIT 1`,
+         ORDER BY id DESC
+         LIMIT 10`,
         [employeeId],
       );
-      if (Array.isArray(dup) && dup.length > 0) {
+      const cutoff = Date.now() - DEDUP_MS;
+      const recent = (Array.isArray(dupRows) ? dupRows : []).find((row) => {
+        const r = row as { id?: number; requested_at?: string | Date };
+        const raw = r.requested_at;
+        let ts = 0;
+        if (raw instanceof Date) ts = raw.getTime();
+        else if (raw != null) {
+          const s = String(raw).trim();
+          ts = Date.parse(s.includes("T") ? s : s.replace(" ", "T"));
+        }
+        return Number.isFinite(ts) && ts >= cutoff;
+      }) as
+        | { id: number; ticket_number?: string; requested_at?: string }
+        | undefined;
+      if (recent?.id) {
         return NextResponse.json({
           success: true,
           deduped: true,
-          ticket_id: (dup[0] as { id: number }).id,
+          ticket_id: recent.id,
+          ticket_number: recent.ticket_number || null,
+          message:
+            "Open seat-absent ticket already exists in HR inbox (last 30 minutes).",
         });
       }
     } catch {
-      /* continue */
+      /* continue to create */
     }
 
     const formJson = JSON.stringify({
