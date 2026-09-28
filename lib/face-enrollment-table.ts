@@ -68,15 +68,27 @@ export async function ensureFaceEnrollmentTable() {
 export async function getEnrollmentRowsForEmployee(
   employeeId: string
 ): Promise<FaceEnrollmentRow[]> {
+  return getEnrollmentRowsForEmployees([employeeId]);
+}
+
+export async function getEnrollmentRowsForEmployees(
+  employeeIds: string[]
+): Promise<FaceEnrollmentRow[]> {
   await ensureFaceEnrollmentTable();
+  const ids = Array.from(
+    new Set(employeeIds.map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!ids.length) return [];
+
+  const placeholders = ids.map(() => "?").join(", ");
   const [rows] = await pool.execute(
     `SELECT id, employee_id, compreface_subject, compreface_image_id, local_path,
             face_descriptor, source, enrolled_by,
             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
      FROM ${FACE_ENROLLMENT_TABLE}
-     WHERE employee_id = ?
+     WHERE employee_id IN (${placeholders})
      ORDER BY created_at DESC`,
-    [String(employeeId).trim()]
+    ids
   );
   return rows as FaceEnrollmentRow[];
 }
@@ -101,7 +113,14 @@ export type EmployeeEnrollmentContext = {
 export async function getDescriptorsForEmployee(
   employeeId: string
 ): Promise<EmployeeEnrollmentContext> {
-  const rows = await getEnrollmentRowsForEmployee(employeeId);
+  return getDescriptorsForEmployees([employeeId]);
+}
+
+/** Load enrollment descriptors for any of the employee's ID aliases (db id, code, etc.). */
+export async function getDescriptorsForEmployees(
+  employeeIds: string[]
+): Promise<EmployeeEnrollmentContext> {
+  const rows = await getEnrollmentRowsForEmployees(employeeIds);
   const descriptors = rows
     .map((r) => parseDescriptorJson(r.face_descriptor))
     .filter((d): d is number[] => !!d);

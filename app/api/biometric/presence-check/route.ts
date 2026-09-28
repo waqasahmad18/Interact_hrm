@@ -38,12 +38,11 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
-    // Stricter than clock/break — desk checks must not accept look-alikes
+    // Same matcher + Face Enrollment photos as break / prayer FaceVerifyModal
     const result = await verifyDescriptorForEmployee(
       descriptor,
       resolvedId,
       employeeName,
-      { presenceStrict: true },
     );
 
     return NextResponse.json({

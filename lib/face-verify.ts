@@ -15,7 +15,7 @@ import {
 import {
   countDescriptorsForEmployee,
   countEnrollmentForEmployee,
-  getDescriptorsForEmployee,
+  getDescriptorsForEmployees,
   getOtherEmployeesDescriptorSamples,
 } from "@/lib/face-enrollment-table";
 import { resolveEmployeeDbId } from "@/lib/resolve-employee-id";
@@ -62,7 +62,7 @@ export async function verifyDescriptorForEmployee(
   descriptor: number[],
   employeeId: string,
   employeeName?: string | null,
-  opts?: { presenceStrict?: boolean }
+  _opts?: { presenceStrict?: boolean }
 ): Promise<VerifyResult> {
   const rawId = String(employeeId || "").trim();
   if (!rawId) {
@@ -82,9 +82,12 @@ export async function verifyDescriptorForEmployee(
   const id = (await resolveEmployeeDbId(rawId)) || rawId;
   const matchKeys = await getEmployeeMatchKeys(id, employeeName);
   const label = employeeDisplayLabel(matchKeys, id);
-  const enrollment = await getDescriptorsForEmployee(id);
-  const descriptorCount = await countDescriptorsForEmployee(id);
-  const photoCount = await countEnrollmentForEmployee(id);
+  // Same enrollment images as break/prayer — match against every ID alias for this employee
+  const idAliases = matchKeys.dbIds.length ? matchKeys.dbIds : [id];
+  const enrollment = await getDescriptorsForEmployees(idAliases);
+  const descriptorCount =
+    enrollment.descriptorCount || (await countDescriptorsForEmployee(id));
+  const photoCount = enrollment.count || (await countEnrollmentForEmployee(id));
 
   if (descriptorCount < RECOMMENDED_ENROLLMENT_MIN || !enrollment.descriptors.length) {
     if (photoCount >= RECOMMENDED_ENROLLMENT_MIN) {
@@ -103,15 +106,9 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
-  // Guard / presence: slightly stricter than clock to reduce false accepts at desk
-  const baseMax = getMaxMatchDistance();
-  const maxDistance = opts?.presenceStrict
-    ? Math.min(baseMax, Math.max(0.35, baseMax - 0.05))
-    : baseMax;
-  const minPhotos = Math.max(
-    getMinMatchingPhotos(enrollment.descriptors.length),
-    opts?.presenceStrict ? 2 : 1
-  );
+  // Identical thresholds to clock / break / prayer FaceVerifyModal
+  const maxDistance = getMaxMatchDistance();
+  const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
   const self = matchProbeToDescriptors(
@@ -134,9 +131,7 @@ export async function verifyDescriptorForEmployee(
   }
 
   const rivals = await getOtherEmployeesDescriptorSamples(id);
-  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance, {
-    presenceStrict: Boolean(opts?.presenceStrict),
-  });
+  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance);
   if (rival) {
     return {
       verified: false,

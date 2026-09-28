@@ -6,15 +6,16 @@ import {
   scanVideoFrame,
   descriptorToJson,
   averageDescriptors,
+  countFacesInVideo,
 } from "@/lib/face-client-engine";
 
-/** Presence check: allow still seated face — do not wipe probes on every adjust frame. */
+/**
+ * Guard presence check — SAME face-api models + scan rules as FaceVerifyModal
+ * (break / prayer), matched against Face Enrollment photos for this employee ID.
+ */
 const REQUIRED_PROBES = 3;
-const SCAN_DEADLINE_MS = 50000;
-const CAMERA_WARMUP_MS = 1800;
-/** Desk webcam: face often smaller than clock/break selfie distance. */
-const COVERAGE_MIN = 0.1;
-const COVERAGE_MAX = 0.9;
+const SCAN_DEADLINE_MS = 55000;
+const SCAN_INTERVAL_MS = 280;
 
 function isWebView2(): boolean {
   try {
@@ -23,29 +24,6 @@ function isWebView2(): boolean {
   } catch {
     return false;
   }
-}
-
-function isVideoFrameUsable(video: HTMLVideoElement): boolean {
-  if (video.readyState < 2 || video.videoWidth < 64) return false;
-  const c = document.createElement("canvas");
-  c.width = 48;
-  c.height = 48;
-  const ctx = c.getContext("2d");
-  if (!ctx) return true;
-  ctx.drawImage(video, 0, 0, 48, 48);
-  const data = ctx.getImageData(0, 0, 48, 48).data;
-  let sum = 0;
-  let min = 255;
-  let max = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    const y = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    sum += y;
-    if (y < min) min = y;
-    if (y > max) max = y;
-  }
-  const avg = sum / (data.length / 4);
-  // Slightly softer than before — still desk lighting / low motion OK
-  return avg > 12 && max - min > 8;
 }
 
 type BridgeResult = {
@@ -81,7 +59,6 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
   (window as unknown as { __presenceResult?: BridgeResult }).__presenceResult = payload;
   document.title = `presence:${payload.atSeat ? "1" : "0"}:${payload.code}`;
 
-  // Chrome --app window: close after reporting so agent can finish
   if (checkId && !isWebView2()) {
     window.setTimeout(() => {
       try {
@@ -122,14 +99,18 @@ export default function PresenceSilentPage() {
       }
 
       try {
-        // Chrome (clock/break path): WebGL. WebView2: CPU (WebGL often garbage → 0%).
-        setStatus(isWebView2() ? "Loading models (CPU)…" : "Loading models (same as break)…");
-        await ensureFaceModelsLoaded({ preferCpu: isWebView2() });
-        if (cancelled) return;
+        // Same face-api load path as break / prayer FaceVerifyModal
+        setStatus("Loading face engine (same as break)…");
+        const modelsPromise = ensureFaceModelsLoaded({ preferCpu: isWebView2() });
 
         setStatus("Opening camera…");
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 24, max: 30 },
+          },
           audio: false,
         });
         if (cancelled) {
@@ -151,63 +132,73 @@ export default function PresenceSilentPage() {
           if (video.readyState >= 2) resolve();
           else video.onloadeddata = () => resolve();
         });
-        await new Promise((r) => setTimeout(r, CAMERA_WARMUP_MS));
+
+        await modelsPromise;
         if (cancelled) return;
 
-        setStatus("Scanning (same model as clock/break)…");
+        setStatus("Scanning — same model as break/prayer…");
         const deadline = Date.now() + SCAN_DEADLINE_MS;
         let lastCode = "no_face";
         let lastError: string | null = null;
         let lastSimilarity: number | null = null;
-        let sawGarbageZero = false;
         const probes: number[][] = [];
+        let multiFaceStreak = 0;
 
         while (!cancelled && Date.now() < deadline) {
-          if (!isVideoFrameUsable(video)) {
-            lastCode = "bad_frame";
-            lastError = "Camera frame blank/frozen — retrying";
-            await new Promise((r) => setTimeout(r, 250));
-            continue;
-          }
-
           const scan = await scanVideoFrame(video);
 
           if (scan.status === "multiple") {
-            // Don't wipe good probes — wait for others to leave frame
+            multiFaceStreak += 1;
             lastCode = "multiple";
-            await new Promise((r) => setTimeout(r, 280));
+            if (multiFaceStreak >= 2) {
+              probes.length = 0;
+              setStatus("Multiple faces — only you should be in frame");
+            }
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
             continue;
           }
+          multiFaceStreak = 0;
 
           if (scan.status !== "ok") {
             lastCode = scan.status === "adjust" ? "adjust" : "no_face";
-            await new Promise((r) => setTimeout(r, 220));
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
             continue;
           }
 
-          // Skip bad distance frames but KEEP already-captured probes
-          // (clearing on every adjust forced users to keep moving their head)
-          if (scan.coverage >= COVERAGE_MAX || scan.coverage <= COVERAGE_MIN) {
+          // Same distance gates as FaceVerifyModal (break/prayer)
+          if (scan.coverage >= 0.82) {
             lastCode = "adjust";
-            setStatus(
-              scan.coverage >= COVERAGE_MAX
-                ? "Move slightly back from camera…"
-                : "Move slightly closer / face the camera…",
-            );
-            await new Promise((r) => setTimeout(r, 200));
+            setStatus("Too close — move back a little…");
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+            continue;
+          }
+          if (scan.coverage <= 0.16) {
+            lastCode = "adjust";
+            setStatus("Too far — move a little closer…");
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
             continue;
           }
 
           probes.push(descriptorToJson(scan.descriptor));
-          setStatus(`Capturing… (${probes.length}/${REQUIRED_PROBES}) — sit still OK`);
+          setStatus(`Capturing… (${probes.length}/${REQUIRED_PROBES}) — hold still`);
           if (probes.length < REQUIRED_PROBES) {
-            await new Promise((r) => setTimeout(r, 180));
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
             continue;
           }
 
           const averaged = averageDescriptors(probes);
           probes.length = 0;
-          setStatus("Matching enrollment…");
+
+          // Same multi-pass count as break modal before accept
+          const faceCount = await countFacesInVideo(video);
+          if (faceCount >= 2) {
+            lastCode = "multiple";
+            setStatus("Multiple faces — blocked");
+            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+            continue;
+          }
+
+          setStatus("Matching Face Enrollment (your ID)…");
 
           const res = await fetch("/api/biometric/presence-check", {
             method: "POST",
@@ -237,34 +228,23 @@ export default function PresenceSilentPage() {
               },
               checkId
             );
-            setStatus("Matched — you are present");
+            setStatus("Present — matched enrollment");
             return;
           }
 
-          if (lastSimilarity !== null && lastSimilarity < 0.05) {
-            sawGarbageZero = true;
-            lastCode = "bad_frame";
-            lastError = "Unusable face sample (0%) — camera retry";
-            setStatus("Bad sample — retrying…");
-            await new Promise((r) => setTimeout(r, 300));
-            continue;
-          }
-
-          setStatus(`Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`);
+          setStatus(
+            `Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`
+          );
           await new Promise((r) => setTimeout(r, 350));
         }
 
         if (!cancelled) {
-          const cameraFailed =
-            lastCode === "bad_frame" ||
-            lastCode === "error" ||
-            (sawGarbageZero && (lastSimilarity === null || lastSimilarity < 0.05));
           await postToAgent(
             {
-              cameraOk: !cameraFailed,
+              cameraOk: true,
               atSeat: false,
-              code: cameraFailed ? "bad_frame" : lastCode,
-              error: lastError || "No enrolled face match in time window",
+              code: lastCode,
+              error: lastError || "Face did not match enrolled photos in time",
               similarity: lastSimilarity,
             },
             checkId
@@ -303,12 +283,11 @@ export default function PresenceSilentPage() {
         width: "100%",
         height: "100vh",
         background: "#000",
-        color: silentUi ? "#000" : "#e2e8f0",
+        color: "#e2e8f0",
         fontFamily: "system-ui, sans-serif",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        opacity: silentUi ? 0 : 1,
       }}
     >
       <video
@@ -323,21 +302,21 @@ export default function PresenceSilentPage() {
           objectFit: "cover",
           transform: "scaleX(-1)",
           background: "#000",
-          // Keep video active for capture; hide visually for Guard silent mode
-          visibility: silentUi ? "hidden" : "visible",
+          // Keep frames decoding for face-api (visibility:hidden can starve capture)
+          opacity: silentUi ? 0.02 : 1,
         }}
       />
       {!silentUi ? (
-      <div
-        style={{
-          padding: "8px 12px",
-          fontSize: 12,
-          background: "#1e293b",
-          borderTop: "1px solid #334155",
-        }}
-      >
-        {status}
-      </div>
+        <div
+          style={{
+            padding: "8px 12px",
+            fontSize: 12,
+            background: "#1e293b",
+            borderTop: "1px solid #334155",
+          }}
+        >
+          {status}
+        </div>
       ) : null}
     </div>
   );
