@@ -112,127 +112,35 @@ export function matchProbeToDescriptors(
   };
 }
 
+/** How much closer the self match must be than any OTHER enrolled person. If a
+ * different person is within this margin the result is ambiguous and rejected. */
 const RIVAL_SAFETY_MARGIN = 0.1;
-/** Presence / Guard: look-alikes need a clearer gap vs claimed enrollment. */
-const PRESENCE_RIVAL_GAP = 0.12;
 
-/**
- * Average of L2-normalized enrollment vectors — look-alikes may luck one photo
- * but rarely sit near the whole enrollment cloud.
- */
-export function enrollmentCentroid(descriptors: number[][]): number[] | null {
-  if (!descriptors.length) return null;
-  const acc = new Array<number>(DESCRIPTOR_LENGTH).fill(0);
-  for (const d of descriptors) {
-    const n = l2normalize(d);
-    for (let i = 0; i < DESCRIPTOR_LENGTH; i++) acc[i] += n[i];
-  }
-  const inv = 1 / descriptors.length;
-  for (let i = 0; i < DESCRIPTOR_LENGTH; i++) acc[i] *= inv;
-  return l2normalize(acc);
-}
-
-export type RivalHit = { employeeId: string; distance: number };
-
-/** Closest other enrolled employee to this probe (full gallery scan). */
 export function findClosestRival(
   probe: number[],
   rivals: Array<{ employeeId: string; descriptors: number[][] }>,
-  _selfBestDistance: number,
-  _maxDistance: number,
-  _opts?: { presenceStrict?: boolean }
-): RivalHit | null {
-  let best: RivalHit | null = null;
+  selfBestDistance: number,
+  maxDistance: number
+): { employeeId: string; distance: number } | null {
+  let best: { employeeId: string; distance: number } | null = null;
+
+  // Consider rivals a little beyond the accept threshold too, so an enrolled
+  // look-alike sitting just outside the threshold still triggers the ambiguity
+  // guard instead of being silently ignored.
+  const considerCap = maxDistance + 0.15;
+
   for (const rival of rivals) {
     if (!rival.descriptors.length) continue;
     const dist = Math.min(...rival.descriptors.map((d) => euclideanDistance(probe, d)));
+    if (dist > considerCap) continue;
     if (!best || dist < best.distance) {
       best = { employeeId: rival.employeeId, distance: dist };
     }
   }
-  return best;
-}
 
-/**
- * Proper open-set + 1:N check:
- * 1) claimed enrollment must match (already done by caller)
- * 2) claimed must be the nearest identity in the gallery
- * 3) gap to next identity must be clear (rejects similar faces)
- * 4) probe must also sit near the enrollment centroid
- */
-export function assertUniqueIdentity(
-  probe: number[],
-  selfBestDistance: number,
-  selfDescriptors: number[][],
-  rivals: Array<{ employeeId: string; descriptors: number[][] }>,
-  opts: { presenceStrict?: boolean; maxDistance: number }
-): { ok: true } | { ok: false; employeeId?: string; distance?: number; reason: string } {
-  const presenceStrict = Boolean(opts.presenceStrict);
-  const minGap = presenceStrict ? PRESENCE_RIVAL_GAP : RIVAL_SAFETY_MARGIN;
-  const maxDistance = opts.maxDistance;
-
-  const centroid = enrollmentCentroid(selfDescriptors);
-  if (centroid) {
-    const toCentroid = euclideanDistance(probe, centroid);
-    // Slightly looser than maxDistance — centroid is stricter than best single photo
-    const centroidCap = presenceStrict ? Math.min(maxDistance, 0.43) : maxDistance + 0.02;
-    if (toCentroid > centroidCap) {
-      return {
-        ok: false,
-        reason: "Face does not match the enrolled photo set closely enough (look-alike rejected).",
-      };
-    }
-  }
-
-  const rival = findClosestRival(probe, rivals, selfBestDistance, maxDistance, {
-    presenceStrict,
-  });
-  if (!rival) {
-    // No other enrolled faces — for desk checks require a clearer self-hit
-    // so an unenrolled look-alike cannot scrape by on a loose single-photo score.
-    if (presenceStrict && selfBestDistance > Math.min(maxDistance, 0.41)) {
-      return {
-        ok: false,
-        reason: "Seat check needs a clearer match to your enrolled photos.",
-      };
-    }
-    return { ok: true };
-  }
-
-  // Claimed person must be nearer than every other enrolled identity
-  if (rival.distance <= selfBestDistance) {
-    return {
-      ok: false,
-      employeeId: rival.employeeId,
-      distance: rival.distance,
-      reason: `Face is closer to employee ID ${rival.employeeId} than to your enrollment.`,
-    };
-  }
-
-  // Clear separation — similar faces fail here even if both are "under threshold"
-  if (rival.distance - selfBestDistance < minGap) {
-    return {
-      ok: false,
-      employeeId: rival.employeeId,
-      distance: rival.distance,
-      reason: `Face is too similar to employee ID ${rival.employeeId} — only a clear unique match is allowed.`,
-    };
-  }
-
-  // Presence: another person matching within accept band is always wrong
-  if (presenceStrict && rival.distance <= maxDistance) {
-    return {
-      ok: false,
-      employeeId: rival.employeeId,
-      distance: rival.distance,
-      reason: `Face also matches employee ID ${rival.employeeId}. Seat check blocked.`,
-    };
-  }
-
-  return { ok: true };
-}
-
-/** @deprecated kept for imports — use assertUniqueIdentity */
-export function getPresenceMaxMatchDistance(): number {
-  return getMaxMatchDistance();
+  if (!best) return null;
+  // Reject when another enrolled person is closer, equal, OR merely comparably
+  // close (within the safety margin) to the self match.
+  if (best.distance <= selfBestDistance + RIVAL_SAFETY_MARGIN) return best;
+  return null;
 }

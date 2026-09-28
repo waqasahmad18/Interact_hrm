@@ -69,9 +69,6 @@ export async function getEnrollmentRowsForEmployee(
   employeeId: string
 ): Promise<FaceEnrollmentRow[]> {
   await ensureFaceEnrollmentTable();
-  const id = String(employeeId || "").trim();
-  if (!id) return [];
-  // Use `=` (not IN) so Mongo adapter flex-matches string/number employee_id
   const [rows] = await pool.execute(
     `SELECT id, employee_id, compreface_subject, compreface_image_id, local_path,
             face_descriptor, source, enrolled_by,
@@ -79,31 +76,9 @@ export async function getEnrollmentRowsForEmployee(
      FROM ${FACE_ENROLLMENT_TABLE}
      WHERE employee_id = ?
      ORDER BY created_at DESC`,
-    [id]
+    [String(employeeId).trim()]
   );
   return rows as FaceEnrollmentRow[];
-}
-
-export async function getEnrollmentRowsForEmployees(
-  employeeIds: string[]
-): Promise<FaceEnrollmentRow[]> {
-  const ids = Array.from(
-    new Set(employeeIds.map((id) => String(id || "").trim()).filter(Boolean))
-  );
-  if (!ids.length) return [];
-  // Query each id with `=` — Mongo IN does not expand "97"/97 the way `=` does
-  const merged: FaceEnrollmentRow[] = [];
-  const seen = new Set<number>();
-  for (const id of ids) {
-    const rows = await getEnrollmentRowsForEmployee(id);
-    for (const row of rows) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      merged.push(row);
-    }
-  }
-  merged.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  return merged;
 }
 
 export async function countEnrollmentForEmployee(employeeId: string): Promise<number> {
@@ -126,14 +101,7 @@ export type EmployeeEnrollmentContext = {
 export async function getDescriptorsForEmployee(
   employeeId: string
 ): Promise<EmployeeEnrollmentContext> {
-  return getDescriptorsForEmployees([employeeId]);
-}
-
-/** Load enrollment descriptors for any of the employee's ID aliases (db id, code, etc.). */
-export async function getDescriptorsForEmployees(
-  employeeIds: string[]
-): Promise<EmployeeEnrollmentContext> {
-  const rows = await getEnrollmentRowsForEmployees(employeeIds);
+  const rows = await getEnrollmentRowsForEmployee(employeeId);
   const descriptors = rows
     .map((r) => parseDescriptorJson(r.face_descriptor))
     .filter((d): d is number[] => !!d);
@@ -172,45 +140,26 @@ export async function insertEnrollmentRow(input: {
 }
 
 export async function getOtherEmployeesDescriptorSamples(
-  excludeEmployeeId: string | string[]
+  excludeEmployeeId: string
 ): Promise<Array<{ employeeId: string; descriptors: number[][] }>> {
   await ensureFaceEnrollmentTable();
-  const excludeIds = Array.from(
-    new Set(
-      (Array.isArray(excludeEmployeeId) ? excludeEmployeeId : [excludeEmployeeId])
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-    )
-  );
-  if (!excludeIds.length) return [];
-
-  // Mongo adapter does NOT support NOT IN — use != on primary id, then filter aliases in JS.
-  const primary = excludeIds[0];
+  const exclude = String(excludeEmployeeId).trim();
   const [rows] = await pool.execute(
     `SELECT employee_id, face_descriptor
      FROM ${FACE_ENROLLMENT_TABLE}
      WHERE employee_id != ? AND face_descriptor IS NOT NULL
      ORDER BY employee_id, id DESC`,
-    [primary]
+    [exclude]
   );
-
-  const excludeSet = new Set<string>();
-  for (const id of excludeIds) {
-    excludeSet.add(id);
-    excludeSet.add(String(Number(id)));
-    if (/^\d+$/.test(id)) excludeSet.add(String(Number(id)));
-  }
 
   const byEmployee = new Map<string, number[][]>();
   for (const row of rows as Array<Record<string, unknown>>) {
     const empId = String(row.employee_id);
-    if (excludeSet.has(empId) || excludeSet.has(String(Number(empId)))) continue;
     const desc = parseDescriptorJson(row.face_descriptor);
     if (!desc) continue;
     if (!byEmployee.has(empId)) byEmployee.set(empId, []);
     const list = byEmployee.get(empId)!;
-    // Keep all descriptors for proper 1:N look-alike rejection
-    list.push(desc);
+    if (list.length < 2) list.push(desc);
   }
 
   return Array.from(byEmployee.entries()).map(([employeeId, descriptors]) => ({

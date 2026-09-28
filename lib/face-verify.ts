@@ -1,6 +1,6 @@
 import { getEmployeeMatchKeys } from "@/lib/biometric-employee";
 import {
-  assertUniqueIdentity,
+  findClosestRival,
   getMaxMatchDistance,
   getMinMatchingPhotos,
   getSimilarityMin,
@@ -15,7 +15,7 @@ import {
 import {
   countDescriptorsForEmployee,
   countEnrollmentForEmployee,
-  getDescriptorsForEmployees,
+  getDescriptorsForEmployee,
   getOtherEmployeesDescriptorSamples,
 } from "@/lib/face-enrollment-table";
 import { resolveEmployeeDbId } from "@/lib/resolve-employee-id";
@@ -61,8 +61,7 @@ export async function getFaceVerificationStatus() {
 export async function verifyDescriptorForEmployee(
   descriptor: number[],
   employeeId: string,
-  employeeName?: string | null,
-  opts?: { presenceStrict?: boolean }
+  employeeName?: string | null
 ): Promise<VerifyResult> {
   const rawId = String(employeeId || "").trim();
   if (!rawId) {
@@ -82,11 +81,9 @@ export async function verifyDescriptorForEmployee(
   const id = (await resolveEmployeeDbId(rawId)) || rawId;
   const matchKeys = await getEmployeeMatchKeys(id, employeeName);
   const label = employeeDisplayLabel(matchKeys, id);
-  const idAliases = matchKeys.dbIds.length ? matchKeys.dbIds : [id];
-  const enrollment = await getDescriptorsForEmployees(idAliases);
-  const descriptorCount =
-    enrollment.descriptorCount || (await countDescriptorsForEmployee(id));
-  const photoCount = enrollment.count || (await countEnrollmentForEmployee(id));
+  const enrollment = await getDescriptorsForEmployee(id);
+  const descriptorCount = await countDescriptorsForEmployee(id);
+  const photoCount = await countEnrollmentForEmployee(id);
 
   if (descriptorCount < RECOMMENDED_ENROLLMENT_MIN || !enrollment.descriptors.length) {
     if (photoCount >= RECOMMENDED_ENROLLMENT_MIN) {
@@ -105,12 +102,9 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
-
-  const presenceStrict = Boolean(opts?.presenceStrict);
-  // Base threshold stays 0.45 — look-alikes blocked by 1:N uniqueness + centroid
   const maxDistance = getMaxMatchDistance();
   const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
-  const needPct = Math.round((1 - maxDistance / 0.65) * 100);
+  const needPct = Math.round(getSimilarityMin() * 100);
 
   const self = matchProbeToDescriptors(
     descriptor,
@@ -131,18 +125,12 @@ export async function verifyDescriptorForEmployee(
     };
   }
 
-  const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
-  const unique = assertUniqueIdentity(
-    descriptor,
-    self.bestDistance,
-    enrollment.descriptors,
-    rivals,
-    { presenceStrict, maxDistance }
-  );
-  if (!unique.ok) {
+  const rivals = await getOtherEmployeesDescriptorSamples(id);
+  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance);
+  if (rival) {
     return {
       verified: false,
-      reason: unique.reason,
+      reason: `Face matches employee ID ${rival.employeeId} more closely. Only your enrolled face can proceed.`,
       code: "wrong_person",
       similarity: self.similarity,
       subject,

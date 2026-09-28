@@ -38,13 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
-    // Same Face Enrollment photos + face-api as break, but STRICTER so wrong person fails
-    const result = await verifyDescriptorForEmployee(
-      descriptor,
-      resolvedId,
-      employeeName,
-      { presenceStrict: true },
-    );
+    const result = await verifyDescriptorForEmployee(descriptor, resolvedId, employeeName);
 
     return NextResponse.json({
       success: true,
