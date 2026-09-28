@@ -672,6 +672,8 @@ const UPSERT_KEYS: Record<string, string[]> = {
   company_calendar_days: ["date"],
   loan_records: ["employee_id", "month"],
   employee_commissions: ["employee_id", "year", "month_number"],
+  // Must be machine_id only — inferred keys included first_seen_at and spawned a new row every heartbeat
+  presence_agents: ["machine_id"],
 };
 
 function uniqueKeyFields(table: string, insertCols: string[], updateFields: string[]): string[] {

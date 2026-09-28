@@ -1,7 +1,11 @@
+import { createHash } from "crypto";
 import { pool } from "@/lib/db";
 import { getPresenceSettings, savePresenceSettings } from "@/lib/presence-settings";
 
 const TABLE = "presence_agents";
+
+/** One-time per process: backfill pc_key + collapse historical duplicates. */
+let pcKeyReady = false;
 
 export type AgentHealth = "healthy" | "stale" | "offline";
 
@@ -74,6 +78,7 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
       last_seen_at datetime DEFAULT NULL,
       pending_command varchar(32) DEFAULT NULL,
       command_issued_at datetime DEFAULT NULL,
+      pc_key varchar(64) DEFAULT NULL,
       created_at timestamp NOT NULL DEFAULT current_timestamp(),
       updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
       PRIMARY KEY (id),
@@ -97,6 +102,122 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
   await addColumn(
     `ALTER TABLE ${TABLE} ADD COLUMN idle_seconds int(11) NOT NULL DEFAULT 120`,
   );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN pc_key varchar(64) DEFAULT NULL`,
+  );
+
+  if (!pcKeyReady) {
+    pcKeyReady = true;
+    try {
+      await backfillPcKeysAndDedupe();
+    } catch {
+      /* non-fatal — next heartbeat still merges */
+    }
+    try {
+      await pool.execute(
+        `ALTER TABLE ${TABLE} ADD UNIQUE KEY uq_presence_agents_pc_key (pc_key)`,
+      );
+    } catch {
+      /* already exists */
+    }
+  }
+}
+
+/** Normalize DOMAIN\\user → user (lowercase). */
+export function normalizeWindowsUser(windowsUser: string | null | undefined): string {
+  const s = String(windowsUser ?? "").trim();
+  if (!s) return "";
+  const i = Math.max(s.lastIndexOf("\\"), s.lastIndexOf("/"));
+  return (i >= 0 ? s.slice(i + 1) : s).trim().toLowerCase();
+}
+
+export function normalizeHostname(hostname: string | null | undefined): string {
+  return String(hostname ?? "").trim().toLowerCase();
+}
+
+/** Stable PC fingerprint — same host + Windows login = one agent row forever. */
+export function computePcKey(
+  hostname: string | null | undefined,
+  windowsUser: string | null | undefined,
+): string | null {
+  const host = normalizeHostname(hostname);
+  if (!host) return null;
+  const user = normalizeWindowsUser(windowsUser);
+  return createHash("sha256")
+    .update(`${host}|${user}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+async function backfillPcKeysAndDedupe(): Promise<void> {
+  const [rows] = await pool.execute(
+    `SELECT id, machine_id, hostname, windows_user, pc_key,
+            assigned_employee_id, admin_enabled, idle_seconds, local_employee_id,
+            last_seen_at
+     FROM ${TABLE}
+     ORDER BY last_seen_at DESC, id DESC`,
+  );
+  const list = rows as {
+    id: number;
+    machine_id: string;
+    hostname: string | null;
+    windows_user: string | null;
+    pc_key: string | null;
+    assigned_employee_id: string | null;
+    admin_enabled: number | boolean | null;
+    idle_seconds: number | null;
+    local_employee_id: string | null;
+  }[];
+
+  const byKey = new Map<string, typeof list>();
+  for (const r of list) {
+    const key = computePcKey(r.hostname, r.windows_user);
+    if (!key) continue;
+    if (!r.pc_key || r.pc_key !== key) {
+      await pool.execute(`UPDATE ${TABLE} SET pc_key = ? WHERE id = ?`, [key, r.id]);
+    }
+    const bucket = byKey.get(key) ?? [];
+    bucket.push(r);
+    byKey.set(key, bucket);
+  }
+
+  for (const [, group] of byKey) {
+    if (group.length <= 1) continue;
+    const keep = group[0];
+    const others = group.slice(1);
+    let assigned = keep.assigned_employee_id;
+    let adminOn = asBool(keep.admin_enabled);
+    let idle = Number(keep.idle_seconds) > 0 ? Number(keep.idle_seconds) : 120;
+    let localId = keep.local_employee_id;
+    for (const o of others) {
+      if (!assigned && o.assigned_employee_id) assigned = o.assigned_employee_id;
+      if (!adminOn && asBool(o.admin_enabled)) adminOn = true;
+      if ((!localId || !String(localId).trim()) && o.local_employee_id)
+        localId = o.local_employee_id;
+      const oi = Number(o.idle_seconds);
+      if (oi > 0) idle = oi;
+    }
+    for (const o of others) {
+      await pool.execute(`DELETE FROM ${TABLE} WHERE id = ?`, [o.id]);
+    }
+    await pool.execute(
+      `UPDATE ${TABLE}
+       SET assigned_employee_id = ?,
+           local_employee_id = ?,
+           admin_enabled = ?,
+           idle_seconds = ?,
+           pc_key = ?
+       WHERE id = ?`,
+      [
+        assigned,
+        localId,
+        adminOn ? 1 : 0,
+        idle,
+        computePcKey(keep.hostname, keep.windows_user),
+        keep.id,
+      ],
+    );
+  }
 }
 
 export function agentHealthFromLastSeen(lastSeen: Date | string | null): AgentHealth {
@@ -172,7 +293,7 @@ export async function upsertAgentHeartbeat(
   input: HeartbeatInput,
 ): Promise<HeartbeatResult> {
   await ensurePresenceAgentsTable();
-  const machineId = String(input.machineId ?? "").trim();
+  let machineId = String(input.machineId ?? "").trim();
   if (!machineId || machineId.length > 128) {
     throw new Error("machine_id required");
   }
@@ -185,11 +306,37 @@ export async function upsertAgentHeartbeat(
   const agentProduct = trimOrNull(input.agentProduct, 64);
   const lastIp = trimOrNull(input.clientIp, 45);
   const now = new Date();
+  const pcKey = computePcKey(hostname, windowsUser);
+
+  // Reinstalls used to send a new random machine_id — reuse the existing PC row.
+  if (pcKey) {
+    const [byKey] = await pool.execute(
+      `SELECT machine_id FROM ${TABLE} WHERE pc_key = ? LIMIT 1`,
+      [pcKey],
+    );
+    const existing = (byKey as { machine_id: string }[])[0]?.machine_id?.trim();
+    if (existing) {
+      machineId = existing;
+    } else {
+      const host = normalizeHostname(hostname);
+      const user = normalizeWindowsUser(windowsUser);
+      const [legacy] = await pool.execute(
+        `SELECT machine_id, windows_user FROM ${TABLE}
+         WHERE LOWER(TRIM(hostname)) = ?
+         ORDER BY last_seen_at DESC, id DESC`,
+        [host],
+      );
+      const match = (
+        legacy as { machine_id: string; windows_user: string | null }[]
+      ).find((r) => normalizeWindowsUser(r.windows_user) === user);
+      if (match?.machine_id?.trim()) machineId = match.machine_id.trim();
+    }
+  }
 
   await pool.execute(
     `INSERT INTO ${TABLE}
-      (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        hostname = VALUES(hostname),
        windows_user = VALUES(windows_user),
@@ -198,7 +345,8 @@ export async function upsertAgentHeartbeat(
        agent_version = VALUES(agent_version),
        agent_product = COALESCE(VALUES(agent_product), agent_product),
        last_ip = VALUES(last_ip),
-       last_seen_at = VALUES(last_seen_at)`,
+       last_seen_at = VALUES(last_seen_at),
+       pc_key = VALUES(pc_key)`,
     [
       machineId,
       hostname,
@@ -210,10 +358,11 @@ export async function upsertAgentHeartbeat(
       lastIp,
       now,
       now,
+      pcKey,
     ],
   );
 
-  // Same PC + same Windows user must be one row (old reinstalls used random machine_ids)
+  // Safety net for any race that slipped past pc_key
   await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
 
   // Auto-bind: if PC sent employee id from dashboard and admin hasn't assigned yet
@@ -315,7 +464,29 @@ export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
      LEFT JOIN hrm_employees e ON e.id = pa.assigned_employee_id
      ORDER BY pa.last_seen_at IS NULL, pa.last_seen_at DESC, pa.id DESC`,
   );
-  return (rows as DbRow[]).map(mapRow);
+  const mapped = (rows as DbRow[]).map(mapRow);
+
+  // Collapse clones (same machine_id or same PC) that mongo upsert used to spawn
+  const byMachine = new Map<string, PresenceAgentRow>();
+  for (const a of mapped) {
+    const prev = byMachine.get(a.machineId);
+    if (!prev || String(a.lastSeenAt || "") > String(prev.lastSeenAt || "")) {
+      byMachine.set(a.machineId, a);
+    }
+  }
+  const byPc = new Map<string, PresenceAgentRow>();
+  for (const a of byMachine.values()) {
+    const key = computePcKey(a.hostname, a.windowsUser) || `mid:${a.machineId}`;
+    const prev = byPc.get(key);
+    if (!prev || String(a.lastSeenAt || "") > String(prev.lastSeenAt || "")) {
+      byPc.set(key, a);
+    }
+  }
+  return Array.from(byPc.values()).sort((a, b) => {
+    const ta = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
+    const tb = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
+    return tb - ta;
+  });
 }
 
 export async function setAgentAssignedEmployee(
@@ -409,26 +580,30 @@ export async function mergeDuplicateAgentsForPc(
   windowsUser: string | null,
   keepMachineId: string,
 ): Promise<number> {
-  const host = String(hostname ?? "").trim();
+  const host = normalizeHostname(hostname);
   if (!host) return 0;
-  const user = String(windowsUser ?? "").trim();
+  const user = normalizeWindowsUser(windowsUser);
 
+  // Keep WHERE mongo-adapter-friendly (no SUBSTRING_INDEX). Normalize user in JS.
   const [rows] = await pool.execute(
-    `SELECT id, machine_id, assigned_employee_id, admin_enabled, idle_seconds, local_employee_id
+    `SELECT id, machine_id, hostname, windows_user, assigned_employee_id, admin_enabled, idle_seconds, local_employee_id
      FROM ${TABLE}
-     WHERE LOWER(TRIM(hostname)) = LOWER(?)
-       AND LOWER(TRIM(COALESCE(windows_user, ''))) = LOWER(?)
+     WHERE LOWER(TRIM(hostname)) = ?
      ORDER BY last_seen_at DESC, id DESC`,
-    [host, user],
+    [host],
   );
-  const list = rows as {
-    id: number;
-    machine_id: string;
-    assigned_employee_id: string | null;
-    admin_enabled: number | boolean | null;
-    idle_seconds: number | null;
-    local_employee_id: string | null;
-  }[];
+  const list = (
+    rows as {
+      id: number;
+      machine_id: string;
+      hostname: string | null;
+      windows_user: string | null;
+      assigned_employee_id: string | null;
+      admin_enabled: number | boolean | null;
+      idle_seconds: number | null;
+      local_employee_id: string | null;
+    }[]
+  ).filter((r) => normalizeWindowsUser(r.windows_user) === user);
   if (list.length <= 1) return 0;
 
   const keep =
@@ -450,55 +625,58 @@ export async function mergeDuplicateAgentsForPc(
     if (oi > 0) idle = oi;
   }
 
-  // Delete duplicates first (avoids UNIQUE conflict when renaming machine_id)
-  const ids = others.map((o) => o.id);
-  await pool.execute(
-    `DELETE FROM ${TABLE} WHERE id IN (${ids.map(() => "?").join(",")})`,
-    ids,
-  );
+  // Delete duplicates one-by-one (mongo adapter IN() is fine, but ids may be mixed types)
+  for (const o of others) {
+    await pool.execute(`DELETE FROM ${TABLE} WHERE id = ?`, [o.id]);
+  }
 
+  const pcKey = computePcKey(hostname, windowsUser);
   await pool.execute(
     `UPDATE ${TABLE}
      SET machine_id = ?,
-         assigned_employee_id = COALESCE(?, assigned_employee_id),
-         local_employee_id = COALESCE(?, local_employee_id),
+         assigned_employee_id = ?,
+         local_employee_id = ?,
          admin_enabled = ?,
          idle_seconds = ?,
+         pc_key = ?,
          last_seen_at = NOW()
      WHERE id = ?`,
-    [keepMachineId, assigned, localId, adminOn ? 1 : 0, idle, keep.id],
+    [
+      keepMachineId,
+      assigned,
+      localId,
+      adminOn ? 1 : 0,
+      idle,
+      pcKey,
+      keep.id,
+    ],
   );
 
-  return ids.length;
+  return others.length;
 }
 
 /** One-shot cleanup: merge all hostname+user groups that have duplicates. */
 export async function purgeDuplicatePresenceAgents(): Promise<number> {
   await ensurePresenceAgentsTable();
-  const [groups] = await pool.execute(
-    `SELECT LOWER(TRIM(hostname)) AS h,
-            LOWER(TRIM(COALESCE(windows_user, ''))) AS u,
-            COUNT(*) AS c,
-            MAX(machine_id) AS any_mid
+  const [rows] = await pool.execute(
+    `SELECT id, machine_id, hostname, windows_user
      FROM ${TABLE}
-     WHERE hostname IS NOT NULL AND TRIM(hostname) <> ''
-     GROUP BY LOWER(TRIM(hostname)), LOWER(TRIM(COALESCE(windows_user, '')))
-     HAVING COUNT(*) > 1`,
+     WHERE hostname IS NOT NULL
+     ORDER BY last_seen_at DESC, id DESC`,
   );
+  const list = rows as {
+    id: number;
+    machine_id: string;
+    hostname: string | null;
+    windows_user: string | null;
+  }[];
+  const seen = new Set<string>();
   let removed = 0;
-  for (const g of groups as { h: string; u: string; any_mid: string }[]) {
-    // Prefer machine_id of the most recently seen row in the group
-    const [top] = await pool.execute(
-      `SELECT machine_id, hostname, windows_user
-       FROM ${TABLE}
-       WHERE LOWER(TRIM(hostname)) = ?
-         AND LOWER(TRIM(COALESCE(windows_user, ''))) = ?
-       ORDER BY last_seen_at DESC, id DESC
-       LIMIT 1`,
-      [g.h, g.u],
-    );
-    const row = (top as { machine_id: string; hostname: string; windows_user: string }[])[0];
-    if (!row) continue;
+  for (const row of list) {
+    const key = computePcKey(row.hostname, row.windows_user);
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
     removed += await mergeDuplicateAgentsForPc(
       row.hostname,
       row.windows_user,
