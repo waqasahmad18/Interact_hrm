@@ -159,16 +159,25 @@ export async function insertEnrollmentRow(input: {
 }
 
 export async function getOtherEmployeesDescriptorSamples(
-  excludeEmployeeId: string
+  excludeEmployeeId: string | string[]
 ): Promise<Array<{ employeeId: string; descriptors: number[][] }>> {
   await ensureFaceEnrollmentTable();
-  const exclude = String(excludeEmployeeId).trim();
+  const excludeIds = Array.from(
+    new Set(
+      (Array.isArray(excludeEmployeeId) ? excludeEmployeeId : [excludeEmployeeId])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (!excludeIds.length) return [];
+
+  const placeholders = excludeIds.map(() => "?").join(", ");
   const [rows] = await pool.execute(
     `SELECT employee_id, face_descriptor
      FROM ${FACE_ENROLLMENT_TABLE}
-     WHERE employee_id != ? AND face_descriptor IS NOT NULL
+     WHERE employee_id NOT IN (${placeholders}) AND face_descriptor IS NOT NULL
      ORDER BY employee_id, id DESC`,
-    [exclude]
+    excludeIds
   );
 
   const byEmployee = new Map<string, number[][]>();
@@ -178,7 +187,8 @@ export async function getOtherEmployeesDescriptorSamples(
     if (!desc) continue;
     if (!byEmployee.has(empId)) byEmployee.set(empId, []);
     const list = byEmployee.get(empId)!;
-    if (list.length < 4) list.push(desc);
+    // More samples → better wrong-person detection
+    if (list.length < 8) list.push(desc);
   }
 
   return Array.from(byEmployee.entries()).map(([employeeId, descriptors]) => ({

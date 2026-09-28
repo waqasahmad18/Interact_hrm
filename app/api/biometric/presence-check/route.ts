@@ -38,11 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
-    // Same matcher + Face Enrollment photos as break / prayer FaceVerifyModal
+    // Same Face Enrollment photos + face-api as break, but STRICTER so wrong person fails
     const result = await verifyDescriptorForEmployee(
       descriptor,
       resolvedId,
       employeeName,
+      { presenceStrict: true },
     );
 
     return NextResponse.json({

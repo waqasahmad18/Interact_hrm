@@ -113,8 +113,18 @@ export function matchProbeToDescriptors(
 }
 
 const RIVAL_SAFETY_MARGIN = 0.12;
-/** Presence / Guard: reject if another person is even roughly as close. */
-const PRESENCE_RIVAL_SAFETY_MARGIN = 0.18;
+/**
+ * Presence / Guard: reject if ANY other enrolled face is within this distance
+ * of the probe relative to self — desk checks must not accept look-alikes.
+ */
+const PRESENCE_RIVAL_SAFETY_MARGIN = 0.22;
+
+/** Presence: tighter than clock/break (lower = harder for wrong person). */
+export function getPresenceMaxMatchDistance(): number {
+  const base = getMaxMatchDistance();
+  // Hard cap 0.38 — 0.45 lets many non-enrolled faces through when no rival exists
+  return Math.min(base, 0.38);
+}
 
 export function findClosestRival(
   probe: number[],
@@ -125,7 +135,7 @@ export function findClosestRival(
 ): { employeeId: string; distance: number } | null {
   let best: { employeeId: string; distance: number } | null = null;
 
-  const considerCap = maxDistance + (opts?.presenceStrict ? 0.2 : 0.15);
+  const considerCap = maxDistance + (opts?.presenceStrict ? 0.28 : 0.15);
   const margin = opts?.presenceStrict ? PRESENCE_RIVAL_SAFETY_MARGIN : RIVAL_SAFETY_MARGIN;
 
   for (const rival of rivals) {
