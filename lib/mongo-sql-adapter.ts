@@ -358,6 +358,11 @@ function buildFilterFromWhere(
       return buildFilterFromWhere(inner, params, paramOffset, aliasMap);
     }
 
+    // Tautologies used by dynamic SQL builders (e.g. WHERE 1=1 AND …)
+    if (/^1\s*=\s*1$/.test(s) || /^true$/i.test(s)) {
+      return {};
+    }
+
     // col < DATE_ADD(?, INTERVAL n UNIT) — string split, not a fragile regex
     {
       const daAt = s.search(/DATE_ADD\s*\(/i);
