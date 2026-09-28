@@ -213,6 +213,9 @@ export async function upsertAgentHeartbeat(
     ],
   );
 
+  // Same PC + same Windows user must be one row (old reinstalls used random machine_ids)
+  await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
+
   // Auto-bind: if PC sent employee id from dashboard and admin hasn't assigned yet
   if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
     await pool.execute(
@@ -302,6 +305,12 @@ export async function upsertAgentHeartbeat(
 
 export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
   await ensurePresenceAgentsTable();
+  // Clean historical duplicates before listing (same PC must not appear 20×)
+  try {
+    await purgeDuplicatePresenceAgents();
+  } catch {
+    /* non-fatal */
+  }
   const [rows] = await pool.execute(
     `SELECT pa.*,
             e.first_name AS assigned_first_name,
@@ -395,6 +404,114 @@ function trimOrNull(v: string | null | undefined, max: number): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
   return s.length > max ? s.slice(0, max) : s;
+}
+
+/**
+ * Collapse duplicate agent rows for the same hostname + Windows user.
+ * Keeps the row matching `keepMachineId` (or newest), copies useful fields, deletes the rest.
+ */
+export async function mergeDuplicateAgentsForPc(
+  hostname: string | null,
+  windowsUser: string | null,
+  keepMachineId: string,
+): Promise<number> {
+  const host = String(hostname ?? "").trim();
+  if (!host) return 0;
+  const user = String(windowsUser ?? "").trim();
+
+  const [rows] = await pool.execute(
+    `SELECT id, machine_id, assigned_employee_id, admin_enabled, idle_seconds, local_employee_id
+     FROM ${TABLE}
+     WHERE LOWER(TRIM(hostname)) = LOWER(?)
+       AND LOWER(TRIM(COALESCE(windows_user, ''))) = LOWER(?)
+     ORDER BY last_seen_at DESC, id DESC`,
+    [host, user],
+  );
+  const list = rows as {
+    id: number;
+    machine_id: string;
+    assigned_employee_id: string | null;
+    admin_enabled: number | boolean | null;
+    idle_seconds: number | null;
+    local_employee_id: string | null;
+  }[];
+  if (list.length <= 1) return 0;
+
+  const keep =
+    list.find((r) => r.machine_id === keepMachineId) || list[0];
+  const others = list.filter((r) => r.id !== keep.id);
+  if (!others.length) return 0;
+
+  // Preserve best assignment / admin_enabled from any duplicate
+  let assigned = keep.assigned_employee_id;
+  let adminOn = asBool(keep.admin_enabled);
+  let idle = Number(keep.idle_seconds) > 0 ? Number(keep.idle_seconds) : 120;
+  let localId = keep.local_employee_id;
+  for (const o of others) {
+    if (!assigned && o.assigned_employee_id) assigned = o.assigned_employee_id;
+    if (!adminOn && asBool(o.admin_enabled)) adminOn = true;
+    if ((!localId || !String(localId).trim()) && o.local_employee_id)
+      localId = o.local_employee_id;
+    const oi = Number(o.idle_seconds);
+    if (oi > 0) idle = oi;
+  }
+
+  // Delete duplicates first (avoids UNIQUE conflict when renaming machine_id)
+  const ids = others.map((o) => o.id);
+  await pool.execute(
+    `DELETE FROM ${TABLE} WHERE id IN (${ids.map(() => "?").join(",")})`,
+    ids,
+  );
+
+  await pool.execute(
+    `UPDATE ${TABLE}
+     SET machine_id = ?,
+         assigned_employee_id = COALESCE(?, assigned_employee_id),
+         local_employee_id = COALESCE(?, local_employee_id),
+         admin_enabled = ?,
+         idle_seconds = ?,
+         last_seen_at = NOW()
+     WHERE id = ?`,
+    [keepMachineId, assigned, localId, adminOn ? 1 : 0, idle, keep.id],
+  );
+
+  return ids.length;
+}
+
+/** One-shot cleanup: merge all hostname+user groups that have duplicates. */
+export async function purgeDuplicatePresenceAgents(): Promise<number> {
+  await ensurePresenceAgentsTable();
+  const [groups] = await pool.execute(
+    `SELECT LOWER(TRIM(hostname)) AS h,
+            LOWER(TRIM(COALESCE(windows_user, ''))) AS u,
+            COUNT(*) AS c,
+            MAX(machine_id) AS any_mid
+     FROM ${TABLE}
+     WHERE hostname IS NOT NULL AND TRIM(hostname) <> ''
+     GROUP BY LOWER(TRIM(hostname)), LOWER(TRIM(COALESCE(windows_user, '')))
+     HAVING COUNT(*) > 1`,
+  );
+  let removed = 0;
+  for (const g of groups as { h: string; u: string; any_mid: string }[]) {
+    // Prefer machine_id of the most recently seen row in the group
+    const [top] = await pool.execute(
+      `SELECT machine_id, hostname, windows_user
+       FROM ${TABLE}
+       WHERE LOWER(TRIM(hostname)) = ?
+         AND LOWER(TRIM(COALESCE(windows_user, ''))) = ?
+       ORDER BY last_seen_at DESC, id DESC
+       LIMIT 1`,
+      [g.h, g.u],
+    );
+    const row = (top as { machine_id: string; hostname: string; windows_user: string }[])[0];
+    if (!row) continue;
+    removed += await mergeDuplicateAgentsForPc(
+      row.hostname,
+      row.windows_user,
+      row.machine_id,
+    );
+  }
+  return removed;
 }
 
 export async function queueAgentCommand(input: {
