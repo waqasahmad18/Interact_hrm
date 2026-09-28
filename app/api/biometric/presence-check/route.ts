@@ -38,7 +38,13 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
-    const result = await verifyDescriptorForEmployee(descriptor, resolvedId, employeeName);
+    // Stricter than clock/break — desk checks must not accept look-alikes
+    const result = await verifyDescriptorForEmployee(
+      descriptor,
+      resolvedId,
+      employeeName,
+      { presenceStrict: true },
+    );
 
     return NextResponse.json({
       success: true,

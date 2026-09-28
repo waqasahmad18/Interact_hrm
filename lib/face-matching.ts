@@ -112,22 +112,21 @@ export function matchProbeToDescriptors(
   };
 }
 
-/** How much closer the self match must be than any OTHER enrolled person. If a
- * different person is within this margin the result is ambiguous and rejected. */
-const RIVAL_SAFETY_MARGIN = 0.1;
+const RIVAL_SAFETY_MARGIN = 0.12;
+/** Presence / Guard: reject if another person is even roughly as close. */
+const PRESENCE_RIVAL_SAFETY_MARGIN = 0.18;
 
 export function findClosestRival(
   probe: number[],
   rivals: Array<{ employeeId: string; descriptors: number[][] }>,
   selfBestDistance: number,
-  maxDistance: number
+  maxDistance: number,
+  opts?: { presenceStrict?: boolean }
 ): { employeeId: string; distance: number } | null {
   let best: { employeeId: string; distance: number } | null = null;
 
-  // Consider rivals a little beyond the accept threshold too, so an enrolled
-  // look-alike sitting just outside the threshold still triggers the ambiguity
-  // guard instead of being silently ignored.
-  const considerCap = maxDistance + 0.15;
+  const considerCap = maxDistance + (opts?.presenceStrict ? 0.2 : 0.15);
+  const margin = opts?.presenceStrict ? PRESENCE_RIVAL_SAFETY_MARGIN : RIVAL_SAFETY_MARGIN;
 
   for (const rival of rivals) {
     if (!rival.descriptors.length) continue;
@@ -139,8 +138,6 @@ export function findClosestRival(
   }
 
   if (!best) return null;
-  // Reject when another enrolled person is closer, equal, OR merely comparably
-  // close (within the safety margin) to the self match.
-  if (best.distance <= selfBestDistance + RIVAL_SAFETY_MARGIN) return best;
+  if (best.distance <= selfBestDistance + margin) return best;
   return null;
 }

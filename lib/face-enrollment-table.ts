@@ -159,7 +159,7 @@ export async function getOtherEmployeesDescriptorSamples(
     if (!desc) continue;
     if (!byEmployee.has(empId)) byEmployee.set(empId, []);
     const list = byEmployee.get(empId)!;
-    if (list.length < 2) list.push(desc);
+    if (list.length < 4) list.push(desc);
   }
 
   return Array.from(byEmployee.entries()).map(([employeeId, descriptors]) => ({

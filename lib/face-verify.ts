@@ -61,7 +61,8 @@ export async function getFaceVerificationStatus() {
 export async function verifyDescriptorForEmployee(
   descriptor: number[],
   employeeId: string,
-  employeeName?: string | null
+  employeeName?: string | null,
+  opts?: { presenceStrict?: boolean }
 ): Promise<VerifyResult> {
   const rawId = String(employeeId || "").trim();
   if (!rawId) {
@@ -102,9 +103,16 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
-  const maxDistance = getMaxMatchDistance();
-  const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
-  const needPct = Math.round(getSimilarityMin() * 100);
+  // Guard / presence: slightly stricter than clock to reduce false accepts at desk
+  const baseMax = getMaxMatchDistance();
+  const maxDistance = opts?.presenceStrict
+    ? Math.min(baseMax, Math.max(0.35, baseMax - 0.05))
+    : baseMax;
+  const minPhotos = Math.max(
+    getMinMatchingPhotos(enrollment.descriptors.length),
+    opts?.presenceStrict ? 2 : 1
+  );
+  const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
   const self = matchProbeToDescriptors(
     descriptor,
@@ -126,7 +134,9 @@ export async function verifyDescriptorForEmployee(
   }
 
   const rivals = await getOtherEmployeesDescriptorSamples(id);
-  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance);
+  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance, {
+    presenceStrict: Boolean(opts?.presenceStrict),
+  });
   if (rival) {
     return {
       verified: false,

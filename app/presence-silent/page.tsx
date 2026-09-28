@@ -96,6 +96,7 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
 export default function PresenceSilentPage() {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [status, setStatus] = React.useState("Starting…");
+  const [silentUi, setSilentUi] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -106,6 +107,10 @@ export default function PresenceSilentPage() {
       const employeeId = (params.get("employeeId") || params.get("employee_id") || "").trim();
       const employeeName = (params.get("employeeName") || "").trim() || null;
       const checkId = (params.get("checkId") || params.get("check_id") || "").trim() || null;
+      const silent =
+        params.get("silent") === "1" ||
+        params.get("source") === "interact-guard";
+      setSilentUi(silent);
 
       if (!employeeId) {
         await postToAgent(
@@ -297,12 +302,13 @@ export default function PresenceSilentPage() {
         padding: 0,
         width: "100%",
         height: "100vh",
-        background: "#0f172a",
-        color: "#e2e8f0",
+        background: "#000",
+        color: silentUi ? "#000" : "#e2e8f0",
         fontFamily: "system-ui, sans-serif",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        opacity: silentUi ? 0 : 1,
       }}
     >
       <video
@@ -317,8 +323,11 @@ export default function PresenceSilentPage() {
           objectFit: "cover",
           transform: "scaleX(-1)",
           background: "#000",
+          // Keep video active for capture; hide visually for Guard silent mode
+          visibility: silentUi ? "hidden" : "visible",
         }}
       />
+      {!silentUi ? (
       <div
         style={{
           padding: "8px 12px",
@@ -329,6 +338,7 @@ export default function PresenceSilentPage() {
       >
         {status}
       </div>
+      ) : null}
     </div>
   );
 }
