@@ -13,7 +13,7 @@ import {
  * Guard presence check — SAME face-api models + scan rules as FaceVerifyModal
  * (break / prayer), matched against Face Enrollment photos for this employee ID.
  */
-const REQUIRED_PROBES = 3;
+const REQUIRED_PROBES = 4;
 const SCAN_DEADLINE_MS = 55000;
 const SCAN_INTERVAL_MS = 280;
 

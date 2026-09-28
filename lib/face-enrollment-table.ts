@@ -209,7 +209,8 @@ export async function getOtherEmployeesDescriptorSamples(
     if (!desc) continue;
     if (!byEmployee.has(empId)) byEmployee.set(empId, []);
     const list = byEmployee.get(empId)!;
-    if (list.length < 8) list.push(desc);
+    // Keep all descriptors for proper 1:N look-alike rejection
+    list.push(desc);
   }
 
   return Array.from(byEmployee.entries()).map(([employeeId, descriptors]) => ({

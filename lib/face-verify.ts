@@ -1,9 +1,8 @@
 import { getEmployeeMatchKeys } from "@/lib/biometric-employee";
 import {
-  findClosestRival,
+  assertUniqueIdentity,
   getMaxMatchDistance,
   getMinMatchingPhotos,
-  getPresenceMaxMatchDistance,
   getSimilarityMin,
   isFaceVerificationEnabled,
   isValidDescriptor,
@@ -83,7 +82,6 @@ export async function verifyDescriptorForEmployee(
   const id = (await resolveEmployeeDbId(rawId)) || rawId;
   const matchKeys = await getEmployeeMatchKeys(id, employeeName);
   const label = employeeDisplayLabel(matchKeys, id);
-  // Face Enrollment photos for this employee (all ID aliases)
   const idAliases = matchKeys.dbIds.length ? matchKeys.dbIds : [id];
   const enrollment = await getDescriptorsForEmployees(idAliases);
   const descriptorCount =
@@ -109,7 +107,7 @@ export async function verifyDescriptorForEmployee(
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
 
   const presenceStrict = Boolean(opts?.presenceStrict);
-  // Keep the same match distance as break/clock — do not tighten threshold for presence
+  // Base threshold stays 0.45 — look-alikes blocked by 1:N uniqueness + centroid
   const maxDistance = getMaxMatchDistance();
   const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
@@ -134,14 +132,17 @@ export async function verifyDescriptorForEmployee(
   }
 
   const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
-  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance, {
-    // Presence: stronger rival gate only (same distance threshold as break)
-    presenceStrict,
-  });
-  if (rival) {
+  const unique = assertUniqueIdentity(
+    descriptor,
+    self.bestDistance,
+    enrollment.descriptors,
+    rivals,
+    { presenceStrict, maxDistance }
+  );
+  if (!unique.ok) {
     return {
       verified: false,
-      reason: `Face matches employee ID ${rival.employeeId} more closely. Only your enrolled face can proceed.`,
+      reason: unique.reason,
       code: "wrong_person",
       similarity: self.similarity,
       subject,
