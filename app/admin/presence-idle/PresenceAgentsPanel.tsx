@@ -221,8 +221,21 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         toastError(data.error || "Command failed");
         return;
       }
-      toastSuccess(data.message || "Command queued");
+      toastSuccess(
+        command === "start"
+          ? "Start queued — button becomes Stop when agent is Active (~20s)."
+          : data.message || "Command queued",
+      );
       await load();
+      // After Start, refresh a few times so Start flips to Stop when heartbeat is healthy
+      if (command === "start" && opts?.machineId) {
+        for (const ms of [8000, 16000, 24000]) {
+          window.setTimeout(() => void load({ silent: true }), ms);
+        }
+      }
+      if (command === "exit") {
+        window.setTimeout(() => void load({ silent: true }), 5000);
+      }
     } catch {
       toastError("Network error sending command");
     }
@@ -304,7 +317,36 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     }
   }
 
-  async function editAssignment(machineId: string) {
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  async function deleteOneAgent(machineId: string, label: string) {
+    if (
+      !window.confirm(
+        `Remove this agent from HRM?\n\n${label}\n\n` +
+          "Clears this registration only — does not uninstall software on the PC."
+      )
+    ) {
+      return;
+    }
+    setDeletingId(machineId);
+    try {
+      const res = await fetch(
+        `/api/admin/presence-agents?machine_id=${encodeURIComponent(machineId)}`,
+        { method: "DELETE" },
+      );
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Delete failed");
+        return;
+      }
+      toastSuccess("Agent removed from list");
+      await load();
+    } catch {
+      toastError("Network error deleting agent");
+    } finally {
+      setDeletingId(null);
+    }
+  }
     setSavingId(machineId);
     try {
       const res = await fetch("/api/admin/presence-agents", {
@@ -543,15 +585,27 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                             {savingId === a.machineId ? "Saving…" : "Save"}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className={`${styles.chip} ${styles.chipSuccess}`}
-                          onClick={() =>
-                            void queueCommand("start", { machineId: a.machineId })
-                          }
-                        >
-                          Start
-                        </button>
+                        {a.health === "healthy" ? (
+                          <button
+                            type="button"
+                            className={`${styles.chip} ${styles.chipDanger}`}
+                            onClick={() =>
+                              void queueCommand("exit", { machineId: a.machineId })
+                            }
+                          >
+                            Stop
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`${styles.chip} ${styles.chipSuccess}`}
+                            onClick={() =>
+                              void queueCommand("start", { machineId: a.machineId })
+                            }
+                          >
+                            Start
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={styles.chip}
@@ -564,11 +618,15 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                         <button
                           type="button"
                           className={`${styles.chip} ${styles.chipDanger}`}
+                          disabled={deletingId === a.machineId}
                           onClick={() =>
-                            void queueCommand("exit", { machineId: a.machineId })
+                            void deleteOneAgent(
+                              a.machineId,
+                              `${a.hostname || "PC"} · ${a.assignedEmployeeName || a.assignedEmployeeId || a.localEmployeeId || a.machineId}`,
+                            )
                           }
                         >
-                          Stop
+                          {deletingId === a.machineId ? "…" : "Delete"}
                         </button>
                       </div>
                     </td>
