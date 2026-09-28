@@ -82,9 +82,9 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join("\n");
 
-    // Dedup in JS — Mongo adapter mishandles NOW()-INTERVAL and was matching
-    // hours-old open seat_absent tickets forever (toast "sent", no new inbox row).
-    const DEDUP_MS = 30 * 60 * 1000;
+    // Short dedup only — long windows hid later fails from the inbox ("toast sent, no new row").
+    // Mongo adapter also mishandles NOW()-INTERVAL, so we compare timestamps in JS.
+    const DEDUP_MS = 2 * 60 * 1000;
     try {
       const [dupRows] = await pool.query(
         `SELECT id, ticket_number, requested_at, status FROM ${EMPLOYEE_TICKETS_TABLE}
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
           ticket_id: recent.id,
           ticket_number: recent.ticket_number || null,
           message:
-            "Open seat-absent ticket already exists in HR inbox (last 30 minutes).",
+            "Open seat-absent ticket already exists in HR inbox (last 2 minutes).",
         });
       }
     } catch {

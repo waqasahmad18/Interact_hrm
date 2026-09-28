@@ -1,6 +1,6 @@
 "use client";
 
-import OptionalAdminShell from "@/app/components/OptionalAdminShell";
+import LayoutDashboard from "../../layout-dashboard";
 import React from "react";
 import adminStyles from "../admin-page.module.css";
 import TicketThread from "../../components/TicketThread";
@@ -56,10 +56,10 @@ export default function AdminTicketsPage() {
     void fetchTickets();
   }, [fetchTickets]);
 
-  // Poll so Guard auto-tickets appear without waiting for WebSocket
+  // Poll so Guard tickets appear even if WS misses an event
   React.useEffect(() => {
-    const t = window.setInterval(() => void fetchTickets({ silent: true }), 10000);
-    return () => window.clearInterval(t);
+    const id = window.setInterval(() => void fetchTickets({ silent: true }), 10_000);
+    return () => window.clearInterval(id);
   }, [fetchTickets]);
 
   React.useEffect(() => {
@@ -301,7 +301,7 @@ export default function AdminTicketsPage() {
   };
 
   return (
-    <OptionalAdminShell>
+    <LayoutDashboard>
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
           <h1 className={adminStyles.title}>Ticket inbox</h1>
@@ -343,10 +343,6 @@ export default function AdminTicketsPage() {
             </div>
           ) : (
             <div className={adminStyles.requestList}>
-              <p className={adminStyles.muted} style={{ marginBottom: 10, fontSize: 13 }}>
-                Showing {tickets.length} {filter === "pending" ? "open " : ""}ticket
-                {tickets.length === 1 ? "" : "s"} (newest first).
-              </p>
               {tickets.map((t) => (
                 <div
                   key={t.id}
@@ -549,6 +545,6 @@ export default function AdminTicketsPage() {
           </div>
         </div>
       ) : null}
-    </OptionalAdminShell>
+    </LayoutDashboard>
   );
 }
