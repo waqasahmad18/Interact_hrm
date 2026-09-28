@@ -1,0 +1,314 @@
+"use client";
+
+import React from "react";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
+import adminStyles from "../admin-page.module.css";
+import styles from "../presence-idle/presence-idle.module.css";
+import { toastError, toastSuccess } from "@/lib/app-toast";
+
+type AgentHealth = "healthy" | "stale" | "offline";
+
+type AgentRow = {
+  id: number;
+  machineId: string;
+  hostname: string | null;
+  windowsUser: string | null;
+  localEmployeeId: string | null;
+  assignedEmployeeId: string | null;
+  agentVersion: string | null;
+  agentProduct: string | null;
+  adminEnabled: boolean;
+  idleSeconds: number;
+  lastIp: string | null;
+  lastSeenAt: string | null;
+  health: AgentHealth;
+  assignedEmployeeName: string | null;
+  assignedEmployeeCode: string | null;
+  assignedPseudonym: string | null;
+};
+
+type EmpRow = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  employee_code?: string | null;
+  pseudonym?: string | null;
+};
+
+function formatWhen(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function healthLabel(h: AgentHealth) {
+  if (h === "healthy") return "Online";
+  if (h === "stale") return "Stale";
+  return "Offline";
+}
+
+function empLabel(e: EmpRow) {
+  const name =
+    `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`;
+  const pseudo = e.pseudonym ? ` · ${e.pseudonym}` : "";
+  const code = e.employee_code ? ` · ${e.employee_code}` : "";
+  return `${name}${pseudo} (ID ${e.id})${code}`;
+}
+
+export default function InteractGuardAdminPage() {
+  const [agents, setAgents] = React.useState<AgentRow[]>([]);
+  const [employees, setEmployees] = React.useState<EmpRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [idleDrafts, setIdleDrafts] = React.useState<Record<string, string>>({});
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [aRes, eRes] = await Promise.all([
+        fetch("/api/admin/presence-agents", { cache: "no-store" }),
+        fetch("/api/employee-list", { cache: "no-store" }),
+      ]);
+      const aData = await aRes.json();
+      const eData = await eRes.json();
+      if (!aData.success) {
+        toastError(aData.error || "Could not load agents");
+        return;
+      }
+      const list = (Array.isArray(aData.agents) ? aData.agents : []) as AgentRow[];
+      setAgents(list);
+      const next: Record<string, string> = {};
+      const idle: Record<string, string> = {};
+      for (const a of list) {
+        next[a.machineId] = a.assignedEmployeeId ?? "";
+        idle[a.machineId] = String(a.idleSeconds || 120);
+      }
+      setDrafts(next);
+      setIdleDrafts(idle);
+      if (eData.success && Array.isArray(eData.employees)) {
+        setEmployees(eData.employees);
+      }
+    } catch {
+      toastError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+    const t = window.setInterval(() => void load(), 20000);
+    return () => window.clearInterval(t);
+  }, [load]);
+
+  const patch = async (machineId: string, body: Record<string, unknown>) => {
+    setBusy(machineId);
+    try {
+      const res = await fetch("/api/admin/presence-agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machine_id: machineId, ...body }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Update failed");
+        return;
+      }
+      toastSuccess("Saved");
+      await load();
+    } catch {
+      toastError("Network error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const online = agents.filter((a) => a.health === "healthy").length;
+  const onCount = agents.filter((a) => a.adminEnabled).length;
+
+  return (
+    <OptionalAdminShell>
+      <div className={adminStyles.page}>
+        <div className={adminStyles.inner}>
+          <h1 className={adminStyles.title}>Interact Guard</h1>
+          <p className={adminStyles.subtitle}>
+            Installed PCs show here after Setup.exe. Assign employee, turn ON to start
+            background monitoring. Idle face-check timing is per PC.
+          </p>
+
+        <div className={styles.statsRow}>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Registered PCs</span>
+            <span className={styles.statValue}>{agents.length}</span>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Online now</span>
+            <span className={styles.statValue}>{online}</span>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>Monitoring ON</span>
+            <span className={styles.statValue}>{onCount}</span>
+          </div>
+          <button type="button" className={styles.refreshBtn} onClick={() => void load()}>
+            Refresh
+          </button>
+        </div>
+
+        {loading && agents.length === 0 ? (
+          <p>Loading…</p>
+        ) : agents.length === 0 ? (
+          <div className={styles.emptyBox}>
+            <p>
+              No PCs yet. Install <strong>Interact Guard</strong> (Setup.exe) on employee
+              machines — they appear here after the first heartbeat (~20s).
+            </p>
+          </div>
+        ) : (
+          <div className={styles.tableWrap}>
+            <table className={styles.agentsTable}>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>PC / User</th>
+                  <th>Employee (name · pseudo · ID)</th>
+                  <th>Idle (sec)</th>
+                  <th>Monitor</th>
+                  <th>Last seen</th>
+                  <th>Version</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agents.map((a) => (
+                  <tr key={a.machineId}>
+                    <td>
+                      <span
+                        className={
+                          a.health === "healthy"
+                            ? styles.healthOk
+                            : a.health === "stale"
+                              ? styles.healthWarn
+                              : styles.healthBad
+                        }
+                      >
+                        {healthLabel(a.health)}
+                      </span>
+                    </td>
+                    <td>
+                      <div>
+                        <strong>{a.hostname || "—"}</strong>
+                      </div>
+                      <div className={styles.muted}>
+                        {a.windowsUser || "—"} · {a.lastIp || "no IP"}
+                      </div>
+                      <div className={styles.muted} style={{ fontSize: 11 }}>
+                        {a.machineId.slice(0, 12)}…
+                      </div>
+                    </td>
+                    <td>
+                      <select
+                        value={drafts[a.machineId] ?? ""}
+                        disabled={busy === a.machineId}
+                        onChange={(e) =>
+                          setDrafts((d) => ({ ...d, [a.machineId]: e.target.value }))
+                        }
+                        style={{ maxWidth: 260 }}
+                      >
+                        <option value="">— Unassigned —</option>
+                        {employees.map((e) => (
+                          <option key={e.id} value={String(e.id)}>
+                            {empLabel(e)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={styles.smallBtn}
+                        disabled={busy === a.machineId}
+                        onClick={() =>
+                          void patch(a.machineId, {
+                            assigned_employee_id: drafts[a.machineId] || null,
+                          })
+                        }
+                      >
+                        Save
+                      </button>
+                      {a.assignedEmployeeName ? (
+                        <div className={styles.muted} style={{ marginTop: 4 }}>
+                          {a.assignedEmployeeName}
+                          {a.assignedPseudonym ? ` · ${a.assignedPseudonym}` : ""}
+                          {a.assignedEmployeeId ? ` · ID ${a.assignedEmployeeId}` : ""}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={30}
+                        max={86400}
+                        value={idleDrafts[a.machineId] ?? "120"}
+                        style={{ width: 80 }}
+                        disabled={busy === a.machineId}
+                        onChange={(e) =>
+                          setIdleDrafts((d) => ({
+                            ...d,
+                            [a.machineId]: e.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.smallBtn}
+                        disabled={busy === a.machineId}
+                        onClick={() =>
+                          void patch(a.machineId, {
+                            idle_seconds: Number(idleDrafts[a.machineId]) || 120,
+                          })
+                        }
+                      >
+                        Set
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={
+                          a.adminEnabled ? styles.toggleOn : styles.toggleOff
+                        }
+                        disabled={busy === a.machineId}
+                        onClick={() =>
+                          void patch(a.machineId, {
+                            admin_enabled: !a.adminEnabled,
+                          })
+                        }
+                      >
+                        {a.adminEnabled ? "ON" : "OFF"}
+                      </button>
+                    </td>
+                    <td>{formatWhen(a.lastSeenAt)}</td>
+                    <td>
+                      <div>{a.agentVersion || "—"}</div>
+                      <div className={styles.muted}>{a.agentProduct || "—"}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        </div>
+      </div>
+    </OptionalAdminShell>
+  );
+}

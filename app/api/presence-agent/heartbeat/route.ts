@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       hrm_base_url?: string;
       local_employee_id?: string;
       agent_version?: string;
+      agent_product?: string;
     };
 
     const result = await upsertAgentHeartbeat({
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       hrmBaseUrl: body.hrm_base_url,
       localEmployeeId: body.local_employee_id,
       agentVersion: body.agent_version,
+      agentProduct: body.agent_product,
       clientIp: clientIp(req) || undefined,
     });
 
@@ -37,14 +39,18 @@ export async function POST(req: NextRequest) {
         success: true,
         assigned_employee_id: result.assignedEmployeeId,
         assigned_employee_name: result.assignedEmployeeName,
+        pseudonym: result.pseudonym,
         command: result.command,
+        admin_enabled: result.adminEnabled,
+        idle_seconds: result.idleSeconds,
+        exit_password: result.exitPassword,
       },
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate",
           Pragma: "no-cache",
         },
-      }
+      },
     );
   } catch (err) {
     return NextResponse.json(
@@ -52,7 +58,7 @@ export async function POST(req: NextRequest) {
         success: false,
         error: err instanceof Error ? err.message : "Heartbeat failed",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

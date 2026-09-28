@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   listPresenceAgents,
   queueAgentCommand,
+  setAgentAdminEnabled,
   setAgentAssignedEmployee,
+  setAgentIdleSeconds,
   type AgentCommand,
 } from "@/lib/presence-agents";
 
@@ -19,6 +21,10 @@ export async function GET() {
       offline: agents.filter((a) => a.health === "offline").length,
       withAssignedId: agents.filter((a) => a.assignedEmployeeId).length,
       withLocalId: agents.filter((a) => a.localEmployeeId).length,
+      adminOn: agents.filter((a) => a.adminEnabled).length,
+      guardAgents: agents.filter(
+        (a) => (a.agentProduct || "").toLowerCase().includes("guard"),
+      ).length,
     };
     return NextResponse.json({ success: true, agents, summary });
   } catch (err) {
@@ -27,7 +33,7 @@ export async function GET() {
         success: false,
         error: err instanceof Error ? err.message : "Failed to load agents",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -37,26 +43,40 @@ export async function PATCH(req: NextRequest) {
     const body = (await req.json()) as {
       machine_id?: string;
       assigned_employee_id?: string | null;
+      admin_enabled?: boolean;
+      idle_seconds?: number;
     };
     const machineId = String(body.machine_id ?? "").trim();
     if (!machineId) {
       return NextResponse.json(
         { success: false, error: "machine_id required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const assignedRaw = body.assigned_employee_id;
-    const assigned =
-      assignedRaw === null || assignedRaw === undefined || assignedRaw === ""
-        ? null
-        : String(assignedRaw).trim();
+    let agent = null;
 
-    const agent = await setAgentAssignedEmployee(machineId, assigned);
+    if (body.assigned_employee_id !== undefined) {
+      const assignedRaw = body.assigned_employee_id;
+      const assigned =
+        assignedRaw === null || assignedRaw === ""
+          ? null
+          : String(assignedRaw).trim();
+      agent = await setAgentAssignedEmployee(machineId, assigned);
+    }
+
+    if (typeof body.admin_enabled === "boolean") {
+      agent = await setAgentAdminEnabled(machineId, body.admin_enabled);
+    }
+
+    if (body.idle_seconds != null && Number.isFinite(Number(body.idle_seconds))) {
+      agent = await setAgentIdleSeconds(machineId, Number(body.idle_seconds));
+    }
+
     if (!agent) {
       return NextResponse.json(
-        { success: false, error: "Agent not found" },
-        { status: 404 }
+        { success: false, error: "No update fields or agent not found" },
+        { status: 404 },
       );
     }
     return NextResponse.json({ success: true, agent });
@@ -66,12 +86,12 @@ export async function PATCH(req: NextRequest) {
         success: false,
         error: err instanceof Error ? err.message : "Update failed",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }
 
-/** Queue restart/exit for one agent or all registered agents. */
+/** Queue restart/exit/pause/on for one agent or all registered agents. */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -80,10 +100,18 @@ export async function POST(req: NextRequest) {
       command?: AgentCommand;
     };
     const command = body.command;
-    if (command !== "restart" && command !== "exit" && command !== "start") {
+    const allowed: AgentCommand[] = [
+      "restart",
+      "exit",
+      "start",
+      "pause",
+      "resume",
+      "on",
+    ];
+    if (!command || !allowed.includes(command)) {
       return NextResponse.json(
-        { success: false, error: "command must be restart, exit, or start" },
-        { status: 400 }
+        { success: false, error: "invalid command" },
+        { status: 400 },
       );
     }
     const count = await queueAgentCommand({
@@ -95,12 +123,7 @@ export async function POST(req: NextRequest) {
       success: true,
       queued: count,
       command,
-      message:
-        command === "exit"
-          ? `Exit queued for ${count} agent(s). Takes effect within ~15s.`
-          : command === "start"
-            ? `Start queued for ${count} agent(s). Takes effect within ~15s.`
-            : `Restart queued for ${count} agent(s). Takes effect within ~15s.`,
+      message: `Command "${command}" queued for ${count} agent(s). Takes effect within ~20s.`,
     });
   } catch (err) {
     return NextResponse.json(
@@ -108,7 +131,7 @@ export async function POST(req: NextRequest) {
         success: false,
         error: err instanceof Error ? err.message : "Command failed",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

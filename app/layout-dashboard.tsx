@@ -58,6 +58,7 @@ const sidebarLinks = [
 					{ name: "Monthly Attendance", path: "/admin/monthly-attendance", icon: <FaFileAlt /> },
 					{ name: "Tungsten IN/OUT", path: "/admin/tungsten-in-out", icon: <FaExchangeAlt /> },
 					{ name: "Presence / Idle", path: "/admin/presence-idle", icon: <FaDesktop /> },
+					{ name: "Interact Guard", path: "/admin/interact-guard", icon: <FaDesktop /> },
 					{ name: "Employee Report", path: "/attendance/employee-report", icon: <FaClipboardList /> },
 				]
 			},

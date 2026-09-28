@@ -14,12 +14,16 @@ export type PresenceAgentRow = {
   localEmployeeId: string | null;
   assignedEmployeeId: string | null;
   agentVersion: string | null;
+  agentProduct: string | null;
+  adminEnabled: boolean;
+  idleSeconds: number;
   lastIp: string | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   health: AgentHealth;
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
+  assignedPseudonym: string | null;
 };
 
 type DbRow = {
@@ -31,13 +35,25 @@ type DbRow = {
   local_employee_id: string | null;
   assigned_employee_id: string | null;
   agent_version: string | null;
+  agent_product?: string | null;
+  admin_enabled?: number | boolean | null;
+  idle_seconds?: number | null;
   last_ip: string | null;
   first_seen_at: Date | string | null;
   last_seen_at: Date | string | null;
   assigned_first_name?: string | null;
   assigned_last_name?: string | null;
   assigned_employee_code?: string | null;
+  assigned_pseudonym?: string | null;
 };
+
+async function addColumn(sql: string) {
+  try {
+    await pool.execute(sql);
+  } catch {
+    /* already exists */
+  }
+}
 
 export async function ensurePresenceAgentsTable(): Promise<void> {
   await pool.execute(`
@@ -50,6 +66,9 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
       local_employee_id varchar(64) DEFAULT NULL,
       assigned_employee_id varchar(64) DEFAULT NULL,
       agent_version varchar(32) DEFAULT NULL,
+      agent_product varchar(64) DEFAULT NULL,
+      admin_enabled tinyint(1) NOT NULL DEFAULT 0,
+      idle_seconds int(11) NOT NULL DEFAULT 120,
       last_ip varchar(45) DEFAULT NULL,
       first_seen_at datetime DEFAULT NULL,
       last_seen_at datetime DEFAULT NULL,
@@ -63,20 +82,21 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
       KEY idx_presence_agents_assigned (assigned_employee_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  try {
-    await pool.execute(
-      `ALTER TABLE ${TABLE} ADD COLUMN pending_command varchar(32) DEFAULT NULL`
-    );
-  } catch {
-    /* already exists */
-  }
-  try {
-    await pool.execute(
-      `ALTER TABLE ${TABLE} ADD COLUMN command_issued_at datetime DEFAULT NULL`
-    );
-  } catch {
-    /* already exists */
-  }
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN pending_command varchar(32) DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN command_issued_at datetime DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN agent_product varchar(64) DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN admin_enabled tinyint(1) NOT NULL DEFAULT 0`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN idle_seconds int(11) NOT NULL DEFAULT 120`,
+  );
 }
 
 export function agentHealthFromLastSeen(lastSeen: Date | string | null): AgentHealth {
@@ -96,6 +116,10 @@ function toIso(v: Date | string | null): string | null {
   return Number.isFinite(d.getTime()) ? d.toISOString() : String(v);
 }
 
+function asBool(v: unknown): boolean {
+  return v === true || v === 1 || v === "1";
+}
+
 function mapRow(r: DbRow): PresenceAgentRow {
   const assignedEmployeeName =
     [r.assigned_first_name, r.assigned_last_name].filter(Boolean).join(" ").trim() || null;
@@ -108,12 +132,16 @@ function mapRow(r: DbRow): PresenceAgentRow {
     localEmployeeId: r.local_employee_id,
     assignedEmployeeId: r.assigned_employee_id,
     agentVersion: r.agent_version,
+    agentProduct: r.agent_product ?? null,
+    adminEnabled: asBool(r.admin_enabled),
+    idleSeconds: Number(r.idle_seconds) > 0 ? Number(r.idle_seconds) : 120,
     lastIp: r.last_ip,
     firstSeenAt: toIso(r.first_seen_at),
     lastSeenAt: toIso(r.last_seen_at),
     health: agentHealthFromLastSeen(r.last_seen_at),
     assignedEmployeeName,
     assignedEmployeeCode: r.assigned_employee_code ?? null,
+    assignedPseudonym: r.assigned_pseudonym?.trim() || null,
   };
 }
 
@@ -124,19 +152,24 @@ export type HeartbeatInput = {
   hrmBaseUrl?: string | null;
   localEmployeeId?: string | null;
   agentVersion?: string | null;
+  agentProduct?: string | null;
   clientIp?: string | null;
 };
 
-export type AgentCommand = "restart" | "exit" | "start";
+export type AgentCommand = "restart" | "exit" | "start" | "pause" | "resume" | "on";
 
 export type HeartbeatResult = {
   assignedEmployeeId: string | null;
   assignedEmployeeName: string | null;
+  pseudonym: string | null;
   command: AgentCommand | null;
+  adminEnabled: boolean;
+  idleSeconds: number;
+  exitPassword: string;
 };
 
 export async function upsertAgentHeartbeat(
-  input: HeartbeatInput
+  input: HeartbeatInput,
 ): Promise<HeartbeatResult> {
   await ensurePresenceAgentsTable();
   const machineId = String(input.machineId ?? "").trim();
@@ -149,19 +182,21 @@ export async function upsertAgentHeartbeat(
   const hrmBaseUrl = trimOrNull(input.hrmBaseUrl, 512);
   const localEmployeeId = trimOrNull(input.localEmployeeId, 64);
   const agentVersion = trimOrNull(input.agentVersion, 32);
+  const agentProduct = trimOrNull(input.agentProduct, 64);
   const lastIp = trimOrNull(input.clientIp, 45);
   const now = new Date();
 
   await pool.execute(
     `INSERT INTO ${TABLE}
-      (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, last_ip, first_seen_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        hostname = VALUES(hostname),
        windows_user = VALUES(windows_user),
        hrm_base_url = VALUES(hrm_base_url),
        local_employee_id = VALUES(local_employee_id),
        agent_version = VALUES(agent_version),
+       agent_product = COALESCE(VALUES(agent_product), agent_product),
        last_ip = VALUES(last_ip),
        last_seen_at = VALUES(last_seen_at)`,
     [
@@ -171,51 +206,87 @@ export async function upsertAgentHeartbeat(
       hrmBaseUrl,
       localEmployeeId,
       agentVersion,
+      agentProduct,
       lastIp,
       now,
       now,
-    ]
+    ],
   );
 
   const [rows] = await pool.execute(
     `SELECT pa.assigned_employee_id,
             pa.pending_command,
+            pa.admin_enabled,
+            pa.idle_seconds,
             e.first_name AS assigned_first_name,
-            e.last_name AS assigned_last_name
+            e.last_name AS assigned_last_name,
+            e.pseudonym AS assigned_pseudonym
      FROM ${TABLE} pa
      LEFT JOIN hrm_employees e ON e.id = pa.assigned_employee_id
      WHERE pa.machine_id = ?
      LIMIT 1`,
-    [machineId]
+    [machineId],
   );
   const list = rows as {
     assigned_employee_id: string | null;
     pending_command: string | null;
+    admin_enabled: number | boolean | null;
+    idle_seconds: number | null;
     assigned_first_name: string | null;
     assigned_last_name: string | null;
+    assigned_pseudonym: string | null;
   }[];
   const row = list[0];
   const assignedEmployeeId = row?.assigned_employee_id?.trim() || null;
   const assignedEmployeeName =
     [row?.assigned_first_name, row?.assigned_last_name].filter(Boolean).join(" ").trim() ||
     null;
+  const pseudonym = row?.assigned_pseudonym?.trim() || null;
+
+  let adminEnabled = asBool(row?.admin_enabled);
+  let idleSeconds = Number(row?.idle_seconds) > 0 ? Number(row.idle_seconds) : 120;
 
   let command: AgentCommand | null = null;
   const rawCmd = (row?.pending_command ?? "").trim().toLowerCase();
-  if (rawCmd === "restart" || rawCmd === "exit" || rawCmd === "start") {
-    command = rawCmd;
+  const allowed: AgentCommand[] = ["restart", "exit", "start", "pause", "resume", "on"];
+  if (allowed.includes(rawCmd as AgentCommand)) {
+    command = rawCmd as AgentCommand;
+    if (command === "pause") {
+      adminEnabled = false;
+      await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 0 WHERE machine_id = ?`, [
+        machineId,
+      ]);
+    }
+    if (command === "resume" || command === "on" || command === "start") {
+      adminEnabled = true;
+      await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 1 WHERE machine_id = ?`, [
+        machineId,
+      ]);
+    }
     await pool.execute(
       `UPDATE ${TABLE} SET pending_command = NULL, command_issued_at = NULL WHERE machine_id = ?`,
-      [machineId]
+      [machineId],
     );
   }
 
   const settings = await getPresenceSettings();
   if (settings.agentsRetired) {
     command = "exit";
+    adminEnabled = false;
+  }
+  if (idleSeconds <= 0 && settings.idleWarningSeconds > 0) {
+    idleSeconds = settings.idleWarningSeconds;
   }
 
-  return { assignedEmployeeId, assignedEmployeeName, command };
+  return {
+    assignedEmployeeId,
+    assignedEmployeeName,
+    pseudonym,
+    command,
+    adminEnabled,
+    idleSeconds,
+    exitPassword: settings.agentExitPassword || "InteractAdmin",
+  };
 }
 
 export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
@@ -224,17 +295,18 @@ export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
     `SELECT pa.*,
             e.first_name AS assigned_first_name,
             e.last_name AS assigned_last_name,
-            e.employee_code AS assigned_employee_code
+            e.employee_code AS assigned_employee_code,
+            e.pseudonym AS assigned_pseudonym
      FROM ${TABLE} pa
      LEFT JOIN hrm_employees e ON e.id = pa.assigned_employee_id
-     ORDER BY pa.last_seen_at IS NULL, pa.last_seen_at DESC, pa.id DESC`
+     ORDER BY pa.last_seen_at IS NULL, pa.last_seen_at DESC, pa.id DESC`,
   );
   return (rows as DbRow[]).map(mapRow);
 }
 
 export async function setAgentAssignedEmployee(
   machineId: string,
-  assignedEmployeeId: string | null
+  assignedEmployeeId: string | null,
 ): Promise<PresenceAgentRow | null> {
   await ensurePresenceAgentsTable();
   const mid = String(machineId ?? "").trim();
@@ -244,27 +316,65 @@ export async function setAgentAssignedEmployee(
   if (assigned) {
     const [empRows] = await pool.execute(
       "SELECT id FROM hrm_employees WHERE id = ? LIMIT 1",
-      [assigned]
+      [assigned],
     );
     const emp = empRows as { id: number }[];
     if (!emp[0]) throw new Error("Employee not found");
   }
 
-  await pool.execute(
-    `UPDATE ${TABLE} SET assigned_employee_id = ? WHERE machine_id = ?`,
-    [assigned, mid]
-  );
+  await pool.execute(`UPDATE ${TABLE} SET assigned_employee_id = ? WHERE machine_id = ?`, [
+    assigned,
+    mid,
+  ]);
+  return getAgentByMachineId(mid);
+}
 
+export async function setAgentAdminEnabled(
+  machineId: string,
+  enabled: boolean,
+): Promise<PresenceAgentRow | null> {
+  await ensurePresenceAgentsTable();
+  const mid = String(machineId ?? "").trim();
+  if (!mid) throw new Error("machine_id required");
+  await pool.execute(`UPDATE ${TABLE} SET admin_enabled = ? WHERE machine_id = ?`, [
+    enabled ? 1 : 0,
+    mid,
+  ]);
+  // Also queue resume/pause so running agent flips immediately
+  await queueAgentCommand({
+    machineId: mid,
+    command: enabled ? "on" : "pause",
+  });
+  return getAgentByMachineId(mid);
+}
+
+export async function setAgentIdleSeconds(
+  machineId: string,
+  idleSeconds: number,
+): Promise<PresenceAgentRow | null> {
+  await ensurePresenceAgentsTable();
+  const mid = String(machineId ?? "").trim();
+  if (!mid) throw new Error("machine_id required");
+  const sec = Math.max(30, Math.min(86400, Math.floor(Number(idleSeconds) || 120)));
+  await pool.execute(`UPDATE ${TABLE} SET idle_seconds = ? WHERE machine_id = ?`, [
+    sec,
+    mid,
+  ]);
+  return getAgentByMachineId(mid);
+}
+
+async function getAgentByMachineId(mid: string): Promise<PresenceAgentRow | null> {
   const [rows] = await pool.execute(
     `SELECT pa.*,
             e.first_name AS assigned_first_name,
             e.last_name AS assigned_last_name,
-            e.employee_code AS assigned_employee_code
+            e.employee_code AS assigned_employee_code,
+            e.pseudonym AS assigned_pseudonym
      FROM ${TABLE} pa
      LEFT JOIN hrm_employees e ON e.id = pa.assigned_employee_id
      WHERE pa.machine_id = ?
      LIMIT 1`,
-    [mid]
+    [mid],
   );
   const list = rows as DbRow[];
   return list[0] ? mapRow(list[0]) : null;
@@ -283,14 +393,15 @@ export async function queueAgentCommand(input: {
 }): Promise<number> {
   await ensurePresenceAgentsTable();
   const cmd = input.command;
-  if (cmd !== "restart" && cmd !== "exit" && cmd !== "start") {
-    throw new Error("command must be restart, exit, or start");
+  const allowed: AgentCommand[] = ["restart", "exit", "start", "pause", "resume", "on"];
+  if (!allowed.includes(cmd)) {
+    throw new Error("invalid command");
   }
   const now = new Date();
   if (input.all) {
     const [res] = await pool.execute(
       `UPDATE ${TABLE} SET pending_command = ?, command_issued_at = ?`,
-      [cmd, now]
+      [cmd, now],
     );
     return (res as { affectedRows?: number }).affectedRows ?? 0;
   }
@@ -298,14 +409,13 @@ export async function queueAgentCommand(input: {
   if (!mid) throw new Error("machine_id required unless all=true");
   const [res] = await pool.execute(
     `UPDATE ${TABLE} SET pending_command = ?, command_issued_at = ? WHERE machine_id = ?`,
-    [cmd, now, mid]
+    [cmd, now, mid],
   );
   const n = (res as { affectedRows?: number }).affectedRows ?? 0;
   if (n === 0) throw new Error("Agent not found");
   return n;
 }
 
-/** Permanently retire all agents: disable monitoring, queue exit, keep sending exit on heartbeat. */
 export async function retireAllPresenceAgents(): Promise<{ queued: number }> {
   await savePresenceSettings({
     agentsRetired: true,
@@ -315,7 +425,6 @@ export async function retireAllPresenceAgents(): Promise<{ queued: number }> {
   return { queued };
 }
 
-/** Re-activate all agents: clear retire flag, enable presence, queue restart/start. */
 export async function activateAllPresenceAgents(): Promise<{ queued: number }> {
   await savePresenceSettings({
     agentsRetired: false,
