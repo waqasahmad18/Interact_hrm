@@ -46,6 +46,7 @@ export async function PATCH(req: NextRequest) {
     const body = (await req.json()) as {
       machine_id?: string;
       assigned_employee_id?: string | null;
+      hrm_base_url?: string | null;
       admin_enabled?: boolean;
       idle_seconds?: number;
       unlock?: boolean;
@@ -70,7 +71,19 @@ export async function PATCH(req: NextRequest) {
         assignedRaw === null || assignedRaw === ""
           ? null
           : String(assignedRaw).trim();
-      agent = await setAgentAssignedEmployee(machineId, assigned);
+      agent = await setAgentAssignedEmployee(machineId, assigned, {
+        hrmBaseUrl:
+          body.hrm_base_url !== undefined ? body.hrm_base_url : undefined,
+      });
+    } else if (body.hrm_base_url !== undefined) {
+      // URL-only save still goes through assign helper when unlocked
+      const current = await listPresenceAgents();
+      const row = current.find((a) => a.machineId === machineId);
+      agent = await setAgentAssignedEmployee(
+        machineId,
+        row?.assignedEmployeeId ?? null,
+        { hrmBaseUrl: body.hrm_base_url },
+      );
     }
 
     if (typeof body.admin_enabled === "boolean") {

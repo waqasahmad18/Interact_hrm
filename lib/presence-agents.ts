@@ -519,6 +519,7 @@ export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
 export async function setAgentAssignedEmployee(
   machineId: string,
   assignedEmployeeId: string | null,
+  opts?: { hrmBaseUrl?: string | null },
 ): Promise<PresenceAgentRow | null> {
   await ensurePresenceAgentsTable();
   const mid = String(machineId ?? "").trim();
@@ -527,7 +528,7 @@ export async function setAgentAssignedEmployee(
   const current = await getAgentByMachineId(mid);
   if (!current) throw new Error("Agent not found");
   if (current.assignmentLocked) {
-    throw new Error("Profile is locked. Unlock first to change employee.");
+    throw new Error("Profile is locked. Edit first to change details.");
   }
 
   let assigned: string | null = assignedEmployeeId?.trim() || null;
@@ -540,18 +541,34 @@ export async function setAgentAssignedEmployee(
     if (!emp[0]) throw new Error("Employee not found");
   }
 
-  // Save with an employee → lock name / ID / IP / PC fields against further edits
-  await pool.execute(
-    `UPDATE ${TABLE}
-     SET assigned_employee_id = ?,
-         assignment_locked = ?
-     WHERE machine_id = ?`,
-    [assigned, assigned ? 1 : 0, mid],
-  );
+  const hrmUrl =
+    opts && opts.hrmBaseUrl !== undefined
+      ? trimOrNull(opts.hrmBaseUrl, 512)
+      : undefined;
+
+  // Save with an employee → lock name / ID / URL / IP against further edits
+  if (hrmUrl !== undefined) {
+    await pool.execute(
+      `UPDATE ${TABLE}
+       SET assigned_employee_id = ?,
+           hrm_base_url = ?,
+           assignment_locked = ?
+       WHERE machine_id = ?`,
+      [assigned, hrmUrl, assigned ? 1 : 0, mid],
+    );
+  } else {
+    await pool.execute(
+      `UPDATE ${TABLE}
+       SET assigned_employee_id = ?,
+           assignment_locked = ?
+       WHERE machine_id = ?`,
+      [assigned, assigned ? 1 : 0, mid],
+    );
+  }
   return getAgentByMachineId(mid);
 }
 
-/** Unlock a saved profile so admin can re-assign employee. */
+/** Unlock a saved profile so admin can Edit employee / HRM URL. */
 export async function unlockAgentAssignment(
   machineId: string,
 ): Promise<PresenceAgentRow | null> {
