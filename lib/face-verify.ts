@@ -109,16 +109,12 @@ export async function verifyDescriptorForEmployee(
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
 
   const presenceStrict = Boolean(opts?.presenceStrict);
-  // Guard / desk: much tighter than clock-break so a different person at the seat fails
+  // Same Face Enrollment descriptors as break; presence slightly tighter + rival gate
   const maxDistance = presenceStrict
     ? getPresenceMaxMatchDistance()
     : getMaxMatchDistance();
-  const minPhotos = presenceStrict
-    ? Math.min(
-        enrollment.descriptors.length,
-        Math.max(getMinMatchingPhotos(enrollment.descriptors.length), 3)
-      )
-    : getMinMatchingPhotos(enrollment.descriptors.length);
+  // Same photo corroboration as break (2) — forcing 3 was rejecting the real employee
+  const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
   const self = matchProbeToDescriptors(
@@ -140,19 +136,6 @@ export async function verifyDescriptorForEmployee(
     };
   }
 
-  // Extra absolute gate for desk: best frame must be clearly close (not borderline)
-  if (presenceStrict && self.bestDistance > maxDistance - 0.02) {
-    const simPct = Math.round(self.similarity * 100);
-    return {
-      verified: false,
-      reason: `Face match too weak for seat check (${simPct}% — only the enrolled person may pass).`,
-      code: "low_similarity",
-      similarity: self.similarity,
-      subject,
-      expectedSubject: subject,
-    };
-  }
-
   const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
   const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance, {
     presenceStrict,
@@ -162,20 +145,6 @@ export async function verifyDescriptorForEmployee(
       verified: false,
       reason: `Face matches employee ID ${rival.employeeId} more closely. Only your enrolled face can proceed.`,
       code: "wrong_person",
-      similarity: self.similarity,
-      subject,
-      expectedSubject: subject,
-    };
-  }
-
-  // Presence: if probe is closer to "average stranger" distance than a clear self-hit,
-  // still reject when bestDistance is not decisively low (no rival enrolled case).
-  if (presenceStrict && self.bestDistance > 0.34) {
-    const simPct = Math.round(self.similarity * 100);
-    return {
-      verified: false,
-      reason: `Seat check rejected — face not a clear match for ${label} (${simPct}%).`,
-      code: "low_similarity",
       similarity: self.similarity,
       subject,
       expectedSubject: subject,

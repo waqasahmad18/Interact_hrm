@@ -218,14 +218,6 @@ export default function PresenceSilentPage() {
           lastError = data.error ?? null;
 
           if (data.atSeat || data.verified) {
-            // Client-side belt: never accept a weak score even if API is misconfigured
-            if (lastSimilarity != null && lastSimilarity < 0.45) {
-              lastCode = "low_similarity";
-              lastError = `Match too weak (${Math.round(lastSimilarity * 100)}%) — only enrolled face may pass`;
-              setStatus(`Weak match ${Math.round(lastSimilarity * 100)}% — retrying…`);
-              await new Promise((r) => setTimeout(r, 350));
-              continue;
-            }
             await postToAgent(
               {
                 cameraOk: true,
