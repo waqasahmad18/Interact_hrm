@@ -8,10 +8,13 @@ import {
   averageDescriptors,
 } from "@/lib/face-client-engine";
 
-/** Same as FaceVerifyModal — multi-frame average before server match. */
+/** Presence check: allow still seated face — do not wipe probes on every adjust frame. */
 const REQUIRED_PROBES = 3;
-const SCAN_DEADLINE_MS = 35000;
-const CAMERA_WARMUP_MS = 1200;
+const SCAN_DEADLINE_MS = 50000;
+const CAMERA_WARMUP_MS = 1800;
+/** Desk webcam: face often smaller than clock/break selfie distance. */
+const COVERAGE_MIN = 0.1;
+const COVERAGE_MAX = 0.9;
 
 function isWebView2(): boolean {
   try {
@@ -41,7 +44,8 @@ function isVideoFrameUsable(video: HTMLVideoElement): boolean {
     if (y > max) max = y;
   }
   const avg = sum / (data.length / 4);
-  return avg > 18 && max - min > 12;
+  // Slightly softer than before — still desk lighting / low motion OK
+  return avg > 12 && max - min > 8;
 }
 
 type BridgeResult = {
@@ -155,40 +159,44 @@ export default function PresenceSilentPage() {
 
         while (!cancelled && Date.now() < deadline) {
           if (!isVideoFrameUsable(video)) {
-            probes.length = 0;
             lastCode = "bad_frame";
             lastError = "Camera frame blank/frozen — retrying";
-            await new Promise((r) => setTimeout(r, 300));
+            await new Promise((r) => setTimeout(r, 250));
             continue;
           }
 
           const scan = await scanVideoFrame(video);
 
           if (scan.status === "multiple") {
-            probes.length = 0;
+            // Don't wipe good probes — wait for others to leave frame
             lastCode = "multiple";
             await new Promise((r) => setTimeout(r, 280));
             continue;
           }
 
           if (scan.status !== "ok") {
-            probes.length = 0;
             lastCode = scan.status === "adjust" ? "adjust" : "no_face";
-            await new Promise((r) => setTimeout(r, 280));
+            await new Promise((r) => setTimeout(r, 220));
             continue;
           }
 
-          if (scan.coverage >= 0.82 || scan.coverage <= 0.16) {
-            probes.length = 0;
+          // Skip bad distance frames but KEEP already-captured probes
+          // (clearing on every adjust forced users to keep moving their head)
+          if (scan.coverage >= COVERAGE_MAX || scan.coverage <= COVERAGE_MIN) {
             lastCode = "adjust";
+            setStatus(
+              scan.coverage >= COVERAGE_MAX
+                ? "Move slightly back from camera…"
+                : "Move slightly closer / face the camera…",
+            );
             await new Promise((r) => setTimeout(r, 200));
             continue;
           }
 
           probes.push(descriptorToJson(scan.descriptor));
-          setStatus(`Capturing… (${probes.length}/${REQUIRED_PROBES})`);
+          setStatus(`Capturing… (${probes.length}/${REQUIRED_PROBES}) — sit still OK`);
           if (probes.length < REQUIRED_PROBES) {
-            await new Promise((r) => setTimeout(r, 220));
+            await new Promise((r) => setTimeout(r, 180));
             continue;
           }
 
@@ -233,12 +241,12 @@ export default function PresenceSilentPage() {
             lastCode = "bad_frame";
             lastError = "Unusable face sample (0%) — camera retry";
             setStatus("Bad sample — retrying…");
-            await new Promise((r) => setTimeout(r, 350));
+            await new Promise((r) => setTimeout(r, 300));
             continue;
           }
 
-          setStatus(`Retry… ${Math.round((lastSimilarity ?? 0) * 100)}%`);
-          await new Promise((r) => setTimeout(r, 400));
+          setStatus(`Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`);
+          await new Promise((r) => setTimeout(r, 350));
         }
 
         if (!cancelled) {

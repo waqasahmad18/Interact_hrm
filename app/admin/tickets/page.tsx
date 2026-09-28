@@ -39,7 +39,10 @@ export default function AdminTicketsPage() {
   const fetchTickets = React.useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     try {
-      const params = new URLSearchParams({ ts: String(Date.now()) });
+      const params = new URLSearchParams({
+        ts: String(Date.now()),
+        limit: "500",
+      });
       if (filter === "pending") params.set("status", "open");
       const res = await fetch(`/api/employee-tickets?${params}`, { cache: "no-store" });
       const data = await res.json();
@@ -51,6 +54,12 @@ export default function AdminTicketsPage() {
 
   React.useEffect(() => {
     void fetchTickets();
+  }, [fetchTickets]);
+
+  // Poll so Guard auto-tickets appear without waiting for WebSocket
+  React.useEffect(() => {
+    const t = window.setInterval(() => void fetchTickets({ silent: true }), 10000);
+    return () => window.clearInterval(t);
   }, [fetchTickets]);
 
   React.useEffect(() => {
@@ -334,6 +343,10 @@ export default function AdminTicketsPage() {
             </div>
           ) : (
             <div className={adminStyles.requestList}>
+              <p className={adminStyles.muted} style={{ marginBottom: 10, fontSize: 13 }}>
+                Showing {tickets.length} {filter === "pending" ? "open " : ""}ticket
+                {tickets.length === 1 ? "" : "s"} (newest first).
+              </p>
               {tickets.map((t) => (
                 <div
                   key={t.id}
