@@ -347,6 +347,8 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       setDeletingId(null);
     }
   }
+
+  async function editAssignment(machineId: string) {
     setSavingId(machineId);
     try {
       const res = await fetch("/api/admin/presence-agents", {
