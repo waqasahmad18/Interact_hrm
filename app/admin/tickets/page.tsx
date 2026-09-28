@@ -9,6 +9,7 @@ import { formatTicketStatusLabel, isTicketClosed } from "../../../lib/ticket-sta
 import { previewTicketToastOnPage } from "../../../lib/ticket-toast-demo";
 import type { TicketThreadMessage } from "../../../lib/ticket-thread";
 import { toastError, toastInfo } from "@/lib/app-toast";
+import { formatDateTimeInServerTz } from "@/lib/timezone";
 
 type Ticket = {
   id: number;
@@ -375,7 +376,7 @@ export default function AdminTicketsPage() {
                       className={adminStyles.muted}
                       style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}
                     >
-                      {new Date(t.requested_at).toLocaleString()}
+                      {formatDateTimeInServerTz(t.requested_at)}
                     </div>
                   </div>
                   <div className={adminStyles.actions}>
