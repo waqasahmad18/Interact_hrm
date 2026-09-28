@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
 
-    sql += " ORDER BY requested_at DESC LIMIT ?";
-    params.push(limit);
+    // Literal LIMIT — Mongo SQL adapter does not bind LIMIT ?
+    sql += ` ORDER BY requested_at DESC LIMIT ${limit}`;
 
     const [rows]: unknown[] = await query(sql, params);
     const tickets = (Array.isArray(rows) ? rows : []).map((r) =>

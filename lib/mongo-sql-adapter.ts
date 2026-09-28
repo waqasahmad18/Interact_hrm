@@ -549,7 +549,13 @@ function buildFilterFromWhere(
   }
   const ands = splitAnd(whereSql);
   if (ands.length === 1) return parseAtom(ands[0]);
-  return { $and: ands.map(parseAtom) };
+  // Drop empty tautologies ({}) so WHERE 1=1 AND status=… becomes a clean filter
+  const parts = ands
+    .map(parseAtom)
+    .filter((p) => p && Object.keys(p).length > 0 && !(p as any).__unsupported_where);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return parts[0];
+  return { $and: parts };
 }
 
 function parseSelectList(selectSql: string): { star: boolean; cols: { expr: string; as: string }[] } {
