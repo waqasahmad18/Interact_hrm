@@ -73,7 +73,6 @@ export default function InteractGuardAdminPage() {
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
-  const [idleDrafts, setIdleDrafts] = React.useState<Record<string, string>>({});
   const [deletingAll, setDeletingAll] = React.useState(false);
 
   const load = React.useCallback(async (opts?: { silent?: boolean }) => {
@@ -99,14 +98,6 @@ export default function InteractGuardAdminPage() {
             a.machineId in prev ? prev[a.machineId] : (a.assignedEmployeeId ?? "");
         }
         return next;
-      });
-      setIdleDrafts((prev) => {
-        const idle: Record<string, string> = {};
-        for (const a of list) {
-          idle[a.machineId] =
-            a.machineId in prev ? prev[a.machineId] : String(a.idleSeconds || 120);
-        }
-        return idle;
       });
       if (eData.success && Array.isArray(eData.employees)) {
         setEmployees(eData.employees);
@@ -146,7 +137,6 @@ export default function InteractGuardAdminPage() {
       toastSuccess(data.message || "All entries deleted");
       setAgents([]);
       setDrafts({});
-      setIdleDrafts({});
     } catch {
       toastError("Network error");
     } finally {
@@ -192,7 +182,8 @@ export default function InteractGuardAdminPage() {
           <h1 className={adminStyles.title}>Interact Guard</h1>
           <p className={adminStyles.subtitle}>
             Installed PCs show here after Setup.exe. Assign employee, turn ON to start
-            background monitoring. Idle face-check timing is per PC.
+            background monitoring. Idle / recheck timings come from{" "}
+            <strong>Presence / Idle</strong> settings.
           </p>
 
         <div className={styles.statsRow}>
@@ -239,7 +230,6 @@ export default function InteractGuardAdminPage() {
                   <th>Status</th>
                   <th>PC / User</th>
                   <th>Employee (name · pseudo · ID)</th>
-                  <th>Idle (sec)</th>
                   <th>Monitor</th>
                   <th>Last seen</th>
                   <th>Version</th>
@@ -332,34 +322,6 @@ export default function InteractGuardAdminPage() {
                           </button>
                         </>
                       )}
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={30}
-                        max={86400}
-                        value={idleDrafts[a.machineId] ?? "120"}
-                        style={{ width: 80 }}
-                        disabled={busy === a.machineId}
-                        onChange={(e) =>
-                          setIdleDrafts((d) => ({
-                            ...d,
-                            [a.machineId]: e.target.value,
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.smallBtn}
-                        disabled={busy === a.machineId}
-                        onClick={() =>
-                          void patch(a.machineId, {
-                            idle_seconds: Number(idleDrafts[a.machineId]) || 120,
-                          })
-                        }
-                      >
-                        Set
-                      </button>
                     </td>
                     <td>
                       <button

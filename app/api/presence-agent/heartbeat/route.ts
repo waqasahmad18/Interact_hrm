@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
         command: result.command,
         admin_enabled: result.adminEnabled,
         idle_seconds: result.idleSeconds,
+        recheck_while_idle_seconds: result.recheckWhileIdleSeconds,
         exit_password: result.exitPassword,
       },
       {

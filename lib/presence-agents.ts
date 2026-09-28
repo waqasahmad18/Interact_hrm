@@ -292,6 +292,7 @@ export type HeartbeatResult = {
   command: AgentCommand | null;
   adminEnabled: boolean;
   idleSeconds: number;
+  recheckWhileIdleSeconds: number;
   exitPassword: string;
 };
 
@@ -464,9 +465,12 @@ export async function upsertAgentHeartbeat(
     command = "exit";
     adminEnabled = false;
   }
-  if (idleSeconds <= 0 && settings.idleWarningSeconds > 0) {
+  // Presence / Idle page owns global timings for Guard + Presence agents
+  if (settings.idleWarningSeconds > 0) {
     idleSeconds = settings.idleWarningSeconds;
   }
+  const recheckWhileIdleSeconds =
+    settings.recheckWhileIdleSeconds > 0 ? settings.recheckWhileIdleSeconds : 180;
 
   return {
     assignedEmployeeId,
@@ -475,6 +479,7 @@ export async function upsertAgentHeartbeat(
     command,
     adminEnabled,
     idleSeconds,
+    recheckWhileIdleSeconds,
     exitPassword: settings.agentExitPassword || "InteractAdmin",
   };
 }
