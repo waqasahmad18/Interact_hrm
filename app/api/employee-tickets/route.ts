@@ -76,13 +76,27 @@ export async function GET(req: NextRequest) {
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
 
+    // Prefer id DESC — Mongo mixes Date vs string on requested_at and breaks sort.
     // Literal LIMIT — Mongo SQL adapter does not bind LIMIT ?
-    sql += ` ORDER BY requested_at DESC LIMIT ${limit}`;
+    sql += ` ORDER BY id DESC LIMIT ${Math.max(limit * 3, limit)}`;
 
     const [rows]: unknown[] = await query(sql, params);
-    const tickets = (Array.isArray(rows) ? rows : []).map((r) =>
-      rowToTicket(r as Record<string, unknown>)
-    );
+    const tickets = (Array.isArray(rows) ? rows : [])
+      .map((r) => rowToTicket(r as Record<string, unknown>))
+      .sort((a, b) => {
+        const parseTs = (v: unknown) => {
+          if (v instanceof Date) return v.getTime();
+          const s = String(v ?? "").trim();
+          if (!s) return 0;
+          const t = Date.parse(s.includes("T") ? s : s.replace(" ", "T"));
+          return Number.isFinite(t) ? t : 0;
+        };
+        const tb = parseTs(b.requested_at);
+        const ta = parseTs(a.requested_at);
+        if (tb !== ta) return tb - ta;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      })
+      .slice(0, limit);
     return NextResponse.json({ success: true, tickets });
   } catch (error) {
     return NextResponse.json(
