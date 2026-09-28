@@ -30,6 +30,7 @@ import { fetchShellBranding } from "../shell-branding-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
 import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
+import { syncInteractGuardBind } from "./sync-interact-guard";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
 const ClockBreakPrayerWidget = dynamic(
@@ -117,6 +118,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   const router = useRouter();
   const [employeeName, setEmployeeName] = React.useState<string>("");
   const [employeeId, setEmployeeId] = React.useState<string>("");
+  const [employeePseudonym, setEmployeePseudonym] = React.useState<string>("");
   const [heroDateTime, setHeroDateTime] = React.useState(formatHeroDateTime);
   const isDashboardHome = pathname === "/employee-dashboard";
   const [todayStatusRoot, setTodayStatusRoot] = React.useState<HTMLElement | null>(null);
@@ -199,15 +201,23 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
             "Employee",
           );
           const empId = String(data.employee.id || data.employee.employee_id || loginId);
+          const pseudo = String(data.employee.pseudonym || "").trim();
           setEmployeeName(trimmedName);
           setEmployeeId(empId);
+          if (pseudo) setEmployeePseudonym(pseudo);
           markEmployeePortal(empId, trimmedName);
           try {
             localStorage.setItem("employeeName", trimmedName);
             if (/^\d+$/.test(empId)) localStorage.setItem("employeeId", empId);
+            if (pseudo) localStorage.setItem("employeePseudonym", pseudo);
           } catch {
             /* ignore */
           }
+          void syncInteractGuardBind({
+            employeeId: empId,
+            employeeName: trimmedName,
+            pseudonym: pseudo || null,
+          });
         } else {
           setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
         }
@@ -216,6 +226,22 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
       });
   }, []);
+
+  // Keep Interact Guard agent bound to this logged-in employee (auto id/name/pseudo).
+  React.useEffect(() => {
+    if (!employeeId || !/^\d+$/.test(employeeId)) return;
+    const push = () => {
+      void syncInteractGuardBind({
+        employeeId,
+        employeeName: employeeName || localStorage.getItem("employeeName"),
+        pseudonym:
+          employeePseudonym || localStorage.getItem("employeePseudonym") || null,
+      });
+    };
+    push();
+    const id = window.setInterval(push, 60_000);
+    return () => window.clearInterval(id);
+  }, [employeeId, employeeName, employeePseudonym]);
 
   // System Control permissions → extra sidebar links for this employee.
   React.useEffect(() => {

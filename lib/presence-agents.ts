@@ -213,6 +213,17 @@ export async function upsertAgentHeartbeat(
     ],
   );
 
+  // Auto-bind: if PC sent employee id from dashboard and admin hasn't assigned yet
+  if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
+    await pool.execute(
+      `UPDATE ${TABLE}
+       SET assigned_employee_id = ?
+       WHERE machine_id = ?
+         AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = local_employee_id)`,
+      [localEmployeeId, machineId],
+    );
+  }
+
   const [rows] = await pool.execute(
     `SELECT pa.assigned_employee_id,
             pa.pending_command,
