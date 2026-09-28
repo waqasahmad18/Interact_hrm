@@ -22,6 +22,7 @@ type AgentRow = {
   health: AgentHealth;
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
+  assignmentLocked?: boolean;
 };
 
 type AgentSummary = {
@@ -237,12 +238,16 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     setSavingId(machineId);
     try {
       const draft = drafts[machineId] ?? "";
+      if (!draft.trim()) {
+        toastError("Select an employee before Save — Save locks the profile.");
+        return;
+      }
       const res = await fetch("/api/admin/presence-agents", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           machine_id: machineId,
-          assigned_employee_id: draft.trim() || null,
+          assigned_employee_id: draft.trim(),
         }),
       });
       const data = await res.json();
@@ -250,10 +255,39 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         toastError(data.error || "Save failed");
         return;
       }
-      toastSuccess("Employee ID assigned — agent picks it up within ~5s.");
+      toastSuccess("Saved & locked — employee ID, name and IP are fixed.");
       await load();
     } catch {
       toastError("Network error saving assignment");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function unlockAssignment(machineId: string) {
+    if (
+      !window.confirm(
+        "Unlock this profile?\n\nYou will be able to change the assigned employee again."
+      )
+    ) {
+      return;
+    }
+    setSavingId(machineId);
+    try {
+      const res = await fetch("/api/admin/presence-agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machine_id: machineId, unlock: true }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Unlock failed");
+        return;
+      }
+      toastSuccess("Unlocked — you can change employee and Save again.");
+      await load();
+    } catch {
+      toastError("Network error unlocking");
     } finally {
       setSavingId(null);
     }
@@ -265,9 +299,8 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         <div>
           <h2 className={styles.agentsTitle}>Installed agents</h2>
           <p className={styles.tip} style={{ marginTop: 4 }}>
-            Remote control for all employee PCs (v0.5.0+). <strong>Start all</strong> re-enables
-            agents; <strong>Stop all</strong> closes the app (auto-start stays);{" "}
-            <strong>Permanent shutdown</strong> removes auto-start. Assign Employee ID here.
+            Remote control for all employee PCs (v0.5.0+). <strong>Save</strong> locks
+            employee ID, name and IP for that PC. Start/Stop still work after lock.
           </p>
         </div>
         <div className={styles.agentsHeaderActions}>
@@ -364,14 +397,24 @@ export default function PresenceAgentsPanel({ employees }: Props) {
               </tr>
             </thead>
             <tbody>
-              {agents.map((a) => (
-                <tr key={a.machineId}>
+              {agents.map((a) => {
+                const locked = !!a.assignmentLocked;
+                const lockedEmp =
+                  a.assignedEmployeeName ||
+                  (a.assignedEmployeeId ? `Employee ${a.assignedEmployeeId}` : null);
+                return (
+                <tr key={a.machineId} className={locked ? styles.rowLocked : undefined}>
                   <td>
                     <span
                       className={`${styles.healthBadge} ${styles[`health_${a.health}`]}`}
                     >
                       {healthLabel(a.health)}
                     </span>
+                    {locked ? (
+                      <span className={styles.lockedBadge} title="Saved profile is locked">
+                        Locked
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     <div className={styles.pcCell}>
@@ -384,37 +427,59 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                   </td>
                   <td>{a.localEmployeeId || "—"}</td>
                   <td>
-                    <select
-                      className={styles.select}
-                      value={drafts[a.machineId] ?? ""}
-                      onChange={(e) =>
-                        setDrafts((d) => ({ ...d, [a.machineId]: e.target.value }))
-                      }
-                    >
-                      <option value="">— Not assigned —</option>
-                      {employees.map((e) => (
-                        <option key={e.id} value={String(e.id)}>
-                          {empLabel(e)}
-                        </option>
-                      ))}
-                    </select>
-                    {a.assignedEmployeeName ? (
-                      <span className={styles.empMeta}>Current: {a.assignedEmployeeName}</span>
-                    ) : null}
+                    {locked ? (
+                      <div className={styles.lockedEmp}>
+                        <strong>{lockedEmp || "—"}</strong>
+                        {a.assignedEmployeeId ? (
+                          <span className={styles.empMeta}>ID {a.assignedEmployeeId}</span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          className={styles.select}
+                          value={drafts[a.machineId] ?? ""}
+                          onChange={(e) =>
+                            setDrafts((d) => ({ ...d, [a.machineId]: e.target.value }))
+                          }
+                        >
+                          <option value="">— Not assigned —</option>
+                          {employees.map((e) => (
+                            <option key={e.id} value={String(e.id)}>
+                              {empLabel(e)}
+                            </option>
+                          ))}
+                        </select>
+                        {a.assignedEmployeeName ? (
+                          <span className={styles.empMeta}>Current: {a.assignedEmployeeName}</span>
+                        ) : null}
+                      </>
+                    )}
                   </td>
                   <td>{a.agentVersion || "—"}</td>
                   <td>{formatWhen(a.lastSeenAt)}</td>
                   <td>{a.lastIp || "—"}</td>
                   <td>
                     <div className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={styles.chip}
-                        disabled={savingId === a.machineId}
-                        onClick={() => void saveAssignment(a.machineId)}
-                      >
-                        {savingId === a.machineId ? "Saving…" : "Save"}
-                      </button>
+                      {locked ? (
+                        <button
+                          type="button"
+                          className={styles.chip}
+                          disabled={savingId === a.machineId}
+                          onClick={() => void unlockAssignment(a.machineId)}
+                        >
+                          {savingId === a.machineId ? "…" : "Unlock"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.chip}
+                          disabled={savingId === a.machineId}
+                          onClick={() => void saveAssignment(a.machineId)}
+                        >
+                          {savingId === a.machineId ? "Saving…" : "Save"}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={`${styles.chip} ${styles.chipSuccess}`}
@@ -439,7 +504,8 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -19,6 +19,7 @@ type AgentRow = {
   agentProduct: string | null;
   adminEnabled: boolean;
   idleSeconds: number;
+  assignmentLocked?: boolean;
   lastIp: string | null;
   lastSeenAt: string | null;
   health: AgentHealth;
@@ -166,7 +167,13 @@ export default function InteractGuardAdminPage() {
         toastError(data.error || "Update failed");
         return;
       }
-      toastSuccess("Saved");
+      toastSuccess(
+        body.unlock
+          ? "Unlocked"
+          : body.assigned_employee_id
+            ? "Saved & locked"
+            : "Saved",
+      );
       await load();
     } catch {
       toastError("Network error");
@@ -266,40 +273,65 @@ export default function InteractGuardAdminPage() {
                       </div>
                     </td>
                     <td>
-                      <select
-                        value={drafts[a.machineId] ?? ""}
-                        disabled={busy === a.machineId}
-                        onChange={(e) =>
-                          setDrafts((d) => ({ ...d, [a.machineId]: e.target.value }))
-                        }
-                        style={{ maxWidth: 260 }}
-                      >
-                        <option value="">— Unassigned —</option>
-                        {employees.map((e) => (
-                          <option key={e.id} value={String(e.id)}>
-                            {empLabel(e)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={styles.smallBtn}
-                        disabled={busy === a.machineId}
-                        onClick={() =>
-                          void patch(a.machineId, {
-                            assigned_employee_id: drafts[a.machineId] || null,
-                          })
-                        }
-                      >
-                        Save
-                      </button>
-                      {a.assignedEmployeeName ? (
-                        <div className={styles.muted} style={{ marginTop: 4 }}>
-                          {a.assignedEmployeeName}
-                          {a.assignedPseudonym ? ` · ${a.assignedPseudonym}` : ""}
-                          {a.assignedEmployeeId ? ` · ID ${a.assignedEmployeeId}` : ""}
+                      {a.assignmentLocked ? (
+                        <div>
+                          <div>
+                            <strong>
+                              {a.assignedEmployeeName ||
+                                (a.assignedEmployeeId
+                                  ? `Employee ${a.assignedEmployeeId}`
+                                  : "—")}
+                            </strong>
+                            {a.assignedPseudonym ? ` · ${a.assignedPseudonym}` : ""}
+                            {a.assignedEmployeeId ? ` · ID ${a.assignedEmployeeId}` : ""}
+                          </div>
+                          <span className={styles.lockedBadge}>Locked</span>
+                          <button
+                            type="button"
+                            className={styles.smallBtn}
+                            disabled={busy === a.machineId}
+                            onClick={() =>
+                              void patch(a.machineId, { unlock: true })
+                            }
+                            style={{ marginLeft: 8 }}
+                          >
+                            Unlock
+                          </button>
                         </div>
-                      ) : null}
+                      ) : (
+                        <>
+                          <select
+                            value={drafts[a.machineId] ?? ""}
+                            disabled={busy === a.machineId}
+                            onChange={(e) =>
+                              setDrafts((d) => ({
+                                ...d,
+                                [a.machineId]: e.target.value,
+                              }))
+                            }
+                            style={{ maxWidth: 260 }}
+                          >
+                            <option value="">— Unassigned —</option>
+                            {employees.map((e) => (
+                              <option key={e.id} value={String(e.id)}>
+                                {empLabel(e)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className={styles.smallBtn}
+                            disabled={busy === a.machineId || !(drafts[a.machineId] || "").trim()}
+                            onClick={() =>
+                              void patch(a.machineId, {
+                                assigned_employee_id: drafts[a.machineId] || null,
+                              })
+                            }
+                          >
+                            Save
+                          </button>
+                        </>
+                      )}
                     </td>
                     <td>
                       <input

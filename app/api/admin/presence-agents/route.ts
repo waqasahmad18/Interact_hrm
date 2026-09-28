@@ -7,6 +7,7 @@ import {
   setAgentAdminEnabled,
   setAgentAssignedEmployee,
   setAgentIdleSeconds,
+  unlockAgentAssignment,
   type AgentCommand,
 } from "@/lib/presence-agents";
 
@@ -47,6 +48,7 @@ export async function PATCH(req: NextRequest) {
       assigned_employee_id?: string | null;
       admin_enabled?: boolean;
       idle_seconds?: number;
+      unlock?: boolean;
     };
     const machineId = String(body.machine_id ?? "").trim();
     if (!machineId) {
@@ -57,6 +59,10 @@ export async function PATCH(req: NextRequest) {
     }
 
     let agent = null;
+
+    if (body.unlock === true) {
+      agent = await unlockAgentAssignment(machineId);
+    }
 
     if (body.assigned_employee_id !== undefined) {
       const assignedRaw = body.assigned_employee_id;

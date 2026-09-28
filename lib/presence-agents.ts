@@ -21,6 +21,7 @@ export type PresenceAgentRow = {
   agentProduct: string | null;
   adminEnabled: boolean;
   idleSeconds: number;
+  assignmentLocked: boolean;
   lastIp: string | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
@@ -42,6 +43,7 @@ type DbRow = {
   agent_product?: string | null;
   admin_enabled?: number | boolean | null;
   idle_seconds?: number | null;
+  assignment_locked?: number | boolean | null;
   last_ip: string | null;
   first_seen_at: Date | string | null;
   last_seen_at: Date | string | null;
@@ -104,6 +106,9 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
   );
   await addColumn(
     `ALTER TABLE ${TABLE} ADD COLUMN pc_key varchar(64) DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN assignment_locked tinyint(1) NOT NULL DEFAULT 0`,
   );
 
   if (!pcKeyReady) {
@@ -256,6 +261,7 @@ function mapRow(r: DbRow): PresenceAgentRow {
     agentProduct: r.agent_product ?? null,
     adminEnabled: asBool(r.admin_enabled),
     idleSeconds: Number(r.idle_seconds) > 0 ? Number(r.idle_seconds) : 120,
+    assignmentLocked: asBool(r.assignment_locked),
     lastIp: r.last_ip,
     firstSeenAt: toIso(r.first_seen_at),
     lastSeenAt: toIso(r.last_seen_at),
@@ -333,47 +339,68 @@ export async function upsertAgentHeartbeat(
     }
   }
 
-  await pool.execute(
-    `INSERT INTO ${TABLE}
-      (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       hostname = VALUES(hostname),
-       windows_user = VALUES(windows_user),
-       hrm_base_url = VALUES(hrm_base_url),
-       local_employee_id = VALUES(local_employee_id),
-       agent_version = VALUES(agent_version),
-       agent_product = COALESCE(VALUES(agent_product), agent_product),
-       last_ip = VALUES(last_ip),
-       last_seen_at = VALUES(last_seen_at),
-       pc_key = VALUES(pc_key)`,
-    [
-      machineId,
-      hostname,
-      windowsUser,
-      hrmBaseUrl,
-      localEmployeeId,
-      agentVersion,
-      agentProduct,
-      lastIp,
-      now,
-      now,
-      pcKey,
-    ],
+  // If admin locked this profile, only refresh last_seen / version — never overwrite ID/name/IP
+  const [lockRows] = await pool.execute(
+    `SELECT assignment_locked FROM ${TABLE} WHERE machine_id = ? LIMIT 1`,
+    [machineId],
+  );
+  const isLocked = asBool(
+    (lockRows as { assignment_locked?: number | boolean | null }[])[0]
+      ?.assignment_locked,
   );
 
-  // Safety net for any race that slipped past pc_key
-  await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
-
-  // Auto-bind: if PC sent employee id from dashboard and admin hasn't assigned yet
-  if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
+  if (isLocked) {
     await pool.execute(
       `UPDATE ${TABLE}
-       SET assigned_employee_id = ?
-       WHERE machine_id = ?
-         AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = local_employee_id)`,
-      [localEmployeeId, machineId],
+       SET agent_version = COALESCE(?, agent_version),
+           agent_product = COALESCE(?, agent_product),
+           last_seen_at = ?
+       WHERE machine_id = ?`,
+      [agentVersion, agentProduct, now, machineId],
     );
+  } else {
+    await pool.execute(
+      `INSERT INTO ${TABLE}
+        (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         hostname = VALUES(hostname),
+         windows_user = VALUES(windows_user),
+         hrm_base_url = VALUES(hrm_base_url),
+         local_employee_id = VALUES(local_employee_id),
+         agent_version = VALUES(agent_version),
+         agent_product = COALESCE(VALUES(agent_product), agent_product),
+         last_ip = VALUES(last_ip),
+         last_seen_at = VALUES(last_seen_at),
+         pc_key = VALUES(pc_key)`,
+      [
+        machineId,
+        hostname,
+        windowsUser,
+        hrmBaseUrl,
+        localEmployeeId,
+        agentVersion,
+        agentProduct,
+        lastIp,
+        now,
+        now,
+        pcKey,
+      ],
+    );
+
+    // Safety net for any race that slipped past pc_key
+    await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
+
+    // Auto-bind only when unlocked
+    if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
+      await pool.execute(
+        `UPDATE ${TABLE}
+         SET assigned_employee_id = ?
+         WHERE machine_id = ?
+           AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = local_employee_id)`,
+        [localEmployeeId, machineId],
+      );
+    }
   }
 
   const [rows] = await pool.execute(
@@ -497,6 +524,12 @@ export async function setAgentAssignedEmployee(
   const mid = String(machineId ?? "").trim();
   if (!mid) throw new Error("machine_id required");
 
+  const current = await getAgentByMachineId(mid);
+  if (!current) throw new Error("Agent not found");
+  if (current.assignmentLocked) {
+    throw new Error("Profile is locked. Unlock first to change employee.");
+  }
+
   let assigned: string | null = assignedEmployeeId?.trim() || null;
   if (assigned) {
     const [empRows] = await pool.execute(
@@ -507,10 +540,28 @@ export async function setAgentAssignedEmployee(
     if (!emp[0]) throw new Error("Employee not found");
   }
 
-  await pool.execute(`UPDATE ${TABLE} SET assigned_employee_id = ? WHERE machine_id = ?`, [
-    assigned,
-    mid,
-  ]);
+  // Save with an employee → lock name / ID / IP / PC fields against further edits
+  await pool.execute(
+    `UPDATE ${TABLE}
+     SET assigned_employee_id = ?,
+         assignment_locked = ?
+     WHERE machine_id = ?`,
+    [assigned, assigned ? 1 : 0, mid],
+  );
+  return getAgentByMachineId(mid);
+}
+
+/** Unlock a saved profile so admin can re-assign employee. */
+export async function unlockAgentAssignment(
+  machineId: string,
+): Promise<PresenceAgentRow | null> {
+  await ensurePresenceAgentsTable();
+  const mid = String(machineId ?? "").trim();
+  if (!mid) throw new Error("machine_id required");
+  await pool.execute(
+    `UPDATE ${TABLE} SET assignment_locked = 0 WHERE machine_id = ?`,
+    [mid],
+  );
   return getAgentByMachineId(mid);
 }
 
