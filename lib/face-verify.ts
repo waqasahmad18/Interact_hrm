@@ -109,11 +109,8 @@ export async function verifyDescriptorForEmployee(
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
 
   const presenceStrict = Boolean(opts?.presenceStrict);
-  // Same Face Enrollment descriptors as break; presence slightly tighter + rival gate
-  const maxDistance = presenceStrict
-    ? getPresenceMaxMatchDistance()
-    : getMaxMatchDistance();
-  // Same photo corroboration as break (2) — forcing 3 was rejecting the real employee
+  // Keep the same match distance as break/clock — do not tighten threshold for presence
+  const maxDistance = getMaxMatchDistance();
   const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
@@ -138,6 +135,7 @@ export async function verifyDescriptorForEmployee(
 
   const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
   const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance, {
+    // Presence: stronger rival gate only (same distance threshold as break)
     presenceStrict,
   });
   if (rival) {

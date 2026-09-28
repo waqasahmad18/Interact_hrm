@@ -384,6 +384,32 @@ function buildFilterFromWhere(
       }
     }
 
+    // NOT IN (?, ?) — must be before IN (otherwise "NOT IN" never matches)
+    m = s.match(/^([\w.`]+)\s+NOT\s+IN\s*\(([^)]*)\)\s*$/i);
+    if (m) {
+      const ref = fieldRef(m[1]);
+      const qCount = (m[2].match(/\?/g) || []).length;
+      const vals: any[] = [];
+      if (qCount) {
+        for (let i = 0; i < qCount; i++) {
+          const v = take();
+          vals.push(v);
+          if (typeof v === "string" && /^\d+$/.test(v)) vals.push(Number(v));
+          else if (typeof v === "number") vals.push(String(v));
+        }
+      } else {
+        for (const part of m[2].split(",")) {
+          const p = part.trim();
+          if (!p) continue;
+          const lit = /^\d+$/.test(p) ? Number(p) : p.replace(/^'|'$/g, "");
+          vals.push(lit);
+          if (typeof lit === "number") vals.push(String(lit));
+          else if (typeof lit === "string" && /^\d+$/.test(lit)) vals.push(Number(lit));
+        }
+      }
+      return { [ref.field]: { $nin: vals } };
+    }
+
     // IN (?, ?)
     m = s.match(/^([\w.`]+)\s+IN\s*\(([^)]*)\)\s*$/i);
     if (m) {
@@ -391,12 +417,21 @@ function buildFilterFromWhere(
       const qCount = (m[2].match(/\?/g) || []).length;
       const vals: any[] = [];
       if (qCount) {
-        for (let i = 0; i < qCount; i++) vals.push(take());
+        for (let i = 0; i < qCount; i++) {
+          const v = take();
+          vals.push(v);
+          // Flex id: "97" and 97 both match (same as `=` handler)
+          if (typeof v === "string" && /^\d+$/.test(v)) vals.push(Number(v));
+          else if (typeof v === "number") vals.push(String(v));
+        }
       } else {
         for (const part of m[2].split(",")) {
           const p = part.trim();
           if (!p) continue;
-          vals.push(/^\d+$/.test(p) ? Number(p) : p.replace(/^'|'$/g, ""));
+          const lit = /^\d+$/.test(p) ? Number(p) : p.replace(/^'|'$/g, "");
+          vals.push(lit);
+          if (typeof lit === "number") vals.push(String(lit));
+          else if (typeof lit === "string" && /^\d+$/.test(lit)) vals.push(Number(lit));
         }
       }
       return { [ref.field]: { $in: vals } };

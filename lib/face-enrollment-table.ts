@@ -68,29 +68,42 @@ export async function ensureFaceEnrollmentTable() {
 export async function getEnrollmentRowsForEmployee(
   employeeId: string
 ): Promise<FaceEnrollmentRow[]> {
-  return getEnrollmentRowsForEmployees([employeeId]);
-}
-
-export async function getEnrollmentRowsForEmployees(
-  employeeIds: string[]
-): Promise<FaceEnrollmentRow[]> {
   await ensureFaceEnrollmentTable();
-  const ids = Array.from(
-    new Set(employeeIds.map((id) => String(id || "").trim()).filter(Boolean))
-  );
-  if (!ids.length) return [];
-
-  const placeholders = ids.map(() => "?").join(", ");
+  const id = String(employeeId || "").trim();
+  if (!id) return [];
+  // Use `=` (not IN) so Mongo adapter flex-matches string/number employee_id
   const [rows] = await pool.execute(
     `SELECT id, employee_id, compreface_subject, compreface_image_id, local_path,
             face_descriptor, source, enrolled_by,
             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
      FROM ${FACE_ENROLLMENT_TABLE}
-     WHERE employee_id IN (${placeholders})
+     WHERE employee_id = ?
      ORDER BY created_at DESC`,
-    ids
+    [id]
   );
   return rows as FaceEnrollmentRow[];
+}
+
+export async function getEnrollmentRowsForEmployees(
+  employeeIds: string[]
+): Promise<FaceEnrollmentRow[]> {
+  const ids = Array.from(
+    new Set(employeeIds.map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!ids.length) return [];
+  // Query each id with `=` — Mongo IN does not expand "97"/97 the way `=` does
+  const merged: FaceEnrollmentRow[] = [];
+  const seen = new Set<number>();
+  for (const id of ids) {
+    const rows = await getEnrollmentRowsForEmployee(id);
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      merged.push(row);
+    }
+  }
+  merged.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return merged;
 }
 
 export async function countEnrollmentForEmployee(employeeId: string): Promise<number> {
@@ -171,23 +184,31 @@ export async function getOtherEmployeesDescriptorSamples(
   );
   if (!excludeIds.length) return [];
 
-  const placeholders = excludeIds.map(() => "?").join(", ");
+  // Mongo adapter does NOT support NOT IN — use != on primary id, then filter aliases in JS.
+  const primary = excludeIds[0];
   const [rows] = await pool.execute(
     `SELECT employee_id, face_descriptor
      FROM ${FACE_ENROLLMENT_TABLE}
-     WHERE employee_id NOT IN (${placeholders}) AND face_descriptor IS NOT NULL
+     WHERE employee_id != ? AND face_descriptor IS NOT NULL
      ORDER BY employee_id, id DESC`,
-    excludeIds
+    [primary]
   );
+
+  const excludeSet = new Set<string>();
+  for (const id of excludeIds) {
+    excludeSet.add(id);
+    excludeSet.add(String(Number(id)));
+    if (/^\d+$/.test(id)) excludeSet.add(String(Number(id)));
+  }
 
   const byEmployee = new Map<string, number[][]>();
   for (const row of rows as Array<Record<string, unknown>>) {
     const empId = String(row.employee_id);
+    if (excludeSet.has(empId) || excludeSet.has(String(Number(empId)))) continue;
     const desc = parseDescriptorJson(row.face_descriptor);
     if (!desc) continue;
     if (!byEmployee.has(empId)) byEmployee.set(empId, []);
     const list = byEmployee.get(empId)!;
-    // More samples → better wrong-person detection
     if (list.length < 8) list.push(desc);
   }
 
