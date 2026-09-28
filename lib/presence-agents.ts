@@ -294,6 +294,8 @@ export type HeartbeatResult = {
   idleSeconds: number;
   recheckWhileIdleSeconds: number;
   exitPassword: string;
+  presenceEnabled: boolean;
+  cameraVerificationEnabled: boolean;
 };
 
 export async function upsertAgentHeartbeat(
@@ -481,6 +483,8 @@ export async function upsertAgentHeartbeat(
     idleSeconds,
     recheckWhileIdleSeconds,
     exitPassword: settings.agentExitPassword || "InteractAdmin",
+    presenceEnabled: settings.presenceEnabled && !settings.agentsRetired,
+    cameraVerificationEnabled: settings.cameraVerificationEnabled,
   };
 }
 
@@ -789,7 +793,24 @@ export async function queueAgentCommand(input: {
     throw new Error("invalid command");
   }
   const now = new Date();
+  // Start/Stop for Guard = admin_enabled flip (do not rely on process exit — watchdog restarts)
+  const adminFlip =
+    cmd === "start" || cmd === "resume" || cmd === "on"
+      ? 1
+      : cmd === "pause"
+        ? 0
+        : null;
+  const effectiveCmd = cmd === "start" ? "on" : cmd;
+
   if (input.all) {
+    if (adminFlip !== null) {
+      const [res] = await pool.execute(
+        `UPDATE ${TABLE}
+         SET pending_command = ?, command_issued_at = ?, admin_enabled = ?`,
+        [effectiveCmd, now, adminFlip],
+      );
+      return (res as { affectedRows?: number }).affectedRows ?? 0;
+    }
     const [res] = await pool.execute(
       `UPDATE ${TABLE} SET pending_command = ?, command_issued_at = ?`,
       [cmd, now],
@@ -798,6 +819,17 @@ export async function queueAgentCommand(input: {
   }
   const mid = String(input.machineId ?? "").trim();
   if (!mid) throw new Error("machine_id required unless all=true");
+  if (adminFlip !== null) {
+    const [res] = await pool.execute(
+      `UPDATE ${TABLE}
+       SET pending_command = ?, command_issued_at = ?, admin_enabled = ?
+       WHERE machine_id = ?`,
+      [effectiveCmd, now, adminFlip, mid],
+    );
+    const n = (res as { affectedRows?: number }).affectedRows ?? 0;
+    if (n === 0) throw new Error("Agent not found");
+    return n;
+  }
   const [res] = await pool.execute(
     `UPDATE ${TABLE} SET pending_command = ?, command_issued_at = ? WHERE machine_id = ?`,
     [cmd, now, mid],

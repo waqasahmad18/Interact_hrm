@@ -23,6 +23,7 @@ type AgentRow = {
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
   assignmentLocked?: boolean;
+  adminEnabled?: boolean;
 };
 
 type AgentSummary = {
@@ -203,7 +204,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
   }
 
   async function queueCommand(
-    command: "restart" | "exit" | "start",
+    command: "restart" | "exit" | "start" | "pause",
     opts?: { machineId?: string; all?: boolean }
   ) {
     try {
@@ -223,21 +224,59 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       }
       toastSuccess(
         command === "start"
-          ? "Start queued — button becomes Stop when agent is Active (~20s)."
-          : data.message || "Command queued",
+          ? "Started — monitoring armed."
+          : command === "pause"
+            ? "Stopped — face checks paused."
+            : data.message || "Command queued",
       );
-      await load();
-      // After Start, refresh a few times so Start flips to Stop when heartbeat is healthy
-      if (command === "start" && opts?.machineId) {
-        for (const ms of [8000, 16000, 24000]) {
+      if (opts?.machineId && (command === "start" || command === "pause")) {
+        const on = command === "start";
+        setAgents((prev) =>
+          prev.map((a) =>
+            a.machineId === opts.machineId ? { ...a, adminEnabled: on } : a,
+          ),
+        );
+      }
+      await load({ silent: true });
+      if (command === "start" || command === "pause") {
+        for (const ms of [5000, 12000, 20000]) {
           window.setTimeout(() => void load({ silent: true }), ms);
         }
       }
-      if (command === "exit") {
-        window.setTimeout(() => void load({ silent: true }), 5000);
-      }
     } catch {
       toastError("Network error sending command");
+    }
+  }
+
+  async function setMonitoring(machineId: string, enabled: boolean) {
+    setAgents((prev) =>
+      prev.map((a) =>
+        a.machineId === machineId ? { ...a, adminEnabled: enabled } : a,
+      ),
+    );
+    try {
+      const res = await fetch("/api/admin/presence-agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          machine_id: machineId,
+          admin_enabled: enabled,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Could not update Start/Stop");
+        await load({ silent: true });
+        return;
+      }
+      toastSuccess(
+        enabled
+          ? "Started — idle face checks armed"
+          : "Stopped — idle face checks paused",
+      );
+    } catch {
+      toastError("Network error updating Start/Stop");
+      await load({ silent: true });
     }
   }
 
@@ -397,7 +436,10 @@ export default function PresenceAgentsPanel({ employees }: Props) {
             type="button"
             className={`${styles.chip} ${styles.chipDanger}`}
             disabled={!summary?.total}
-            onClick={() => void queueCommand("exit", { all: true })}
+            onClick={() => {
+              setAgents((prev) => prev.map((a) => ({ ...a, adminEnabled: false })));
+              void queueCommand("pause", { all: true });
+            }}
           >
             Stop all
           </button>
@@ -587,13 +629,11 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                             {savingId === a.machineId ? "Saving…" : "Save"}
                           </button>
                         )}
-                        {a.health === "healthy" ? (
+                        {a.adminEnabled ? (
                           <button
                             type="button"
                             className={`${styles.chip} ${styles.chipDanger}`}
-                            onClick={() =>
-                              void queueCommand("exit", { machineId: a.machineId })
-                            }
+                            onClick={() => void setMonitoring(a.machineId, false)}
                           >
                             Stop
                           </button>
@@ -601,9 +641,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                           <button
                             type="button"
                             className={`${styles.chip} ${styles.chipSuccess}`}
-                            onClick={() =>
-                              void queueCommand("start", { machineId: a.machineId })
-                            }
+                            onClick={() => void setMonitoring(a.machineId, true)}
                           >
                             Start
                           </button>
