@@ -41,6 +41,23 @@ type EmpRow = {
   employee_code?: string | null;
 };
 
+/** Preset HRM targets admin can lock onto a PC. */
+const HRM_URL_PRESETS = [
+  { value: "https://hrm.ig.com", label: "Main HRM — https://hrm.ig.com" },
+  {
+    value: "https://hrm.ig.com/auth",
+    label: "Main HRM auth — https://hrm.ig.com/auth",
+  },
+  {
+    value: "https://192.168.10.6:8443",
+    label: "Staging — https://192.168.10.6:8443",
+  },
+  {
+    value: "https://192.168.10.98:8443",
+    label: "Production LAN — https://192.168.10.98:8443",
+  },
+] as const;
+
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
   try {
@@ -70,6 +87,10 @@ function empLabel(e: EmpRow) {
   return `${name} (ID ${e.id})${code}`;
 }
 
+function normalizeUrlDraft(url: string | null | undefined) {
+  return String(url ?? "").trim().replace(/\/+$/, "");
+}
+
 type Props = {
   employees: EmpRow[];
 };
@@ -80,6 +101,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [urlDrafts, setUrlDrafts] = React.useState<Record<string, string>>({});
   const [retiring, setRetiring] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
   const [deletingAll, setDeletingAll] = React.useState(false);
@@ -97,12 +119,22 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       const list = (Array.isArray(data.agents) ? data.agents : []) as AgentRow[];
       setAgents(list);
       setSummary(data.summary ?? null);
-      // Only seed drafts for new rows — avoid resetting open dropdowns every poll
       setDrafts((prev) => {
         const next: Record<string, string> = {};
         for (const a of list) {
           next[a.machineId] =
             a.machineId in prev ? prev[a.machineId] : (a.assignedEmployeeId ?? "");
+        }
+        return next;
+      });
+      setUrlDrafts((prev) => {
+        const next: Record<string, string> = {};
+        for (const a of list) {
+          const current = normalizeUrlDraft(a.hrmBaseUrl);
+          next[a.machineId] =
+            a.machineId in prev
+              ? prev[a.machineId]
+              : current || "https://hrm.ig.com/auth";
         }
         return next;
       });
@@ -115,7 +147,6 @@ export default function PresenceAgentsPanel({ employees }: Props) {
 
   React.useEffect(() => {
     void load();
-    // Quiet poll — never toggle loading (that was the UI jerk)
     const t = setInterval(() => void load({ silent: true }), 30000);
     return () => clearInterval(t);
   }, [load]);
@@ -123,7 +154,9 @@ export default function PresenceAgentsPanel({ employees }: Props) {
   async function startAllAgents() {
     setStarting(true);
     try {
-      const res = await fetch("/api/admin/presence-agents/start-all", { method: "POST" });
+      const res = await fetch("/api/admin/presence-agents/start-all", {
+        method: "POST",
+      });
       const data = await res.json();
       if (!data.success) {
         toastError(data.error || "Start all failed");
@@ -227,6 +260,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         withLocalId: 0,
       });
       setDrafts({});
+      setUrlDrafts({});
     } catch {
       toastError("Network error deleting agents");
     } finally {
@@ -238,8 +272,13 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     setSavingId(machineId);
     try {
       const draft = drafts[machineId] ?? "";
+      const url = normalizeUrlDraft(urlDrafts[machineId]);
       if (!draft.trim()) {
         toastError("Select an employee before Save — Save locks the profile.");
+        return;
+      }
+      if (!url) {
+        toastError("Select an HRM URL before Save.");
         return;
       }
       const res = await fetch("/api/admin/presence-agents", {
@@ -248,6 +287,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         body: JSON.stringify({
           machine_id: machineId,
           assigned_employee_id: draft.trim(),
+          hrm_base_url: url,
         }),
       });
       const data = await res.json();
@@ -255,7 +295,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         toastError(data.error || "Save failed");
         return;
       }
-      toastSuccess("Saved & locked — employee ID, name and IP are fixed.");
+      toastSuccess("Saved & locked — employee, name, IP and HRM URL are fixed.");
       await load();
     } catch {
       toastError("Network error saving assignment");
@@ -264,14 +304,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
     }
   }
 
-  async function unlockAssignment(machineId: string) {
-    if (
-      !window.confirm(
-        "Unlock this profile?\n\nYou will be able to change the assigned employee again."
-      )
-    ) {
-      return;
-    }
+  async function editAssignment(machineId: string) {
     setSavingId(machineId);
     try {
       const res = await fetch("/api/admin/presence-agents", {
@@ -281,13 +314,13 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       });
       const data = await res.json();
       if (!data.success) {
-        toastError(data.error || "Unlock failed");
+        toastError(data.error || "Could not open for edit");
         return;
       }
-      toastSuccess("Unlocked — you can change employee and Save again.");
+      toastSuccess("Edit mode — change employee / HRM URL, then Save to lock again.");
       await load();
     } catch {
-      toastError("Network error unlocking");
+      toastError("Network error opening edit");
     } finally {
       setSavingId(null);
     }
@@ -299,8 +332,9 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         <div>
           <h2 className={styles.agentsTitle}>Installed agents</h2>
           <p className={styles.tip} style={{ marginTop: 4 }}>
-            Remote control for all employee PCs (v0.5.0+). <strong>Save</strong> locks
-            employee ID, name and IP for that PC. Start/Stop still work after lock.
+            Pick employee + HRM URL (e.g. <strong>https://hrm.ig.com/auth</strong>), then{" "}
+            <strong>Save</strong> to lock all details. Use <strong>Edit</strong> only if you
+            need changes. Interact Guard page is unchanged.
           </p>
         </div>
         <div className={styles.agentsHeaderActions}>
@@ -377,8 +411,8 @@ export default function PresenceAgentsPanel({ employees }: Props) {
         <p className={styles.loading}>Loading agents…</p>
       ) : agents.length === 0 ? (
         <p className={styles.tip}>
-          No agents registered yet. Publish agent <strong>0.5.0</strong> below — existing installs
-          auto-update within ~30 seconds, then appear here.
+          No agents registered yet. Publish agent <strong>0.5.0</strong> below — existing
+          installs auto-update within ~30 seconds, then appear here.
         </p>
       ) : (
         <div className={styles.agentsTableWrap}>
@@ -402,45 +436,78 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                 const lockedEmp =
                   a.assignedEmployeeName ||
                   (a.assignedEmployeeId ? `Employee ${a.assignedEmployeeId}` : null);
+                const urlValue = urlDrafts[a.machineId] ?? "";
+                const urlInPresets = HRM_URL_PRESETS.some((p) => p.value === urlValue);
                 return (
-                <tr key={a.machineId} className={locked ? styles.rowLocked : undefined}>
-                  <td>
-                    <span
-                      className={`${styles.healthBadge} ${styles[`health_${a.health}`]}`}
-                    >
-                      {healthLabel(a.health)}
-                    </span>
-                    {locked ? (
-                      <span className={styles.lockedBadge} title="Saved profile is locked">
-                        Locked
+                  <tr
+                    key={a.machineId}
+                    className={locked ? styles.rowLocked : undefined}
+                  >
+                    <td>
+                      <span
+                        className={`${styles.healthBadge} ${styles[`health_${a.health}`]}`}
+                      >
+                        {healthLabel(a.health)}
                       </span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <div className={styles.pcCell}>
-                      <strong>{a.hostname || "Unknown PC"}</strong>
-                      <span className={styles.empMeta}>{a.windowsUser || "—"}</span>
-                    </div>
-                  </td>
-                  <td className={styles.urlCell} title={a.hrmBaseUrl || ""}>
-                    {a.hrmBaseUrl || "—"}
-                  </td>
-                  <td>{a.localEmployeeId || "—"}</td>
-                  <td>
-                    {locked ? (
-                      <div className={styles.lockedEmp}>
-                        <strong>{lockedEmp || "—"}</strong>
-                        {a.assignedEmployeeId ? (
-                          <span className={styles.empMeta}>ID {a.assignedEmployeeId}</span>
-                        ) : null}
+                      {locked ? (
+                        <span
+                          className={styles.lockedBadge}
+                          title="Saved profile is locked"
+                        >
+                          Locked
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div className={styles.pcCell}>
+                        <strong>{a.hostname || "Unknown PC"}</strong>
+                        <span className={styles.empMeta}>{a.windowsUser || "—"}</span>
                       </div>
-                    ) : (
-                      <>
+                    </td>
+                    <td className={styles.urlCell}>
+                      {locked ? (
+                        <span title={a.hrmBaseUrl || ""}>{a.hrmBaseUrl || "—"}</span>
+                      ) : (
+                        <select
+                          className={styles.select}
+                          value={urlInPresets ? urlValue : "__custom__"}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "__custom__") return;
+                            setUrlDrafts((d) => ({ ...d, [a.machineId]: v }));
+                          }}
+                        >
+                          {!urlInPresets && urlValue ? (
+                            <option value="__custom__">{urlValue}</option>
+                          ) : null}
+                          {HRM_URL_PRESETS.map((p) => (
+                            <option key={p.value} value={p.value}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td>{a.localEmployeeId || "—"}</td>
+                    <td>
+                      {locked ? (
+                        <div className={styles.lockedEmp}>
+                          <strong>{lockedEmp || "—"}</strong>
+                          {a.assignedEmployeeId ? (
+                            <span className={styles.empMeta}>
+                              ID {a.assignedEmployeeId}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
                         <select
                           className={styles.select}
                           value={drafts[a.machineId] ?? ""}
                           onChange={(e) =>
-                            setDrafts((d) => ({ ...d, [a.machineId]: e.target.value }))
+                            setDrafts((d) => ({
+                              ...d,
+                              [a.machineId]: e.target.value,
+                            }))
                           }
                         >
                           <option value="">— Not assigned —</option>
@@ -450,60 +517,62 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                             </option>
                           ))}
                         </select>
-                        {a.assignedEmployeeName ? (
-                          <span className={styles.empMeta}>Current: {a.assignedEmployeeName}</span>
-                        ) : null}
-                      </>
-                    )}
-                  </td>
-                  <td>{a.agentVersion || "—"}</td>
-                  <td>{formatWhen(a.lastSeenAt)}</td>
-                  <td>{a.lastIp || "—"}</td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      {locked ? (
-                        <button
-                          type="button"
-                          className={styles.chip}
-                          disabled={savingId === a.machineId}
-                          onClick={() => void unlockAssignment(a.machineId)}
-                        >
-                          {savingId === a.machineId ? "…" : "Unlock"}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.chip}
-                          disabled={savingId === a.machineId}
-                          onClick={() => void saveAssignment(a.machineId)}
-                        >
-                          {savingId === a.machineId ? "Saving…" : "Save"}
-                        </button>
                       )}
-                      <button
-                        type="button"
-                        className={`${styles.chip} ${styles.chipSuccess}`}
-                        onClick={() => void queueCommand("start", { machineId: a.machineId })}
-                      >
-                        Start
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.chip}
-                        onClick={() => void queueCommand("restart", { machineId: a.machineId })}
-                      >
-                        Restart
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.chip} ${styles.chipDanger}`}
-                        onClick={() => void queueCommand("exit", { machineId: a.machineId })}
-                      >
-                        Stop
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td>{a.agentVersion || "—"}</td>
+                    <td>{formatWhen(a.lastSeenAt)}</td>
+                    <td>{a.lastIp || "—"}</td>
+                    <td>
+                      <div className={styles.rowActions}>
+                        {locked ? (
+                          <button
+                            type="button"
+                            className={styles.chip}
+                            disabled={savingId === a.machineId}
+                            onClick={() => void editAssignment(a.machineId)}
+                          >
+                            {savingId === a.machineId ? "…" : "Edit"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.chip}
+                            disabled={savingId === a.machineId}
+                            onClick={() => void saveAssignment(a.machineId)}
+                          >
+                            {savingId === a.machineId ? "Saving…" : "Save"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className={`${styles.chip} ${styles.chipSuccess}`}
+                          onClick={() =>
+                            void queueCommand("start", { machineId: a.machineId })
+                          }
+                        >
+                          Start
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.chip}
+                          onClick={() =>
+                            void queueCommand("restart", { machineId: a.machineId })
+                          }
+                        >
+                          Restart
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.chip} ${styles.chipDanger}`}
+                          onClick={() =>
+                            void queueCommand("exit", { machineId: a.machineId })
+                          }
+                        >
+                          Stop
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
