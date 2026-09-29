@@ -3,20 +3,21 @@
 import React from "react";
 import {
   ensureFaceModelsLoaded,
-  scanVideoFrame,
+  scanVideoFrameFast,
   descriptorToJson,
   averageDescriptors,
 } from "@/lib/face-client-engine";
 
 /**
  * Guard idle face check.
- * Pre-warm (armed=1) loads models during Are-you-there; Here uses quality scan
- * (not ultra-fast) so genuine desk matches pass. Server uses presence thresholds.
+ * Pre-warm loads models during Are-you-there; Here uses a fast scan + presence
+ * match thresholds so verify finishes before Guard's wait ends.
  */
-const REQUIRED_PROBES = 4;
-const SCAN_DEADLINE_MS = 20000;
-const SCAN_INTERVAL_MS = 80;
-const MAX_MATCH_ATTEMPTS = 4;
+const REQUIRED_PROBES = 3;
+const SCAN_DEADLINE_MS = 15000;
+const SCAN_INTERVAL_MS = 50;
+const MAX_MATCH_ATTEMPTS = 3;
+const CAMERA_OPEN_MS = 8000;
 
 function isWebView2(): boolean {
   try {
@@ -111,7 +112,7 @@ async function runFastVerify(
   let matchAttempts = 0;
 
   while (!cancelled() && Date.now() < deadline) {
-    const scan = await scanVideoFrame(video);
+    const scan = await scanVideoFrameFast(video);
 
     if (scan.status === "multiple") {
       probes.length = 0;
@@ -229,7 +230,7 @@ export default function PresenceSilentPage() {
         setStatus(armed ? "Warming up (waiting for Here)…" : "Loading…");
         const modelsPromise = ensureFaceModelsLoaded({ preferCpu: isWebView2() });
 
-        stream = await navigator.mediaDevices.getUserMedia({
+        const camPromise = navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
             width: { ideal: 640 },
@@ -238,6 +239,13 @@ export default function PresenceSilentPage() {
           },
           audio: false,
         });
+        const camTimeout = new Promise<MediaStream>((_, reject) => {
+          window.setTimeout(
+            () => reject(new Error("Camera open timed out — close apps using the webcam (e.g. Discord) and retry.")),
+            CAMERA_OPEN_MS
+          );
+        });
+        stream = await Promise.race([camPromise, camTimeout]);
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -262,7 +270,7 @@ export default function PresenceSilentPage() {
         if (cancelled) return;
 
         // One warm inference so Here → first real scan is instant
-        await scanVideoFrame(video);
+        await scanVideoFrameFast(video);
 
         if (armed && checkId) {
           setStatus("Ready — click Here");
