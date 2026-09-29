@@ -1,87 +1,91 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.38);
-  backdrop-filter: blur(10px) saturate(1.15);
-  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
   display: flex;
   align-items: safe center;
   justify-content: center;
   padding: max(20px, env(safe-area-inset-top, 0px)) 14px
     max(20px, env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
-  /* Above hero strip / teal accent / attendance dock stacking contexts */
   z-index: 13000;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  animation: fvFadeIn 0.2s ease;
 }
 
 .modal {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(22px) saturate(1.25);
-  -webkit-backdrop-filter: blur(22px) saturate(1.25);
-  border-radius: 20px;
-  padding: 14px 16px 12px;
-  width: min(340px, 92vw);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border-radius: 22px;
+  padding: 20px 18px 16px;
+  width: min(360px, 92vw);
   max-height: min(88vh, 640px);
   overflow-y: auto;
   text-align: center;
   box-shadow:
-    0 28px 64px rgba(15, 23, 42, 0.14),
+    0 28px 64px rgba(15, 23, 42, 0.16),
     0 8px 20px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(226, 232, 240, 0.95);
   color: #1e293b;
   margin: auto;
   flex-shrink: 0;
+  animation: fvPopIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .modalSuccess {
-  border-color: #bbf7d0;
+  border-color: rgba(167, 243, 208, 0.95);
   box-shadow:
-    0 20px 48px rgba(15, 23, 42, 0.1),
-    0 0 0 2px rgba(34, 197, 94, 0.2);
+    0 28px 64px rgba(15, 23, 42, 0.12),
+    0 0 0 2px rgba(20, 184, 166, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .title {
   font-weight: 800;
-  font-size: 1.02rem;
-  margin-bottom: 2px;
+  font-size: 1.12rem;
+  margin-bottom: 4px;
   color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   color: #64748b;
   margin-bottom: 2px;
 }
 
 .subtitle strong {
-  color: #ec4899;
+  color: #0d9488;
+  font-weight: 700;
   transition: color 0.35s ease;
 }
 
 .subtitleSuccess strong {
-  color: #22c55e;
+  color: #059669;
 }
 
 .employeeLine {
   font-size: 0.76rem;
-  color: #64748b;
-  margin-bottom: 8px;
+  color: #94a3b8;
+  margin-bottom: 14px;
   line-height: 1.35;
 }
 
 .employeeLine strong {
-  color: #0f172a;
+  color: #334155;
 }
 
 .alertBlocked {
-  background: #fef2f2;
+  background: rgba(254, 242, 242, 0.92);
   border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
   color: #b91c1c;
   font-weight: 700;
   font-size: 0.8rem;
@@ -91,92 +95,121 @@
 .alertBlockedDetail {
   font-weight: 500;
   font-size: 0.74rem;
-  margin-top: 3px;
+  margin-top: 4px;
   color: #dc2626;
 }
 
 .scanWrap {
-  margin: 0 auto 6px;
-  width: min(210px, 100%);
-  border-radius: 10px;
-  overflow: visible;
-  border: 2px solid #fbcfe8;
+  margin: 0 auto 10px;
+  width: min(220px, 100%);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 2px solid rgba(20, 184, 166, 0.35);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  background: rgba(248, 250, 252, 0.6);
 }
 
 .scanWrapSuccess {
-  border-color: #86efac;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+  border-color: #34d399;
+  box-shadow:
+    0 8px 24px rgba(16, 185, 129, 0.14),
+    0 0 0 3px rgba(52, 211, 153, 0.16);
 }
 
-/* Tighter camera + HUD stack inside this modal only */
 .scanViewport {
   gap: 6px !important;
 }
 
 .guidance {
-  font-size: 0.74rem;
-  color: #be185d;
-  background: #fdf2f8;
-  border: 1px solid #fbcfe8;
-  border-radius: 8px;
-  padding: 6px 10px;
-  margin-bottom: 6px;
-  line-height: 1.35;
+  font-size: 0.78rem;
+  color: #0f766e;
+  background: rgba(240, 253, 250, 0.9);
+  border: 1px solid rgba(153, 246, 228, 0.9);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  line-height: 1.4;
   font-weight: 500;
 }
 
 .guidanceBlocked {
   color: #b91c1c;
-  background: #fef2f2;
+  background: rgba(254, 242, 242, 0.92);
   border-color: #fecaca;
 }
 
 .guidanceSuccess {
-  color: #15803d;
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  color: #047857;
+  background: rgba(236, 253, 245, 0.95);
+  border-color: #a7f3d0;
 }
 
 .error {
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   color: #dc2626;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   line-height: 1.35;
+  background: rgba(254, 242, 242, 0.9);
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 8px 12px;
 }
 
 .statusLine {
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #ec4899;
-  margin-bottom: 6px;
-  font-weight: 600;
+  color: #0d9488;
+  margin-bottom: 8px;
+  font-weight: 700;
   transition: color 0.35s ease;
 }
 
 .statusLineSuccess {
-  color: #22c55e;
+  color: #059669;
 }
 
 .actions {
   display: flex;
   gap: 8px;
   justify-content: center;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .cancelBtn {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 12px;
+  padding: 10px 22px;
   font-weight: 600;
-  font-size: 0.88rem;
-  background: #fff;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.85);
   color: #475569;
   cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .cancelBtn:hover {
   background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+@keyframes fvFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fvPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
