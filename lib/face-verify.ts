@@ -105,7 +105,7 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
-  // Keep configured threshold (default 0.45) — look-alikes blocked by uniqueness below
+  // Strict threshold (default 0.38, hard-capped ≤0.40) + uniqueness gates below
   const maxDistance = getMaxMatchDistance();
   const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);

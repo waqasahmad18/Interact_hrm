@@ -71,13 +71,14 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
+  // Higher resolution + stricter score → cleaner descriptors, fewer look-alike false accepts
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.28,
+    inputSize: 512,
+    scoreThreshold: 0.4,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
     inputSize: 416,
-    scoreThreshold: 0.18,
+    scoreThreshold: 0.3,
   });
   // Counting detectors run at a HIGH score threshold so background "ghost"
   // detections (lights, walls, reflections) are never mistaken for a person.

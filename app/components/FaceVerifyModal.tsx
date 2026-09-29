@@ -29,7 +29,7 @@ const RETRY_AFTER_FAIL_MS = 200;
 // Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
 // match is far more reliable — and harder to fool — than a single snapshot.
 // This is a big accuracy gain that costs almost nothing (pure math).
-const REQUIRED_PROBES = 3;
+const REQUIRED_PROBES = 5;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
