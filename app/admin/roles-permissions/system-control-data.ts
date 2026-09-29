@@ -85,7 +85,9 @@ const PERM_HINTS: Record<string, string> = {
   "payroll.financial_requests.view": "Review advance/loan financial request inbox.",
   "department.salary.view":
     "View salaries of people in your own department (at or below your level). Off by default for HR — Managers can enable this in Permissions.",
-  "people.employee_list.view": "Browse and search the employee directory.",
+  "people.employee_list.view": "Browse and search the employee directory (own department by default).",
+  "data.scope.all_departments":
+    "Company-wide data: see ALL departments on employee list, attendance, and break summaries. Without this, those views stay limited to the employee’s own department.",
   "people.employee.add": "Create new employee records.",
   "people.credentials.manage": "Reset or issue employee login credentials.",
   "people.face_enrollment.manage": "Enroll or update biometric face profiles.",
@@ -247,6 +249,17 @@ export const INITIAL_EMPLOYEES: DemoEmployee[] = [
 ];
 
 export const FEATURE_MODULES = withPermissionHints([
+  {
+    id: "data_scope",
+    name: "Data scope",
+    icon: "🔎",
+    permissions: [
+      {
+        key: "data.scope.all_departments",
+        label: "All departments (company-wide)",
+      },
+    ],
+  },
   {
     id: "dashboard",
     name: "Dashboard & Admin",

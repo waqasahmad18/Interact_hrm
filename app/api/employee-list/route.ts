@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       /* emergency table optional */
     }
 
-    const employees = (rows || []).map((row: any) => {
+    let employees = (rows || []).map((row: any) => {
       const id = String(row.id ?? "");
       return {
         ...row,
@@ -137,13 +137,30 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // HR salary privacy: redact basic_salary / bank when viewer cannot see target
+    // Scope employee directory to viewer's department (unless CEO / HR / all-depts perm)
     const viewerId =
       req.headers.get("x-hrm-employee-id") ||
       req.headers.get("x-employee-id") ||
       searchParams.get("viewerId") ||
       "";
     if (viewerId.trim()) {
+      try {
+        const { resolveViewerDataScope, rowInViewerScope } = await import(
+          "@/lib/access-control/data-scope"
+        );
+        const scope = await resolveViewerDataScope(viewerId.trim());
+        if (scope.mode !== "all") {
+          employees = employees.filter((e: any) =>
+            rowInViewerScope(scope, {
+              employeeId: e.id,
+              departmentName: e.department_name,
+            }),
+          );
+        }
+      } catch {
+        /* keep full list if scope helper fails */
+      }
+
       try {
         const { filterSalariesForViewer } = await import(
           "@/lib/access-control/salary-visibility"

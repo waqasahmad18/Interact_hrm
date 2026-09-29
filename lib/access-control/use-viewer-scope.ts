@@ -92,7 +92,10 @@ export function filterDepartmentsByScope<T extends { name?: string | null }>(
   scope: ClientViewerScope,
 ): T[] {
   if (scope.mode === "all" || !scope.loaded) return departments;
-  if (!scope.departmentNames.length) return departments;
+  if (!scope.departmentNames.length) {
+    // Department/team scoped but no dept names resolved — do not leak all depts
+    return [];
+  }
   const allow = new Set(scope.departmentNames.map((n) => n.trim().toLowerCase()));
   return departments.filter((d) => allow.has(String(d.name || "").trim().toLowerCase()));
 }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/employee-hierarchy-table";
 import {
   isCeoOrgRole,
+  permissionGrantsAllDepartments,
   permissionImpliesDepartmentScope,
 } from "@/lib/org-role";
 import { isHrDepartment } from "@/lib/access-control/hr-access";
@@ -139,8 +140,9 @@ function emptyScope(orgRole: string | null = null): ViewerDataScope {
  * - CEO (BOD/CEO) → all departments
  * - HR department → company-wide for attendance / leave / breaks / ops
  *   (salary amounts still gated separately — see salary-visibility)
- * - Manager / Team Lead / Officer with attendance|leave|dept|team perms
- *   → their confirmed department only (never company-wide)
+ * - Explicit `data.scope.all_departments` → company-wide (opt-in)
+ * - Manager / Team Lead / Officer / staff with list|attendance|leave|dept|team perms
+ *   → their confirmed department only (never company-wide by default)
  * - No such perms → all (admin / unscoped pages)
  */
 export async function resolveViewerDataScope(
@@ -167,6 +169,12 @@ export async function resolveViewerDataScope(
   }
 
   const perms = new Set(await loadViewerPermissionKeys(eid));
+
+  // Explicit company-wide toggle from System Control
+  if (permissionGrantsAllDepartments(perms)) {
+    return emptyScope(orgRole);
+  }
+
   const needsDeptScope = [...perms].some(permissionImpliesDepartmentScope);
   if (!needsDeptScope) {
     return emptyScope(orgRole);
@@ -207,7 +215,8 @@ export async function resolveViewerDataScope(
     perms.has("department.breaks.view") ||
     perms.has("department.leaves.view") ||
     perms.has("department.monthly.view") ||
-    [...perms].some((k) => k.startsWith("attendance.") || k.startsWith("leave."));
+    perms.has("people.employee_list.view") ||
+    [...perms].some((k) => k.startsWith("attendance.") || k.startsWith("leave.") || k.startsWith("people."));
 
   return {
     mode: hasDept ? "department" : "team",

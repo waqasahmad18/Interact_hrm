@@ -133,7 +133,7 @@ export default function RolesPermissionsPanel({
             value: role.id,
             label: role.name,
             accent: accentOf(role),
-            meta: `${count} assigned${custom ? " · custom" : ""}`,
+            meta: `${count} assigned${custom ? " · custom" : ""} · ${role.scopeLabel || role.scope}`,
           };
         }),
       })),
@@ -156,7 +156,6 @@ export default function RolesPermissionsPanel({
   React.useEffect(() => {
     setPendingIds([]);
     setSelectedAssignedIds([]);
-    setFocusEmployeeId(null);
   }, [selectedRoleId]);
 
   const activeRole =
@@ -190,10 +189,11 @@ export default function RolesPermissionsPanel({
     [employees, activeRoleId],
   );
 
-  const assignableOptions: SelectOption[] = useMemo(
+  /** All employees — pick one to inspect current role/perms (and assign if needed). */
+  const employeePickerOptions: SelectOption[] = useMemo(
     () =>
-      employees
-        .filter((e) => !employeeHasRole(e, activeRoleId))
+      [...employees]
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map((emp) => {
           const assigned = explicitSlugs(emp);
           return {
@@ -204,17 +204,45 @@ export default function RolesPermissionsPanel({
               emp.pseudonym ? `P.Name: ${emp.pseudonym}` : null,
               emp.departmentName || null,
               assigned.length
-                ? `Also on: ${assigned.map((s) => roleMeta(s, allRoles).name).join(", ")}`
+                ? assigned.map((s) => roleMeta(s, allRoles).name).join(", ")
                 : emp.legacyRole
-                  ? `Default from HR: ${emp.legacyRole}`
-                  : "Not assigned",
+                  ? `HR: ${emp.legacyRole}`
+                  : "No role yet",
             ]
               .filter(Boolean)
               .join(" · "),
           };
         }),
-    [employees, allRoles, activeRoleId],
+    [employees, allRoles],
   );
+
+  React.useEffect(() => {
+    if (!pickEmployeeId) return;
+    const emp = employees.find((e) => e.id === pickEmployeeId);
+    if (!emp) return;
+    const slugs = explicitSlugs(emp);
+    const primary = slugs[0];
+    if (primary && matrixRoles.some((r) => r.id === primary)) {
+      setSelectedRoleId(primary);
+    }
+    setFocusEmployeeId(pickEmployeeId);
+  }, [pickEmployeeId, employees, matrixRoles]);
+
+  const previewPermLabels = useMemo(() => {
+    const keys = new Set(activeSet);
+    const labels: string[] = [];
+    for (const mod of modules) {
+      for (const p of mod.permissions) {
+        if (keys.has(p.key)) labels.push(p.label);
+      }
+    }
+    return labels;
+  }, [activeSet, modules]);
+
+  const pickEmp = pickEmployeeId
+    ? employees.find((e) => e.id === pickEmployeeId)
+    : undefined;
+  const pickAlreadyOnRole = !!(pickEmp && employeeHasRole(pickEmp, activeRoleId));
 
   const totalPerms = useMemo(
     () => modules.reduce((sum, m) => sum + m.permissions.length, 0),
@@ -353,14 +381,14 @@ export default function RolesPermissionsPanel({
         />
         <SearchableSelect
           id="perm-employee"
-          label="Add user to this role"
+          label="Select employee"
           value={pickEmployeeId}
           onChange={setPickEmployeeId}
-          options={assignableOptions}
+          options={employeePickerOptions}
           searchPlaceholder="Search by name or P.Name…"
-          emptyText="No employees available to assign"
+          emptyText="No employees found"
           filterOption={employeeFilter}
-          disabled={!canAssign || employees.length === 0 || !activeRoleId}
+          disabled={employees.length === 0}
         />
         <div className={styles.permAssignBtnCol}>
           <span className={styles.permSelectLabel} aria-hidden="true">
@@ -370,8 +398,18 @@ export default function RolesPermissionsPanel({
             <button
               type="button"
               className={styles.btnOutlinePurple}
-              disabled={!canAssign || !pickEmployeeId || !activeRoleId}
+              disabled={
+                !canAssign ||
+                !pickEmployeeId ||
+                !activeRoleId ||
+                pickAlreadyOnRole
+              }
               onClick={addPendingFromPicker}
+              title={
+                pickAlreadyOnRole
+                  ? "Already on this role"
+                  : "Queue for assign"
+              }
             >
               Add to list
             </button>
@@ -380,7 +418,7 @@ export default function RolesPermissionsPanel({
               className={styles.permAssignBtn}
               disabled={
                 !canAssign ||
-                (!pendingIds.length && !pickEmployeeId) ||
+                (!pendingIds.length && (!pickEmployeeId || pickAlreadyOnRole)) ||
                 !activeRoleId ||
                 locked
               }
@@ -390,6 +428,67 @@ export default function RolesPermissionsPanel({
             </button>
           </div>
         </div>
+      </div>
+
+      <div className={styles.permAccessPreview}>
+        <div className={styles.permAccessPreviewTop}>
+          <div>
+            <span className={styles.permScopeBadge}>
+              Scope: {activeRole?.scopeLabel || activeRole?.scope || "—"}
+            </span>
+            <span className={styles.permScopeHint}>
+              Default data views = own department. Enable{" "}
+              <strong>All departments (company-wide)</strong> under Data scope for
+              full company.
+            </span>
+          </div>
+          <span className={styles.permAssignedCount}>
+            {previewPermLabels.length} permissions
+          </span>
+        </div>
+        {focusEmployee ? (
+          <p className={styles.permAccessPreviewEmp}>
+            <strong>{focusEmployee.name}</strong>
+            {focusEmployee.departmentName
+              ? ` · ${focusEmployee.departmentName}`
+              : ""}
+            {" · "}
+            {explicitSlugs(focusEmployee).length
+              ? explicitSlugs(focusEmployee)
+                  .map((s) => roleMeta(s, allRoles).name)
+                  .join(", ")
+              : "No role assigned yet"}
+            {userHasCustom ? " · custom overrides" : ""}
+          </p>
+        ) : (
+          <p className={styles.permAccessPreviewEmp}>
+            Role <strong>{activeRole?.name ?? "—"}</strong> ·{" "}
+            {assignedUsers.length} assigned user
+            {assignedUsers.length === 1 ? "" : "s"}
+            {assignedUsers.length
+              ? `: ${assignedUsers
+                  .slice(0, 6)
+                  .map((u) => u.name)
+                  .join(", ")}${assignedUsers.length > 6 ? "…" : ""}`
+              : ""}
+          </p>
+        )}
+        {previewPermLabels.length > 0 ? (
+          <div className={styles.permAccessChips}>
+            {previewPermLabels.slice(0, 24).map((label) => (
+              <span key={label} className={styles.permAccessChip}>
+                {label}
+              </span>
+            ))}
+            {previewPermLabels.length > 24 ? (
+              <span className={styles.permAccessChip}>
+                +{previewPermLabels.length - 24} more
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <p className={styles.permAssignedEmpty}>No permissions granted yet.</p>
+        )}
       </div>
 
       {pendingPeople.length > 0 && (
