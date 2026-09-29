@@ -776,7 +776,7 @@ function collectEmployeeTungstenEvents(
  * Punch-only employees (no HRM clock in/out): per shift day,
  * T.Punch In = first punch at/after shift start; T.Punch Out = last punch in shift window
  * (overnight exits on next calendar morning count for the previous shift day).
- * Khalid (id 155): T.Out = last any punch in overnight span until next shift start.
+ * Khalid / all Admin punch-only: T.Out = last any punch in overnight span until next shift start.
  */
 export function buildShiftPunchOnlySessions(
   target: EmployeeMatchKeys,
