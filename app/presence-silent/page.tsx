@@ -12,10 +12,11 @@ import {
 /**
  * Guard presence check — SAME face-api models + scan rules as FaceVerifyModal
  * (break / prayer), matched against Face Enrollment photos for this employee ID.
+ * Tuned for speed: fewer probes + faster interval; server keeps strict match.
  */
-const REQUIRED_PROBES = 6;
-const SCAN_DEADLINE_MS = 55000;
-const SCAN_INTERVAL_MS = 280;
+const REQUIRED_PROBES = 4;
+const SCAN_DEADLINE_MS = 45000;
+const SCAN_INTERVAL_MS = 160;
 
 function isWebView2(): boolean {
   try {
@@ -107,8 +108,8 @@ export default function PresenceSilentPage() {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             frameRate: { ideal: 24, max: 30 },
           },
           audio: false,
@@ -165,14 +166,14 @@ export default function PresenceSilentPage() {
             continue;
           }
 
-          // Same distance gates as FaceVerifyModal (break/prayer)
-          if (scan.coverage >= 0.82) {
+          // Coverage gates — slightly wider than break modal so idle finishes quickly
+          if (scan.coverage >= 0.88) {
             lastCode = "adjust";
             setStatus("Too close — move back a little…");
             await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
             continue;
           }
-          if (scan.coverage <= 0.16) {
+          if (scan.coverage <= 0.12) {
             lastCode = "adjust";
             setStatus("Too far — move a little closer…");
             await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));

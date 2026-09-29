@@ -71,14 +71,14 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
-  // Higher resolution + stricter score → cleaner descriptors, fewer look-alike false accepts
+  // Fast live detector — accuracy comes from server match threshold, not huge inputSize
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 512,
-    scoreThreshold: 0.4,
+    inputSize: 416,
+    scoreThreshold: 0.32,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.3,
+    inputSize: 320,
+    scoreThreshold: 0.24,
   });
   // Counting detectors run at a HIGH score threshold so background "ghost"
   // detections (lights, walls, reflections) are never mistaken for a person.
@@ -166,12 +166,8 @@ export async function ensureFaceModelsLoaded(opts?: {
 
     modelsLoaded = true;
 
-    const runWarmUp = () => void warmUpInference();
-    if (typeof requestIdleCallback !== "undefined") {
-      requestIdleCallback(runWarmUp, { timeout: 4000 });
-    } else {
-      setTimeout(runWarmUp, 50);
-    }
+    // Await warm-up so the first real scan is not a cold/slow frame (avoids idle timeouts)
+    await warmUpInference();
   })();
 
   return loadPromise;
