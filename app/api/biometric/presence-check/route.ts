@@ -38,11 +38,11 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
+    // Same matcher as break/clock (/api/biometric/verify) — no soft presence mode
     const result = await verifyDescriptorForEmployee(
       descriptor,
       resolvedId,
-      employeeName,
-      { purpose: "presence" }
+      employeeName
     );
 
     return NextResponse.json({

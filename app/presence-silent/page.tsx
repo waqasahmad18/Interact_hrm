@@ -3,21 +3,21 @@
 import React from "react";
 import {
   ensureFaceModelsLoaded,
-  scanVideoFrameFast,
+  scanVideoFrame,
   descriptorToJson,
   averageDescriptors,
+  countFacesInVideo,
 } from "@/lib/face-client-engine";
 
 /**
- * Guard idle face check.
- * Pre-warm loads models during Are-you-there; Here uses a fast scan + presence
- * match thresholds so verify finishes before Guard's wait ends.
+ * Guard idle face check — SAME scan + match path as break FaceVerifyModal.
+ * Only difference: UI stays hidden (silent) and result goes to Guard via session.
  */
-const REQUIRED_PROBES = 3;
-const SCAN_DEADLINE_MS = 15000;
-const SCAN_INTERVAL_MS = 50;
-const MAX_MATCH_ATTEMPTS = 3;
-const CAMERA_OPEN_MS = 8000;
+const REQUIRED_PROBES = 4;
+const SCAN_INTERVAL_MS = 280;
+const SCAN_DEADLINE_MS = 55000;
+const MAX_MATCH_ATTEMPTS = 6;
+const CAMERA_OPEN_MS = 10000;
 
 function isWebView2(): boolean {
   try {
@@ -68,7 +68,7 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
       } catch {
         /* ignore */
       }
-    }, 400);
+    }, 600);
   }
 }
 
@@ -76,7 +76,6 @@ async function waitForStartSignal(
   checkId: string,
   cancelled: () => boolean
 ): Promise<"start" | "gone" | "cancelled"> {
-  // Poll until Guard signals Here, or session disappears (cancel / timeout)
   while (!cancelled()) {
     try {
       const res = await fetch(
@@ -95,7 +94,8 @@ async function waitForStartSignal(
   return "cancelled";
 }
 
-async function runFastVerify(
+/** Same capture + gates as FaceVerifyModal (break/prayer). */
+async function runBreakSameVerify(
   video: HTMLVideoElement,
   employeeId: string,
   employeeName: string | null,
@@ -103,39 +103,55 @@ async function runFastVerify(
   cancelled: () => boolean,
   setStatus: (s: string) => void
 ): Promise<void> {
-  setStatus("Scanning…");
+  setStatus("Scanning — same model as break…");
   const deadline = Date.now() + SCAN_DEADLINE_MS;
   let lastCode = "no_face";
   let lastError: string | null = null;
   let lastSimilarity: number | null = null;
   const probes: number[][] = [];
   let matchAttempts = 0;
+  let multiFaceStreak = 0;
 
   while (!cancelled() && Date.now() < deadline) {
-    const scan = await scanVideoFrameFast(video);
+    const scan = await scanVideoFrame(video);
 
     if (scan.status === "multiple") {
-      probes.length = 0;
+      multiFaceStreak += 1;
       lastCode = "multiple";
-      setStatus("Multiple faces — only you");
+      if (multiFaceStreak >= 2) {
+        probes.length = 0;
+        setStatus("Multiple faces — only you should be in frame");
+      }
       await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
       continue;
     }
+    multiFaceStreak = 0;
 
     if (scan.status !== "ok") {
-      lastCode = "no_face";
+      lastCode = scan.status === "adjust" ? "adjust" : "no_face";
+      probes.length = 0;
       await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
       continue;
     }
 
-    if (scan.coverage >= 0.9 || scan.coverage <= 0.1) {
+    // Same distance gates as FaceVerifyModal
+    if (scan.coverage >= 0.82) {
       lastCode = "adjust";
+      probes.length = 0;
+      setStatus("Too close — move back a little…");
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+    if (scan.coverage <= 0.16) {
+      lastCode = "adjust";
+      probes.length = 0;
+      setStatus("Too far — move a little closer…");
       await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
       continue;
     }
 
     probes.push(descriptorToJson(scan.descriptor));
-    setStatus(`Capturing… ${probes.length}/${REQUIRED_PROBES}`);
+    setStatus(`Capturing face… (${probes.length}/${REQUIRED_PROBES})`);
     if (probes.length < REQUIRED_PROBES) {
       await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
       continue;
@@ -143,9 +159,20 @@ async function runFastVerify(
 
     const averaged = averageDescriptors(probes);
     probes.length = 0;
-    matchAttempts += 1;
-    setStatus("Matching…");
 
+    // Same multi-pass count as break modal before accept
+    const faceCount = await countFacesInVideo(video);
+    if (faceCount >= 2) {
+      lastCode = "multiple";
+      setStatus("Multiple faces — blocked");
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+
+    matchAttempts += 1;
+    setStatus("Matching Face Enrollment (same as break)…");
+
+    // Same matcher as break — presence-check uses action thresholds (not soft presence)
     const res = await fetch("/api/biometric/presence-check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,13 +200,15 @@ async function runFastVerify(
         },
         checkId
       );
-      setStatus("Present");
+      setStatus("Present — matched enrollment");
       return;
     }
 
     if (matchAttempts >= MAX_MATCH_ATTEMPTS) break;
-    setStatus("Retry…");
-    await new Promise((r) => setTimeout(r, 120));
+    setStatus(
+      `Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`
+    );
+    await new Promise((r) => setTimeout(r, 350));
   }
 
   if (!cancelled()) {
@@ -227,21 +256,30 @@ export default function PresenceSilentPage() {
       }
 
       try {
-        setStatus(armed ? "Warming up (waiting for Here)…" : "Loading…");
-        const modelsPromise = ensureFaceModelsLoaded({ preferCpu: isWebView2() });
+        // Same face-api load path as break FaceVerifyModal (WebGL in Chrome)
+        setStatus(armed ? "Warming up (same model as break)…" : "Loading face engine…");
+        const modelsPromise = ensureFaceModelsLoaded(
+          isWebView2() ? { preferCpu: true } : undefined
+        );
 
+        // Same camera constraints as FaceVerifyModal
         const camPromise = navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 640 },
-            height: { ideal: 480 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             frameRate: { ideal: 24, max: 30 },
           },
           audio: false,
         });
         const camTimeout = new Promise<MediaStream>((_, reject) => {
           window.setTimeout(
-            () => reject(new Error("Camera open timed out — close apps using the webcam (e.g. Discord) and retry.")),
+            () =>
+              reject(
+                new Error(
+                  "Camera open timed out — close apps using the webcam and retry."
+                )
+              ),
             CAMERA_OPEN_MS
           );
         });
@@ -269,20 +307,19 @@ export default function PresenceSilentPage() {
         await modelsPromise;
         if (cancelled) return;
 
-        // One warm inference so Here → first real scan is instant
-        await scanVideoFrameFast(video);
+        // Warm same pipeline as break
+        await scanVideoFrame(video);
 
         if (armed && checkId) {
           setStatus("Ready — click Here");
           const signal = await waitForStartSignal(checkId, () => cancelled);
           if (signal !== "start") {
-            // Timed out / cancelled — exit quietly (Guard handles ticket)
             setStatus("Cancelled");
             return;
           }
         }
 
-        await runFastVerify(
+        await runBreakSameVerify(
           video,
           employeeId,
           employeeName,
@@ -341,6 +378,7 @@ export default function PresenceSilentPage() {
           objectFit: "cover",
           transform: "scaleX(-1)",
           background: "#000",
+          // Keep frames decoding for face-api (visibility:hidden can starve capture)
           opacity: silentUi ? 0.02 : 1,
         }}
       />
