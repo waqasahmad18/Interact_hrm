@@ -3,6 +3,8 @@ import {
   assertUniqueIdentity,
   getMaxMatchDistance,
   getMinMatchingPhotos,
+  getPresenceMaxMatchDistance,
+  getPresenceMinMatchingPhotos,
   getSimilarityMin,
   isFaceVerificationEnabled,
   isValidDescriptor,
@@ -61,8 +63,10 @@ export async function getFaceVerificationStatus() {
 export async function verifyDescriptorForEmployee(
   descriptor: number[],
   employeeId: string,
-  employeeName?: string | null
+  employeeName?: string | null,
+  opts?: { purpose?: "action" | "presence" }
 ): Promise<VerifyResult> {
+  const purpose = opts?.purpose === "presence" ? "presence" : "action";
   const rawId = String(employeeId || "").trim();
   if (!rawId) {
     return { verified: false, reason: "Employee session missing. Log in again.", code: "error" };
@@ -105,9 +109,12 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
-  // Strict threshold (default 0.38, hard-capped ≤0.40) + uniqueness gates below
-  const maxDistance = getMaxMatchDistance();
-  const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
+  const maxDistance =
+    purpose === "presence" ? getPresenceMaxMatchDistance() : getMaxMatchDistance();
+  const minPhotos =
+    purpose === "presence"
+      ? getPresenceMinMatchingPhotos(enrollment.descriptors.length)
+      : getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
   const self = matchProbeToDescriptors(
@@ -135,7 +142,8 @@ export async function verifyDescriptorForEmployee(
     self.bestDistance,
     enrollment.descriptors,
     rivals,
-    maxDistance
+    maxDistance,
+    purpose
   );
   if (!unique.ok) {
     return {

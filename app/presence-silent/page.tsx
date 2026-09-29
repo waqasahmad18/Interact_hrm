@@ -3,20 +3,20 @@
 import React from "react";
 import {
   ensureFaceModelsLoaded,
-  scanVideoFrameFast,
+  scanVideoFrame,
   descriptorToJson,
   averageDescriptors,
 } from "@/lib/face-client-engine";
 
 /**
- * Guard idle face check — fast path.
- * When armed=1, models+camera warm up during "Are you there?" so Here → verify
- * finishes in a few seconds. Server match threshold stays strict.
+ * Guard idle face check.
+ * Pre-warm (armed=1) loads models during Are-you-there; Here uses quality scan
+ * (not ultra-fast) so genuine desk matches pass. Server uses presence thresholds.
  */
-const REQUIRED_PROBES = 2;
-const SCAN_DEADLINE_MS = 12000;
-const SCAN_INTERVAL_MS = 40;
-const MAX_MATCH_ATTEMPTS = 2;
+const REQUIRED_PROBES = 4;
+const SCAN_DEADLINE_MS = 20000;
+const SCAN_INTERVAL_MS = 80;
+const MAX_MATCH_ATTEMPTS = 4;
 
 function isWebView2(): boolean {
   try {
@@ -111,7 +111,7 @@ async function runFastVerify(
   let matchAttempts = 0;
 
   while (!cancelled() && Date.now() < deadline) {
-    const scan = await scanVideoFrameFast(video);
+    const scan = await scanVideoFrame(video);
 
     if (scan.status === "multiple") {
       probes.length = 0;
@@ -262,7 +262,7 @@ export default function PresenceSilentPage() {
         if (cancelled) return;
 
         // One warm inference so Here → first real scan is instant
-        await scanVideoFrameFast(video);
+        await scanVideoFrame(video);
 
         if (armed && checkId) {
           setStatus("Ready — click Here");

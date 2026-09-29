@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedId = (await resolveEmployeeDbId(employeeId)) || employeeId;
-    const result = await verifyDescriptorForEmployee(descriptor, resolvedId, employeeName);
+    const result = await verifyDescriptorForEmployee(
+      descriptor,
+      resolvedId,
+      employeeName,
+      { purpose: "presence" }
+    );
 
     return NextResponse.json({
       success: true,

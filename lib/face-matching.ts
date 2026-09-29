@@ -16,12 +16,25 @@ export function getMaxMatchDistance(): number {
   return Number.isFinite(parsed) ? Math.min(0.4, Math.max(0.3, parsed)) : 0.38;
 }
 
+/**
+ * Max distance for idle / Guard presence checks — a little looser than clock/break
+ * so desk lighting and camera angle don't fail a genuine employee repeatedly.
+ */
+export function getPresenceMaxMatchDistance(): number {
+  return Math.min(0.45, getMaxMatchDistance() + 0.05);
+}
+
 export function getMinMatchingPhotos(totalEnrolled: number): number {
   const raw = process.env.FACE_MIN_MATCH_PHOTOS;
   // Default 3: look-alikes may luck one/two close photos; three agreements is harder.
   const configured = raw ? parseInt(raw, 10) : 3;
   const want = Number.isFinite(configured) && configured > 0 ? configured : 3;
   return Math.min(totalEnrolled, Math.max(1, want));
+}
+
+/** Idle presence needs fewer photo agreements — probe quality is noisier off-screen. */
+export function getPresenceMinMatchingPhotos(totalEnrolled: number): number {
+  return Math.min(totalEnrolled, Math.max(1, Math.min(2, getMinMatchingPhotos(totalEnrolled))));
 }
 
 /** Minimum similarity score stored on biometric token (derived from distance). */
@@ -109,11 +122,17 @@ export function matchProbeToDescriptors(
   };
 }
 
-/** How much closer self must be than any OTHER enrolled person. */
+/** How much closer self must be than any OTHER enrolled person (clock/break). */
 const RIVAL_SAFETY_MARGIN = 0.18;
+/** Idle presence — still blocks clear look-alikes, admits genuine at desk. */
+const RIVAL_SAFETY_MARGIN_PRESENCE = 0.12;
 
-/** Hard clarity cap — even if env is loosened, never accept a weak best hit. */
+/** Hard clarity cap — clock/break. */
 const ABSOLUTE_BEST_CAP = 0.36;
+/** Idle presence cap — desk lighting / angle need a little more room. */
+const ABSOLUTE_BEST_CAP_PRESENCE = 0.42;
+
+export type UniqueIdentityMode = "action" | "presence";
 
 /**
  * Average of L2-normalized enrollment vectors. Look-alikes may luck one photo
@@ -163,13 +182,19 @@ export function assertUniqueIdentity(
   selfBestDistance: number,
   selfDescriptors: number[][],
   rivals: Array<{ employeeId: string; descriptors: number[][] }>,
-  maxDistance: number
+  maxDistance: number,
+  mode: UniqueIdentityMode = "action"
 ): { ok: true } | { ok: false; reason: string; employeeId?: string } {
+  const rivalMargin =
+    mode === "presence" ? RIVAL_SAFETY_MARGIN_PRESENCE : RIVAL_SAFETY_MARGIN;
+  const absoluteCap =
+    mode === "presence" ? ABSOLUTE_BEST_CAP_PRESENCE : ABSOLUTE_BEST_CAP;
+  const centroidSlack = mode === "presence" ? 0.04 : 0;
+
   const centroid = enrollmentCentroid(selfDescriptors);
   if (centroid) {
     const toCentroid = euclideanDistance(probe, centroid);
-    // No slack — look-alikes that luck one photo fail the full-set check
-    if (toCentroid > maxDistance) {
+    if (toCentroid > maxDistance + centroidSlack) {
       return {
         ok: false,
         reason:
@@ -179,15 +204,15 @@ export function assertUniqueIdentity(
   }
 
   // Absolute clarity: best hit must be clearly the enrolled person
-  if (selfBestDistance > Math.min(maxDistance, ABSOLUTE_BEST_CAP)) {
+  if (selfBestDistance > Math.min(maxDistance, absoluteCap)) {
     return {
       ok: false,
       reason: "Face match is too weak — only a clear match to enrolled photos is allowed.",
     };
   }
 
-  // Median distance to enrollment set — blocks partial / angled look-alike hits
-  if (selfDescriptors.length >= 3) {
+  // Median distance — action mode only (presence desk angles vary more)
+  if (mode === "action" && selfDescriptors.length >= 3) {
     const all = selfDescriptors
       .map((d) => euclideanDistance(probe, d))
       .sort((a, b) => a - b);
@@ -212,7 +237,7 @@ export function assertUniqueIdentity(
     };
   }
 
-  if (rival.distance - selfBestDistance < RIVAL_SAFETY_MARGIN) {
+  if (rival.distance - selfBestDistance < rivalMargin) {
     return {
       ok: false,
       employeeId: rival.employeeId,
@@ -221,7 +246,7 @@ export function assertUniqueIdentity(
   }
 
   // Reject if another enrolled person is inside accept band OR near it
-  if (rival.distance <= maxDistance + RIVAL_SAFETY_MARGIN * 0.5) {
+  if (rival.distance <= maxDistance + rivalMargin * 0.5) {
     return {
       ok: false,
       employeeId: rival.employeeId,
