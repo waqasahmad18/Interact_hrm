@@ -14,6 +14,7 @@ import {
   type HrmCodeProfile,
   type PinProfile,
 } from "./zkbio-employee-resolve";
+import { punchOnlyUsesLastSpanOut } from "./punch-only-employees";
 
 export const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 const TUNGSTEN_AFTER_CLOCK_GRACE_MS = 30 * 60 * 1000;
@@ -538,6 +539,11 @@ type ShiftDayPunchOptions = {
    * No fallback to "day last punch" before shift end.
    */
   requireOutAfterShiftEnd?: boolean;
+  /**
+   * When true (Khalid pilot): T.In = first at/after shift start;
+   * T.Out = last punch in span until next day's shift start (overnight-safe).
+   */
+  lastAnyPunchInSpan?: boolean;
 };
 
 /** Simple shift-day T.Punch: first punch at/after shift start; last punch near shift end (± window). */
@@ -567,6 +573,25 @@ function firstLastPunchForShiftDay(
     sessionDate,
   );
   if (shiftStartMs == null || shiftEndMs == null) return { punchIn: "-", punchOut: "-" };
+
+  // Khalid / last-span mode: collect through overnight until just before next shift start
+  if (options?.lastAnyPunchInSpan === true) {
+    const nextStartMs = wallClockToEpochMs(
+      addDaysToDateKey(sessionDate, 1),
+      shift.startTime,
+    );
+    const collectUntilMs =
+      nextStartMs != null ? nextStartMs - 1 : shiftStartMs + MAX_SESSION_MS;
+    const spanPunches = tungstenByTime
+      .filter((t) => t.atMs >= shiftStartMs && t.atMs <= collectUntilMs)
+      .sort((a, b) => a.atMs - b.atMs);
+    if (!spanPunches.length) return { punchIn: "-", punchOut: "-" };
+    const punchIn = spanPunches[0].time;
+    let punchOut =
+      spanPunches.length > 1 ? spanPunches[spanPunches.length - 1].time : "-";
+    if (punchOut === punchIn) punchOut = "-";
+    return { punchIn, punchOut };
+  }
 
   const collectUntilMs = shiftEndMs + EXIT_AFTER_SHIFT_END_MS;
   const dayPunches = tungstenByTime
@@ -751,6 +776,7 @@ function collectEmployeeTungstenEvents(
  * Punch-only employees (no HRM clock in/out): per shift day,
  * T.Punch In = first punch at/after shift start; T.Punch Out = last punch in shift window
  * (overnight exits on next calendar morning count for the previous shift day).
+ * Khalid (id 155): T.Out = last any punch in overnight span until next shift start.
  */
 export function buildShiftPunchOnlySessions(
   target: EmployeeMatchKeys,
@@ -769,13 +795,17 @@ export function buildShiftPunchOnlySessions(
     true, // punch-only rows must stay strict: pin(employee_code) or employee id only
   );
 
+  const empId = String(target.employeeId ?? "").trim();
+  const lastAnyPunchInSpan = punchOnlyUsesLastSpanOut(empId);
+
   const sessions: EmployeeReportSession[] = [];
   let day = dateFrom;
   while (day <= dateTo) {
     const shift = resolveShift(day);
     if (shift) {
       const { punchIn, punchOut } = firstLastPunchForShiftDay(tungsten, day, shift, {
-        requireOutAfterShiftEnd: true,
+        requireOutAfterShiftEnd: !lastAnyPunchInSpan,
+        lastAnyPunchInSpan,
       });
       if (punchIn !== "-" || punchOut !== "-") {
         sessions.push({

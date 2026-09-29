@@ -1,7 +1,10 @@
 /**
  * Punch-only Admin Staff (no HRM clock-in): Monthly Attendance shows
  * T.Punch In = first punch at/after shift start,
- * T.Punch Out = last punch at/after shift end.
+ * T.Punch Out = last punch at/after shift end (default).
+ *
+ * Staging pilot: Muhammad Khalid (id 155) uses last-any-punch-in-span for T.Out
+ * (overnight last Tungsten punch, not limited to shift-end window).
  *
  * IDs + ZKBio PINs restored from staging setup (fix-employee-codes-6.sql),
  * with Javaid Sunny pin corrected to live ZKBio pin 140010.
@@ -37,6 +40,16 @@ export const PUNCH_ONLY_EMPLOYEES: PunchOnlyEmployee[] = [
 ];
 
 export const PUNCH_ONLY_EMPLOYEE_IDS = new Set(PUNCH_ONLY_EMPLOYEES.map((e) => e.id));
+
+/**
+ * Pilot: T.Punch Out = last Tungsten punch in the overnight shift span
+ * (from shift start until next day's shift start), not shift-end window only.
+ */
+export const PUNCH_ONLY_LAST_SPAN_OUT_IDS = new Set<string>(["155"]); // Muhammad Khalid
+
+export function punchOnlyUsesLastSpanOut(employeeId: string): boolean {
+  return PUNCH_ONLY_LAST_SPAN_OUT_IDS.has(String(employeeId));
+}
 
 /** Historical office-boy shift used on staging when these cards worked. */
 export const PUNCH_ONLY_DEFAULT_SHIFT = {
