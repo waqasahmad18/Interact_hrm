@@ -3,20 +3,20 @@
 import React from "react";
 import {
   ensureFaceModelsLoaded,
-  scanVideoFrame,
+  scanVideoFrameFast,
   descriptorToJson,
   averageDescriptors,
-  countFacesInVideo,
 } from "@/lib/face-client-engine";
 
 /**
- * Guard presence check — SAME face-api models + scan rules as FaceVerifyModal
- * (break / prayer), matched against Face Enrollment photos for this employee ID.
- * Tuned for speed: fewer probes + faster interval; server keeps strict match.
+ * Guard idle face check — fast path.
+ * When armed=1, models+camera warm up during "Are you there?" so Here → verify
+ * finishes in a few seconds. Server match threshold stays strict.
  */
-const REQUIRED_PROBES = 4;
-const SCAN_DEADLINE_MS = 45000;
-const SCAN_INTERVAL_MS = 160;
+const REQUIRED_PROBES = 2;
+const SCAN_DEADLINE_MS = 12000;
+const SCAN_INTERVAL_MS = 40;
+const MAX_MATCH_ATTEMPTS = 2;
 
 function isWebView2(): boolean {
   try {
@@ -67,7 +67,132 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
       } catch {
         /* ignore */
       }
-    }, 600);
+    }, 400);
+  }
+}
+
+async function waitForStartSignal(
+  checkId: string,
+  cancelled: () => boolean
+): Promise<"start" | "gone" | "cancelled"> {
+  // Poll until Guard signals Here, or session disappears (cancel / timeout)
+  while (!cancelled()) {
+    try {
+      const res = await fetch(
+        `/api/biometric/presence-session?check_id=${encodeURIComponent(checkId)}`,
+        { cache: "no-store" }
+      );
+      if (res.status === 404) return "gone";
+      const data = await res.json();
+      if (data?.start === true) return "start";
+      if (data?.pending === false && data?.result) return "gone";
+    } catch {
+      /* retry */
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return "cancelled";
+}
+
+async function runFastVerify(
+  video: HTMLVideoElement,
+  employeeId: string,
+  employeeName: string | null,
+  checkId: string | null,
+  cancelled: () => boolean,
+  setStatus: (s: string) => void
+): Promise<void> {
+  setStatus("Scanning…");
+  const deadline = Date.now() + SCAN_DEADLINE_MS;
+  let lastCode = "no_face";
+  let lastError: string | null = null;
+  let lastSimilarity: number | null = null;
+  const probes: number[][] = [];
+  let matchAttempts = 0;
+
+  while (!cancelled() && Date.now() < deadline) {
+    const scan = await scanVideoFrameFast(video);
+
+    if (scan.status === "multiple") {
+      probes.length = 0;
+      lastCode = "multiple";
+      setStatus("Multiple faces — only you");
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+
+    if (scan.status !== "ok") {
+      lastCode = "no_face";
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+
+    if (scan.coverage >= 0.9 || scan.coverage <= 0.1) {
+      lastCode = "adjust";
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+
+    probes.push(descriptorToJson(scan.descriptor));
+    setStatus(`Capturing… ${probes.length}/${REQUIRED_PROBES}`);
+    if (probes.length < REQUIRED_PROBES) {
+      await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
+      continue;
+    }
+
+    const averaged = averageDescriptors(probes);
+    probes.length = 0;
+    matchAttempts += 1;
+    setStatus("Matching…");
+
+    const res = await fetch("/api/biometric/presence-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employee_id: employeeId,
+        employee_name: employeeName,
+        descriptor: averaged,
+      }),
+    });
+    const data = await res.json();
+    if (cancelled()) return;
+
+    lastSimilarity = typeof data.similarity === "number" ? data.similarity : null;
+    lastCode = String(data.code || (data.verified ? "ok" : "mismatch"));
+    lastError = data.error ?? null;
+
+    if (data.atSeat || data.verified) {
+      await postToAgent(
+        {
+          cameraOk: true,
+          atSeat: true,
+          code: "ok",
+          error: null,
+          similarity: lastSimilarity,
+        },
+        checkId
+      );
+      setStatus("Present");
+      return;
+    }
+
+    if (matchAttempts >= MAX_MATCH_ATTEMPTS) break;
+    setStatus("Retry…");
+    await new Promise((r) => setTimeout(r, 120));
+  }
+
+  if (!cancelled()) {
+    await postToAgent(
+      {
+        cameraOk: true,
+        atSeat: false,
+        code: lastCode,
+        error: lastError || "Face did not match enrolled photos in time",
+        similarity: lastSimilarity,
+      },
+      checkId
+    );
+    setStatus(`Done — ${lastCode}`);
   }
 }
 
@@ -85,6 +210,7 @@ export default function PresenceSilentPage() {
       const employeeId = (params.get("employeeId") || params.get("employee_id") || "").trim();
       const employeeName = (params.get("employeeName") || "").trim() || null;
       const checkId = (params.get("checkId") || params.get("check_id") || "").trim() || null;
+      const armed = params.get("armed") === "1";
       const silent =
         params.get("silent") === "1" ||
         params.get("source") === "interact-guard";
@@ -100,11 +226,9 @@ export default function PresenceSilentPage() {
       }
 
       try {
-        // Same face-api load path as break / prayer FaceVerifyModal
-        setStatus("Loading face engine (same as break)…");
+        setStatus(armed ? "Warming up (waiting for Here)…" : "Loading…");
         const modelsPromise = ensureFaceModelsLoaded({ preferCpu: isWebView2() });
 
-        setStatus("Opening camera…");
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
@@ -137,121 +261,27 @@ export default function PresenceSilentPage() {
         await modelsPromise;
         if (cancelled) return;
 
-        setStatus("Scanning — same model as break/prayer…");
-        const deadline = Date.now() + SCAN_DEADLINE_MS;
-        let lastCode = "no_face";
-        let lastError: string | null = null;
-        let lastSimilarity: number | null = null;
-        const probes: number[][] = [];
-        let multiFaceStreak = 0;
+        // One warm inference so Here → first real scan is instant
+        await scanVideoFrameFast(video);
 
-        while (!cancelled && Date.now() < deadline) {
-          const scan = await scanVideoFrame(video);
-
-          if (scan.status === "multiple") {
-            multiFaceStreak += 1;
-            lastCode = "multiple";
-            if (multiFaceStreak >= 2) {
-              probes.length = 0;
-              setStatus("Multiple faces — only you should be in frame");
-            }
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-          multiFaceStreak = 0;
-
-          if (scan.status !== "ok") {
-            lastCode = scan.status === "adjust" ? "adjust" : "no_face";
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-
-          // Coverage gates — slightly wider than break modal so idle finishes quickly
-          if (scan.coverage >= 0.88) {
-            lastCode = "adjust";
-            setStatus("Too close — move back a little…");
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-          if (scan.coverage <= 0.12) {
-            lastCode = "adjust";
-            setStatus("Too far — move a little closer…");
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-
-          probes.push(descriptorToJson(scan.descriptor));
-          setStatus(`Capturing… (${probes.length}/${REQUIRED_PROBES}) — hold still`);
-          if (probes.length < REQUIRED_PROBES) {
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-
-          const averaged = averageDescriptors(probes);
-          probes.length = 0;
-
-          // Same multi-pass count as break modal before accept
-          const faceCount = await countFacesInVideo(video);
-          if (faceCount >= 2) {
-            lastCode = "multiple";
-            setStatus("Multiple faces — blocked");
-            await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
-            continue;
-          }
-
-          setStatus("Matching Face Enrollment (your ID)…");
-
-          const res = await fetch("/api/biometric/presence-check", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employee_id: employeeId,
-              employee_name: employeeName,
-              descriptor: averaged,
-            }),
-          });
-          const data = await res.json();
-          if (cancelled) return;
-
-          lastSimilarity =
-            typeof data.similarity === "number" ? data.similarity : null;
-          lastCode = String(data.code || (data.verified ? "ok" : "mismatch"));
-          lastError = data.error ?? null;
-
-          if (data.atSeat || data.verified) {
-            await postToAgent(
-              {
-                cameraOk: true,
-                atSeat: true,
-                code: "ok",
-                error: null,
-                similarity: lastSimilarity,
-              },
-              checkId
-            );
-            setStatus("Present — matched enrollment");
+        if (armed && checkId) {
+          setStatus("Ready — click Here");
+          const signal = await waitForStartSignal(checkId, () => cancelled);
+          if (signal !== "start") {
+            // Timed out / cancelled — exit quietly (Guard handles ticket)
+            setStatus("Cancelled");
             return;
           }
-
-          setStatus(
-            `Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`
-          );
-          await new Promise((r) => setTimeout(r, 350));
         }
 
-        if (!cancelled) {
-          await postToAgent(
-            {
-              cameraOk: true,
-              atSeat: false,
-              code: lastCode,
-              error: lastError || "Face did not match enrolled photos in time",
-              similarity: lastSimilarity,
-            },
-            checkId
-          );
-          setStatus(`Done — ${lastCode}`);
-        }
+        await runFastVerify(
+          video,
+          employeeId,
+          employeeName,
+          checkId,
+          () => cancelled,
+          setStatus
+        );
       } catch (err) {
         if (!cancelled) {
           await postToAgent(
@@ -303,7 +333,6 @@ export default function PresenceSilentPage() {
           objectFit: "cover",
           transform: "scaleX(-1)",
           background: "#000",
-          // Keep frames decoding for face-api (visibility:hidden can starve capture)
           opacity: silentUi ? 0.02 : 1,
         }}
       />

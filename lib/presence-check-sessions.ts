@@ -20,10 +20,13 @@ type Session = {
   employeeId: string;
   createdAt: number;
   result: PresenceSessionResult | null;
+  /** Guard sets true after employee clicks Here — armed page then scans. */
+  start: boolean;
 };
 
 const DIR = path.join(os.tmpdir(), "interact-hrm-presence-sessions");
-const TTL_MS = 5 * 60 * 1000;
+/** Cover full "Are you there?" window (5 min) + a little slack */
+const TTL_MS = 6 * 60 * 1000;
 
 function ensureDir() {
   try {
@@ -51,6 +54,7 @@ function readSession(id: string): Session | null {
       }
       return null;
     }
+    if (typeof s.start !== "boolean") s.start = false;
     return s;
   } catch {
     return null;
@@ -69,12 +73,21 @@ export function createPresenceSession(employeeId: string): string {
     employeeId: String(employeeId).trim(),
     createdAt: Date.now(),
     result: null,
+    start: false,
   });
   return id;
 }
 
 export function getPresenceSession(id: string): Session | null {
   return readSession(id);
+}
+
+export function signalPresenceStart(id: string): boolean {
+  const s = readSession(id);
+  if (!s) return false;
+  s.start = true;
+  writeSession(id, s);
+  return true;
 }
 
 export function completePresenceSession(
@@ -98,4 +111,12 @@ export function takePresenceSessionResult(id: string): PresenceSessionResult | n
     /* ignore */
   }
   return r;
+}
+
+export function cancelPresenceSession(id: string): void {
+  try {
+    fs.unlinkSync(fileFor(id));
+  } catch {
+    /* ignore */
+  }
 }

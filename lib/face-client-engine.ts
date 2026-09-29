@@ -485,6 +485,42 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   return { status: "none" };
 }
 
+/**
+ * Idle Guard path — one canvas + one detector, no multi-pass / brighten rescue.
+ * Accuracy still enforced by server match threshold.
+ */
+export async function scanVideoFrameFast(
+  video: HTMLVideoElement
+): Promise<FaceScanOutcome> {
+  await ensureFaceModelsLoaded();
+  if (!LIVE_DESCRIPTOR) return { status: "none" };
+
+  const canvas =
+    drawVideoToCanvas(video, "crop", 256) || drawWholeFrameCanvas(video, 320);
+  if (!canvas || !faceapi) return { status: "none" };
+
+  const results = (await faceapi
+    .detectAllFaces(canvas, LIVE_DESCRIPTOR)
+    .withFaceLandmarks(true)
+    .withFaceDescriptors()) as WithDescriptor[];
+
+  const significant = results.filter(
+    (r) =>
+      r.detection.box.width * r.detection.box.height >= minArea(canvas, MIN_FACE_AREA_RATIO)
+  );
+  const confident = significant.filter((r) => r.detection.score >= COUNT_MIN_SCORE);
+  if (confident.length >= 2) return { status: "multiple", count: confident.length };
+  if (significant.length === 1 && significant[0].descriptor) {
+    const box = significant[0].detection.box;
+    return {
+      status: "ok",
+      descriptor: significant[0].descriptor,
+      coverage: box.height / canvas.height,
+    };
+  }
+  return { status: "none" };
+}
+
 export async function scanBlob(blob: Blob): Promise<FaceScanOutcome> {
   await ensureFaceModelsLoaded();
   if (!faceapi) return { status: "none" };
