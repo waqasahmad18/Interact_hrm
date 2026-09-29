@@ -1,6 +1,6 @@
 import { getEmployeeMatchKeys } from "@/lib/biometric-employee";
 import {
-  findClosestRival,
+  assertUniqueIdentity,
   getMaxMatchDistance,
   getMinMatchingPhotos,
   getSimilarityMin,
@@ -15,7 +15,7 @@ import {
 import {
   countDescriptorsForEmployee,
   countEnrollmentForEmployee,
-  getDescriptorsForEmployee,
+  getDescriptorsForEmployees,
   getOtherEmployeesDescriptorSamples,
 } from "@/lib/face-enrollment-table";
 import { resolveEmployeeDbId } from "@/lib/resolve-employee-id";
@@ -81,9 +81,12 @@ export async function verifyDescriptorForEmployee(
   const id = (await resolveEmployeeDbId(rawId)) || rawId;
   const matchKeys = await getEmployeeMatchKeys(id, employeeName);
   const label = employeeDisplayLabel(matchKeys, id);
-  const enrollment = await getDescriptorsForEmployee(id);
-  const descriptorCount = await countDescriptorsForEmployee(id);
-  const photoCount = await countEnrollmentForEmployee(id);
+  // All ID aliases (db id / code) — Mongo-safe per-id `=` load
+  const idAliases = matchKeys.dbIds.length ? matchKeys.dbIds : [id];
+  const enrollment = await getDescriptorsForEmployees(idAliases);
+  const descriptorCount =
+    enrollment.descriptorCount || (await countDescriptorsForEmployee(id));
+  const photoCount = enrollment.count || (await countEnrollmentForEmployee(id));
 
   if (descriptorCount < RECOMMENDED_ENROLLMENT_MIN || !enrollment.descriptors.length) {
     if (photoCount >= RECOMMENDED_ENROLLMENT_MIN) {
@@ -102,9 +105,10 @@ export async function verifyDescriptorForEmployee(
 
   const subject =
     enrollment.subject || defaultSubjectForEmployee(id, matchKeys.names[0] || employeeName);
+  // Keep configured threshold (default 0.45) — look-alikes blocked by uniqueness below
   const maxDistance = getMaxMatchDistance();
   const minPhotos = getMinMatchingPhotos(enrollment.descriptors.length);
-  const needPct = Math.round(getSimilarityMin() * 100);
+  const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
   const self = matchProbeToDescriptors(
     descriptor,
@@ -125,12 +129,18 @@ export async function verifyDescriptorForEmployee(
     };
   }
 
-  const rivals = await getOtherEmployeesDescriptorSamples(id);
-  const rival = findClosestRival(descriptor, rivals, self.bestDistance, maxDistance);
-  if (rival) {
+  const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
+  const unique = assertUniqueIdentity(
+    descriptor,
+    self.bestDistance,
+    enrollment.descriptors,
+    rivals,
+    maxDistance
+  );
+  if (!unique.ok) {
     return {
       verified: false,
-      reason: `Face matches employee ID ${rival.employeeId} more closely. Only your enrolled face can proceed.`,
+      reason: unique.reason,
       code: "wrong_person",
       similarity: self.similarity,
       subject,

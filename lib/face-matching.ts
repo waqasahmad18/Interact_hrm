@@ -112,35 +112,106 @@ export function matchProbeToDescriptors(
   };
 }
 
-/** How much closer the self match must be than any OTHER enrolled person. If a
- * different person is within this margin the result is ambiguous and rejected. */
-const RIVAL_SAFETY_MARGIN = 0.1;
+/** How much closer self must be than any OTHER enrolled person. */
+const RIVAL_SAFETY_MARGIN = 0.12;
 
+/**
+ * Average of L2-normalized enrollment vectors. Look-alikes may luck one photo
+ * but rarely sit near the whole enrollment set.
+ */
+export function enrollmentCentroid(descriptors: number[][]): number[] | null {
+  if (!descriptors.length) return null;
+  const acc = new Array<number>(DESCRIPTOR_LENGTH).fill(0);
+  for (const d of descriptors) {
+    const n = l2normalize(d);
+    for (let i = 0; i < DESCRIPTOR_LENGTH; i++) acc[i] += n[i];
+  }
+  const inv = 1 / descriptors.length;
+  for (let i = 0; i < DESCRIPTOR_LENGTH; i++) acc[i] *= inv;
+  return l2normalize(acc);
+}
+
+export type RivalHit = { employeeId: string; distance: number };
+
+/** Closest other enrolled employee (full gallery). */
 export function findClosestRival(
   probe: number[],
   rivals: Array<{ employeeId: string; descriptors: number[][] }>,
-  selfBestDistance: number,
-  maxDistance: number
-): { employeeId: string; distance: number } | null {
-  let best: { employeeId: string; distance: number } | null = null;
-
-  // Consider rivals a little beyond the accept threshold too, so an enrolled
-  // look-alike sitting just outside the threshold still triggers the ambiguity
-  // guard instead of being silently ignored.
-  const considerCap = maxDistance + 0.15;
-
+  _selfBestDistance?: number,
+  _maxDistance?: number
+): RivalHit | null {
+  let best: RivalHit | null = null;
   for (const rival of rivals) {
     if (!rival.descriptors.length) continue;
     const dist = Math.min(...rival.descriptors.map((d) => euclideanDistance(probe, d)));
-    if (dist > considerCap) continue;
     if (!best || dist < best.distance) {
       best = { employeeId: rival.employeeId, distance: dist };
     }
   }
+  return best;
+}
 
-  if (!best) return null;
-  // Reject when another enrolled person is closer, equal, OR merely comparably
-  // close (within the safety margin) to the self match.
-  if (best.distance <= selfBestDistance + RIVAL_SAFETY_MARGIN) return best;
-  return null;
+/**
+ * After a self-match passes the distance threshold, confirm identity:
+ * - probe near enrollment centroid (blocks one-photo luck)
+ * - claimed person is nearest in the gallery
+ * - clear gap vs next identity (blocks look-alikes)
+ * - no other enrolled person within the accept band
+ */
+export function assertUniqueIdentity(
+  probe: number[],
+  selfBestDistance: number,
+  selfDescriptors: number[][],
+  rivals: Array<{ employeeId: string; descriptors: number[][] }>,
+  maxDistance: number
+): { ok: true } | { ok: false; reason: string; employeeId?: string } {
+  const centroid = enrollmentCentroid(selfDescriptors);
+  if (centroid) {
+    const toCentroid = euclideanDistance(probe, centroid);
+    // Centroid is stricter than best single photo — allow tiny slack
+    if (toCentroid > maxDistance + 0.02) {
+      return {
+        ok: false,
+        reason:
+          "Face does not match your enrolled photo set closely enough (look-alike rejected).",
+      };
+    }
+  }
+
+  // Absolute clarity: best hit must not be borderline (unenrolled look-alikes)
+  if (selfBestDistance > Math.min(maxDistance, 0.42)) {
+    return {
+      ok: false,
+      reason: "Face match is too weak — only a clear match to enrolled photos is allowed.",
+    };
+  }
+
+  const rival = findClosestRival(probe, rivals);
+  if (!rival) return { ok: true };
+
+  if (rival.distance <= selfBestDistance) {
+    return {
+      ok: false,
+      employeeId: rival.employeeId,
+      reason: `Face is closer to employee ID ${rival.employeeId} than to your enrollment.`,
+    };
+  }
+
+  if (rival.distance - selfBestDistance < RIVAL_SAFETY_MARGIN) {
+    return {
+      ok: false,
+      employeeId: rival.employeeId,
+      reason: `Face is too similar to employee ID ${rival.employeeId} — only a unique match can proceed.`,
+    };
+  }
+
+  if (rival.distance <= maxDistance) {
+    return {
+      ok: false,
+      employeeId: rival.employeeId,
+      reason: `Face also matches employee ID ${rival.employeeId}. Action blocked.`,
+    };
+  }
+
+  return { ok: true };
 }
