@@ -7,6 +7,7 @@ import {
   ensureEmployeeTicketsTable,
   rowToTicket,
 } from "@/lib/employee-tickets-table";
+import { findOpenSessionBreak } from "@/lib/open-session-break";
 import { getEmployeePseudonym } from "@/lib/ticket-employee-meta";
 import { seedEmployeeMessage } from "@/lib/ticket-thread";
 
@@ -35,6 +36,17 @@ export async function POST(req: NextRequest) {
         { success: false, error: "employee_id required" },
         { status: 400 },
       );
+    }
+
+    // Never open a seat-absent ticket while Break/Prayer/Refreshment/Meeting is active
+    const openBreak = await findOpenSessionBreak(employeeId);
+    if (openBreak.active) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: `active_${openBreak.kind ?? "break"}`,
+        message: `Skipped — employee has an active ${openBreak.kind ?? "break"}.`,
+      });
     }
 
     // Enrich from HRM
