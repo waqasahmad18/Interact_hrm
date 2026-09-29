@@ -949,24 +949,36 @@ export default function SystemControlPage() {
   return (
     <OptionalAdminShell>
       <div className={styles.page}>
-        <header className={styles.scHeader}>
-          <div>
+        <header className={styles.scHero}>
+          <div className={styles.scHeroMain}>
             <p className={styles.scEyebrow}>Administration</p>
             <h1 className={styles.scTitle}>System Control</h1>
             <p className={styles.scSubtitle}>
-              Manage roles, permissions, user assignments, and features from one place.
-              {accessLoading
-                ? " Loading live employees…"
-                : ` ${employees.length} employees loaded from database.`}
-              {accessSaving ? " Saving…" : ""}
+              Roles, permissions, org chart, and feature flags — one control center for HRM access.
             </p>
+            <div className={styles.scHeroMeta}>
+              <span className={styles.scMetaChip}>
+                {accessLoading
+                  ? "Loading employees…"
+                  : `${employees.length} employees`}
+              </span>
+              <span className={styles.scMetaChip}>
+                {allRoles.length} roles
+              </span>
+              {accessSaving ? (
+                <span className={`${styles.scMetaChip} ${styles.scMetaChipLive}`}>
+                  Saving…
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div className={styles.scHeaderBadge}>Super Admin</div>
+          <div className={styles.scHeroSide}>
+            <span className={styles.scHeaderBadge}>Live DB</span>
+            <p className={styles.scHeroSideHint}>{TAB_HINT[activeTab]}</p>
+          </div>
         </header>
 
-        <div className={styles.scHintBar}>{TAB_HINT[activeTab]}</div>
-
-        <nav className={styles.scTabs} aria-label="System Control sections">
+        <nav className={styles.scTabRail} aria-label="System Control sections">
           {tabs.map((tab) => (
             <button
               key={tab.id}
