@@ -45,14 +45,13 @@ export type FaceScanOutcome =
 
 const MIN_FACE_AREA_RATIO = 0.03;
 const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
-// Genuine second person = sizable + high-confidence. Tiny wall/light "ghosts"
-// must never inflate the count (we saw storms of 100+ false faces blocking clock).
-const COUNT_MIN_FACE_AREA_RATIO = 0.05;
-const COUNT_MIN_SCORE = 0.55;
-/** Real faces fill a meaningful fraction of frame height — ghosts do not. */
-const COUNT_MIN_HEIGHT_RATIO = 0.12;
-/** Above this after filtering = detector noise storm, not real people. */
-const COUNT_NOISE_STORM_CAP = 6;
+// A genuine second person (a real privacy/security concern) produces a sizable,
+// high-confidence detection. Background texture — ceiling lights, wall patterns,
+// reflections, glass partitions — only produces small, low-score "ghost"
+// detections. Counting ignores those so one real person is never reported as
+// "multiple faces".
+const COUNT_MIN_FACE_AREA_RATIO = 0.045;
+const COUNT_MIN_SCORE = 0.5;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -72,27 +71,31 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
-  // Fast live detector — accuracy comes from server match threshold
+  // Fast live detector — accuracy comes from server match threshold, not huge inputSize
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.4,
+    inputSize: 416,
+    scoreThreshold: 0.32,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
     inputSize: 320,
-    scoreThreshold: 0.3,
+    scoreThreshold: 0.24,
   });
-  // Counting: high threshold + small input = fast and almost no ghost faces
+  // Counting detectors run at a HIGH score threshold so background "ghost"
+  // detections (lights, walls, reflections) are never mistaken for a person.
+  // Only confident, real-face detections are counted.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.6,
+    inputSize: 416,
+    scoreThreshold: 0.5,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.55 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 }),
   ];
   ENROLL_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.32 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.24 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.16 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.24 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.16 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 }),
   ];
 }
 
@@ -180,43 +183,20 @@ function minArea(canvas: HTMLCanvasElement, ratio: number): number {
 }
 
 /**
- * Count only GENUINE faces. Rejects tiny / low-score ghosts. If the detector
- * hallucinates a storm (dozens of boxes), treat as noise → return 1 so clock
- * is not blocked by false "277 faces".
+ * Count only GENUINE faces: each detection must be both large enough (a real
+ * person, not a tiny background artefact) and confident enough (high score, not
+ * a low-confidence hallucination on wall/light/glass texture). This is what
+ * stops a single person being reported as "multiple faces".
  */
 function filterRealFaces(
   canvas: HTMLCanvasElement,
   detections: FaceDetection[],
   ratio: number
 ): FaceDetection[] {
-  const cw = canvas.width || 1;
-  const ch = canvas.height || 1;
-  const minAreaPx = cw * ch * ratio;
-  const minH = ch * COUNT_MIN_HEIGHT_RATIO;
-
-  const real = detections.filter((d) => {
-    const score = typeof d.score === "number" ? d.score : 0;
-    if (score < COUNT_MIN_SCORE) return false;
-    const w = d.box?.width ?? 0;
-    const h = d.box?.height ?? 0;
-    if (w * h < minAreaPx) return false;
-    if (h < minH) return false;
-    // Reject absurdly huge boxes (full-frame artefacts)
-    if (w > cw * 0.95 && h > ch * 0.95) return false;
-    return true;
-  });
-
-  // Sort by score desc — keep the strongest few only
-  real.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return real.slice(0, COUNT_NOISE_STORM_CAP);
-}
-
-/** Sanitize raw detector count for multi-face blocking. */
-function sanitizeFaceCount(raw: number): number {
-  if (!Number.isFinite(raw) || raw < 0) return 0;
-  // Detector noise storm — do not block the employee
-  if (raw > COUNT_NOISE_STORM_CAP) return 1;
-  return raw;
+  const area = minArea(canvas, ratio);
+  return detections.filter(
+    (d) => d.box.width * d.box.height >= area && d.score >= COUNT_MIN_SCORE
+  );
 }
 
 type WithDescriptor = {
@@ -352,10 +332,10 @@ export async function countFacesOnCanvas(canvas: HTMLCanvasElement): Promise<num
     const detections = await faceapi.detectAllFaces(canvas, detector);
     const count = filterRealFaces(canvas, detections, COUNT_MIN_FACE_AREA_RATIO).length;
     if (count > maxCount) maxCount = count;
-    if (maxCount >= 2) return sanitizeFaceCount(maxCount);
+    if (maxCount >= 2) return maxCount;
   }
 
-  return sanitizeFaceCount(maxCount);
+  return maxCount;
 }
 
 /** Fast live check — whole frame (full width, no side crop) used every scan. */
@@ -363,18 +343,16 @@ export async function quickCountFacesInVideo(video: HTMLVideoElement): Promise<n
   await ensureFaceModelsLoaded();
   if (!faceapi || !LIVE_FACE_COUNT) return 0;
 
-  const whole = drawWholeFrameCanvas(video, 320);
+  const whole = drawWholeFrameCanvas(video, 640);
   if (!whole) return 0;
   const detections = await faceapi.detectAllFaces(whole, LIVE_FACE_COUNT);
-  return sanitizeFaceCount(
-    filterRealFaces(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length
-  );
+  return filterRealFaces(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;
 }
 
 export async function countFacesInVideo(video: HTMLVideoElement): Promise<number> {
   await ensureFaceModelsLoaded();
-  // Smaller canvas = faster count; filters still catch a real second person
-  const whole = drawWholeFrameCanvas(video, 320);
+  // Use the WHOLE frame (full width) so edge/side faces are never cropped out.
+  const whole = drawWholeFrameCanvas(video, 720);
   if (!whole) return 0;
   return countFacesOnCanvas(whole);
 }
@@ -426,8 +404,7 @@ async function descriptorFromCanvases(
         (r) => r.detection.score >= COUNT_MIN_SCORE
       );
       if (confident.length >= 2) {
-        const n = sanitizeFaceCount(confident.length);
-        if (n >= 2) return { status: "multiple", count: n };
+        return { status: "multiple", count: confident.length };
       }
 
       if (significant.length === 1 && significant[0].descriptor) {
@@ -478,7 +455,7 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   // near the frame edge. Check the FULL frame first so two people are blocked
   // even when only one is centred.
   const fullFaceCount = await quickCountFacesInVideo(video);
-  if (fullFaceCount >= 2 && fullFaceCount <= COUNT_NOISE_STORM_CAP) {
+  if (fullFaceCount >= 2) {
     return { status: "multiple", count: fullFaceCount };
   }
 
@@ -532,16 +509,12 @@ export async function scanVideoFrameFast(
       r.detection.box.width * r.detection.box.height >= minArea(canvas, MIN_FACE_AREA_RATIO)
   );
   const confident = significant.filter((r) => r.detection.score >= COUNT_MIN_SCORE);
-  const multi = sanitizeFaceCount(confident.length);
-  if (multi >= 2) return { status: "multiple", count: multi };
-  if (significant.length >= 1 && significant[0].descriptor) {
-    // Prefer highest-score face if several low-quality boxes exist
-    significant.sort((a, b) => b.detection.score - a.detection.score);
-    const best = significant[0];
-    const box = best.detection.box;
+  if (confident.length >= 2) return { status: "multiple", count: confident.length };
+  if (significant.length === 1 && significant[0].descriptor) {
+    const box = significant[0].detection.box;
     return {
       status: "ok",
-      descriptor: best.descriptor,
+      descriptor: significant[0].descriptor,
       coverage: box.height / canvas.height,
     };
   }

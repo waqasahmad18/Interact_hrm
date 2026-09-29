@@ -101,16 +101,6 @@ export function FaceVerifyModal({
   }, []);
 
   const blockMultipleFaces = React.useCallback((count: number) => {
-    // Absurd counts are detector noise (ghosts), not real people — never block
-    if (!Number.isFinite(count) || count < 2 || count > 6) {
-      singleFaceStreakRef.current = 0;
-      probeBufferRef.current = [];
-      setMultipleFaces(false);
-      setError(null);
-      setGuidance(null);
-      setStatus("Look at the camera — scanning automatically…");
-      return;
-    }
     singleFaceStreakRef.current = 0;
     probeBufferRef.current = [];
     setMultipleFaces(true);
@@ -224,7 +214,7 @@ export function FaceVerifyModal({
       // second face near the edge / smaller / farther is reliably caught and
       // the clock action is blocked. Only one face may proceed.
       const faceCount = await countFacesInVideo(video);
-      if (faceCount >= 2 && faceCount <= 6) {
+      if (faceCount >= 2) {
         busyRef.current = false;
         setVerifying(false);
         blockMultipleFaces(faceCount);
