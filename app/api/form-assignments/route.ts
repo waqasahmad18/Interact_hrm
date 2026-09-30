@@ -20,12 +20,21 @@ export async function GET(req: NextRequest) {
     const employeeId = searchParams.get("employeeId");
     const status = searchParams.get("status");
     const hrView = searchParams.get("hr") === "1";
+    const viewerId = (
+      req.headers.get("x-hrm-employee-id") ||
+      req.headers.get("x-employee-id") ||
+      searchParams.get("viewerId") ||
+      ""
+    ).trim();
 
     let sql = `SELECT a.*, t.title AS template_title, t.category AS template_category,
-                      t.form_schema, CONCAT(e.first_name, ' ', e.last_name) AS employee_name
+                      t.form_schema, CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+                      d.name AS department_name
                FROM hrm_form_assignments a
                JOIN hrm_form_templates t ON t.id = a.template_id
                JOIN hrm_employees e ON e.id = a.employee_id
+               LEFT JOIN employee_jobs j ON j.employee_id = e.id
+               LEFT JOIN departments d ON d.id = j.department_id
                WHERE 1=1`;
     const params: (string | number)[] = [];
 
@@ -44,11 +53,31 @@ export async function GET(req: NextRequest) {
     sql += ` ORDER BY a.updated_at DESC`;
 
     const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
-    const assignments = (rows as FormAssignmentRow[]).map((a) => ({
+    let assignments = (rows as (FormAssignmentRow & { department_name?: string })[]).map((a) => ({
       ...a,
       form_data: parseJsonField<Record<string, unknown>>(a.form_data),
       form_schema: parseJsonField(a.form_schema),
     }));
+
+    if (hrView && viewerId) {
+      try {
+        const { resolveViewerDataScope, rowInViewerScope } = await import(
+          "@/lib/access-control/data-scope"
+        );
+        const scope = await resolveViewerDataScope(viewerId);
+        if (scope.mode !== "all") {
+          assignments = assignments.filter((a) =>
+            rowInViewerScope(scope, {
+              employeeId: a.employee_id,
+              departmentName: (a as { department_name?: string }).department_name ?? null,
+            }),
+          );
+        }
+      } catch {
+        /* keep if scope helper fails */
+      }
+    }
+
     return NextResponse.json({ success: true, assignments });
   } catch (err) {
     return NextResponse.json(

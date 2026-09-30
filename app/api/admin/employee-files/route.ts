@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db";
 
+function viewerIdFrom(req: NextRequest) {
+  return (
+    req.headers.get("x-hrm-employee-id") ||
+    req.headers.get("x-employee-id") ||
+    req.nextUrl.searchParams.get("viewerId") ||
+    ""
+  ).trim();
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -41,7 +50,29 @@ export async function GET(req: NextRequest) {
              LIMIT 500`;
 
     const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
-    return NextResponse.json({ success: true, employees: rows });
+    let employees = rows as RowDataPacket[];
+
+    const viewerId = viewerIdFrom(req);
+    if (viewerId) {
+      try {
+        const { resolveViewerDataScope, rowInViewerScope } = await import(
+          "@/lib/access-control/data-scope"
+        );
+        const scope = await resolveViewerDataScope(viewerId);
+        if (scope.mode !== "all") {
+          employees = employees.filter((e) =>
+            rowInViewerScope(scope, {
+              employeeId: e.id,
+              departmentName: e.department_name,
+            }),
+          );
+        }
+      } catch {
+        /* keep list if scope helper fails */
+      }
+    }
+
+    return NextResponse.json({ success: true, employees });
   } catch (err) {
     return NextResponse.json(
       { success: false, error: err instanceof Error ? err.message : "Failed" },

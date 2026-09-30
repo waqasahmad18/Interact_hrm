@@ -41,10 +41,23 @@ export default function EmployeeCredentialsPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employee-credentials");
+      const viewerId =
+        typeof window !== "undefined"
+          ? String(localStorage.getItem("employeeId") || "").trim()
+          : "";
+      const qs = viewerId ? `?viewerId=${encodeURIComponent(viewerId)}` : "";
+      const scopeHeaders: HeadersInit = viewerId
+        ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+        : {};
+
+      const res = await fetch(`/api/employee-credentials${qs}`, {
+        headers: scopeHeaders,
+      });
       const data = await res.json();
       if (data.success) {
-        const empListRes = await fetch("/api/employee-list");
+        const empListRes = await fetch(`/api/employee-list${qs}`, {
+          headers: scopeHeaders,
+        });
         const empListData = await empListRes.json();
         const deptMap = new Map();
         if (empListData.success) {
@@ -67,7 +80,7 @@ export default function EmployeeCredentialsPage() {
 
         const enrichedEmployees = data.employees.map((emp: Employee) => ({
           ...emp,
-          department_name: deptMap.get(emp.id) || '-',
+          department_name: emp.department_name || deptMap.get(emp.id) || '-',
           pseudonym: pseudonymMap.get(emp.id) || '-'
         }));
         setEmployees(enrichedEmployees);
@@ -98,9 +111,18 @@ export default function EmployeeCredentialsPage() {
   const handleSave = async (id: number) => {
     setSaving(true);
     try {
+      const viewerId =
+        typeof window !== "undefined"
+          ? String(localStorage.getItem("employeeId") || "").trim()
+          : "";
       const res = await fetch("/api/employee-credentials", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(viewerId
+            ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+            : {}),
+        },
         body: JSON.stringify({
           id,
           username: editData.username,

@@ -74,21 +74,51 @@ export default function AdminEmployeeFilesPage() {
   const loginId = typeof window !== "undefined" ? localStorage.getItem("loginId") || "hr" : "hr";
 
   const loadEmployees = React.useCallback(async () => {
-    const res = await fetch(`/api/admin/employee-files?q=${encodeURIComponent(q)}`, {
+    const viewerId =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (viewerId) params.set("viewerId", viewerId);
+    const res = await fetch(`/api/admin/employee-files?${params.toString()}`, {
       cache: "no-store",
+      headers: viewerId
+        ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+        : {},
     });
     const data = await res.json();
     if (data.success) setEmployees(data.employees || []);
   }, [q]);
 
   const loadDocs = React.useCallback(async (empId: number) => {
+    const viewerId =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    const scopeHeaders: HeadersInit = viewerId
+      ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+      : {};
+    const viewerQs = viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : "";
     const [docRes, formRes] = await Promise.all([
-      fetch(`/api/employee-documents?employeeId=${empId}&hr=1`, { cache: "no-store" }),
-      fetch(`/api/form-assignments?employeeId=${empId}`, { cache: "no-store" }),
+      fetch(`/api/employee-documents?employeeId=${empId}&hr=1${viewerQs}`, {
+        cache: "no-store",
+        headers: scopeHeaders,
+      }),
+      fetch(`/api/form-assignments?employeeId=${empId}`, {
+        cache: "no-store",
+        headers: scopeHeaders,
+      }),
     ]);
     const docData = await docRes.json();
     const formData = await formRes.json();
     if (docData.success) setDocuments(docData.documents || []);
+    else {
+      setDocuments([]);
+      if (docRes.status === 403) {
+        showAppToast({ message: "Out of department scope for this employee.", variant: "error" });
+      }
+    }
     if (formData.success) {
       const all = formData.assignments || [];
       setPendingForms(
@@ -98,7 +128,17 @@ export default function AdminEmployeeFilesPage() {
   }, []);
 
   const loadSubmissions = React.useCallback(async () => {
-    const res = await fetch(`/api/form-assignments?hr=1`, { cache: "no-store" });
+    const viewerId =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    const qs = viewerId ? `?hr=1&viewerId=${encodeURIComponent(viewerId)}` : `?hr=1`;
+    const res = await fetch(`/api/form-assignments${qs}`, {
+      cache: "no-store",
+      headers: viewerId
+        ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+        : {},
+    });
     const data = await res.json();
     if (data.success) setSubmissions(data.assignments || []);
   }, []);
