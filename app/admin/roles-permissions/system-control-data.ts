@@ -496,6 +496,17 @@ for (const roleId of ["hr_manager", "hr_coordinator", "team_lead_hr"]) {
   }
 }
 
+/** Template keys for “Reset role to Default” (officer/staff = empty extras; tier-based). */
+export function defaultPermissionKeysForRole(
+  roleId: string,
+  allRoles: RoleDef[] = BASE_ROLES,
+): string[] {
+  const baked = DEFAULT_PERMISSIONS[roleId];
+  if (baked) return [...baked];
+  const role = allRoles.find((r) => r.id === roleId);
+  return permissionsForTier(role?.tier ?? "staff");
+}
+
 export const GLOBAL_FEATURES: GlobalFeature[] = [
   { key: "biometric", name: "Biometric face clock-in", desc: "Require face verify on clock in/out", on: true },
   { key: "tungsten", name: "Tungsten IN/OUT sync", desc: "Punch reconciliation page", on: true },

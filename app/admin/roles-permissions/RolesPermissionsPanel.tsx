@@ -38,7 +38,7 @@ type Props = {
     checked: boolean,
     baseRoleId: string,
   ) => void;
-  onResetAll: () => void;
+  onResetRole: (roleId: string) => void;
   onSaveRole: (roleId: string) => void;
   onSaveEmployee: (employeeId: string, baseRoleId: string) => void;
   onClearEmployeeOverrides: (employeeId: string) => void;
@@ -137,7 +137,7 @@ export default function RolesPermissionsPanel({
   onToggleModuleForRole,
   onToggleEmployeePermission,
   onToggleModuleForEmployee,
-  onResetAll,
+  onResetRole,
   onSaveRole,
   onSaveEmployee,
   onClearEmployeeOverrides,
@@ -800,8 +800,12 @@ export default function RolesPermissionsPanel({
             <button
               type="button"
               className={styles.btnOutlinePurple}
-              onClick={onResetAll}
-              disabled={!canEditPerms}
+              onClick={() => {
+                if (!activeRoleId) return;
+                onResetRole(activeRoleId);
+              }}
+              disabled={!canEditPerms || !activeRoleId || locked}
+              title="Restore this role’s default permissions and uncheck extras (saves immediately)"
             >
               Reset role to Default
             </button>

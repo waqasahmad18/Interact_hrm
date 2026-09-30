@@ -19,6 +19,7 @@ import {
   BASE_ROLES,
   childRoles,
   clonePermissionMap,
+  defaultPermissionKeysForRole,
   FEATURE_MODULES,
   GLOBAL_FEATURES,
   TAB_HINT,
@@ -759,7 +760,7 @@ export default function SystemControlPage() {
     }
   }
 
-  async function savePermissionsToDb(roleId: string) {
+  async function savePermissionsToDb(roleId: string, keysOverride?: string[]) {
     const targetRole = String(roleId || selectedRoleId || "").trim();
     if (!targetRole) {
       showToast("Select a role first");
@@ -767,7 +768,10 @@ export default function SystemControlPage() {
     }
     setAccessSaving(true);
     try {
-      const keys = [...(permissions[targetRole] || [])];
+      const keys =
+        keysOverride != null
+          ? keysOverride
+          : [...(permissions[targetRole] || [])];
       const res = await fetch("/api/access-control/system-control", {
         method: "PUT",
         headers: accessApiHeaders(),
@@ -778,6 +782,37 @@ export default function SystemControlPage() {
       showToast(`Role permissions saved for ${roleMeta(targetRole, allRoles).name}.`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save permissions");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function resetRoleToDefault(roleId: string) {
+    const targetRole = String(roleId || "").trim();
+    if (!targetRole) {
+      showToast("Select a role first");
+      return;
+    }
+    if (isRoleLocked(targetRole)) {
+      showToast("This role cannot be reset");
+      return;
+    }
+    const keys = defaultPermissionKeysForRole(targetRole, allRoles);
+    setPermissions((prev) => ({ ...prev, [targetRole]: new Set(keys) }));
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({ type: "permissions", roleId: targetRole, keys }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Reset failed");
+      showToast(
+        `${roleMeta(targetRole, allRoles).name} reset to default (${keys.length} permissions). Extras unchecked.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to reset role");
     } finally {
       setAccessSaving(false);
     }
@@ -1047,10 +1082,7 @@ export default function SystemControlPage() {
               onToggleModuleForRole={toggleModuleForRole}
               onToggleEmployeePermission={toggleEmployeePermission}
               onToggleModuleForEmployee={toggleModuleForEmployee}
-              onResetAll={() => {
-                setPermissions(clonePermissionMap());
-                showToast("All roles reset to default templates");
-              }}
+              onResetRole={(roleId) => void resetRoleToDefault(roleId)}
               onSaveRole={(roleId) => void savePermissionsToDb(roleId)}
               onSaveEmployee={(empId, roleId) =>
                 void saveEmployeePermissionsToDb(empId, roleId)
