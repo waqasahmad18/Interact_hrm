@@ -1,4 +1,4 @@
-export type TabId = "roles" | "permissions" | "features" | "settings";
+export type TabId = "roles" | "permissions" | "features";
 
 export type RoleDef = {
   id: string;
@@ -530,7 +530,6 @@ export const TAB_HINT: Record<TabId, string> = {
   roles: "Drag any card onto another to change its reporting line. Click a card to add a role under it, rename it, set its level, or delete it. All card changes are saved to the database and survive refresh.",
   permissions: "Select a role to configure permissions across every HRM module, assign it to a live employee, then Save — stored in Mongo/MySQL.",
   features: "Globally enable or disable features for the entire organization. Save writes to the database.",
-  settings: "Session defaults, leave workflow, and who can access System Control.",
 };
 
 /** Managing partners — each owns one org-chart department column. */

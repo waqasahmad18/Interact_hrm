@@ -12,7 +12,6 @@ import {
   saveOrgChartPhoto,
 } from "./org-chart-photo-api";
 import RolesPermissionsPanel from "./RolesPermissionsPanel";
-import SettingsTab from "./SettingsTab";
 import styles from "./system-control-demo.module.css";
 import { ModalPortal } from "@/app/components/ModalPortal";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
@@ -104,10 +103,6 @@ export default function SystemControlPage() {
 
   const [selectedRoleId, setSelectedRoleId] = useState("it_manager");
   const [globalFeatures, setGlobalFeatures] = useState(GLOBAL_FEATURES);
-  const [sessionTimeout, setSessionTimeout] = useState("480");
-  const [defaultRole, setDefaultRole] = useState("helpdesk");
-  const [twoStepLeave, setTwoStepLeave] = useState(true);
-  const [systemControlRoles, setSystemControlRoles] = useState(["exec_board"]);
   const [toast, setToast] = useState("");
   const [rolePhotos, setRolePhotos] = useState<Record<string, string>>({});
   const persistTimerRef = React.useRef<number | null>(null);
@@ -943,7 +938,6 @@ export default function SystemControlPage() {
     { id: "roles", label: "Org Chart" },
     { id: "permissions", label: "Permissions" },
     { id: "features", label: "Features" },
-    { id: "settings", label: "Settings" },
   ];
 
   return (
@@ -1066,21 +1060,6 @@ export default function SystemControlPage() {
               }}
               onSave={() => void saveFeaturesToDb()}
               readOnly={!viewerCaps.systemFeaturesEdit}
-            />
-          )}
-
-          {activeTab === "settings" && (
-            <SettingsTab
-              sessionTimeout={sessionTimeout}
-              onSessionTimeoutChange={setSessionTimeout}
-              defaultRole={defaultRole}
-              onDefaultRoleChange={setDefaultRole}
-              twoStepLeave={twoStepLeave}
-              onTwoStepLeaveChange={setTwoStepLeave}
-              systemControlRoles={systemControlRoles}
-              onSystemControlRolesChange={setSystemControlRoles}
-              allRoles={allRoles}
-              onSave={() => showToast("Settings saved (demo)")}
             />
           )}
         </div>
