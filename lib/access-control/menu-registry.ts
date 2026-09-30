@@ -126,12 +126,6 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
 
   // ── Leave ──
   {
-    permission: "leave.apply.self",
-    name: "Apply Leave",
-    path: "/employee-dashboard/leave",
-    group: "leave",
-  },
-  {
     permission: "leave.list.view",
     name: "Leaves",
     path: "/employee-dashboard/leave-inbox",

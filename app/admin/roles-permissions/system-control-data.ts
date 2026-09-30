@@ -71,7 +71,6 @@ const PERM_HINTS: Record<string, string> = {
   "attendance.presence.view": "Open desktop presence / idle monitoring.",
   "attendance.employee_report.view": "Open per-employee attendance report.",
   "leave.list.view": "See leave requests for scoped employees (not only self).",
-  "leave.apply.self": "Submit own leave / PTO requests from employee portal.",
   "leave.approve.manager": "Leave approval — Managers only, within their department scope (set on Add Employee).",
   "leave.approval_status.view": "See pending vs approved status on leave requests.",
   "leave.balances.edit": "Adjust leave balances and entitlements.",
@@ -291,7 +290,6 @@ export const FEATURE_MODULES = withPermissionHints([
     icon: "🌴",
     permissions: [
       { key: "leave.list.view", label: "View all leave requests" },
-      { key: "leave.apply.self", label: "Apply own leave" },
       { key: "leave.approve.manager", label: "Approve leave" },
       { key: "leave.approval_status.view", label: "View leave approval status" },
       { key: "leave.balances.edit", label: "Edit leave balances" },
@@ -453,7 +451,6 @@ function permissionsForTier(tier: RoleTier): string[] {
       ];
     case "lead":
       return [
-        "leave.apply.self",
         "leave.approval_status.view",
         "team.dashboard.view",
         "team.attendance.view",
@@ -461,7 +458,7 @@ function permissionsForTier(tier: RoleTier): string[] {
         "team.leaves.view",
       ];
     default:
-      return ["leave.apply.self"];
+      return [];
   }
 }
 
