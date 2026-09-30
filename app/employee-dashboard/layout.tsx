@@ -83,6 +83,7 @@ type NavTab = { name: string; path: string; icon: React.ReactNode };
 const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
+  { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
 ];
 
@@ -312,20 +313,19 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
 
   const employeeTabs = React.useMemo(() => {
     const ticketInbox = accessTabs.filter((t) => t.path === "/employee-dashboard/tickets");
-    const team = accessTabs.filter((t) => t.path === "/employee-dashboard/my-team");
     const rest = accessTabs.filter(
       (t) =>
         t.path !== "/employee-dashboard/my-team" &&
         t.path !== "/employee-dashboard/tickets",
     );
-    const [home, myInfo, generateTicket, ...tail] = BASE_EMPLOYEE_TABS;
-    // Home → My Info → Generate Ticket → Ticket Inbox (HR) → My Team → …
+    const [home, myInfo, myTeam, generateTicket, ...tail] = BASE_EMPLOYEE_TABS;
+    // Home → My Info → My Team → Generate Ticket → Ticket Inbox (HR) → …
     return [
       home,
       myInfo,
+      myTeam,
       generateTicket,
       ...ticketInbox,
-      ...team,
       ...tail,
       ...rest,
     ].filter(Boolean);
@@ -442,7 +442,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 }}
               >
                 <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
-                <span>{tab.name}</span>
+                <span className={empStyles.navLabelPdf}>{tab.name}</span>
               </Link>
             );
           })}

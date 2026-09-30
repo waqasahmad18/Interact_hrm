@@ -391,6 +391,7 @@ export function allowedPathsFromPermissions(permissions: string[]): Set<string> 
   }
   paths.add("/employee-dashboard");
   paths.add("/employee-dashboard/my-info");
+  paths.add("/employee-dashboard/my-team");
   paths.add("/employee-dashboard/generate-ticket");
   return paths;
 }
