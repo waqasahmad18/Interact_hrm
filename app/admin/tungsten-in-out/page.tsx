@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import { getDateStringInTimeZone, SERVER_TIMEZONE } from "@/lib/timezone";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
@@ -218,7 +218,7 @@ export default function TungstenInOutPage() {
   };
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.breakSummaryContainer}>
         <h1 className={styles.pageTitle}>Tungsten IN/OUT</h1>
 
@@ -376,6 +376,6 @@ export default function TungstenInOutPage() {
         )}
       </div>
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

@@ -23,6 +23,7 @@ import {
   FaCoffee,
   FaFileAlt,
   FaEdit,
+  FaKey,
 } from "react-icons/fa";
 import styles from "../layout-dashboard.module.css";
 import empStyles from "./emp-shell.module.css";
@@ -87,20 +88,30 @@ const BASE_EMPLOYEE_TABS: NavTab[] = [
 
 function iconForPath(path: string, name: string): React.ReactNode {
   if (path.includes("my-team") || name.includes("Team")) return <FaUsers />;
-  if (path.includes("leave") || name.includes("Leave")) return <FaCalendarAlt />;
-  if (path.includes("break")) return <FaCoffee />;
+  if (path.includes("leave") || name.includes("Leave") || path.includes("calendar")) {
+    return <FaCalendarAlt />;
+  }
+  if (path.includes("break") || path.includes("prayer")) return <FaCoffee />;
   if (path.includes("ticket") || name.includes("Ticket")) return <FaTicketAlt />;
   if (
     path.includes("payroll") ||
     path.includes("commission") ||
     path.includes("advance") ||
-    path.includes("loan")
+    path.includes("loan") ||
+    path.includes("financial")
   ) {
     return <FaDollarSign />;
   }
   if (path.includes("system-control")) return <FaCog />;
-  if (path.includes("manage-")) return <FaEdit />;
-  if (path.includes("monthly")) return <FaFileAlt />;
+  if (path.includes("credential") || path.includes("face-enrollment")) return <FaKey />;
+  if (path.includes("files") || path.includes("formats")) return <FaFileAlt />;
+  if (path.includes("employee-list") || path.includes("add-employee") || path.includes("departments")) {
+    return <FaUsers />;
+  }
+  if (path.includes("manage-") || path.includes("shift")) return <FaEdit />;
+  if (path.includes("monthly") || path.includes("summary") || path.includes("tungsten") || path.includes("presence")) {
+    return <FaFileAlt />;
+  }
   return <FaClipboardList />;
 }
 

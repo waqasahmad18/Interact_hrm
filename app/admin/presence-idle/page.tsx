@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "./presence-idle.module.css";
 import PresenceAgentsPanel from "./PresenceAgentsPanel";
@@ -431,7 +431,7 @@ export default function PresenceIdleSettingsPage() {
   }
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
           <div className={adminStyles.pageHeader}>
@@ -794,6 +794,6 @@ export default function PresenceIdleSettingsPage() {
           )}
         </div>
       </div>
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

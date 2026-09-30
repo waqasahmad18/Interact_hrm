@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import LayoutDashboard from "../../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./face-enrollment.module.css";
 import tableStyles from "../../break-summary/break-summary.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
@@ -636,7 +636,7 @@ export default function FaceEnrollmentAdminPage() {
     !!employeeId && !busy && modelsReady && photos.length < (service?.recommendedMax ?? 5);
 
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={styles.page}>
         <div className={styles.pageHeader}>
           <h1 className={styles.title}>Face Enrollment</h1>
@@ -1068,6 +1068,6 @@ export default function FaceEnrollmentAdminPage() {
         </div>
       </div>
       {popup}
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }

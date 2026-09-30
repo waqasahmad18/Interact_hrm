@@ -1,14 +1,14 @@
 import React from "react";
 import AddEmployeeForm from "./AddEmployeeForm";
-import LayoutDashboard from "../layout-dashboard";
+import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin/admin-page.module.css";
 
 export default function AddEmployeePage() {
   return (
-    <LayoutDashboard>
+    <OptionalAdminShell>
       <div className={adminStyles.page}>
         <AddEmployeeForm />
       </div>
-    </LayoutDashboard>
+    </OptionalAdminShell>
   );
 }
