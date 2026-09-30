@@ -442,7 +442,14 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 }}
               >
                 <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
-                <span className={empStyles.navLabelPdf}>{tab.name}</span>
+                {tab.name === "Employee Dashboard" ? (
+                  <span className={`${empStyles.navLabelPdf} ${empStyles.navLabelStacked}`}>
+                    <span className={empStyles.navLabelLine}>Employee</span>
+                    <span className={empStyles.navLabelLine}>Dashboard</span>
+                  </span>
+                ) : (
+                  <span className={empStyles.navLabelPdf}>{tab.name}</span>
+                )}
               </Link>
             );
           })}

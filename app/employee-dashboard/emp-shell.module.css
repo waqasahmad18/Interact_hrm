@@ -108,38 +108,50 @@
   background: transparent !important;
   color: #f0f0f0 !important;
   font-weight: 500 !important;
-  font-size: 0.82rem !important;
-  line-height: 1.2 !important;
-  padding: 10px 12px !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25 !important;
+  padding: 10px 14px !important;
   margin: 0 !important;
   border-radius: 10px !important;
-  gap: 10px !important;
+  gap: 12px !important;
   position: relative;
   overflow: visible !important;
   flex: 0 0 auto !important;
   flex-shrink: 0 !important;
-  flex-wrap: nowrap !important;
   min-height: 42px !important;
   box-sizing: border-box !important;
-  white-space: nowrap !important;
   align-items: center !important;
 }
 
 .navLabelPdf {
   display: inline-block;
-  white-space: nowrap !important;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1 1 auto;
-  line-height: 1.2;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.navLabelStacked {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  white-space: normal !important;
+  line-height: 1.15;
+}
+
+.navLabelLine {
+  display: block;
+  line-height: 1.15;
 }
 
 .navItemPdf > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  white-space: nowrap !important;
 }
 
 .navItemPdf:not(.navItemPdfActive)::before {
