@@ -5,6 +5,7 @@ import styles from "./system-control-demo.module.css";
 import SearchableSelect, { type SelectGroup, type SelectOption } from "./SearchableSelect";
 import type { DemoEmployee, FeatureModule, RoleDef } from "./system-control-data";
 import { groupRolesByOrgSection, roleMeta } from "./system-control-data";
+import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 
 export type SystemControlCaps = {
   systemPermissionsEdit: boolean;
@@ -26,15 +27,20 @@ type Props = {
   onToggleModuleExpand: (id: string) => void;
   onTogglePermission: (roleId: string, key: string) => void;
   onToggleModuleForRole: (roleId: string, module: FeatureModule, checked: boolean) => void;
-  onToggleEmployeePermission: (employeeId: string, key: string) => void;
+  onToggleEmployeePermission: (
+    employeeId: string,
+    key: string,
+    baseRoleId: string,
+  ) => void;
   onToggleModuleForEmployee: (
     employeeId: string,
     module: FeatureModule,
     checked: boolean,
+    baseRoleId: string,
   ) => void;
   onResetAll: () => void;
   onSaveRole: (roleId: string) => void;
-  onSaveEmployee: (employeeId: string) => void;
+  onSaveEmployee: (employeeId: string, baseRoleId: string) => void;
   onClearEmployeeOverrides: (employeeId: string) => void;
   onAssignEmployees: (employeeIds: string[], roleId: string) => void;
   onUnassignEmployees: (employeeIds: string[], roleId: string) => void;
@@ -44,11 +50,29 @@ type Props = {
   caps: SystemControlCaps;
 };
 
-function accentOf(role: RoleDef | undefined) {
-  return role?.accent || "#9333ea";
-}
+/** Modules that apply within own department / team by default. */
+const OWN_DEPT_MODULE_IDS = new Set([
+  "attendance",
+  "leave",
+  "people",
+  "team",
+  "department",
+  "portal",
+]);
 
-import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
+/** Modules / flags that are company-wide or expand scope to all depts. */
+const ALL_DEPT_MODULE_IDS = new Set([
+  "data_scope",
+  "dashboard",
+  "payroll",
+  "shifts",
+  "ops",
+  "system",
+]);
+
+function accentOf(role: RoleDef | undefined) {
+  return role?.accent || "#0e7490";
+}
 
 function roleFilter(opt: SelectOption, query: string) {
   return opt.label.toLowerCase().includes(query);
@@ -63,12 +87,43 @@ function explicitSlugs(emp: DemoEmployee): string[] {
   return effectiveAccessSlugs(emp);
 }
 
-function explicitSlug(emp: DemoEmployee) {
-  return explicitSlugs(emp)[0] || null;
-}
-
 function employeeHasRole(emp: DemoEmployee, roleId: string) {
   return explicitSlugs(emp).includes(roleId);
+}
+
+function labelsForKeys(modules: FeatureModule[], keys: Iterable<string>): string[] {
+  const set = new Set(keys);
+  const labels: string[] = [];
+  for (const mod of modules) {
+    for (const p of mod.permissions) {
+      if (set.has(p.key)) labels.push(p.label);
+    }
+  }
+  return labels;
+}
+
+function filterModules(
+  modules: FeatureModule[],
+  search: string,
+  column: "own" | "all",
+): FeatureModule[] {
+  const allow = column === "own" ? OWN_DEPT_MODULE_IDS : ALL_DEPT_MODULE_IDS;
+  const q = search.trim().toLowerCase();
+  return modules
+    .filter((m) => allow.has(m.id))
+    .map((m) => ({
+      ...m,
+      permissions: q
+        ? m.permissions.filter(
+            (p) =>
+              p.label.toLowerCase().includes(q) ||
+              p.key.toLowerCase().includes(q) ||
+              p.desc.toLowerCase().includes(q) ||
+              m.name.toLowerCase().includes(q),
+          )
+        : m.permissions,
+    }))
+    .filter((m) => m.permissions.length > 0);
 }
 
 export default function RolesPermissionsPanel({
@@ -99,6 +154,7 @@ export default function RolesPermissionsPanel({
   const [selectedAssignedIds, setSelectedAssignedIds] = useState<string[]>([]);
   /** When set, matrix edits that employee's custom permissions. */
   const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
+  const [hoverEmployeeId, setHoverEmployeeId] = useState<string | null>(null);
 
   const canEditPerms = caps.systemPermissionsEdit;
   const canAssign = caps.systemUsersAssign;
@@ -156,6 +212,8 @@ export default function RolesPermissionsPanel({
   React.useEffect(() => {
     setPendingIds([]);
     setSelectedAssignedIds([]);
+    setFocusEmployeeId(null);
+    setHoverEmployeeId(null);
   }, [selectedRoleId]);
 
   const activeRole =
@@ -189,7 +247,6 @@ export default function RolesPermissionsPanel({
     [employees, activeRoleId],
   );
 
-  /** All employees — pick one to inspect current role/perms (and assign if needed). */
   const employeePickerOptions: SelectOption[] = useMemo(
     () =>
       [...employees]
@@ -216,28 +273,16 @@ export default function RolesPermissionsPanel({
     [employees, allRoles],
   );
 
+  /** Picker only jumps role — does not auto-open user edit (was confusing). */
   React.useEffect(() => {
     if (!pickEmployeeId) return;
     const emp = employees.find((e) => e.id === pickEmployeeId);
     if (!emp) return;
-    const slugs = explicitSlugs(emp);
-    const primary = slugs[0];
+    const primary = explicitSlugs(emp)[0];
     if (primary && matrixRoles.some((r) => r.id === primary)) {
       setSelectedRoleId(primary);
     }
-    setFocusEmployeeId(pickEmployeeId);
   }, [pickEmployeeId, employees, matrixRoles]);
-
-  const previewPermLabels = useMemo(() => {
-    const keys = new Set(activeSet);
-    const labels: string[] = [];
-    for (const mod of modules) {
-      for (const p of mod.permissions) {
-        if (keys.has(p.key)) labels.push(p.label);
-      }
-    }
-    return labels;
-  }, [activeSet, modules]);
 
   const pickEmp = pickEmployeeId
     ? employees.find((e) => e.id === pickEmployeeId)
@@ -258,22 +303,21 @@ export default function RolesPermissionsPanel({
         0,
       );
 
-  const filteredModules = useMemo(() => {
-    const q = permSearch.trim().toLowerCase();
-    if (!q) return modules;
-    return modules
-      .map((m) => ({
-        ...m,
-        permissions: m.permissions.filter(
-          (p) =>
-            p.label.toLowerCase().includes(q) ||
-            p.key.toLowerCase().includes(q) ||
-            p.desc.toLowerCase().includes(q) ||
-            m.name.toLowerCase().includes(q),
-        ),
-      }))
-      .filter((m) => m.permissions.length > 0);
-  }, [modules, permSearch]);
+  const ownModules = useMemo(
+    () => filterModules(modules, permSearch, "own"),
+    [modules, permSearch],
+  );
+  const allModules = useMemo(
+    () => filterModules(modules, permSearch, "all"),
+    [modules, permSearch],
+  );
+
+  function effectiveKeysForEmployee(emp: DemoEmployee): string[] {
+    if (Object.prototype.hasOwnProperty.call(employeePermissions, emp.id)) {
+      return employeePermissions[emp.id] || [];
+    }
+    return [...roleSet];
+  }
 
   function roleHasAll(module: FeatureModule) {
     if (locked) return true;
@@ -328,7 +372,7 @@ export default function RolesPermissionsPanel({
   function onToggleKey(key: string) {
     if (matrixLocked) return;
     if (editingUser && focusEmployeeId) {
-      onToggleEmployeePermission(focusEmployeeId, key);
+      onToggleEmployeePermission(focusEmployeeId, key, activeRoleId);
     } else {
       onTogglePermission(activeRoleId, key);
     }
@@ -337,7 +381,7 @@ export default function RolesPermissionsPanel({
   function onToggleModule(module: FeatureModule, checked: boolean) {
     if (matrixLocked) return;
     if (editingUser && focusEmployeeId) {
-      onToggleModuleForEmployee(focusEmployeeId, module, checked);
+      onToggleModuleForEmployee(focusEmployeeId, module, checked, activeRoleId);
     } else {
       onToggleModuleForRole(activeRoleId, module, checked);
     }
@@ -347,14 +391,83 @@ export default function RolesPermissionsPanel({
     .map((id) => employees.find((e) => e.id === id))
     .filter(Boolean) as DemoEmployee[];
 
+  const hoverEmp = hoverEmployeeId
+    ? employees.find((e) => e.id === hoverEmployeeId) || null
+    : null;
+  const hoverLabels = hoverEmp
+    ? labelsForKeys(modules, effectiveKeysForEmployee(hoverEmp))
+    : [];
+  const hoverCustom =
+    hoverEmp != null &&
+    Object.prototype.hasOwnProperty.call(employeePermissions, hoverEmp.id);
+
+  function renderModuleColumn(list: FeatureModule[]) {
+    return list.map((module) => {
+      const all = roleHasAll(module);
+      return (
+        <section key={module.id} className={styles.permModule}>
+          <header className={styles.permModuleHead}>
+            <span className={styles.permModuleTitle}>
+              <span className={styles.matrixCatIcon}>{module.icon}</span>
+              {module.name}
+              <span className={styles.permModuleCount}>{module.permissions.length}</span>
+            </span>
+            {!matrixLocked && (
+              <button
+                type="button"
+                className={`${styles.permAllBtn} ${all ? styles.permAllBtnOn : ""}`}
+                onClick={() => onToggleModule(module, !all)}
+              >
+                {all ? "Clear all" : "Select all"}
+              </button>
+            )}
+          </header>
+          <div className={styles.permGrid}>
+            {module.permissions.map((perm) => {
+              const checked = locked || activeSet.has(perm.key);
+              return (
+                <label
+                  key={perm.key}
+                  className={`${styles.permItem} ${checked ? styles.permItemOn : ""} ${matrixLocked ? styles.permItemLocked : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={matrixLocked}
+                    onChange={() => onToggleKey(perm.key)}
+                  />
+                  <span className={styles.permItemBox} />
+                  <span className={styles.permItemLabel}>{perm.label}</span>
+                  <span className={styles.infoWrap}>
+                    <button
+                      type="button"
+                      className={styles.infoBtnMatrix}
+                      aria-label={`About ${perm.label}`}
+                      onClick={(e) => e.preventDefault()}
+                    >
+                      i
+                    </button>
+                    <span className={styles.infoTooltip} role="tooltip">
+                      {perm.desc}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      );
+    });
+  }
+
   return (
     <div className={styles.permWrap}>
       <div className={styles.permHeader}>
         <div>
           <h2 className={styles.matrixTitle}>Roles &amp; Permissions</h2>
           <p className={styles.matrixSubtitle}>
-            Role defaults apply to everyone on that role. Click an assigned user to set{" "}
-            <strong>different permissions for that person only</strong>.
+            Set role defaults below. Hover an assigned user to preview their permissions —{" "}
+            <strong>Edit</strong> to change only that person.
           </p>
         </div>
         <div className={styles.matrixSearchWrap}>
@@ -405,11 +518,7 @@ export default function RolesPermissionsPanel({
                 pickAlreadyOnRole
               }
               onClick={addPendingFromPicker}
-              title={
-                pickAlreadyOnRole
-                  ? "Already on this role"
-                  : "Queue for assign"
-              }
+              title={pickAlreadyOnRole ? "Already on this role" : "Queue for assign"}
             >
               Add to list
             </button>
@@ -428,67 +537,6 @@ export default function RolesPermissionsPanel({
             </button>
           </div>
         </div>
-      </div>
-
-      <div className={styles.permAccessPreview}>
-        <div className={styles.permAccessPreviewTop}>
-          <div>
-            <span className={styles.permScopeBadge}>
-              Scope: {activeRole?.scopeLabel || activeRole?.scope || "—"}
-            </span>
-            <span className={styles.permScopeHint}>
-              Default data views = own department. Enable{" "}
-              <strong>All departments (company-wide)</strong> under Data scope for
-              full company.
-            </span>
-          </div>
-          <span className={styles.permAssignedCount}>
-            {previewPermLabels.length} permissions
-          </span>
-        </div>
-        {focusEmployee ? (
-          <p className={styles.permAccessPreviewEmp}>
-            <strong>{focusEmployee.name}</strong>
-            {focusEmployee.departmentName
-              ? ` · ${focusEmployee.departmentName}`
-              : ""}
-            {" · "}
-            {explicitSlugs(focusEmployee).length
-              ? explicitSlugs(focusEmployee)
-                  .map((s) => roleMeta(s, allRoles).name)
-                  .join(", ")
-              : "No role assigned yet"}
-            {userHasCustom ? " · custom overrides" : ""}
-          </p>
-        ) : (
-          <p className={styles.permAccessPreviewEmp}>
-            Role <strong>{activeRole?.name ?? "—"}</strong> ·{" "}
-            {assignedUsers.length} assigned user
-            {assignedUsers.length === 1 ? "" : "s"}
-            {assignedUsers.length
-              ? `: ${assignedUsers
-                  .slice(0, 6)
-                  .map((u) => u.name)
-                  .join(", ")}${assignedUsers.length > 6 ? "…" : ""}`
-              : ""}
-          </p>
-        )}
-        {previewPermLabels.length > 0 ? (
-          <div className={styles.permAccessChips}>
-            {previewPermLabels.slice(0, 24).map((label) => (
-              <span key={label} className={styles.permAccessChip}>
-                {label}
-              </span>
-            ))}
-            {previewPermLabels.length > 24 ? (
-              <span className={styles.permAccessChip}>
-                +{previewPermLabels.length - 24} more
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <p className={styles.permAssignedEmpty}>No permissions granted yet.</p>
-        )}
       </div>
 
       {pendingPeople.length > 0 && (
@@ -548,52 +596,103 @@ export default function RolesPermissionsPanel({
                 emp.id,
               );
               return (
-                <label
+                <div
                   key={emp.id}
-                  className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""} ${focused ? styles.permUserChipFocus : ""}`}
-                  title="Click name to edit this user's permissions"
+                  className={styles.permUserChipWrap}
+                  onMouseEnter={() => setHoverEmployeeId(emp.id)}
+                  onMouseLeave={() =>
+                    setHoverEmployeeId((prev) => (prev === emp.id ? null : prev))
+                  }
                 >
-                  {canAssign && (
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleAssignedSelect(emp.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className={styles.permUserChipName}
-                    onClick={() =>
-                      setFocusEmployeeId((prev) => (prev === emp.id ? null : emp.id))
-                    }
+                  <label
+                    className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""} ${focused ? styles.permUserChipFocus : ""}`}
                   >
-                    {emp.name}
-                    <span className={styles.permUserChipMeta}>
-                      #{emp.id}
-                      {custom ? " · custom" : ""}
+                    {canAssign && (
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleAssignedSelect(emp.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
+                    <span className={styles.permUserChipName}>
+                      {emp.name}
+                      <span className={styles.permUserChipMeta}>
+                        #{emp.id}
+                        {custom ? " · custom" : ""}
+                      </span>
                     </span>
-                  </button>
-                  {canAssign && (
-                    <button
-                      type="button"
-                      className={styles.permUserChipX}
-                      aria-label={`Unassign ${emp.name}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleUnassignOne(emp.id);
-                      }}
-                    >
-                      ×
-                    </button>
+                    {canAssign && (
+                      <button
+                        type="button"
+                        className={styles.permUserChipX}
+                        aria-label={`Unassign ${emp.name}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleUnassignOne(emp.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </label>
+
+                  {hoverEmployeeId === emp.id && (
+                    <div className={styles.permHoverCard} role="dialog">
+                      <div className={styles.permHoverCardTop}>
+                        <div>
+                          <strong>{emp.name}</strong>
+                          <span className={styles.permHoverMeta}>
+                            {emp.departmentName ? `${emp.departmentName} · ` : ""}
+                            {custom ? "Custom permissions" : "From role defaults"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.permHoverEdit}
+                          disabled={!canEditPerms}
+                          onClick={() => {
+                            setFocusEmployeeId(emp.id);
+                            setHoverEmployeeId(null);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                      {hoverEmp?.id === emp.id && hoverLabels.length > 0 ? (
+                        <div className={styles.permHoverChips}>
+                          {hoverLabels.slice(0, 18).map((label) => (
+                            <span key={label} className={styles.permAccessChip}>
+                              {label}
+                            </span>
+                          ))}
+                          {hoverLabels.length > 18 ? (
+                            <span className={styles.permAccessChip}>
+                              +{hoverLabels.length - 18} more
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className={styles.permAssignedEmpty}>No permissions granted.</p>
+                      )}
+                      {hoverCustom ? (
+                        <p className={styles.permHoverNote}>
+                          Saved for this user — survives refresh.
+                        </p>
+                      ) : (
+                        <p className={styles.permHoverNote}>
+                          Using role defaults until you Edit &amp; Save.
+                        </p>
+                      )}
+                    </div>
                   )}
-                </label>
+                </div>
               );
             })}
           </div>
         )}
         <p className={styles.permAssignedHint}>
-          Tip: click a user&apos;s name to edit their personal permissions (not the whole role).
+          Hover a name to preview permissions. Click Edit to change that user only.
         </p>
       </div>
 
@@ -606,7 +705,7 @@ export default function RolesPermissionsPanel({
             />
             {editingUser ? (
               <>
-                Permissions for <strong>{focusEmployee?.name}</strong>
+                Editing <strong>{focusEmployee?.name}</strong>
                 <span className={styles.permLockBadge}>
                   {userHasCustom ? "Custom" : "From role"}
                 </span>
@@ -616,8 +715,18 @@ export default function RolesPermissionsPanel({
                   style={{ marginLeft: 8, minHeight: 28, padding: "0 10px", fontSize: 12 }}
                   onClick={() => setFocusEmployeeId(null)}
                 >
-                  Back to role defaults
+                  Done
                 </button>
+                {userHasCustom && canEditPerms && (
+                  <button
+                    type="button"
+                    className={styles.permLinkBtn}
+                    style={{ marginLeft: 8 }}
+                    onClick={() => onClearEmployeeOverrides(focusEmployeeId!)}
+                  >
+                    Reset to role defaults
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -644,94 +753,44 @@ export default function RolesPermissionsPanel({
           </div>
         </div>
 
-        {editingUser && (
-          <div className={styles.permUserBanner}>
-            Changes here apply only to <strong>{focusEmployee?.name}</strong>, even if others
-            share the same role.{" "}
-            {userHasCustom && canEditPerms && (
-              <button
-                type="button"
-                className={styles.permLinkBtn}
-                onClick={() => onClearEmployeeOverrides(focusEmployeeId!)}
-              >
-                Reset to role defaults
-              </button>
-            )}
-          </div>
-        )}
-
         {locked && !editingUser && (
           <div className={styles.permLockNote}>
             This role has full system access by design and cannot be edited.
           </div>
         )}
 
-        <div className={styles.permModules}>
-          {filteredModules.map((module) => {
-            const all = roleHasAll(module);
-            return (
-              <section key={module.id} className={styles.permModule}>
-                <header className={styles.permModuleHead}>
-                  <span className={styles.permModuleTitle}>
-                    <span className={styles.matrixCatIcon}>{module.icon}</span>
-                    {module.name}
-                    <span className={styles.permModuleCount}>
-                      {module.permissions.length}
-                    </span>
-                  </span>
-                  {!matrixLocked && (
-                    <button
-                      type="button"
-                      className={`${styles.permAllBtn} ${all ? styles.permAllBtnOn : ""}`}
-                      onClick={() => onToggleModule(module, !all)}
-                    >
-                      {all ? "Clear all" : "Select all"}
-                    </button>
-                  )}
-                </header>
-
-                <div className={styles.permGrid}>
-                  {module.permissions.map((perm) => {
-                    const checked = locked || activeSet.has(perm.key);
-                    return (
-                      <label
-                        key={perm.key}
-                        className={`${styles.permItem} ${checked ? styles.permItemOn : ""} ${matrixLocked ? styles.permItemLocked : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={matrixLocked}
-                          onChange={() => onToggleKey(perm.key)}
-                        />
-                        <span className={styles.permItemBox} />
-                        <span className={styles.permItemLabel}>{perm.label}</span>
-                        <span className={styles.infoWrap}>
-                          <button
-                            type="button"
-                            className={styles.infoBtnMatrix}
-                            aria-label={`About ${perm.label}`}
-                            onClick={(e) => e.preventDefault()}
-                          >
-                            i
-                          </button>
-                          <span className={styles.infoTooltip} role="tooltip">
-                            {perm.desc}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-
-          {filteredModules.length === 0 && (
-            <div className={styles.matrixEmpty}>
-              No permissions match “{permSearch}”.
+        <div className={styles.permScopeColumns}>
+          <div className={styles.permScopeCol}>
+            <div className={styles.permScopeColHead}>
+              <h3 className={styles.permScopeColTitle}>Own department</h3>
+              <p className={styles.permScopeColHint}>
+                List, attendance, leave, and team views stay limited to the employee&apos;s
+                own department / team.
+              </p>
             </div>
-          )}
+            <div className={styles.permModules}>
+              {renderModuleColumn(ownModules)}
+              {ownModules.length === 0 && (
+                <div className={styles.matrixEmpty}>No matches in this column.</div>
+              )}
+            </div>
+          </div>
+
+          <div className={`${styles.permScopeCol} ${styles.permScopeColAll}`}>
+            <div className={styles.permScopeColHead}>
+              <h3 className={styles.permScopeColTitle}>All departments</h3>
+              <p className={styles.permScopeColHint}>
+                Turn on company-wide scope and other org-level access. Without{" "}
+                <strong>All departments</strong>, data views stay own-dept.
+              </p>
+            </div>
+            <div className={styles.permModules}>
+              {renderModuleColumn(allModules)}
+              {allModules.length === 0 && (
+                <div className={styles.matrixEmpty}>No matches in this column.</div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -756,8 +815,11 @@ export default function RolesPermissionsPanel({
               (editingUser && !focusEmployeeId)
             }
             onClick={() => {
-              if (editingUser && focusEmployeeId) onSaveEmployee(focusEmployeeId);
-              else onSaveRole(activeRoleId);
+              if (editingUser && focusEmployeeId) {
+                onSaveEmployee(focusEmployeeId, activeRoleId);
+              } else {
+                onSaveRole(activeRoleId);
+              }
             }}
           >
             {editingUser ? "Save user permissions" : "Save role permissions"}

@@ -89,6 +89,7 @@ export default function SystemControlPage() {
   );
   const [viewerCaps, setViewerCaps] = useState<ViewerCaps>(FULL_CAPS);
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
+    data_scope: true,
     dashboard: true,
     attendance: true,
     leave: true,
@@ -97,6 +98,7 @@ export default function SystemControlPage() {
     shifts: false,
     ops: false,
     team: true,
+    department: true,
     portal: false,
     system: true,
   });
@@ -268,9 +270,14 @@ export default function SystemControlPage() {
     });
   }
 
-  function toggleEmployeePermission(employeeId: string, key: string) {
+  function toggleEmployeePermission(
+    employeeId: string,
+    key: string,
+    baseRoleId?: string,
+  ) {
     setEmployeePermissions((prev) => {
       const roleId =
+        baseRoleId ||
         employees.find((e) => e.id === employeeId)?.accessRoleSlug ||
         employees.find((e) => e.id === employeeId)?.roleId ||
         "";
@@ -289,9 +296,11 @@ export default function SystemControlPage() {
     employeeId: string,
     module: { permissions: { key: string }[] },
     checked: boolean,
+    baseRoleId?: string,
   ) {
     setEmployeePermissions((prev) => {
       const roleId =
+        baseRoleId ||
         employees.find((e) => e.id === employeeId)?.accessRoleSlug ||
         employees.find((e) => e.id === employeeId)?.roleId ||
         "";
@@ -774,12 +783,16 @@ export default function SystemControlPage() {
     }
   }
 
-  async function saveEmployeePermissionsToDb(employeeId: string) {
+  async function saveEmployeePermissionsToDb(
+    employeeId: string,
+    baseRoleId?: string,
+  ) {
     const eid = String(employeeId || "").trim();
     if (!eid) return;
     setAccessSaving(true);
     try {
       const roleId =
+        baseRoleId ||
         employees.find((e) => e.id === eid)?.accessRoleSlug ||
         employees.find((e) => e.id === eid)?.roleId ||
         "";
@@ -795,6 +808,7 @@ export default function SystemControlPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Save failed");
       setEmployeePermissions((prev) => ({ ...prev, [eid]: keys }));
+      await refreshEmployeesFromApi();
       const name = employees.find((e) => e.id === eid)?.name || eid;
       showToast(`Custom permissions saved for ${name}. Ask them to refresh.`);
     } catch (err) {
@@ -1038,7 +1052,9 @@ export default function SystemControlPage() {
                 showToast("All roles reset to default templates");
               }}
               onSaveRole={(roleId) => void savePermissionsToDb(roleId)}
-              onSaveEmployee={(empId) => void saveEmployeePermissionsToDb(empId)}
+              onSaveEmployee={(empId, roleId) =>
+                void saveEmployeePermissionsToDb(empId, roleId)
+              }
               onClearEmployeeOverrides={(empId) => void clearEmployeeOverrides(empId)}
               onAssignEmployees={(ids, roleId) => void assignEmployeesToRole(ids, roleId)}
               onUnassignEmployees={(ids, roleId) => void unassignEmployeesFromRole(ids, roleId)}
