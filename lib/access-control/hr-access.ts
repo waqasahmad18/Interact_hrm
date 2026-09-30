@@ -5,6 +5,7 @@
 
 import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
 import { isCeoOrgRole, isManagerOrgRole, normalizeOrgRole, ORG_ROLE_DB } from "@/lib/org-role";
+import { permissionSetHas } from "@/lib/access-control/permission-scope";
 
 /** Tabs / ops every HR employee gets automatically (no System Control). */
 export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
@@ -113,8 +114,8 @@ export function canViewEmployeeSalary(input: SalaryVisibilityInput): boolean {
   if (viewerId === targetId) return true;
   if (isCeoOrgRole(input.viewerOrgRole)) return true;
 
-  const perms = new Set(input.viewerPermissions);
-  const hasDeptSalary = perms.has(DEPT_SALARY_VIEW_PERMISSION);
+  const perms = input.viewerPermissions;
+  const hasDeptSalary = permissionSetHas(perms, DEPT_SALARY_VIEW_PERMISSION);
   const viewerHr = isHrDepartment(input.viewerDepartmentName);
   const targetHr = isHrDepartment(input.targetDepartmentName);
   const senior = isOrgSeniorOf(input.targetOrgRole, input.viewerOrgRole);
@@ -125,7 +126,10 @@ export function canViewEmployeeSalary(input: SalaryVisibilityInput): boolean {
   if (viewerHr) {
     // Other departments → payroll work (need payroll view)
     if (!targetHr) {
-      return perms.has("payroll.monthly.view") || perms.has("payroll.monthly.edit");
+      return (
+        permissionSetHas(perms, "payroll.monthly.view") ||
+        permissionSetHas(perms, "payroll.monthly.edit")
+      );
     }
     // Same HR department → only if manager enabled dept salary view
     return hasDeptSalary;

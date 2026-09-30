@@ -10,6 +10,7 @@ import {
   type RoleDef,
 } from "@/app/admin/roles-permissions/system-control-data";
 import { normalizeOrgRole, ORG_ROLE_DB } from "@/lib/org-role";
+import { permissionSetHas } from "@/lib/access-control/permission-scope";
 
 export const ROLES_COLLECTION = "hrm_roles";
 export const ROLE_PERMS_COLLECTION = "hrm_role_permissions";
@@ -1440,15 +1441,15 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     capabilities: {
       // System Control: Managers only (permission + org role)
       systemControlOpen:
-        manager && permissions.includes("system.control.access"),
+        manager && permissionSetHas(permissions, "system.control.access"),
       systemPermissionsEdit:
-        manager && permissions.includes("system.permissions.edit"),
-      systemUsersAssign: manager && permissions.includes("system.users.assign"),
-      systemOrgChartEdit: manager && permissions.includes("system.org_chart.edit"),
+        manager && permissionSetHas(permissions, "system.permissions.edit"),
+      systemUsersAssign: manager && permissionSetHas(permissions, "system.users.assign"),
+      systemOrgChartEdit: manager && permissionSetHas(permissions, "system.org_chart.edit"),
       systemFeaturesEdit:
         manager &&
-        (permissions.includes("system.features.edit") ||
-          permissions.includes("system.permissions.edit")),
+        (permissionSetHas(permissions, "system.features.edit") ||
+          permissionSetHas(permissions, "system.permissions.edit")),
     },
   };
 }

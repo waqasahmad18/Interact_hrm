@@ -1,5 +1,12 @@
 /** Overall org role on `hrm_employees.role` (Add Employee). Permissions stay in System Control. */
 
+import {
+  LEGACY_ALL_DEPARTMENTS_SCOPE_KEY,
+  basePermissionKey,
+  isAllDepartmentsScopedKey,
+  permissionGrantsAllDepartmentsScope,
+} from "@/lib/access-control/permission-scope";
+
 export const ORG_ROLE_DB = {
   CEO: "BOD/CEO",
   MANAGER: "Management",
@@ -79,20 +86,21 @@ export const DEPT_SCOPED_PERMISSION_PREFIXES = [
   "leave.approve",
   "leave.approval_status",
   "leave.monthly_summary",
+  "payroll.",
+  "ops.",
+  "shifts.",
 ] as const;
 
 /** Explicit opt-in: company-wide data (all departments). Without this, dept-scoped perms stay own-dept. */
-export const ALL_DEPARTMENTS_SCOPE_PERMISSION = "data.scope.all_departments";
+export const ALL_DEPARTMENTS_SCOPE_PERMISSION = LEGACY_ALL_DEPARTMENTS_SCOPE_KEY;
 
 export function permissionImpliesDepartmentScope(key: string): boolean {
-  const k = String(key || "");
-  if (k === ALL_DEPARTMENTS_SCOPE_PERMISSION) return false;
+  const k = basePermissionKey(String(key || ""));
+  if (!k || k === ALL_DEPARTMENTS_SCOPE_PERMISSION) return false;
+  if (isAllDepartmentsScopedKey(String(key || ""))) return false;
   return DEPT_SCOPED_PERMISSION_PREFIXES.some((p) => k.startsWith(p));
 }
 
 export function permissionGrantsAllDepartments(keys: Iterable<string>): boolean {
-  for (const k of keys) {
-    if (String(k) === ALL_DEPARTMENTS_SCOPE_PERMISSION) return true;
-  }
-  return false;
+  return permissionGrantsAllDepartmentsScope(keys);
 }

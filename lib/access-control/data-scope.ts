@@ -14,6 +14,7 @@ import {
   permissionGrantsAllDepartments,
   permissionImpliesDepartmentScope,
 } from "@/lib/org-role";
+import { basePermissionKey, permissionSetHas } from "@/lib/access-control/permission-scope";
 import { isHrDepartment } from "@/lib/access-control/hr-access";
 
 export type ViewerDataScope = {
@@ -140,8 +141,9 @@ function emptyScope(orgRole: string | null = null): ViewerDataScope {
  * - CEO (BOD/CEO) → all departments
  * - HR department → company-wide for attendance / leave / breaks / ops
  *   (salary amounts still gated separately — see salary-visibility)
- * - Explicit `data.scope.all_departments` → company-wide (opt-in)
- * - Manager / Team Lead / Officer / staff with list|attendance|leave|dept|team perms
+ * - Explicit All-departments column grants (`…@all_departments`) or legacy
+ *   `data.scope.all_departments` → company-wide
+ * - Manager / Team Lead / Officer / staff with Own-department column grants
  *   → their confirmed department only (never company-wide by default)
  * - No such perms → all (admin / unscoped pages)
  */
@@ -211,12 +213,22 @@ export async function resolveViewerDataScope(
   }
 
   const hasDept =
-    perms.has("department.attendance.view") ||
-    perms.has("department.breaks.view") ||
-    perms.has("department.leaves.view") ||
-    perms.has("department.monthly.view") ||
-    perms.has("people.employee_list.view") ||
-    [...perms].some((k) => k.startsWith("attendance.") || k.startsWith("leave.") || k.startsWith("people."));
+    permissionSetHas(perms, "department.attendance.view") ||
+    permissionSetHas(perms, "department.breaks.view") ||
+    permissionSetHas(perms, "department.leaves.view") ||
+    permissionSetHas(perms, "department.monthly.view") ||
+    permissionSetHas(perms, "people.employee_list.view") ||
+    [...perms].some((raw) => {
+      const k = basePermissionKey(raw);
+      return (
+        k.startsWith("attendance.") ||
+        k.startsWith("leave.") ||
+        k.startsWith("people.") ||
+        k.startsWith("payroll.") ||
+        k.startsWith("ops.") ||
+        k.startsWith("shifts.")
+      );
+    });
 
   return {
     mode: hasDept ? "department" : "team",

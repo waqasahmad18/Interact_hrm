@@ -6,6 +6,13 @@ import SearchableSelect, { type SelectGroup, type SelectOption } from "./Searcha
 import type { DemoEmployee, FeatureModule, RoleDef } from "./system-control-data";
 import { groupRolesByOrgSection, roleMeta } from "./system-control-data";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
+import {
+  catalogKeysFromStored,
+  permissionSetHas,
+  permissionSetHasScoped,
+  toScopedPermissionKey,
+  type PermissionScopeColumn,
+} from "@/lib/access-control/permission-scope";
 
 export type SystemControlCaps = {
   systemPermissionsEdit: boolean;
@@ -50,25 +57,8 @@ type Props = {
   caps: SystemControlCaps;
 };
 
-/** Modules that apply within own department / team by default. */
-const OWN_DEPT_MODULE_IDS = new Set([
-  "attendance",
-  "leave",
-  "people",
-  "team",
-  "department",
-  "portal",
-]);
-
-/** Modules / flags that are company-wide or expand scope to all depts. */
-const ALL_DEPT_MODULE_IDS = new Set([
-  "data_scope",
-  "dashboard",
-  "payroll",
-  "shifts",
-  "ops",
-  "system",
-]);
+/** Catalog modules shown in both scope columns (Data scope is the column itself). */
+const HIDDEN_SCOPE_MODULE_IDS = new Set(["data_scope"]);
 
 function accentOf(role: RoleDef | undefined) {
   return role?.accent || "#0e7490";
@@ -92,25 +82,24 @@ function employeeHasRole(emp: DemoEmployee, roleId: string) {
 }
 
 function labelsForKeys(modules: FeatureModule[], keys: Iterable<string>): string[] {
-  const set = new Set(keys);
+  const catalog = new Set(catalogKeysFromStored(keys));
   const labels: string[] = [];
   for (const mod of modules) {
+    if (HIDDEN_SCOPE_MODULE_IDS.has(mod.id)) continue;
     for (const p of mod.permissions) {
-      if (set.has(p.key)) labels.push(p.label);
+      if (catalog.has(p.key) || permissionSetHas(keys, p.key)) labels.push(p.label);
     }
   }
   return labels;
 }
 
-function filterModules(
+function filterModulesForSearch(
   modules: FeatureModule[],
   search: string,
-  column: "own" | "all",
 ): FeatureModule[] {
-  const allow = column === "own" ? OWN_DEPT_MODULE_IDS : ALL_DEPT_MODULE_IDS;
   const q = search.trim().toLowerCase();
   return modules
-    .filter((m) => allow.has(m.id))
+    .filter((m) => !HIDDEN_SCOPE_MODULE_IDS.has(m.id))
     .map((m) => ({
       ...m,
       permissions: q
@@ -290,7 +279,10 @@ export default function RolesPermissionsPanel({
   const pickAlreadyOnRole = !!(pickEmp && employeeHasRole(pickEmp, activeRoleId));
 
   const totalPerms = useMemo(
-    () => modules.reduce((sum, m) => sum + m.permissions.length, 0),
+    () =>
+      modules
+        .filter((m) => !HIDDEN_SCOPE_MODULE_IDS.has(m.id))
+        .reduce((sum, m) => sum + m.permissions.length, 0),
     [modules],
   );
 
@@ -298,17 +290,16 @@ export default function RolesPermissionsPanel({
 
   const grantedCount = locked
     ? totalPerms
-    : modules.reduce(
-        (sum, m) => sum + m.permissions.filter((p) => activeSet.has(p.key)).length,
-        0,
-      );
+    : modules
+        .filter((m) => !HIDDEN_SCOPE_MODULE_IDS.has(m.id))
+        .reduce(
+          (sum, m) =>
+            sum + m.permissions.filter((p) => permissionSetHas(activeSet, p.key)).length,
+          0,
+        );
 
-  const ownModules = useMemo(
-    () => filterModules(modules, permSearch, "own"),
-    [modules, permSearch],
-  );
-  const allModules = useMemo(
-    () => filterModules(modules, permSearch, "all"),
+  const sharedModules = useMemo(
+    () => filterModulesForSearch(modules, permSearch),
     [modules, permSearch],
   );
 
@@ -319,9 +310,11 @@ export default function RolesPermissionsPanel({
     return [...roleSet];
   }
 
-  function roleHasAll(module: FeatureModule) {
+  function roleHasAll(module: FeatureModule, scope: PermissionScopeColumn) {
     if (locked) return true;
-    return module.permissions.every((p) => activeSet.has(p.key));
+    return module.permissions.every((p) =>
+      permissionSetHasScoped(activeSet, p.key, scope),
+    );
   }
 
   function addPendingFromPicker() {
@@ -369,8 +362,9 @@ export default function RolesPermissionsPanel({
     if (focusEmployeeId === id) setFocusEmployeeId(null);
   }
 
-  function onToggleKey(key: string) {
+  function onToggleKey(catalogKey: string, scope: PermissionScopeColumn) {
     if (matrixLocked) return;
+    const key = toScopedPermissionKey(catalogKey, scope);
     if (editingUser && focusEmployeeId) {
       onToggleEmployeePermission(focusEmployeeId, key, activeRoleId);
     } else {
@@ -378,12 +372,23 @@ export default function RolesPermissionsPanel({
     }
   }
 
-  function onToggleModule(module: FeatureModule, checked: boolean) {
+  function onToggleModule(
+    module: FeatureModule,
+    checked: boolean,
+    scope: PermissionScopeColumn,
+  ) {
     if (matrixLocked) return;
+    const scopedModule = {
+      ...module,
+      permissions: module.permissions.map((p) => ({
+        ...p,
+        key: toScopedPermissionKey(p.key, scope),
+      })),
+    };
     if (editingUser && focusEmployeeId) {
-      onToggleModuleForEmployee(focusEmployeeId, module, checked, activeRoleId);
+      onToggleModuleForEmployee(focusEmployeeId, scopedModule, checked, activeRoleId);
     } else {
-      onToggleModuleForRole(activeRoleId, module, checked);
+      onToggleModuleForRole(activeRoleId, scopedModule, checked);
     }
   }
 
@@ -401,11 +406,11 @@ export default function RolesPermissionsPanel({
     hoverEmp != null &&
     Object.prototype.hasOwnProperty.call(employeePermissions, hoverEmp.id);
 
-  function renderModuleColumn(list: FeatureModule[]) {
+  function renderModuleColumn(list: FeatureModule[], scope: PermissionScopeColumn) {
     return list.map((module) => {
-      const all = roleHasAll(module);
+      const all = roleHasAll(module, scope);
       return (
-        <section key={module.id} className={styles.permModule}>
+        <section key={`${scope}-${module.id}`} className={styles.permModule}>
           <header className={styles.permModuleHead}>
             <span className={styles.permModuleTitle}>
               <span className={styles.matrixCatIcon}>{module.icon}</span>
@@ -416,7 +421,7 @@ export default function RolesPermissionsPanel({
               <button
                 type="button"
                 className={`${styles.permAllBtn} ${all ? styles.permAllBtnOn : ""}`}
-                onClick={() => onToggleModule(module, !all)}
+                onClick={() => onToggleModule(module, !all, scope)}
               >
                 {all ? "Clear all" : "Select all"}
               </button>
@@ -424,17 +429,18 @@ export default function RolesPermissionsPanel({
           </header>
           <div className={styles.permGrid}>
             {module.permissions.map((perm) => {
-              const checked = locked || activeSet.has(perm.key);
+              const checked =
+                locked || permissionSetHasScoped(activeSet, perm.key, scope);
               return (
                 <label
-                  key={perm.key}
+                  key={`${scope}-${perm.key}`}
                   className={`${styles.permItem} ${checked ? styles.permItemOn : ""} ${matrixLocked ? styles.permItemLocked : ""}`}
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     disabled={matrixLocked}
-                    onChange={() => onToggleKey(perm.key)}
+                    onChange={() => onToggleKey(perm.key, scope)}
                   />
                   <span className={styles.permItemBox} />
                   <span className={styles.permItemLabel}>{perm.label}</span>
@@ -449,6 +455,9 @@ export default function RolesPermissionsPanel({
                     </button>
                     <span className={styles.infoTooltip} role="tooltip">
                       {perm.desc}
+                      {scope === "own"
+                        ? " · Scope: own department"
+                        : " · Scope: all departments"}
                     </span>
                   </span>
                 </label>
@@ -764,13 +773,13 @@ export default function RolesPermissionsPanel({
             <div className={styles.permScopeColHead}>
               <h3 className={styles.permScopeColTitle}>Own department</h3>
               <p className={styles.permScopeColHint}>
-                List, attendance, leave, and team views stay limited to the employee&apos;s
-                own department / team.
+                Same tabs &amp; permissions — data stays limited to the employee&apos;s own
+                department / team.
               </p>
             </div>
             <div className={styles.permModules}>
-              {renderModuleColumn(ownModules)}
-              {ownModules.length === 0 && (
+              {renderModuleColumn(sharedModules, "own")}
+              {sharedModules.length === 0 && (
                 <div className={styles.matrixEmpty}>No matches in this column.</div>
               )}
             </div>
@@ -780,13 +789,12 @@ export default function RolesPermissionsPanel({
             <div className={styles.permScopeColHead}>
               <h3 className={styles.permScopeColTitle}>All departments</h3>
               <p className={styles.permScopeColHint}>
-                Turn on company-wide scope and other org-level access. Without{" "}
-                <strong>All departments</strong>, data views stay own-dept.
+                Same tabs &amp; permissions — data is company-wide across every department.
               </p>
             </div>
             <div className={styles.permModules}>
-              {renderModuleColumn(allModules)}
-              {allModules.length === 0 && (
+              {renderModuleColumn(sharedModules, "all")}
+              {sharedModules.length === 0 && (
                 <div className={styles.matrixEmpty}>No matches in this column.</div>
               )}
             </div>

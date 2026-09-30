@@ -310,7 +310,7 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "payroll.financial_requests.view", label: "Financial request inbox" },
       {
         key: "department.salary.view",
-        label: "View own-department salaries (Manager toggle)",
+        label: "View department salaries (Manager toggle)",
       },
     ],
   },

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { catalogKeysFromStored, permissionSetHas } from "./permission-scope";
 
 /** Permission key → links shown inside the employee dashboard shell (never admin chrome). */
 
@@ -368,12 +369,12 @@ export function buildMenuFromPermissions(
   permissions: string[],
   enabledFeatures: Record<string, boolean>,
 ): { name: string; path: string; group?: string }[] {
-  const permSet = new Set(permissions);
+  const permSet = new Set(catalogKeysFromStored(permissions));
   const seenPath = new Set<string>();
   const out: { name: string; path: string; group?: string }[] = [];
 
   for (const item of ACCESS_MENU_REGISTRY) {
-    if (!permSet.has(item.permission)) continue;
+    if (!permissionSetHas(permSet, item.permission)) continue;
     if (item.featureGate && enabledFeatures[item.featureGate] === false) continue;
     // One tab per path — admin-style names, no Dept/Team duplicates
     if (seenPath.has(item.path)) continue;
@@ -384,10 +385,10 @@ export function buildMenuFromPermissions(
 }
 
 export function allowedPathsFromPermissions(permissions: string[]): Set<string> {
-  const permSet = new Set(permissions);
+  const permSet = new Set(catalogKeysFromStored(permissions));
   const paths = new Set<string>();
   for (const item of ACCESS_MENU_REGISTRY) {
-    if (permSet.has(item.permission)) paths.add(item.path);
+    if (permissionSetHas(permSet, item.permission)) paths.add(item.path);
   }
   paths.add("/employee-dashboard");
   paths.add("/employee-dashboard/my-info");
