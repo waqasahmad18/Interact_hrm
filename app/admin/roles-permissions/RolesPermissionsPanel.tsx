@@ -8,6 +8,8 @@ import { groupRolesByOrgSection, roleMeta } from "./system-control-data";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 import {
   catalogKeysFromStored,
+  labelForPermissionScope,
+  moduleNameForPermissionScope,
   permissionSetHas,
   permissionSetHasScoped,
   toScopedPermissionKey,
@@ -409,12 +411,13 @@ export default function RolesPermissionsPanel({
   function renderModuleColumn(list: FeatureModule[], scope: PermissionScopeColumn) {
     return list.map((module) => {
       const all = roleHasAll(module, scope);
+      const moduleTitle = moduleNameForPermissionScope(module.id, module.name, scope);
       return (
         <section key={`${scope}-${module.id}`} className={styles.permModule}>
           <header className={styles.permModuleHead}>
             <span className={styles.permModuleTitle}>
               <span className={styles.matrixCatIcon}>{module.icon}</span>
-              {module.name}
+              {moduleTitle}
               <span className={styles.permModuleCount}>{module.permissions.length}</span>
             </span>
             {!matrixLocked && (
@@ -431,6 +434,7 @@ export default function RolesPermissionsPanel({
             {module.permissions.map((perm) => {
               const checked =
                 locked || permissionSetHasScoped(activeSet, perm.key, scope);
+              const label = labelForPermissionScope(perm.key, perm.label, scope);
               return (
                 <label
                   key={`${scope}-${perm.key}`}
@@ -443,12 +447,12 @@ export default function RolesPermissionsPanel({
                     onChange={() => onToggleKey(perm.key, scope)}
                   />
                   <span className={styles.permItemBox} />
-                  <span className={styles.permItemLabel}>{perm.label}</span>
+                  <span className={styles.permItemLabel}>{label}</span>
                   <span className={styles.infoWrap}>
                     <button
                       type="button"
                       className={styles.infoBtnMatrix}
-                      aria-label={`About ${perm.label}`}
+                      aria-label={`About ${label}`}
                       onClick={(e) => e.preventDefault()}
                     >
                       i
