@@ -805,7 +805,7 @@ export default function RolesPermissionsPanel({
                 onResetRole(activeRoleId);
               }}
               disabled={!canEditPerms || !activeRoleId || locked}
-              title="Restore this role’s default permissions and uncheck extras (saves immediately)"
+              title="Officer dashboard only: Employee Dashboard, My Info, Generate Ticket — unchecks all extra permissions and saves"
             >
               Reset role to Default
             </button>

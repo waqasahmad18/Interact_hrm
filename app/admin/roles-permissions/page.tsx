@@ -809,7 +809,7 @@ export default function SystemControlPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Reset failed");
       showToast(
-        `${roleMeta(targetRole, allRoles).name} reset to default (${keys.length} permissions). Extras unchecked.`,
+        `${roleMeta(targetRole, allRoles).name} → Officer dashboard default (My Info + Generate Ticket only). All extra permissions unchecked.`,
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to reset role");

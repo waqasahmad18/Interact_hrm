@@ -496,15 +496,17 @@ for (const roleId of ["hr_manager", "hr_coordinator", "team_lead_hr"]) {
   }
 }
 
-/** Template keys for “Reset role to Default” (officer/staff = empty extras; tier-based). */
+/**
+ * “Reset role to Default” = Officer / employee dashboard only.
+ * Sidebar base tabs (Employee Dashboard, My Info, Generate Ticket) need no
+ * System Control checkmarks — so the template is an empty permission set.
+ * Tier-heavy DEFAULT_PERMISSIONS are NOT used here.
+ */
 export function defaultPermissionKeysForRole(
-  roleId: string,
-  allRoles: RoleDef[] = BASE_ROLES,
+  _roleId?: string,
+  _allRoles?: RoleDef[],
 ): string[] {
-  const baked = DEFAULT_PERMISSIONS[roleId];
-  if (baked) return [...baked];
-  const role = allRoles.find((r) => r.id === roleId);
-  return permissionsForTier(role?.tier ?? "staff");
+  return [];
 }
 
 export const GLOBAL_FEATURES: GlobalFeature[] = [
