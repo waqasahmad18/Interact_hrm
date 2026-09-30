@@ -580,8 +580,19 @@ function firstLastPunchForShiftDay(
       addDaysToDateKey(sessionDate, 1),
       shift.startTime,
     );
-    const collectUntilMs =
+    let collectUntilMs =
       nextStartMs != null ? nextStartMs - 1 : shiftStartMs + MAX_SESSION_MS;
+    // Overnight shifts: stop at next noon so the following afternoon's early
+    // punches (before next shift start) are not taken as T.Out.
+    if (shiftEndMs <= shiftStartMs) {
+      const noonNextMs = wallClockToEpochMs(
+        addDaysToDateKey(sessionDate, 1),
+        "12:00:00",
+      );
+      if (noonNextMs != null) {
+        collectUntilMs = Math.min(collectUntilMs, noonNextMs);
+      }
+    }
     const spanPunches = tungstenByTime
       .filter((t) => t.atMs >= shiftStartMs && t.atMs <= collectUntilMs)
       .sort((a, b) => a.atMs - b.atMs);
