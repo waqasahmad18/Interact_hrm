@@ -296,6 +296,8 @@ export type HeartbeatResult = {
   exitPassword: string;
   presenceEnabled: boolean;
   cameraVerificationEnabled: boolean;
+  /** True when assigned employee has an open clock-in (no clock-out). */
+  clockedIn: boolean;
 };
 
 export async function upsertAgentHeartbeat(
@@ -474,6 +476,14 @@ export async function upsertAgentHeartbeat(
   const recheckWhileIdleSeconds =
     settings.recheckWhileIdleSeconds > 0 ? settings.recheckWhileIdleSeconds : 180;
 
+  // Idle / face scan only while clocked in (no open session → no "Are you there?")
+  let clockedIn = true;
+  if (assignedEmployeeId) {
+    const { employeeHasOpenClockIn } = await import("./attendance-presence");
+    clockedIn = await employeeHasOpenClockIn(assignedEmployeeId);
+  }
+
+  const monitoringOn = settings.presenceEnabled && !settings.agentsRetired;
   return {
     assignedEmployeeId,
     assignedEmployeeName,
@@ -483,8 +493,10 @@ export async function upsertAgentHeartbeat(
     idleSeconds,
     recheckWhileIdleSeconds,
     exitPassword: settings.agentExitPassword || "InteractAdmin",
-    presenceEnabled: settings.presenceEnabled && !settings.agentsRetired,
+    // Existing Guard agents gate on presence_enabled — disarm while not clocked in
+    presenceEnabled: monitoringOn && clockedIn,
     cameraVerificationEnabled: settings.cameraVerificationEnabled,
+    clockedIn,
   };
 }
 

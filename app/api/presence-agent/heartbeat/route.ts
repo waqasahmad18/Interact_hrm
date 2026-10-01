@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         exit_password: result.exitPassword,
         presence_enabled: result.presenceEnabled,
         camera_verification_enabled: result.cameraVerificationEnabled,
+        clocked_in: result.clockedIn,
       },
       {
         headers: {

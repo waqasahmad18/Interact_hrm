@@ -17,7 +17,18 @@ const REQUIRED_PROBES = 4;
 const SCAN_INTERVAL_MS = 280;
 const SCAN_DEADLINE_MS = 55000;
 const MAX_MATCH_ATTEMPTS = 6;
+/** Confirmed identity fail (wrong face) — stop early so Guard gets ticket, not wait-timeout. */
+const MAX_IDENTITY_FAILS = 2;
 const CAMERA_OPEN_MS = 10000;
+
+function isIdentityFailCode(code: string): boolean {
+  return (
+    code === "wrong_person" ||
+    code === "low_similarity" ||
+    code === "mismatch" ||
+    code === "no_enrollment"
+  );
+}
 
 function isWebView2(): boolean {
   try {
@@ -110,6 +121,7 @@ async function runBreakSameVerify(
   let lastSimilarity: number | null = null;
   const probes: number[][] = [];
   let matchAttempts = 0;
+  let identityFails = 0;
   let multiFaceStreak = 0;
 
   while (!cancelled() && Date.now() < deadline) {
@@ -204,6 +216,27 @@ async function runBreakSameVerify(
       return;
     }
 
+    // Wrong person / low match — do not burn the full deadline (that looked like a timeout)
+    if (isIdentityFailCode(lastCode)) {
+      identityFails += 1;
+      if (identityFails >= MAX_IDENTITY_FAILS || matchAttempts >= MAX_MATCH_ATTEMPTS) {
+        await postToAgent(
+          {
+            cameraOk: true,
+            atSeat: false,
+            code: lastCode,
+            error: lastError || "Face did not match enrolled employee",
+            similarity: lastSimilarity,
+          },
+          checkId
+        );
+        setStatus(`Done — ${lastCode}`);
+        return;
+      }
+    } else {
+      identityFails = 0;
+    }
+
     if (matchAttempts >= MAX_MATCH_ATTEMPTS) break;
     setStatus(
       `Retry… ${Math.round((lastSimilarity ?? 0) * 100)}% — keep facing camera`
@@ -216,8 +249,9 @@ async function runBreakSameVerify(
       {
         cameraOk: true,
         atSeat: false,
-        code: lastCode,
-        error: lastError || "Face did not match enrolled photos in time",
+        // Prefer identity fail codes so Guard sends HR ticket (not "timeout")
+        code: isIdentityFailCode(lastCode) ? lastCode : lastCode || "mismatch",
+        error: lastError || "Face did not match enrolled photos",
         similarity: lastSimilarity,
       },
       checkId

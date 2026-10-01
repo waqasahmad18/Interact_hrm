@@ -7,6 +7,7 @@ import {
   ensureEmployeeTicketsTable,
   rowToTicket,
 } from "@/lib/employee-tickets-table";
+import { employeeHasOpenClockIn } from "@/lib/attendance-presence";
 import { findOpenSessionBreak } from "@/lib/open-session-break";
 import { getEmployeePseudonym } from "@/lib/ticket-employee-meta";
 import { seedEmployeeMessage } from "@/lib/ticket-thread";
@@ -36,6 +37,17 @@ export async function POST(req: NextRequest) {
         { success: false, error: "employee_id required" },
         { status: 400 },
       );
+    }
+
+    // Not clocked in → never idle-scan / seat-absent ticket
+    const clockedIn = await employeeHasOpenClockIn(employeeId);
+    if (!clockedIn) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: "not_clocked_in",
+        message: "Skipped — employee is not clocked in.",
+      });
     }
 
     // Never open a seat-absent ticket while Break/Prayer/Refreshment/Meeting is active
