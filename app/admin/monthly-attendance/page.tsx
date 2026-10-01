@@ -1742,6 +1742,8 @@ export default function MonthlyAttendancePage() {
     attendance.forEach((record: any) => {
       if (!record.employee_id) return;
       const empId = String(record.employee_id);
+      // Admin Staff punch-only: Tungsten punches only — never apply 1st/2nd half / tardy rules
+      if (PUNCH_ONLY_EMPLOYEE_IDS.has(empId)) return;
       if (!map[empId]) {
         map[empId] = {
           employeeId: empId,
