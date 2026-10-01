@@ -37,6 +37,8 @@ export const PUNCH_ONLY_EMPLOYEES: PunchOnlyEmployee[] = [
   { id: "156", firstName: "Javaid", lastName: "Sunny", pin: "140010", departmentName: "Admin" },
   // Admin Staff punch-only (ZK pin 140015) — punches only, no 1st/2nd half attendance rules
   { id: "160", firstName: "Dawood", lastName: "Masih", pin: "140015", departmentName: "Admin" },
+  // Admin Staff punch-only (ZK pin 159)
+  { id: "161", firstName: "Irfan", lastName: "Masih", pin: "159", departmentName: "Admin" },
 ];
 
 export const PUNCH_ONLY_EMPLOYEE_IDS = new Set(PUNCH_ONLY_EMPLOYEES.map((e) => e.id));
