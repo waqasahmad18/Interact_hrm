@@ -787,7 +787,8 @@ function collectEmployeeTungstenEvents(
  * Punch-only employees (no HRM clock in/out): per shift day,
  * T.Punch In = first punch at/after shift start; T.Punch Out = last punch in shift window
  * (overnight exits on next calendar morning count for the previous shift day).
- * Khalid / all Admin punch-only: T.Out = last any punch in overnight span until next shift start.
+ * Overnight Admin punch-only (Khalid logic): T.Out = last punch until next shift start (noon-capped).
+ * Day shifts (e.g. Dawood 2–10, Zahid 11–10): T.Out uses shift-end exit window — not next-day arrivals.
  */
 export function buildShiftPunchOnlySessions(
   target: EmployeeMatchKeys,
@@ -807,15 +808,22 @@ export function buildShiftPunchOnlySessions(
   );
 
   const empId = String(target.employeeId ?? "").trim();
-  const lastAnyPunchInSpan = punchOnlyUsesLastSpanOut(empId);
+  const allowLastSpanOut = punchOnlyUsesLastSpanOut(empId);
 
   const sessions: EmployeeReportSession[] = [];
   let day = dateFrom;
   while (day <= dateTo) {
     const shift = resolveShift(day);
     if (shift) {
+      // Overnight = end clock <= start clock (crosses midnight). Day shifts use exit window.
+      const [sh = 0, sm = 0] = String(shift.startTime).split(":").map(Number);
+      const [eh = 0, em = 0] = String(shift.endTime).split(":").map(Number);
+      const crossesMidnight = eh * 60 + em <= sh * 60 + sm;
+      const lastAnyPunchInSpan = allowLastSpanOut && crossesMidnight;
+
       const { punchIn, punchOut } = firstLastPunchForShiftDay(tungsten, day, shift, {
-        requireOutAfterShiftEnd: !lastAnyPunchInSpan,
+        // Day shifts: allow exit window from 1h before shift end (not only after end).
+        requireOutAfterShiftEnd: false,
         lastAnyPunchInSpan,
       });
       if (punchIn !== "-" || punchOut !== "-") {
