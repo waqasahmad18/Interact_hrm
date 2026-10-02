@@ -15,7 +15,7 @@ import {
  */
 const REQUIRED_PROBES = 4;
 const SCAN_INTERVAL_MS = 280;
-const SCAN_DEADLINE_MS = 55000;
+const SCAN_DEADLINE_MS = 45000;
 const MAX_MATCH_ATTEMPTS = 6;
 /** Confirmed identity fail (wrong face) — stop early so Guard gets ticket, not wait-timeout. */
 const MAX_IDENTITY_FAILS = 2;
