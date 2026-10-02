@@ -21,6 +21,20 @@ type Props = {
   employeeName: string;
   onVerified: (token: string) => void;
   onClose: () => void;
+  /**
+   * Idle / Guard seat check — same camera + models + HUD as break,
+   * but hits /api/biometric/presence-check (no biometric_token).
+   */
+  presenceCheck?: boolean;
+  /** Fired once for presenceCheck success/fail (after limited identity retries). */
+  onPresenceResult?: (result: {
+    verified: boolean;
+    code: string;
+    error?: string | null;
+    similarity?: number | null;
+  }) => void;
+  /** Identity mismatches before failing presenceCheck (default 2). */
+  maxIdentityFails?: number;
 };
 
 const SCAN_INTERVAL_MS = 280;
@@ -64,6 +78,9 @@ export function FaceVerifyModal({
   employeeName,
   onVerified,
   onClose,
+  presenceCheck = false,
+  onPresenceResult,
+  maxIdentityFails = 2,
 }: Props) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -74,6 +91,9 @@ export function FaceVerifyModal({
   const singleFaceStreakRef = React.useRef(0);
   const multiFaceStreakRef = React.useRef(0);
   const probeBufferRef = React.useRef<number[][]>([]);
+  const identityFailsRef = React.useRef(0);
+  const onPresenceResultRef = React.useRef(onPresenceResult);
+  onPresenceResultRef.current = onPresenceResult;
 
   const [modelsReady, setModelsReady] = React.useState(false);
   const [cameraReady, setCameraReady] = React.useState(false);
@@ -224,20 +244,34 @@ export function FaceVerifyModal({
       setStatus("Face detected — verifying…");
 
       try {
-        const res = await fetch("/api/biometric/verify", {
+        const endpoint = presenceCheck
+          ? "/api/biometric/presence-check"
+          : "/api/biometric/verify";
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            employee_id: employeeId,
-            employee_name: employeeName || "",
-            action,
-            descriptor: averagedProbe,
-          }),
+          body: JSON.stringify(
+            presenceCheck
+              ? {
+                  employee_id: employeeId,
+                  employee_name: employeeName || "",
+                  descriptor: averagedProbe,
+                }
+              : {
+                  employee_id: employeeId,
+                  employee_name: employeeName || "",
+                  action,
+                  descriptor: averagedProbe,
+                },
+          ),
         });
         const data = await res.json();
 
-        if (data.success && data.biometric_token) {
-          const token = data.biometric_token;
+        const presenceOk = presenceCheck && (data.atSeat || data.verified);
+        const actionOk = !presenceCheck && data.success && data.biometric_token;
+
+        if (presenceOk || actionOk) {
+          const token = presenceCheck ? "presence_ok" : String(data.biometric_token);
           verifySuccessRef.current = true;
           setVerifySuccess(true);
           setError(null);
@@ -245,14 +279,50 @@ export function FaceVerifyModal({
           setStatus("Verified");
           window.setTimeout(() => {
             stopCamera();
+            if (presenceCheck) {
+              onPresenceResultRef.current?.({
+                verified: true,
+                code: "ok",
+                error: null,
+                similarity: typeof data.similarity === "number" ? data.similarity : null,
+              });
+            }
             onVerified(token);
           }, 750);
           return;
         }
 
+        const failCode = String(data.code || "mismatch");
+        const failErr = String(data.error || data.reason || "Face not verified");
+        const identityFail =
+          failCode === "wrong_person" ||
+          failCode === "low_similarity" ||
+          failCode === "mismatch" ||
+          failCode === "no_enrollment";
+
+        if (presenceCheck && identityFail) {
+          identityFailsRef.current += 1;
+          if (identityFailsRef.current >= Math.max(1, maxIdentityFails)) {
+            verifySuccessRef.current = true; // stop scan loop
+            setError(failErr);
+            setStatus("Verification failed");
+            window.setTimeout(() => {
+              stopCamera();
+              onPresenceResultRef.current?.({
+                verified: false,
+                code: failCode,
+                error: failErr,
+                similarity: typeof data.similarity === "number" ? data.similarity : null,
+              });
+              onClose();
+            }, 600);
+            return;
+          }
+        }
+
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
-        setError(data.error || "Face not verified. Hold still — retrying…");
+        setError(failErr || "Face not verified. Hold still — retrying…");
         setStatus("Scanning again…");
         lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS + RETRY_AFTER_FAIL_MS;
       } catch {
@@ -274,9 +344,12 @@ export function FaceVerifyModal({
     cameraReady,
     employeeId,
     employeeName,
+    maxIdentityFails,
     modelsReady,
     multipleFaces,
+    onClose,
     onVerified,
+    presenceCheck,
     stopCamera,
   ]);
 
@@ -290,6 +363,7 @@ export function FaceVerifyModal({
       setGuidance(null);
       verifySuccessRef.current = false;
       setVerifySuccess(false);
+      identityFailsRef.current = 0;
       singleFaceStreakRef.current = 0;
       multiFaceStreakRef.current = 0;
       probeBufferRef.current = [];
