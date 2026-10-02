@@ -151,8 +151,8 @@ export default function PresenceSilentPage() {
     const prevHtmlH = html.style.height;
     const prevBodyH = body.style.height;
     const prevOverflow = body.style.overflow;
-    html.style.background = "transparent";
-    body.style.background = "transparent";
+    html.style.background = "#ffffff";
+    body.style.background = "#ffffff";
     body.style.margin = "0";
     html.style.height = "100%";
     body.style.height = "100%";
@@ -173,7 +173,7 @@ export default function PresenceSilentPage() {
         height: embed ? "100%" : undefined,
         minHeight: embed ? "100%" : "100vh",
         width: embed ? "100%" : undefined,
-        background: embed ? "transparent" : "rgba(15, 23, 42, 0.92)",
+        background: embed ? "#ffffff" : "rgba(15, 23, 42, 0.92)",
         display: "flex",
         alignItems: embed ? "stretch" : "center",
         justifyContent: embed ? "stretch" : "center",
