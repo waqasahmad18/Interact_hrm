@@ -3,6 +3,7 @@ import {
   cancelPresenceSession,
   completePresenceSession,
   createPresenceSession,
+  findPendingPresenceForEmployee,
   getPresenceSession,
   signalPresenceStart,
   takePresenceSessionResult,
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       action?: string;
     };
 
-    // Guard: employee clicked Here → tell presence-silent (WebView2) to scan now
+    // Guard: employee clicked Here → dashboard FaceVerifyModal (Break-style) should open
     if (body.check_id && body.action === "start") {
       const ok = signalPresenceStart(body.check_id);
       if (!ok) {
@@ -33,13 +34,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, start: true });
     }
 
-    // Guard: cancel armed session (Are-you-there timed out)
     if (body.check_id && body.action === "cancel") {
       cancelPresenceSession(body.check_id);
       return NextResponse.json({ success: true, cancelled: true });
     }
 
-    // Complete an existing session (called from presence-silent in Guard WebView2)
     if (body.check_id && body.result) {
       const ok = completePresenceSession(body.check_id, body.result);
       if (!ok) {
@@ -71,20 +70,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Guard WebView2 / agent poll until result or start signal.
- *  Do NOT expose pending sessions by employeeId — that used to open a second
- *  FaceVerifyModal on the employee dashboard while Guard already shows one. */
+/** Agent polls by check_id; dashboard polls by employeeId to open Break-style FaceVerify. */
 export async function GET(req: NextRequest) {
-  // Legacy dashboard poll — always idle so old cached JS cannot open a duplicate modal
   const employeeId = (req.nextUrl.searchParams.get("employeeId") || "").trim();
   if (employeeId) {
-    return NextResponse.json({ success: true, pending: false });
+    const pending = findPendingPresenceForEmployee(employeeId);
+    if (!pending) {
+      return NextResponse.json({ success: true, pending: false });
+    }
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      check_id: pending.checkId,
+      employee_id: pending.employeeId,
+      start: true,
+    });
   }
 
   const checkId = req.nextUrl.searchParams.get("check_id") || "";
   if (!checkId) {
     return NextResponse.json(
-      { success: false, error: "check_id required" },
+      { success: false, error: "check_id or employeeId required" },
       { status: 400 },
     );
   }
