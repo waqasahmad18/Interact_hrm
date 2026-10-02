@@ -120,3 +120,30 @@ export function cancelPresenceSession(id: string): void {
     /* ignore */
   }
 }
+
+/** Dashboard: find an armed (Here clicked) session waiting for FaceVerifyModal. */
+export function findPendingPresenceForEmployee(
+  employeeId: string,
+): { checkId: string; employeeId: string } | null {
+  const eid = String(employeeId ?? "").trim();
+  if (!eid) return null;
+  ensureDir();
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(DIR);
+  } catch {
+    return null;
+  }
+  let best: { checkId: string; employeeId: string; createdAt: number } | null = null;
+  for (const name of files) {
+    if (!name.endsWith(".json")) continue;
+    const checkId = name.slice(0, -".json".length);
+    const s = readSession(checkId);
+    if (!s || s.result || !s.start) continue;
+    if (String(s.employeeId).trim() !== eid) continue;
+    if (!best || s.createdAt > best.createdAt) {
+      best = { checkId, employeeId: s.employeeId, createdAt: s.createdAt };
+    }
+  }
+  return best ? { checkId: best.checkId, employeeId: best.employeeId } : null;
+}

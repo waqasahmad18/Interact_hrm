@@ -3,9 +3,6 @@
 import React from "react";
 import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
 
-const CHALLENGE_URL = "http://127.0.0.1:19501/presence-challenge";
-const RESULT_ACK_URL = "http://127.0.0.1:19501/presence-result";
-
 type Challenge = {
   checkId: string;
   employeeId: string;
@@ -13,8 +10,8 @@ type Challenge = {
 };
 
 /**
- * Polls Interact Guard for idle seat-check. Shows the same FaceVerifyModal
- * popup as Break — on the Employee Dashboard screen (no Chrome tab).
+ * Polls HRM presence-session (same server as dashboard) when Guard signals Here.
+ * Shows Break-style FaceVerifyModal on this screen — no Chrome tab, no localhost.
  */
 export function GuardPresenceFaceHost({
   employeeId,
@@ -34,34 +31,27 @@ export function GuardPresenceFaceHost({
     const tick = async () => {
       if (cancelled || busyRef.current) return;
       try {
-        const ctrl = new AbortController();
-        const t = window.setTimeout(() => ctrl.abort(), 1200);
-        const res = await fetch(CHALLENGE_URL, {
-          method: "GET",
-          mode: "cors",
-          cache: "no-store",
-          signal: ctrl.signal,
-        });
-        window.clearTimeout(t);
+        const res = await fetch(
+          `/api/biometric/presence-session?employeeId=${encodeURIComponent(employeeId)}`,
+          { cache: "no-store" },
+        );
         if (!res.ok) return;
         const data = await res.json();
-        if (cancelled || !data?.pending || !data?.check_id) return;
+        if (cancelled || !data?.pending || !data?.check_id || !data?.start) return;
         const cid = String(data.check_id);
         if (handledRef.current === cid) return;
-        const eid = String(data.employee_id || employeeId).trim();
-        if (eid && eid !== String(employeeId)) return;
         setChallenge({
           checkId: cid,
-          employeeId: eid || employeeId,
-          employeeName: String(data.employee_name || employeeName || "Employee"),
+          employeeId: String(data.employee_id || employeeId),
+          employeeName: employeeName || "Employee",
         });
       } catch {
-        /* Guard not running */
+        /* ignore */
       }
     };
 
     void tick();
-    const id = window.setInterval(tick, 1500);
+    const id = window.setInterval(tick, 1000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -85,16 +75,6 @@ export function GuardPresenceFaceHost({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ check_id: ch.checkId, result: payload }),
-        });
-      } catch {
-        /* ignore */
-      }
-      try {
-        await fetch(RESULT_ACK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ check_id: ch.checkId }),
-          mode: "cors",
         });
       } catch {
         /* ignore */

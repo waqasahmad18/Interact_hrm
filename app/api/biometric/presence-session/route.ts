@@ -3,6 +3,7 @@ import {
   cancelPresenceSession,
   completePresenceSession,
   createPresenceSession,
+  findPendingPresenceForEmployee,
   getPresenceSession,
   signalPresenceStart,
   takePresenceSessionResult,
@@ -71,12 +72,28 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Agent / armed page poll until result or start signal. */
+/** Agent / dashboard poll until result or start signal. */
 export async function GET(req: NextRequest) {
+  const employeeId = (req.nextUrl.searchParams.get("employeeId") || "").trim();
+  // Employee Dashboard: open Break-style FaceVerifyModal when Guard signaled Here
+  if (employeeId) {
+    const pending = findPendingPresenceForEmployee(employeeId);
+    if (!pending) {
+      return NextResponse.json({ success: true, pending: false });
+    }
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      check_id: pending.checkId,
+      employee_id: pending.employeeId,
+      start: true,
+    });
+  }
+
   const checkId = req.nextUrl.searchParams.get("check_id") || "";
   if (!checkId) {
     return NextResponse.json(
-      { success: false, error: "check_id required" },
+      { success: false, error: "check_id or employeeId required" },
       { status: 400 },
     );
   }
