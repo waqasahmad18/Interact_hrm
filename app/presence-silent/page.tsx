@@ -2,6 +2,7 @@
 
 import React from "react";
 import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
+import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
 
 /**
  * Guard idle seat check — same FaceVerifyModal popup as Break/Clock.
@@ -47,7 +48,7 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
     } catch {
       /* ignore */
     }
-  }, 700);
+  }, 200);
 }
 
 async function waitForStartSignal(
@@ -67,7 +68,7 @@ async function waitForStartSignal(
     } catch {
       /* retry */
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 150));
   }
   return "cancelled";
 }
@@ -106,6 +107,9 @@ export default function PresenceSilentPage() {
         return;
       }
 
+      // Preload face models while Are-you-there is open (no camera yet)
+      void ensureFaceModelsLoaded().catch(() => undefined);
+
       if (armed && cid) {
         setStatus("Ready — waiting for Here…");
         const signal = await waitForStartSignal(cid, () => cancelled);
@@ -127,17 +131,17 @@ export default function PresenceSilentPage() {
   }, []);
 
   const finish = React.useCallback(
-    async (payload: BridgeResult) => {
+    (payload: BridgeResult) => {
       if (doneRef.current) return;
       doneRef.current = true;
+      // Unmount modal immediately so Cancel never feels stuck
       setReady(false);
       setStatus(payload.atSeat ? "Present" : "Failed");
-      await postToAgent(payload, checkId);
+      void postToAgent(payload, checkId);
     },
     [checkId]
   );
 
-  // Keep html/body fully clear in Guard embed so no gray WebView slab shows
   React.useEffect(() => {
     if (!embed) return;
     const html = document.documentElement;
@@ -166,7 +170,6 @@ export default function PresenceSilentPage() {
     <div
       style={{
         margin: 0,
-        // embed: fill host window only (host is sized to the card — no extra slab)
         height: embed ? "100%" : undefined,
         minHeight: embed ? "100%" : "100vh",
         width: embed ? "100%" : undefined,
@@ -198,7 +201,7 @@ export default function PresenceSilentPage() {
             /* success also via onPresenceResult */
           }}
           onPresenceResult={(r) => {
-            void finish({
+            finish({
               cameraOk: true,
               atSeat: r.verified,
               code: r.code,
@@ -207,7 +210,7 @@ export default function PresenceSilentPage() {
             });
           }}
           onClose={() => {
-            void finish({
+            finish({
               cameraOk: true,
               atSeat: false,
               code: "cancelled",

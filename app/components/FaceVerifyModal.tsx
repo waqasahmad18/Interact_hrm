@@ -396,17 +396,39 @@ export function FaceVerifyModal({
     (async () => {
       try {
         setStatus("Starting camera…");
+        setError(null);
 
         const modelsPromise = ensureFaceModelsLoaded();
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 24, max: 30 },
-          },
-          audio: false,
-        });
+
+        // Presence / Guard: lighter stream so camera opens fast.
+        // Break keeps higher ideal resolution for enrollment-quality frames.
+        const videoConstraints: MediaTrackConstraints = presenceCheck
+          ? {
+              facingMode: "user",
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 20, max: 30 },
+            }
+          : {
+              facingMode: "user",
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 24, max: 30 },
+            };
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints,
+            audio: false,
+          });
+        } catch {
+          // Fallback if ideal constraints fail (common in WebView2)
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
 
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
@@ -418,11 +440,22 @@ export function FaceVerifyModal({
         if (!video) return;
 
         video.srcObject = stream;
-        await video.play();
-        await new Promise<void>((resolve) => {
-          if (video.readyState >= 2) resolve();
-          else video.onloadeddata = () => resolve();
-        });
+        video.muted = true;
+        video.playsInline = true;
+        await video.play().catch(() => undefined);
+
+        // Don't hang forever on loadeddata — show preview as soon as we can
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            if (video.readyState >= 2) resolve();
+            else {
+              const done = () => resolve();
+              video.onloadeddata = done;
+              video.onloadedmetadata = done;
+            }
+          }),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 800)),
+        ]);
 
         if (cancelled) return;
         setCameraReady(true);
@@ -431,8 +464,17 @@ export function FaceVerifyModal({
         await modelsPromise;
         if (cancelled) return;
         setModelsReady(true);
-      } catch {
-        setError("Camera access denied. Allow camera permission and retry.");
+      } catch (err) {
+        const name = err instanceof DOMException ? err.name : "";
+        const msg =
+          name === "NotAllowedError" || name === "PermissionDeniedError"
+            ? "Camera access denied. Allow camera permission and retry."
+            : name === "NotFoundError"
+              ? "No camera found on this PC."
+              : name === "NotReadableError"
+                ? "Camera is in use by another app. Close it and retry."
+                : "Camera could not start. Check permission and retry.";
+        setError(msg);
         setStatus("Camera unavailable");
       }
     })();
@@ -441,7 +483,7 @@ export function FaceVerifyModal({
       cancelled = true;
       stopCamera();
     };
-  }, [open, stopCamera]);
+  }, [open, stopCamera, presenceCheck]);
 
   React.useEffect(() => {
     if (!open || !modelsReady || !cameraReady) return;
@@ -617,7 +659,18 @@ export function FaceVerifyModal({
         {error && !multipleFaces && <div className={modalStyles.error}>{error}</div>}
 
         <div className={modalStyles.actions}>
-          <button type="button" onClick={onClose} className={modalStyles.cancelBtn}>
+          <button
+            type="button"
+            onClick={() => {
+              // Always stop camera + close immediately — never leave modal stuck
+              stopCamera();
+              busyRef.current = false;
+              scanInFlightRef.current = false;
+              verifySuccessRef.current = true;
+              onClose();
+            }}
+            className={modalStyles.cancelBtn}
+          >
             Cancel
           </button>
         </div>
