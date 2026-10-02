@@ -137,6 +137,22 @@ export default function PresenceSilentPage() {
     [checkId]
   );
 
+  // Keep html/body fully clear in Guard embed so no gray WebView slab shows
+  React.useEffect(() => {
+    if (!embed) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlBg = html.style.background;
+    const prevBodyBg = body.style.background;
+    html.style.background = "transparent";
+    body.style.background = "transparent";
+    body.style.margin = "0";
+    return () => {
+      html.style.background = prevHtmlBg;
+      body.style.background = prevBodyBg;
+    };
+  }, [embed]);
+
   return (
     <div
       style={{
@@ -152,11 +168,14 @@ export default function PresenceSilentPage() {
       }}
     >
       {!ready ? (
-        <p style={{ fontSize: 15, opacity: 0.9 }}>{status}</p>
+        embed ? null : (
+          <p style={{ fontSize: 15, opacity: 0.9 }}>{status}</p>
+        )
       ) : (
         <FaceVerifyModal
           open
           presenceCheck
+          clearBackdrop={embed}
           maxIdentityFails={2}
           noFaceTimeoutSec={15}
           action="break_start"

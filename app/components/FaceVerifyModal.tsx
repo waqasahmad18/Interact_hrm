@@ -40,6 +40,11 @@ type Props = {
    * Omit / 0 on Break — no timer there.
    */
   noFaceTimeoutSec?: number;
+  /**
+   * Guard WebView2 embed: no dimmed/blurred overlay behind the card
+   * (Break / prayer keep the normal page dim).
+   */
+  clearBackdrop?: boolean;
 };
 
 const SCAN_INTERVAL_MS = 280;
@@ -87,6 +92,7 @@ export function FaceVerifyModal({
   onPresenceResult,
   maxIdentityFails = 2,
   noFaceTimeoutSec = 0,
+  clearBackdrop = false,
 }: Props) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -527,7 +533,12 @@ export function FaceVerifyModal({
         : status.replace(/…/g, "").toUpperCase();
 
   return createPortal(
-    <div className={modalStyles.overlay} data-hrm-modal-overlay>
+    <div
+      className={[modalStyles.overlay, clearBackdrop ? modalStyles.overlayClear : ""]
+        .filter(Boolean)
+        .join(" ")}
+      data-hrm-modal-overlay
+    >
       <div className={[modalStyles.modal, verifySuccess ? modalStyles.modalSuccess : ""].filter(Boolean).join(" ")}>
         <div className={modalStyles.title}>Face Verification</div>
         <div
