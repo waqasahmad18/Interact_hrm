@@ -144,12 +144,21 @@ export default function PresenceSilentPage() {
     const body = document.body;
     const prevHtmlBg = html.style.background;
     const prevBodyBg = body.style.background;
+    const prevHtmlH = html.style.height;
+    const prevBodyH = body.style.height;
+    const prevOverflow = body.style.overflow;
     html.style.background = "transparent";
     body.style.background = "transparent";
     body.style.margin = "0";
+    html.style.height = "100%";
+    body.style.height = "100%";
+    body.style.overflow = "hidden";
     return () => {
       html.style.background = prevHtmlBg;
       body.style.background = prevBodyBg;
+      html.style.height = prevHtmlH;
+      body.style.height = prevBodyH;
+      body.style.overflow = prevOverflow;
     };
   }, [embed]);
 
@@ -157,14 +166,17 @@ export default function PresenceSilentPage() {
     <div
       style={{
         margin: 0,
-        minHeight: "100vh",
-        // embed=1 → Guard frameless host: only Break-style modal visible
+        // embed: fill host window only (host is sized to the card — no extra slab)
+        height: embed ? "100%" : undefined,
+        minHeight: embed ? "100%" : "100vh",
+        width: embed ? "100%" : undefined,
         background: embed ? "transparent" : "rgba(15, 23, 42, 0.92)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        alignItems: embed ? "stretch" : "center",
+        justifyContent: embed ? "stretch" : "center",
         fontFamily: "system-ui, sans-serif",
         color: embed ? "#0f172a" : "#e2e8f0",
+        overflow: embed ? "hidden" : undefined,
       }}
     >
       {!ready ? (

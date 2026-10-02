@@ -537,9 +537,18 @@ export function FaceVerifyModal({
       className={[modalStyles.overlay, clearBackdrop ? modalStyles.overlayClear : ""]
         .filter(Boolean)
         .join(" ")}
-      data-hrm-modal-overlay
+      data-hrm-modal-overlay={clearBackdrop ? undefined : true}
+      data-hrm-face-embed={clearBackdrop ? "1" : undefined}
     >
-      <div className={[modalStyles.modal, verifySuccess ? modalStyles.modalSuccess : ""].filter(Boolean).join(" ")}>
+      <div
+        className={[
+          modalStyles.modal,
+          clearBackdrop ? modalStyles.modalEmbed : "",
+          verifySuccess ? modalStyles.modalSuccess : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className={modalStyles.title}>Face Verification</div>
         <div
           className={[modalStyles.subtitle, verifySuccess ? modalStyles.subtitleSuccess : ""]
