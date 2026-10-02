@@ -78,6 +78,7 @@ export default function PresenceSilentPage() {
   const [employeeName, setEmployeeName] = React.useState("");
   const [checkId, setCheckId] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState("Preparing face check…");
+  const [embed, setEmbed] = React.useState(false);
   const doneRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -89,6 +90,8 @@ export default function PresenceSilentPage() {
       const ename = (params.get("employeeName") || "").trim();
       const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
       const armed = params.get("armed") === "1";
+      const isEmbed = params.get("embed") === "1";
+      setEmbed(isEmbed);
 
       setEmployeeId(eid);
       setEmployeeName(ename);
@@ -139,12 +142,13 @@ export default function PresenceSilentPage() {
       style={{
         margin: 0,
         minHeight: "100vh",
-        background: "rgba(15, 23, 42, 0.92)",
+        // embed=1 → Guard frameless host: only Break-style modal visible
+        background: embed ? "transparent" : "rgba(15, 23, 42, 0.92)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontFamily: "system-ui, sans-serif",
-        color: "#e2e8f0",
+        color: embed ? "#0f172a" : "#e2e8f0",
       }}
     >
       {!ready ? (
