@@ -7,6 +7,8 @@ import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
 /**
  * Guard idle seat check — same FaceVerifyModal popup as Break/Clock.
  * Result posted to presence-session for Interact Guard.
+ *
+ * Embed mode must NEVER paint a blank white page — always show the card chrome.
  */
 
 type BridgeResult = {
@@ -51,28 +53,6 @@ async function postToAgent(payload: BridgeResult, checkId: string | null) {
   }, 200);
 }
 
-async function waitForStartSignal(
-  checkId: string,
-  cancelled: () => boolean
-): Promise<"start" | "gone" | "cancelled"> {
-  while (!cancelled()) {
-    try {
-      const res = await fetch(
-        `/api/biometric/presence-session?check_id=${encodeURIComponent(checkId)}`,
-        { cache: "no-store" }
-      );
-      if (res.status === 404) return "gone";
-      const data = await res.json();
-      if (data?.start === true) return "start";
-      if (data?.pending === false && data?.result) return "gone";
-    } catch {
-      /* retry */
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  return "cancelled";
-}
-
 export default function PresenceSilentPage() {
   const [ready, setReady] = React.useState(false);
   const [employeeId, setEmployeeId] = React.useState("");
@@ -90,10 +70,8 @@ export default function PresenceSilentPage() {
       const eid = (params.get("employeeId") || params.get("employee_id") || "").trim();
       const ename = (params.get("employeeName") || "").trim();
       const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
-      const armed = params.get("armed") === "1";
       const isEmbed = params.get("embed") === "1";
       setEmbed(isEmbed);
-
       setEmployeeId(eid);
       setEmployeeName(ename);
       setCheckId(cid);
@@ -107,18 +85,10 @@ export default function PresenceSilentPage() {
         return;
       }
 
-      // Preload face models while Are-you-there is open (no camera yet)
+      // Kick models early; FaceVerifyModal also awaits them
       void ensureFaceModelsLoaded().catch(() => undefined);
 
-      if (armed && cid) {
-        setStatus("Ready — waiting for Here…");
-        const signal = await waitForStartSignal(cid, () => cancelled);
-        if (signal !== "start") {
-          setStatus("Cancelled");
-          return;
-        }
-      }
-
+      // No armed/prewarm wait — open FaceVerify immediately (fixes blank white slab)
       if (!cancelled) {
         setStatus("Scanning…");
         setReady(true);
@@ -134,37 +104,67 @@ export default function PresenceSilentPage() {
     (payload: BridgeResult) => {
       if (doneRef.current) return;
       doneRef.current = true;
-      // Unmount modal immediately so Cancel never feels stuck
       setReady(false);
       setStatus(payload.atSeat ? "Present" : "Failed");
       void postToAgent(payload, checkId);
     },
-    [checkId]
+    [checkId],
   );
 
   React.useEffect(() => {
     if (!embed) return;
     const html = document.documentElement;
     const body = document.body;
-    const prevHtmlBg = html.style.background;
-    const prevBodyBg = body.style.background;
-    const prevHtmlH = html.style.height;
-    const prevBodyH = body.style.height;
-    const prevOverflow = body.style.overflow;
     html.style.background = "#ffffff";
     body.style.background = "#ffffff";
     body.style.margin = "0";
     html.style.height = "100%";
     body.style.height = "100%";
     body.style.overflow = "hidden";
-    return () => {
-      html.style.background = prevHtmlBg;
-      body.style.background = prevBodyBg;
-      html.style.height = prevHtmlH;
-      body.style.height = prevBodyH;
-      body.style.overflow = prevOverflow;
-    };
   }, [embed]);
+
+  const shell = (
+    <div
+      style={{
+        width: "100%",
+        minHeight: "100%",
+        boxSizing: "border-box",
+        padding: "14px 16px 12px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        fontFamily: "system-ui, sans-serif",
+        color: "#0f172a",
+      }}
+    >
+      <div style={{ fontWeight: 800, fontSize: "1.02rem", marginBottom: 4 }}>Face Verification</div>
+      <div style={{ fontSize: "0.82rem", color: "#64748b", marginBottom: 12 }}>{status}</div>
+      <button
+        type="button"
+        onClick={() =>
+          finish({
+            cameraOk: true,
+            atSeat: false,
+            code: "cancelled",
+            error: "Face verification cancelled",
+          })
+        }
+        style={{
+          marginTop: 8,
+          padding: "8px 18px",
+          borderRadius: 8,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          cursor: "pointer",
+          fontWeight: 600,
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -182,11 +182,7 @@ export default function PresenceSilentPage() {
         overflow: embed ? "hidden" : undefined,
       }}
     >
-      {!ready ? (
-        embed ? null : (
-          <p style={{ fontSize: 15, opacity: 0.9 }}>{status}</p>
-        )
-      ) : (
+      {ready && employeeId ? (
         <FaceVerifyModal
           open
           presenceCheck
@@ -218,6 +214,8 @@ export default function PresenceSilentPage() {
             });
           }}
         />
+      ) : (
+        shell
       )}
     </div>
   );
