@@ -96,6 +96,7 @@ export function GuardPresenceFaceHost({
       actionLabel="confirm you are at your seat"
       employeeId={challenge.employeeId}
       employeeName={challenge.employeeName || employeeName || "Employee"}
+      noFaceTimeoutSec={15}
       onVerified={() => {
         /* also via onPresenceResult */
       }}

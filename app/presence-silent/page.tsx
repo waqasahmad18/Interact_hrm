@@ -154,6 +154,7 @@ export default function PresenceSilentPage() {
           open
           presenceCheck
           maxIdentityFails={2}
+          noFaceTimeoutSec={15}
           action="break_start"
           actionLabel="confirm you are at your seat"
           employeeId={employeeId}

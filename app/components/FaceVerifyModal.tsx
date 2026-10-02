@@ -35,6 +35,11 @@ type Props = {
   }) => void;
   /** Identity mismatches before failing presenceCheck (default 2). */
   maxIdentityFails?: number;
+  /**
+   * Guard-only: seconds with no face in frame before auto-fail.
+   * Omit / 0 on Break — no timer there.
+   */
+  noFaceTimeoutSec?: number;
 };
 
 const SCAN_INTERVAL_MS = 280;
@@ -81,6 +86,7 @@ export function FaceVerifyModal({
   presenceCheck = false,
   onPresenceResult,
   maxIdentityFails = 2,
+  noFaceTimeoutSec = 0,
 }: Props) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -92,6 +98,7 @@ export function FaceVerifyModal({
   const multiFaceStreakRef = React.useRef(0);
   const probeBufferRef = React.useRef<number[][]>([]);
   const identityFailsRef = React.useRef(0);
+  const lastFaceAtRef = React.useRef<number | null>(null);
   const onPresenceResultRef = React.useRef(onPresenceResult);
   onPresenceResultRef.current = onPresenceResult;
 
@@ -176,6 +183,9 @@ export function FaceVerifyModal({
         setGuidance(null);
         return;
       }
+
+      // Face visible in frame (Guard no-face timer resets only when face seen)
+      lastFaceAtRef.current = performance.now();
 
       if (scan.status === "adjust") {
         singleFaceStreakRef.current = 0;
@@ -364,6 +374,7 @@ export function FaceVerifyModal({
       verifySuccessRef.current = false;
       setVerifySuccess(false);
       identityFailsRef.current = 0;
+      lastFaceAtRef.current = null;
       singleFaceStreakRef.current = 0;
       multiFaceStreakRef.current = 0;
       probeBufferRef.current = [];
@@ -453,6 +464,45 @@ export function FaceVerifyModal({
       }
     };
   }, [open, modelsReady, cameraReady, submitScan]);
+
+  // Guard presence only: no face in frame for N seconds → auto-fail (Break omits this prop)
+  React.useEffect(() => {
+    if (!open || !presenceCheck || !noFaceTimeoutSec || noFaceTimeoutSec <= 0) return;
+    if (!cameraReady || !modelsReady) return;
+    if (lastFaceAtRef.current == null) lastFaceAtRef.current = performance.now();
+
+    const limitMs = noFaceTimeoutSec * 1000;
+    const id = window.setInterval(() => {
+      if (verifySuccessRef.current || busyRef.current) return;
+      const last = lastFaceAtRef.current;
+      if (last == null) return;
+      if (performance.now() - last < limitMs) return;
+      verifySuccessRef.current = true;
+      setError("No face in frame");
+      setStatus("No face — closing…");
+      setGuidance(null);
+      window.setTimeout(() => {
+        stopCamera();
+        onPresenceResultRef.current?.({
+          verified: false,
+          code: "no_face",
+          error: `No face detected for ${noFaceTimeoutSec} seconds`,
+          similarity: null,
+        });
+        onClose();
+      }, 400);
+    }, 500);
+
+    return () => window.clearInterval(id);
+  }, [
+    open,
+    presenceCheck,
+    noFaceTimeoutSec,
+    cameraReady,
+    modelsReady,
+    onClose,
+    stopCamera,
+  ]);
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
