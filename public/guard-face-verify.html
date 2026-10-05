@@ -23,6 +23,21 @@
     .sub strong { color: #ec4899; }
     .who { font-size: 0.76rem; color: #64748b; margin-bottom: 8px; }
     .who strong { color: #0f172a; }
+    .alert {
+      display: none;
+      width: min(300px, 92vw);
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      color: #b91c1c;
+      font-weight: 700;
+      font-size: 0.78rem;
+      text-align: left;
+    }
+    .alert.show { display: block; }
+    .alert small { display: block; font-weight: 500; margin-top: 4px; color: #991b1b; }
     .scan {
       width: min(300px, 92vw);
       aspect-ratio: 5 / 4;
@@ -31,7 +46,11 @@
       overflow: hidden;
       background: #0f172a;
       position: relative;
+      transition: border-color 0.2s ease;
     }
+    .scan.blocked { border-color: #ef4444; }
+    .scan.ok { border-color: #22c55e; }
+    .scan.busy { border-color: #0ea5e9; }
     video {
       width: 100%; height: 100%; object-fit: cover;
       transform: scaleX(-1);
@@ -42,6 +61,41 @@
       padding: 8px; font-size: 11px; font-weight: 700;
       letter-spacing: 0.04em; color: #ec4899;
       background: linear-gradient(transparent, rgba(15,23,42,.75));
+    }
+    .scan.blocked .hud { color: #fca5a5; }
+    .scan.busy .hud { color: #7dd3fc; }
+    .scan.ok .hud { color: #86efac; }
+    .progress-wrap {
+      width: min(300px, 92vw);
+      margin-top: 10px;
+      text-align: left;
+    }
+    .progress-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.72rem; color: #64748b; margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .progress-track {
+      height: 8px; border-radius: 999px;
+      background: #e2e8f0; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ec4899, #f472b6);
+      transition: width 0.25s ease;
+    }
+    .progress-fill.busy {
+      background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+      width: 100% !important;
+      background-size: 200% 100%;
+      animation: pulsebar 1.1s linear infinite;
+    }
+    .progress-fill.ok { background: #22c55e; }
+    .progress-fill.blocked { background: #ef4444; width: 100% !important; }
+    @keyframes pulsebar {
+      0% { background-position: 0% 0; }
+      100% { background-position: -200% 0; }
     }
     .status { font-size: 0.78rem; color: #64748b; margin: 8px 0 4px; min-height: 1.2em; }
     .err { color: #b91c1c; font-size: 0.78rem; font-weight: 600; margin: 4px 0; min-height: 1.2em; }
@@ -59,9 +113,22 @@
     <div class="title">Face Verification</div>
     <div class="sub">Verify to <strong id="actionLabel">confirm you are at your seat</strong></div>
     <div class="who"><strong id="empName">Employee</strong><span id="empIdLine"></span></div>
-    <div class="scan">
+    <div class="alert" id="multiAlert" role="alert">
+      Multiple faces in the frame
+      <small>Only one person should be visible — others please step out of camera view.</small>
+    </div>
+    <div class="scan" id="scanBox">
       <video id="cam" playsinline muted autoplay></video>
       <div class="hud" id="hud">STARTING CAMERA…</div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="progressText">Preparing…</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
     </div>
     <div class="status" id="status">Starting camera…</div>
     <div class="err" id="err"></div>
@@ -85,6 +152,11 @@
   const elStatus = document.getElementById("status");
   const elHud = document.getElementById("hud");
   const elErr = document.getElementById("err");
+  const elAlert = document.getElementById("multiAlert");
+  const elScan = document.getElementById("scanBox");
+  const elFill = document.getElementById("progressFill");
+  const elProgText = document.getElementById("progressText");
+  const elProgPct = document.getElementById("progressPct");
   const video = document.getElementById("cam");
   const btnCancel = document.getElementById("btnCancel");
 
@@ -94,16 +166,43 @@
   let stream = null;
   let done = false;
   let modelsReady = false;
+  let verifying = false;
   let lastFaceAt = performance.now();
+  let multiStreak = 0;
   const NO_FACE_MS = 15000;
   const REQUIRED_PROBES = 4;
   const probes = [];
+
+  function setProgress(pct, label, mode) {
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    elFill.className = "progress-fill" + (mode ? " " + mode : "");
+    if (mode !== "busy" && mode !== "blocked") elFill.style.width = p + "%";
+    elProgText.textContent = label || "";
+    elProgPct.textContent = mode === "busy" ? "…" : (mode === "blocked" ? "!" : p + "%");
+  }
+
+  function setScanMode(mode) {
+    elScan.classList.remove("blocked", "ok", "busy");
+    if (mode) elScan.classList.add(mode);
+  }
 
   function setStatus(s, hud) {
     elStatus.textContent = s;
     if (hud) elHud.textContent = hud;
   }
   function setErr(s) { elErr.textContent = s || ""; }
+
+  function setMultiBlocked(on, count) {
+    elAlert.classList.toggle("show", !!on);
+    if (on) {
+      setScanMode("blocked");
+      setProgress(100, "Blocked — " + count + " faces in frame", "blocked");
+      setStatus("Multiple faces — scanning blocked", "MULTIPLE FACES");
+      setErr("Only one person should be in the camera.");
+    } else {
+      setErr("");
+    }
+  }
 
   async function finish(payload) {
     if (done) return;
@@ -151,6 +250,7 @@
 
   async function loadModels() {
     setStatus("Loading face engine…", "LOADING MODEL…");
+    setProgress(12, "Loading face model…");
     const modelUrl = origin + "/models/face-api";
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl),
@@ -158,10 +258,12 @@
       faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl),
     ]);
     modelsReady = true;
+    setProgress(28, "Model ready — scanning…");
   }
 
   async function startCamera() {
     setStatus("Starting camera…", "STARTING CAMERA…");
+    setProgress(5, "Opening camera…");
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
@@ -174,21 +276,34 @@
     video.muted = true;
     await video.play().catch(() => {});
     setStatus("Look at the camera — scanning…", "SCANNING FACE");
+    setProgress(20, "Camera on — looking for face…");
   }
 
   async function scanLoop() {
-    if (done) return;
+    if (done || verifying) return;
     if (!modelsReady || video.readyState < 2) {
       requestAnimationFrame(scanLoop);
       return;
     }
     try {
-      const det = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
-        .withFaceLandmarks(true)
-        .withFaceDescriptor();
+      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+      // Detect ALL faces — never verify when more than one person is in frame
+      const all = await faceapi.detectAllFaces(video, opts);
 
-      if (!det) {
+      if (all.length >= 2) {
+        multiStreak += 1;
+        // Require 2 consecutive multi-face frames to avoid flicker false blocks
+        if (multiStreak >= 2) {
+          probes.length = 0;
+          setMultiBlocked(true, all.length);
+        }
+        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        return;
+      }
+      multiStreak = 0;
+      setMultiBlocked(false);
+
+      if (all.length === 0) {
         if (performance.now() - lastFaceAt > NO_FACE_MS) {
           finish({
             cameraOk: true,
@@ -198,51 +313,100 @@
           });
           return;
         }
+        setScanMode("");
         setStatus("Look at the camera — scanning…", "SCANNING FACE");
+        setProgress(Math.min(35, 20 + probes.length * 2), "Waiting for your face…");
         probes.length = 0;
-      } else {
-        lastFaceAt = performance.now();
-        const desc = Array.from(det.descriptor);
-        probes.push(desc);
-        setStatus(
-          "Capturing face… (" + probes.length + "/" + REQUIRED_PROBES + ")",
-          "CAPTURING " + probes.length + "/" + REQUIRED_PROBES
-        );
-        if (probes.length >= REQUIRED_PROBES) {
-          const averaged = avgDescriptors(probes.splice(0));
-          setStatus("Face detected — verifying…", "VERIFYING…");
-          if (demo) {
-            setStatus("Demo OK — camera + overlay work over any app", "DEMO OK");
-            setTimeout(() => finish({
-              cameraOk: true,
-              atSeat: true,
-              code: "demo_ok",
-              error: null,
-              similarity: 1,
-            }), 900);
-            return;
-          }
-          const res = await fetch(origin + "/api/biometric/presence-check", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employee_id: employeeId,
-              employee_name: employeeName,
-              descriptor: averaged,
-            }),
-          });
-          const data = await res.json();
-          const ok = !!(data.atSeat || data.verified);
-          finish({
-            cameraOk: true,
-            atSeat: ok,
-            code: ok ? "ok" : (data.code || "mismatch"),
-            error: ok ? null : (data.error || "Face did not match"),
-            similarity: data.similarity ?? null,
-          });
-          return;
-        }
+        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        return;
       }
+
+      // Exactly one face — get landmarks + descriptor for that face only
+      const det = await faceapi
+        .detectSingleFace(video, opts)
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+
+      if (!det) {
+        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        return;
+      }
+
+      lastFaceAt = performance.now();
+      const desc = Array.from(det.descriptor);
+      probes.push(desc);
+      const capturePct = 30 + Math.round((probes.length / REQUIRED_PROBES) * 45);
+      setScanMode("");
+      setProgress(
+        capturePct,
+        "Capturing… " + probes.length + " / " + REQUIRED_PROBES
+      );
+      setStatus(
+        "Capturing face… (" + probes.length + "/" + REQUIRED_PROBES + ")",
+        "CAPTURING " + probes.length + "/" + REQUIRED_PROBES
+      );
+
+      if (probes.length < REQUIRED_PROBES) {
+        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        return;
+      }
+
+      // Final multi-face check right before server verify
+      const recheck = await faceapi.detectAllFaces(video, opts);
+      if (recheck.length >= 2) {
+        probes.length = 0;
+        setMultiBlocked(true, recheck.length);
+        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        return;
+      }
+
+      const averaged = avgDescriptors(probes.splice(0));
+      verifying = true;
+      setScanMode("busy");
+      setProgress(90, "Verifying with HRM…", "busy");
+      setStatus("Face detected — verifying…", "VERIFYING…");
+
+      if (demo) {
+        setScanMode("ok");
+        setProgress(100, "Demo OK", "ok");
+        setStatus("Demo OK — overlay + scan work", "DEMO OK");
+        setTimeout(() => finish({
+          cameraOk: true,
+          atSeat: true,
+          code: "demo_ok",
+          error: null,
+          similarity: 1,
+        }), 900);
+        return;
+      }
+
+      const res = await fetch(origin + "/api/biometric/presence-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: employeeId,
+          employee_name: employeeName,
+          descriptor: averaged,
+        }),
+      });
+      const data = await res.json();
+      const ok = !!(data.atSeat || data.verified);
+      if (ok) {
+        setScanMode("ok");
+        setProgress(100, "Verified", "ok");
+        setStatus("Verified", "VERIFIED");
+      } else {
+        setProgress(100, "Not matched", "blocked");
+        setStatus("Face did not match", "FAILED");
+      }
+      finish({
+        cameraOk: true,
+        atSeat: ok,
+        code: ok ? "ok" : (data.code || "mismatch"),
+        error: ok ? null : (data.error || "Face did not match"),
+        similarity: data.similarity ?? null,
+      });
+      return;
     } catch (e) {
       setErr(e && e.message ? e.message : "Scan error");
     }
@@ -270,6 +434,7 @@
             : "Camera could not start.";
       setErr(msg);
       setStatus("Camera unavailable", "CAMERA UNAVAILABLE");
+      setProgress(0, "Camera failed");
     }
   })();
 })();
