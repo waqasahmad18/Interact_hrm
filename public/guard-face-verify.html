@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Face Verification</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      color: #0f172a;
+    }
+    .card {
+      width: 100%; min-height: 100%;
+      padding: 14px 16px 12px;
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center;
+    }
+    .title { font-weight: 800; font-size: 1.02rem; margin-bottom: 2px; }
+    .sub { font-size: 0.82rem; color: #64748b; margin-bottom: 2px; }
+    .sub strong { color: #ec4899; }
+    .who { font-size: 0.76rem; color: #64748b; margin-bottom: 8px; }
+    .who strong { color: #0f172a; }
+    .scan {
+      width: min(300px, 92vw);
+      aspect-ratio: 5 / 4;
+      border: 2px solid #ec4899;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0f172a;
+      position: relative;
+    }
+    video {
+      width: 100%; height: 100%; object-fit: cover;
+      transform: scaleX(-1);
+      background: #0f172a;
+    }
+    .hud {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 8px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.04em; color: #ec4899;
+      background: linear-gradient(transparent, rgba(15,23,42,.75));
+    }
+    .status { font-size: 0.78rem; color: #64748b; margin: 8px 0 4px; min-height: 1.2em; }
+    .err { color: #b91c1c; font-size: 0.78rem; font-weight: 600; margin: 4px 0; min-height: 1.2em; }
+    .actions { margin-top: 8px; }
+    button {
+      padding: 8px 18px; border-radius: 8px;
+      border: 1px solid #e2e8f0; background: #fff;
+      font-weight: 600; cursor: pointer; color: #0f172a;
+    }
+    button:hover { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Face Verification</div>
+    <div class="sub">Verify to <strong id="actionLabel">confirm you are at your seat</strong></div>
+    <div class="who"><strong id="empName">Employee</strong><span id="empIdLine"></span></div>
+    <div class="scan">
+      <video id="cam" playsinline muted autoplay></video>
+      <div class="hud" id="hud">STARTING CAMERA…</div>
+    </div>
+    <div class="status" id="status">Starting camera…</div>
+    <div class="err" id="err"></div>
+    <div class="actions">
+      <button type="button" id="btnCancel">Cancel</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js"></script>
+  <script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const employeeId = (params.get("employeeId") || params.get("employee_id") || "").trim();
+  const employeeName = (params.get("employeeName") || params.get("name") || "Employee").trim();
+  const checkId = (params.get("checkId") || params.get("check_id") || "").trim();
+  const demo = params.get("demo") === "1";
+  const origin = location.origin;
+
+  const elName = document.getElementById("empName");
+  const elId = document.getElementById("empIdLine");
+  const elStatus = document.getElementById("status");
+  const elHud = document.getElementById("hud");
+  const elErr = document.getElementById("err");
+  const video = document.getElementById("cam");
+  const btnCancel = document.getElementById("btnCancel");
+
+  elName.textContent = employeeName || "Employee";
+  elId.textContent = employeeId ? (" · ID " + employeeId) : "";
+
+  let stream = null;
+  let done = false;
+  let modelsReady = false;
+  let lastFaceAt = performance.now();
+  const NO_FACE_MS = 15000;
+  const REQUIRED_PROBES = 4;
+  const probes = [];
+
+  function setStatus(s, hud) {
+    elStatus.textContent = s;
+    if (hud) elHud.textContent = hud;
+  }
+  function setErr(s) { elErr.textContent = s || ""; }
+
+  async function finish(payload) {
+    if (done) return;
+    done = true;
+    try { if (stream) stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    if (checkId && !demo) {
+      try {
+        await fetch(origin + "/api/biometric/presence-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ check_id: checkId, result: payload }),
+        });
+      } catch (_) {}
+    }
+    try {
+      if (window.chrome && chrome.webview && chrome.webview.postMessage) {
+        chrome.webview.postMessage(JSON.stringify(payload));
+      }
+    } catch (_) {}
+    document.title = "presence:" + (payload.atSeat ? "1" : "0") + ":" + payload.code;
+    setTimeout(() => { try { window.close(); } catch (_) {} }, 250);
+  }
+
+  btnCancel.onclick = () => {
+    finish({
+      cameraOk: true,
+      atSeat: false,
+      code: "cancelled",
+      error: "Face verification cancelled",
+    });
+  };
+
+  function avgDescriptors(list) {
+    const n = list.length;
+    const len = list[0].length;
+    const out = new Array(len).fill(0);
+    for (const d of list) for (let i = 0; i < len; i++) out[i] += d[i];
+    for (let i = 0; i < len; i++) out[i] /= n;
+    let norm = 0;
+    for (let i = 0; i < len; i++) norm += out[i] * out[i];
+    norm = Math.sqrt(norm) || 1;
+    for (let i = 0; i < len; i++) out[i] /= norm;
+    return out;
+  }
+
+  async function loadModels() {
+    setStatus("Loading face engine…", "LOADING MODEL…");
+    const modelUrl = origin + "/models/face-api";
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelUrl),
+      faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl),
+    ]);
+    modelsReady = true;
+  }
+
+  async function startCamera() {
+    setStatus("Starting camera…", "STARTING CAMERA…");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+    } catch (_) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play().catch(() => {});
+    setStatus("Look at the camera — scanning…", "SCANNING FACE");
+  }
+
+  async function scanLoop() {
+    if (done) return;
+    if (!modelsReady || video.readyState < 2) {
+      requestAnimationFrame(scanLoop);
+      return;
+    }
+    try {
+      const det = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+
+      if (!det) {
+        if (performance.now() - lastFaceAt > NO_FACE_MS) {
+          finish({
+            cameraOk: true,
+            atSeat: false,
+            code: "no_face",
+            error: "No face detected for 15 seconds",
+          });
+          return;
+        }
+        setStatus("Look at the camera — scanning…", "SCANNING FACE");
+        probes.length = 0;
+      } else {
+        lastFaceAt = performance.now();
+        const desc = Array.from(det.descriptor);
+        probes.push(desc);
+        setStatus(
+          "Capturing face… (" + probes.length + "/" + REQUIRED_PROBES + ")",
+          "CAPTURING " + probes.length + "/" + REQUIRED_PROBES
+        );
+        if (probes.length >= REQUIRED_PROBES) {
+          const averaged = avgDescriptors(probes.splice(0));
+          setStatus("Face detected — verifying…", "VERIFYING…");
+          if (demo) {
+            setStatus("Demo OK — camera + overlay work over any app", "DEMO OK");
+            setTimeout(() => finish({
+              cameraOk: true,
+              atSeat: true,
+              code: "demo_ok",
+              error: null,
+              similarity: 1,
+            }), 900);
+            return;
+          }
+          const res = await fetch(origin + "/api/biometric/presence-check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employee_id: employeeId,
+              employee_name: employeeName,
+              descriptor: averaged,
+            }),
+          });
+          const data = await res.json();
+          const ok = !!(data.atSeat || data.verified);
+          finish({
+            cameraOk: true,
+            atSeat: ok,
+            code: ok ? "ok" : (data.code || "mismatch"),
+            error: ok ? null : (data.error || "Face did not match"),
+            similarity: data.similarity ?? null,
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      setErr(e && e.message ? e.message : "Scan error");
+    }
+    setTimeout(() => requestAnimationFrame(scanLoop), 280);
+  }
+
+  (async function main() {
+    if (!employeeId && !demo) {
+      setErr("employeeId missing");
+      finish({ cameraOk: false, atSeat: false, code: "error", error: "employeeId missing" });
+      return;
+    }
+    try {
+      await startCamera();
+      await loadModels();
+      lastFaceAt = performance.now();
+      requestAnimationFrame(scanLoop);
+    } catch (e) {
+      const name = e && e.name;
+      const msg =
+        name === "NotAllowedError"
+          ? "Camera access denied. Allow camera and retry."
+          : name === "NotReadableError"
+            ? "Camera is in use by another app."
+            : "Camera could not start.";
+      setErr(msg);
+      setStatus("Camera unavailable", "CAMERA UNAVAILABLE");
+    }
+  })();
+})();
+  </script>
+</body>
+</html>
