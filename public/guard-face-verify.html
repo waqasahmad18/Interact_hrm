@@ -14,35 +14,35 @@
     }
     .card {
       width: 100%; min-height: 100%;
-      padding: 14px 16px 12px;
+      padding: 10px 12px 10px;
       display: flex; flex-direction: column; align-items: center;
       text-align: center;
     }
-    .title { font-weight: 800; font-size: 1.02rem; margin-bottom: 2px; }
-    .sub { font-size: 0.82rem; color: #64748b; margin-bottom: 2px; }
+    .title { font-weight: 800; font-size: 0.92rem; margin-bottom: 1px; }
+    .sub { font-size: 0.74rem; color: #64748b; margin-bottom: 1px; }
     .sub strong { color: #ec4899; }
-    .who { font-size: 0.76rem; color: #64748b; margin-bottom: 8px; }
+    .who { font-size: 0.7rem; color: #64748b; margin-bottom: 6px; }
     .who strong { color: #0f172a; }
     .alert {
       display: none;
-      width: min(300px, 92vw);
+      width: min(240px, 90vw);
       background: #fef2f2;
       border: 1px solid #fecaca;
       border-radius: 8px;
-      padding: 8px 10px;
-      margin-bottom: 8px;
+      padding: 6px 8px;
+      margin-bottom: 6px;
       color: #b91c1c;
       font-weight: 700;
-      font-size: 0.78rem;
+      font-size: 0.7rem;
       text-align: left;
     }
     .alert.show { display: block; }
-    .alert small { display: block; font-weight: 500; margin-top: 4px; color: #991b1b; }
+    .alert small { display: block; font-weight: 500; margin-top: 3px; color: #991b1b; }
     .scan {
-      width: min(300px, 92vw);
+      width: min(240px, 90vw);
       aspect-ratio: 5 / 4;
       border: 2px solid #ec4899;
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
       background: #0f172a;
       position: relative;
@@ -58,7 +58,7 @@
     }
     .hud {
       position: absolute; left: 0; right: 0; bottom: 0;
-      padding: 8px; font-size: 11px; font-weight: 700;
+      padding: 6px; font-size: 10px; font-weight: 700;
       letter-spacing: 0.04em; color: #ec4899;
       background: linear-gradient(transparent, rgba(15,23,42,.75));
     }
@@ -66,17 +66,17 @@
     .scan.busy .hud { color: #7dd3fc; }
     .scan.ok .hud { color: #86efac; }
     .progress-wrap {
-      width: min(300px, 92vw);
-      margin-top: 10px;
+      width: min(240px, 90vw);
+      margin-top: 8px;
       text-align: left;
     }
     .progress-label {
       display: flex; justify-content: space-between;
-      font-size: 0.72rem; color: #64748b; margin-bottom: 4px;
+      font-size: 0.66rem; color: #64748b; margin-bottom: 3px;
       font-weight: 600;
     }
     .progress-track {
-      height: 8px; border-radius: 999px;
+      height: 6px; border-radius: 999px;
       background: #e2e8f0; overflow: hidden;
     }
     .progress-fill {
@@ -97,13 +97,13 @@
       0% { background-position: 0% 0; }
       100% { background-position: -200% 0; }
     }
-    .status { font-size: 0.78rem; color: #64748b; margin: 8px 0 4px; min-height: 1.2em; }
-    .err { color: #b91c1c; font-size: 0.78rem; font-weight: 600; margin: 4px 0; min-height: 1.2em; }
-    .actions { margin-top: 8px; }
+    .status { font-size: 0.7rem; color: #64748b; margin: 6px 0 2px; min-height: 1.1em; }
+    .err { color: #b91c1c; font-size: 0.7rem; font-weight: 600; margin: 2px 0; min-height: 1.1em; }
+    .actions { margin-top: 6px; }
     button {
-      padding: 8px 18px; border-radius: 8px;
+      padding: 6px 14px; border-radius: 8px;
       border: 1px solid #e2e8f0; background: #fff;
-      font-weight: 600; cursor: pointer; color: #0f172a;
+      font-weight: 600; font-size: 0.78rem; cursor: pointer; color: #0f172a;
     }
     button:hover { background: #f8fafc; }
   </style>
