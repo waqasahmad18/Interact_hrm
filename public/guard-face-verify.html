@@ -7,15 +7,19 @@
   <style>
     * { box-sizing: border-box; }
     html, body {
-      margin: 0; height: 100%;
+      margin: 0; height: auto; min-height: 0;
       background: #fff;
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       color: #0f172a;
+      overflow: hidden;
     }
     .card {
-      width: 100%; min-height: 100%;
+      width: 100%;
+      height: auto;
+      min-height: 0;
       padding: 10px 12px 10px;
       display: flex; flex-direction: column; align-items: center;
+      justify-content: flex-start;
       text-align: center;
     }
     .title { font-weight: 800; font-size: 0.92rem; margin-bottom: 1px; }
@@ -25,7 +29,7 @@
     .who strong { color: #0f172a; }
     .alert {
       display: none;
-      width: min(240px, 90vw);
+      width: min(220px, 90vw);
       background: #fef2f2;
       border: 1px solid #fecaca;
       border-radius: 8px;
@@ -39,8 +43,9 @@
     .alert.show { display: block; }
     .alert small { display: block; font-weight: 500; margin-top: 3px; color: #991b1b; }
     .scan {
-      width: min(240px, 90vw);
+      width: min(220px, 90vw);
       aspect-ratio: 5 / 4;
+      flex-shrink: 0;
       border: 2px solid #ec4899;
       border-radius: 10px;
       overflow: hidden;
@@ -66,9 +71,10 @@
     .scan.busy .hud { color: #7dd3fc; }
     .scan.ok .hud { color: #86efac; }
     .progress-wrap {
-      width: min(240px, 90vw);
-      margin-top: 8px;
+      width: min(220px, 90vw);
+      margin-top: 6px;
       text-align: left;
+      flex-shrink: 0;
     }
     .progress-label {
       display: flex; justify-content: space-between;
