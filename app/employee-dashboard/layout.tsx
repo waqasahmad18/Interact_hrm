@@ -32,6 +32,7 @@ import { EmployeeAvatar } from "../components/EmployeeAvatar";
 import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
 import { syncInteractGuardBind } from "./sync-interact-guard";
+import { GuardPresenceFaceHost } from "./GuardPresenceFaceHost";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
 const ClockBreakPrayerWidget = dynamic(
@@ -520,6 +521,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           : null}
 
         <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
+        {employeeId && /^\d+$/.test(employeeId) ? (
+          <GuardPresenceFaceHost
+            employeeId={employeeId}
+            employeeName={employeeName || "Employee"}
+          />
+        ) : null}
       </div>
     </div>
     </EmployeeSessionProvider>
