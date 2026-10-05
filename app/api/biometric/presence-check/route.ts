@@ -6,9 +6,8 @@ import { resolveEmployeeDbId } from "@/lib/resolve-employee-id";
 export const runtime = "nodejs";
 
 /**
- * Silent presence check for the desktop agent.
- * Uses the same enrollment descriptors + matching as clock/break verify,
- * but does NOT issue a biometric_token (no clock/break action).
+ * Idle Guard + same FaceVerifyModal as Break — server match is identical to
+ * /api/biometric/verify (verifyDescriptorForEmployee), without biometric_token.
  */
 export async function POST(req: NextRequest) {
   try {

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
+import { GuardIdleFaceVerifyModal } from "@/app/components/GuardIdleFaceVerifyModal";
 import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
 
 /**
@@ -183,20 +183,11 @@ export default function PresenceSilentPage() {
       }}
     >
       {ready && employeeId ? (
-        <FaceVerifyModal
-          open
-          presenceCheck
-          clearBackdrop={embed}
-          maxIdentityFails={2}
-          noFaceTimeoutSec={15}
-          action="break_start"
-          actionLabel="confirm you are at your seat"
+        <GuardIdleFaceVerifyModal
           employeeId={employeeId}
           employeeName={employeeName || "Employee"}
-          onVerified={() => {
-            /* success also via onPresenceResult */
-          }}
-          onPresenceResult={(r) => {
+          clearBackdrop={embed}
+          onResult={(r) => {
             finish({
               cameraOk: true,
               atSeat: r.verified,
@@ -205,7 +196,7 @@ export default function PresenceSilentPage() {
               similarity: r.similarity ?? null,
             });
           }}
-          onClose={() => {
+          onCancelled={() => {
             finish({
               cameraOk: true,
               atSeat: false,

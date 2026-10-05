@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React from "react";
-import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
+import { GuardIdleFaceVerifyModal } from "@/app/components/GuardIdleFaceVerifyModal";
 
 type Challenge = {
   checkId: string;
@@ -10,8 +10,7 @@ type Challenge = {
 };
 
 /**
- * Same FaceVerifyModal as Break / Prayer ΓÇö opens on the employee dashboard
- * when Interact Guard signals "Here". No separate WebView2 white slab.
+ * Break-style FaceVerifyModal on the employee dashboard when Guard idle fires.
  */
 export function GuardPresenceFaceHost({
   employeeId,
@@ -87,21 +86,12 @@ export function GuardPresenceFaceHost({
 
   if (!challenge) return null;
 
-  // Identical path to Break: FaceVerifyModal with normal page dim overlay (no clearBackdrop)
   return (
-    <FaceVerifyModal
-      open
-      presenceCheck
-      maxIdentityFails={2}
-      noFaceTimeoutSec={15}
-      action="break_start"
-      actionLabel="confirm you are at your seat"
+    <GuardIdleFaceVerifyModal
       employeeId={challenge.employeeId}
       employeeName={challenge.employeeName || employeeName || "Employee"}
-      onVerified={() => {
-        /* also via onPresenceResult */
-      }}
-      onPresenceResult={(r) => {
+      clearBackdrop={false}
+      onResult={(r) => {
         void finish({
           cameraOk: true,
           atSeat: r.verified,
@@ -110,7 +100,7 @@ export function GuardPresenceFaceHost({
           similarity: r.similarity ?? null,
         });
       }}
-      onClose={() => {
+      onCancelled={() => {
         void finish({
           cameraOk: true,
           atSeat: false,
