@@ -169,9 +169,15 @@
   let verifying = false;
   let lastFaceAt = performance.now();
   let multiStreak = 0;
+  let clearStreak = 0;
+  let wholeCanvas = null;
   const NO_FACE_MS = 15000;
   const REQUIRED_PROBES = 4;
   const probes = [];
+  // Edge / side faces are often small — keep area floor low enough to catch them,
+  // but still drop tiny "ghost" detections from lights/reflections.
+  const COUNT_MIN_AREA = 0.018;
+  const COUNT_MIN_SCORE = 0.32;
 
   function setProgress(pct, label, mode) {
     const p = Math.max(0, Math.min(100, Math.round(pct)));
@@ -248,6 +254,59 @@
     return out;
   }
 
+  /** Full-width frame (no centre crop) so left/right edge faces stay visible. */
+  function drawWholeFrame(maxSize) {
+    if (video.readyState < 2 || video.videoWidth < 64) return null;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const scale = Math.min(1, maxSize / Math.max(vw, vh));
+    const w = Math.max(64, Math.round(vw * scale));
+    const h = Math.max(64, Math.round(vh * scale));
+    const el = wholeCanvas || document.createElement("canvas");
+    wholeCanvas = el;
+    el.width = w;
+    el.height = h;
+    const ctx = el.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, vw, vh, 0, 0, w, h);
+    return el;
+  }
+
+  function filterRealFaces(canvas, detections) {
+    const frameArea = canvas.width * canvas.height;
+    const minArea = frameArea * COUNT_MIN_AREA;
+    return detections.filter(function (d) {
+      const box = d.box || (d.detection && d.detection.box);
+      const score = typeof d.score === "number"
+        ? d.score
+        : (d.detection && d.detection.score) || 0;
+      if (!box || score < COUNT_MIN_SCORE) return false;
+      return box.width * box.height >= minArea;
+    });
+  }
+
+  /**
+   * Sensitive multi-face count on the WHOLE frame.
+   * Larger inputSize + lower threshold catches a second person at the edge
+   * that TinyFace 224/0.4 routinely misses.
+   */
+  async function countFacesSensitive() {
+    const canvas = drawWholeFrame(640);
+    if (!canvas) return 0;
+    const passes = [
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.28 }),
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.32 }),
+    ];
+    let max = 0;
+    for (let i = 0; i < passes.length; i++) {
+      const all = await faceapi.detectAllFaces(canvas, passes[i]);
+      const n = filterRealFaces(canvas, all).length;
+      if (n > max) max = n;
+      if (max >= 2) return max;
+    }
+    return max;
+  }
+
   async function loadModels() {
     setStatus("Loading face engine…", "LOADING MODEL…");
     setProgress(12, "Loading face model…");
@@ -286,24 +345,38 @@
       return;
     }
     try {
-      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
-      // Detect ALL faces — never verify when more than one person is in frame
-      const all = await faceapi.detectAllFaces(video, opts);
+      // Capture detector (primary face). Multi-face uses a separate sensitive pass.
+      const opts = new faceapi.TinyFaceDetectorOptions({
+        inputSize: 416,
+        scoreThreshold: 0.32,
+      });
 
-      if (all.length >= 2) {
+      // Whole-frame sensitive count — catches second person at left/right edge
+      const faceCount = await countFacesSensitive();
+
+      if (faceCount >= 2) {
         multiStreak += 1;
-        // Require 2 consecutive multi-face frames to avoid flicker false blocks
-        if (multiStreak >= 2) {
-          probes.length = 0;
-          setMultiBlocked(true, all.length);
-        }
-        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        clearStreak = 0;
+        // Block on first confident multi-face frame (edge faces are intermittent)
+        probes.length = 0;
+        setMultiBlocked(true, faceCount);
+        setTimeout(() => requestAnimationFrame(scanLoop), 220);
         return;
       }
+
+      // Require 2 clean single-face frames before clearing a prior block
+      if (elAlert.classList.contains("show")) {
+        clearStreak += 1;
+        if (clearStreak < 2) {
+          setTimeout(() => requestAnimationFrame(scanLoop), 220);
+          return;
+        }
+      }
       multiStreak = 0;
+      clearStreak = 0;
       setMultiBlocked(false);
 
-      if (all.length === 0) {
+      if (faceCount === 0) {
         if (performance.now() - lastFaceAt > NO_FACE_MS) {
           finish({
             cameraOk: true,
@@ -351,12 +424,12 @@
         return;
       }
 
-      // Final multi-face check right before server verify
-      const recheck = await faceapi.detectAllFaces(video, opts);
-      if (recheck.length >= 2) {
+      // Final sensitive multi-face check on whole frame — must pass before verify
+      const recheck = await countFacesSensitive();
+      if (recheck >= 2) {
         probes.length = 0;
-        setMultiBlocked(true, recheck.length);
-        setTimeout(() => requestAnimationFrame(scanLoop), 280);
+        setMultiBlocked(true, recheck);
+        setTimeout(() => requestAnimationFrame(scanLoop), 220);
         return;
       }
 
