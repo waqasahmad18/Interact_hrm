@@ -15,12 +15,14 @@
     }
     .card {
       width: 100%;
-      height: auto;
-      min-height: 0;
-      padding: 10px 12px 10px;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none;
+      padding: 12px 14px 10px;
       display: flex; flex-direction: column; align-items: center;
       justify-content: flex-start;
       text-align: center;
+      /* Do not stretch to fill WebView — avoids empty white under Cancel */
     }
     .title { font-weight: 800; font-size: 0.92rem; margin-bottom: 1px; }
     .sub { font-size: 0.74rem; color: #64748b; margin-bottom: 1px; }
