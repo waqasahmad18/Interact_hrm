@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { FaceVerifyModal } from "@/app/components/FaceVerifyModal";
@@ -10,7 +10,7 @@ type Challenge = {
 };
 
 /**
- * Same FaceVerifyModal as Break / Prayer — opens on the employee dashboard
+ * Same FaceVerifyModal as Break / Prayer ΓÇö opens on the employee dashboard
  * when Interact Guard signals "Here". No separate WebView2 white slab.
  */
 export function GuardPresenceFaceHost({
