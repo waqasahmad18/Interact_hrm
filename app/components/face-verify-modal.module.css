@@ -15,11 +15,11 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Guard WebView2: no full-screen overlay slab — card only fills the host window */
+/* Guard WebView2: inline card fills host — no dim overlay, no portal off-screen */
 .overlayClear {
   position: relative;
   inset: auto;
-  background: transparent !important;
+  background: #ffffff !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   padding: 0;
@@ -31,7 +31,8 @@
   align-items: stretch;
   justify-content: stretch;
   z-index: 1;
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modalEmbed {
@@ -42,6 +43,8 @@
   margin: 0;
   border-radius: 16px;
   box-sizing: border-box;
+  overflow-y: auto;
+  box-shadow: none;
 }
 
 .modal {

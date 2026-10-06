@@ -63,41 +63,28 @@ export default function PresenceSilentPage() {
   const doneRef = React.useRef(false);
 
   React.useEffect(() => {
-    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const eid = (params.get("employeeId") || params.get("employee_id") || "").trim();
+    const ename = (params.get("employeeName") || "").trim();
+    const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
+    const isEmbed = params.get("embed") === "1";
+    setEmbed(isEmbed);
+    setEmployeeId(eid);
+    setEmployeeName(ename);
+    setCheckId(cid);
 
-    (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const eid = (params.get("employeeId") || params.get("employee_id") || "").trim();
-      const ename = (params.get("employeeName") || "").trim();
-      const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
-      const isEmbed = params.get("embed") === "1";
-      setEmbed(isEmbed);
-      setEmployeeId(eid);
-      setEmployeeName(ename);
-      setCheckId(cid);
+    if (!eid) {
+      setStatus("Missing employeeId");
+      void postToAgent(
+        { cameraOk: false, atSeat: false, code: "error", error: "employeeId missing" },
+        cid,
+      );
+      return;
+    }
 
-      if (!eid) {
-        await postToAgent(
-          { cameraOk: false, atSeat: false, code: "error", error: "employeeId missing" },
-          cid
-        );
-        setStatus("Missing employeeId");
-        return;
-      }
-
-      // Kick models early; FaceVerifyModal also awaits them
-      void ensureFaceModelsLoaded().catch(() => undefined);
-
-      // No armed/prewarm wait — open FaceVerify immediately (fixes blank white slab)
-      if (!cancelled) {
-        setStatus("Scanning…");
-        setReady(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    void ensureFaceModelsLoaded().catch(() => undefined);
+    setStatus("Scanning…");
+    setReady(true);
   }, []);
 
   const finish = React.useCallback(

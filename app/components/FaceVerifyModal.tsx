@@ -575,7 +575,7 @@ export function FaceVerifyModal({
         ? "SCANNING FACE"
         : status.replace(/…/g, "").toUpperCase();
 
-  return createPortal(
+  const overlay = (
     <div
       className={[modalStyles.overlay, clearBackdrop ? modalStyles.overlayClear : ""]
         .filter(Boolean)
@@ -676,7 +676,11 @@ export function FaceVerifyModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  // Guard WebView embed: paint inline inside the host page (no portal).
+  // Portal + relative overlayClear sat BELOW an empty 100vh shell → white slab.
+  if (clearBackdrop) return overlay;
+  return createPortal(overlay, document.body);
 }
