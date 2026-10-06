@@ -6,6 +6,7 @@ import {
   ensureFaceModelsLoaded,
   preloadFaceRuntime,
 } from "@/lib/face-client-engine";
+import { startCameraPrewarm } from "@/lib/camera-prewarm";
 
 /**
  * Guard idle seat check — same FaceVerifyModal popup as Break/Clock.
@@ -14,10 +15,14 @@ import {
  * Embed mode must NEVER paint a blank white page — always show the card chrome.
  */
 
-// Kick TF/face-api parse as soon as the chunk loads (before React mount).
+// CAMERA FIRST — do not let TF.js/WebGL init delay getUserMedia in WebView2.
 if (typeof window !== "undefined") {
+  startCameraPrewarm();
   preloadFaceRuntime();
-  void ensureFaceModelsLoaded().catch(() => undefined);
+  // Models after a tick so camera request wins the first event-loop slots.
+  window.setTimeout(() => {
+    void ensureFaceModelsLoaded().catch(() => undefined);
+  }, 0);
 }
 
 type BridgeResult = {
@@ -73,6 +78,15 @@ export default function PresenceSilentPage() {
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const warmOnly = params.get("warm") === "1";
+    if (warmOnly) {
+      // Agent WebView prewarm — open camera only, no FaceVerify UI.
+      startCameraPrewarm();
+      setStatus("Camera warm");
+      setEmbed(params.get("embed") === "1");
+      return;
+    }
+
     const eid = (params.get("employeeId") || params.get("employee_id") || "").trim();
     const ename = (params.get("employeeName") || "").trim();
     const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
@@ -91,6 +105,7 @@ export default function PresenceSilentPage() {
       return;
     }
 
+    startCameraPrewarm();
     void ensureFaceModelsLoaded().catch(() => undefined);
     setStatus("Scanning…");
     setReady(true);

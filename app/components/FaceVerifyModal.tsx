@@ -10,6 +10,7 @@ import {
   ensureFaceModelsLoaded,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
+import { takePrewarmedCamera, startCameraPrewarm } from "@/lib/camera-prewarm";
 import { FaceScanViewport, type FaceScanMode } from "@/app/components/FaceScanHud";
 import modalStyles from "./face-verify-modal.module.css";
 
@@ -400,31 +401,40 @@ export function FaceVerifyModal({
         setStatus("Starting camera…");
         setError(null);
 
-        // Models in parallel with camera — same as Break; warm-up no longer blocks ready.
-        const modelsPromise = ensureFaceModelsLoaded();
+        // Presence/Guard: take prewarmed stream FIRST (already opening from page load).
+        // Break: open in parallel with models as before.
+        let stream: MediaStream | null = null;
+        let modelsPromise: Promise<void>;
 
-        // Guard: bare facingMode opens fastest in WebView2 (no renegotiation).
-        // Break: higher ideal for enrollment-quality frames.
-        const videoConstraints: MediaTrackConstraints = presenceCheck
-          ? { facingMode: "user" }
-          : {
-              facingMode: "user",
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              frameRate: { ideal: 24, max: 30 },
-            };
+        if (presenceCheck) {
+          startCameraPrewarm();
+          stream = await takePrewarmedCamera();
+          modelsPromise = ensureFaceModelsLoaded();
+        } else {
+          modelsPromise = ensureFaceModelsLoaded();
+          const videoConstraints: MediaTrackConstraints = {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 24, max: 30 },
+          };
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: videoConstraints,
+              audio: false,
+            });
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
 
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: videoConstraints,
-            audio: false,
-          });
-        } catch {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
+        if (!stream) {
+          setError("Camera could not start. Check permission and retry.");
+          setStatus("Camera unavailable");
+          return;
         }
 
         if (cancelled) {
@@ -433,31 +443,33 @@ export function FaceVerifyModal({
         }
 
         streamRef.current = stream;
-        const video = videoRef.current;
-        if (!video) return;
+
+        // Video element may not be mounted yet — retry briefly (avoid stuck "Starting camera").
+        let video = videoRef.current;
+        for (let i = 0; i < 30 && !video; i++) {
+          await new Promise((r) => window.setTimeout(r, 16));
+          if (cancelled) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          video = videoRef.current;
+        }
+        if (!video) {
+          setError("Camera preview failed to load.");
+          setStatus("Camera unavailable");
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          return;
+        }
 
         video.srcObject = stream;
         video.muted = true;
         video.playsInline = true;
         await video.play().catch(() => undefined);
 
-        // Show preview immediately — do not wait on loadeddata (WebView often stalls).
         if (cancelled) return;
         setCameraReady(true);
         setStatus("Look at the camera — scanning…");
-
-        // Brief race only so first frames exist; never block UI on this.
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            if (video.readyState >= 2) resolve();
-            else {
-              const done = () => resolve();
-              video.onloadeddata = done;
-              video.onloadedmetadata = done;
-            }
-          }),
-          new Promise<void>((resolve) => window.setTimeout(resolve, 280)),
-        ]);
 
         await modelsPromise;
         if (cancelled) return;
