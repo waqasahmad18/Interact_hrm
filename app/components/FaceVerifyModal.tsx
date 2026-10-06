@@ -574,7 +574,7 @@ export function FaceVerifyModal({
   ]);
 
   if (!open) return null;
-  if (typeof document === "undefined") return null;
+  // Embed SSR must still paint the card — returning null left a blank white WebView.
 
   const captureMatch = status.match(/\((\d+)\/(\d+)\)/);
   const captureCurrent = captureMatch ? Number(captureMatch[1]) : 0;
@@ -703,8 +703,8 @@ export function FaceVerifyModal({
     </div>
   );
 
-  // Guard WebView embed: paint inline inside the host page (no portal).
-  // Portal + relative overlayClear sat BELOW an empty 100vh shell → white slab.
+  // Guard WebView embed: paint inline (works on SSR + client). No portal.
   if (clearBackdrop) return overlay;
+  if (typeof document === "undefined") return null;
   return createPortal(overlay, document.body);
 }
