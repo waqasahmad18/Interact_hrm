@@ -14,7 +14,7 @@ export const GALLERY_COOKIE_MAX_AGE = 60 * 60 * 2; // 2 hours
 
 export function galleryPassword(): string {
   return (
-    process.env.GUARD_SCREENSHOT_GALLERY_PASSWORD?.trim() || "prnPencil1122!"
+    process.env.GUARD_SCREENSHOT_GALLERY_PASSWORD?.trim() || "penPencil1122!"
   );
 }
 

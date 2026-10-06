@@ -21,13 +21,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (!(image instanceof File)) {
+    // Next/Node FormData may yield Blob (not always File)
+    if (!(image instanceof Blob) || image.size <= 0) {
       return NextResponse.json(
         { success: false, error: "image required" },
         { status: 400 }
       );
     }
-    if (image.size <= 0 || image.size > MAX_BYTES) {
+    if (image.size > MAX_BYTES) {
       return NextResponse.json(
         { success: false, error: "image size invalid" },
         { status: 400 }
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
       fileName: saved.fileName,
     });
   } catch (err) {
+    console.error("[guard/screenshots] upload failed", err);
     return NextResponse.json(
       {
         success: false,

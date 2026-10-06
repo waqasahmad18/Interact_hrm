@@ -888,8 +888,9 @@ export default function PresenceIdleSettingsPage() {
               <GuardScreenshotsGallery />
 
               <p className={styles.tip}>
-                Tip: for quick testing use the <strong>5 sec</strong> / <strong>30 sec</strong> chips,
-                Save, wait ~30s for the desktop agent, then leave the PC idle.
+                Tip: enable <strong>Auto screenshots</strong>, pick a short interval chip (e.g.{" "}
+                <strong>5 sec</strong>), Save, install Guard 1.2.37+, assign employee on Interact
+                Guard page — then open the screenshots gallery.
               </p>
             </div>
           )}
