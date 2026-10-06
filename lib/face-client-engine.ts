@@ -4,6 +4,16 @@ import type * as FaceApi from "@vladmandic/face-api";
 
 const MODEL_URL = "/models/face-api";
 
+/** Weight files used by live Break/Guard scan (skip unused ssd / full landmark). */
+const MODEL_ASSET_FILES = [
+  "tiny_face_detector_model-weights_manifest.json",
+  "tiny_face_detector_model.bin",
+  "face_landmark_68_tiny_model-weights_manifest.json",
+  "face_landmark_68_tiny_model.bin",
+  "face_recognition_model-weights_manifest.json",
+  "face_recognition_model.bin",
+] as const;
+
 type FaceApiModule = typeof FaceApi;
 type TfModule = typeof import("@tensorflow/tfjs");
 
@@ -11,6 +21,7 @@ let faceapi: FaceApiModule | null = null;
 let tf: TfModule | null = null;
 let loadPromise: Promise<void> | null = null;
 let runtimePreloadPromise: Promise<void> | null = null;
+let assetPrefetchPromise: Promise<void> | null = null;
 let modelsLoaded = false;
 
 /** Parse tfjs + face-api JS bundles early so weight download can overlap. */
@@ -22,6 +33,26 @@ export function preloadFaceRuntime(): void {
       import("@vladmandic/face-api"),
     ]).then(() => undefined);
   }
+}
+
+/**
+ * Pull model weights into HTTP/disk cache before TF init.
+ * Second face check then skips multi-MB download.
+ */
+export function prefetchFaceModelAssets(): void {
+  if (typeof window === "undefined") return;
+  if (assetPrefetchPromise) return;
+  assetPrefetchPromise = Promise.all(
+    MODEL_ASSET_FILES.map((file) =>
+      fetch(`${MODEL_URL}/${file}`, { cache: "force-cache", credentials: "same-origin" }).then(
+        (r) => {
+          // Drain body so the response is fully cached.
+          return r.arrayBuffer().then(() => undefined);
+        },
+        () => undefined,
+      ),
+    ),
+  ).then(() => undefined);
 }
 
 export function areFaceModelsLoaded(): boolean {
@@ -139,12 +170,17 @@ export async function ensureFaceModelsLoaded(opts?: {
   if (modelsLoaded) return;
   if (loadPromise) return loadPromise;
 
+  // Overlap: JS parse + weight download + TF backend init
   preloadFaceRuntime();
+  prefetchFaceModelAssets();
 
   const preferCpu = Boolean(opts?.preferCpu);
 
   loadPromise = (async () => {
-    await initFaceRuntime();
+    await Promise.all([
+      initFaceRuntime(),
+      assetPrefetchPromise ?? Promise.resolve(),
+    ]);
     if (!tf || !faceapi) return;
 
     if (preferCpu) {
@@ -160,14 +196,14 @@ export async function ensureFaceModelsLoaded(opts?: {
       }
     }
 
+    // Weights should already be in HTTP cache from prefetchFaceModelAssets.
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
 
-    // Ready for scans immediately — warm-up runs in background so "Starting
-    // camera / Loading face engine" is not blocked by shader compile.
+    // Ready for scans immediately — warm-up in background (do not block UI).
     modelsLoaded = true;
     void warmUpInference();
   })();

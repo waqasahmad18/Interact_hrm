@@ -33,6 +33,11 @@ import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
 import { syncInteractGuardBind } from "./sync-interact-guard";
 import { GuardPresenceFaceHost } from "./GuardPresenceFaceHost";
+import {
+  ensureFaceModelsLoaded,
+  prefetchFaceModelAssets,
+  preloadFaceRuntime,
+} from "@/lib/face-client-engine";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
 const ClockBreakPrayerWidget = dynamic(
@@ -140,6 +145,13 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   React.useEffect(() => {
     const id = window.setInterval(() => setHeroDateTime(formatHeroDateTime()), 30_000);
     return () => window.clearInterval(id);
+  }, []);
+
+  // Warm face models while employee uses dashboard — idle Guard check skips cold download.
+  React.useEffect(() => {
+    preloadFaceRuntime();
+    prefetchFaceModelAssets();
+    void ensureFaceModelsLoaded().catch(() => undefined);
   }, []);
 
   React.useEffect(() => {
