@@ -32,7 +32,9 @@ export type PresenceSettings = {
    * Empty array = all employees (when presenceEnabled is true).
    */
   enabledEmployeeIds: string[];
-  /** Seconds between Guard tray-enabled auto screenshots (30–3600). */
+  /** Admin master switch — Guard agents upload full-screen screenshots when on. */
+  screenshotCaptureEnabled: boolean;
+  /** Seconds between Guard auto screenshots (5–3600). */
   screenshotIntervalSeconds: number;
 };
 
@@ -45,7 +47,8 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   recheckWhileIdleSeconds: 120,
   agentExitPassword: "InteractAdmin",
   enabledEmployeeIds: [],
-  screenshotIntervalSeconds: 300,
+  screenshotCaptureEnabled: false,
+  screenshotIntervalSeconds: 60,
 };
 
 const KEYS = {
@@ -57,6 +60,7 @@ const KEYS = {
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
   agentExitPassword: "presence_agent_exit_password",
   enabledEmployeeIds: "presence_enabled_employee_ids",
+  screenshotCaptureEnabled: "presence_screenshot_capture_enabled",
   screenshotIntervalSeconds: "presence_screenshot_interval_seconds",
 } as const;
 
@@ -139,6 +143,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     recheckWhileIdleSeconds,
     agentExitPassword,
     enabledEmployeeIds,
+    screenshotCaptureEnabled,
     screenshotIntervalSeconds,
   ] = await Promise.all([
     getRaw(KEYS.agentsRetired),
@@ -149,6 +154,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.recheckWhileIdleSeconds),
     getRaw(KEYS.agentExitPassword),
     getRaw(KEYS.enabledEmployeeIds),
+    getRaw(KEYS.screenshotCaptureEnabled),
     getRaw(KEYS.screenshotIntervalSeconds),
   ]);
 
@@ -174,10 +180,14 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     ),
     agentExitPassword: sanitizeExitPassword(agentExitPassword, d.agentExitPassword),
     enabledEmployeeIds: parseIdList(enabledEmployeeIds),
+    screenshotCaptureEnabled: parseBool(
+      screenshotCaptureEnabled,
+      d.screenshotCaptureEnabled
+    ),
     screenshotIntervalSeconds: parseIntClamped(
       screenshotIntervalSeconds,
       d.screenshotIntervalSeconds,
-      30,
+      5,
       3600
     ),
   };
@@ -233,10 +243,14 @@ export async function savePresenceSettings(
       current.agentExitPassword
     ),
     enabledEmployeeIds: ids !== undefined ? ids : current.enabledEmployeeIds,
+    screenshotCaptureEnabled:
+      typeof input.screenshotCaptureEnabled === "boolean"
+        ? input.screenshotCaptureEnabled
+        : current.screenshotCaptureEnabled,
     screenshotIntervalSeconds: parseIntClamped(
       String(input.screenshotIntervalSeconds ?? current.screenshotIntervalSeconds),
       current.screenshotIntervalSeconds,
-      30,
+      5,
       3600
     ),
   };
@@ -253,6 +267,10 @@ export async function savePresenceSettings(
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
     setRaw(KEYS.agentExitPassword, next.agentExitPassword),
     setRaw(KEYS.enabledEmployeeIds, JSON.stringify(next.enabledEmployeeIds)),
+    setRaw(
+      KEYS.screenshotCaptureEnabled,
+      next.screenshotCaptureEnabled ? "true" : "false"
+    ),
     setRaw(KEYS.screenshotIntervalSeconds, String(next.screenshotIntervalSeconds)),
   ]);
 

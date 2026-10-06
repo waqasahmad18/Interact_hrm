@@ -18,6 +18,7 @@ type PresenceSettings = {
   recheckWhileIdleSeconds: number;
   agentExitPassword: string;
   enabledEmployeeIds: string[];
+  screenshotCaptureEnabled: boolean;
   screenshotIntervalSeconds: number;
 };
 
@@ -137,7 +138,7 @@ export default function PresenceIdleSettingsPage() {
   const [countdownSeconds, setCountdownSeconds] = React.useState(0);
   const [recheckMinutes, setRecheckMinutes] = React.useState(2);
   const [recheckSeconds, setRecheckSeconds] = React.useState(0);
-  const [shotMinutes, setShotMinutes] = React.useState(5);
+  const [shotMinutes, setShotMinutes] = React.useState(1);
   const [shotSeconds, setShotSeconds] = React.useState(0);
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
@@ -165,6 +166,8 @@ export default function PresenceIdleSettingsPage() {
       enabledEmployeeIds: Array.isArray(s.enabledEmployeeIds)
         ? s.enabledEmployeeIds.map(String)
         : [],
+      screenshotCaptureEnabled: !!s.screenshotCaptureEnabled,
+      screenshotIntervalSeconds: s.screenshotIntervalSeconds ?? 60,
     });
     const idle = splitSeconds(s.idleWarningSeconds);
     setIdleMinutes(idle.minutes);
@@ -175,7 +178,7 @@ export default function PresenceIdleSettingsPage() {
     const recheck = splitSeconds(s.recheckWhileIdleSeconds);
     setRecheckMinutes(recheck.minutes);
     setRecheckSeconds(recheck.seconds);
-    const shot = splitSeconds(s.screenshotIntervalSeconds ?? 300);
+    const shot = splitSeconds(s.screenshotIntervalSeconds ?? 60);
     setShotMinutes(shot.minutes);
     setShotSeconds(shot.seconds);
   }, []);
@@ -273,7 +276,8 @@ export default function PresenceIdleSettingsPage() {
         idleWarningSeconds: Math.max(5, idleTotal),
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
-        screenshotIntervalSeconds: Math.min(3600, Math.max(30, shotTotal)),
+        screenshotCaptureEnabled: !!settings.screenshotCaptureEnabled,
+        screenshotIntervalSeconds: Math.min(3600, Math.max(5, shotTotal || 5)),
         agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
       };
@@ -526,6 +530,29 @@ export default function PresenceIdleSettingsPage() {
                     </span>
                   </label>
 
+                  <label className={styles.toggleRow}>
+                    <input
+                      type="checkbox"
+                      checked={!!settings.screenshotCaptureEnabled}
+                      disabled={disabled}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          screenshotCaptureEnabled: e.target.checked,
+                        })
+                      }
+                    />
+                    <span className={styles.toggleText}>
+                      <span className={styles.toggleTitle}>
+                        Auto screenshots (Interact Guard)
+                      </span>
+                      <span className={styles.toggleHint}>
+                        When on, Guard agents upload full-screen captures on the interval
+                        below. Save, then agents pick it up within a few seconds.
+                      </span>
+                    </span>
+                  </label>
+
                   <div className={styles.block}>
                     <h3 className={styles.blockTitle}>Enable for employees</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
@@ -686,13 +713,13 @@ export default function PresenceIdleSettingsPage() {
                   />
 
                   <DurationEditor
-                    title="Auto screenshot interval (Guard tray Screenshots On)"
+                    title="Auto screenshot interval"
                     minutes={shotMinutes}
                     seconds={shotSeconds}
-                    total={shotTotal}
-                    disabled={disabled}
+                    total={Math.max(5, shotTotal)}
+                    disabled={disabled || !settings.screenshotCaptureEnabled}
                     maxMinutes={60}
-                    presets={[30, 60, 120, 300, 600]}
+                    presets={[5, 10, 15, 30, 60, 120, 300]}
                     onMinutes={setShotMinutes}
                     onSeconds={setShotSeconds}
                     onPreset={setShotTotal}

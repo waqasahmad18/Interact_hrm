@@ -71,6 +71,10 @@ export async function PUT(req: NextRequest) {
       enabledEmployeeIds: Array.isArray(body.enabledEmployeeIds)
         ? (body.enabledEmployeeIds as unknown[]).map((v) => String(v))
         : undefined,
+      screenshotCaptureEnabled:
+        typeof body.screenshotCaptureEnabled === "boolean"
+          ? body.screenshotCaptureEnabled
+          : undefined,
       screenshotIntervalSeconds:
         typeof body.screenshotIntervalSeconds === "number"
           ? body.screenshotIntervalSeconds

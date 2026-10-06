@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         presence_enabled: result.presenceEnabled,
         camera_verification_enabled: result.cameraVerificationEnabled,
         clocked_in: result.clockedIn,
+        screenshot_capture_enabled: result.screenshotCaptureEnabled,
         screenshot_interval_seconds: result.screenshotIntervalSeconds,
       },
       {

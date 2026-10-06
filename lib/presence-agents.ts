@@ -298,6 +298,7 @@ export type HeartbeatResult = {
   cameraVerificationEnabled: boolean;
   /** True when assigned employee has an open clock-in (no clock-out). */
   clockedIn: boolean;
+  screenshotCaptureEnabled: boolean;
   screenshotIntervalSeconds: number;
 };
 
@@ -498,6 +499,7 @@ export async function upsertAgentHeartbeat(
     presenceEnabled: monitoringOn && clockedIn,
     cameraVerificationEnabled: settings.cameraVerificationEnabled,
     clockedIn,
+    screenshotCaptureEnabled: settings.screenshotCaptureEnabled,
     screenshotIntervalSeconds: settings.screenshotIntervalSeconds,
   };
 }
