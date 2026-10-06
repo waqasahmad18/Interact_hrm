@@ -888,9 +888,9 @@ export default function PresenceIdleSettingsPage() {
               <GuardScreenshotsGallery />
 
               <p className={styles.tip}>
-                Tip: enable <strong>Auto screenshots</strong>, pick a short interval chip (e.g.{" "}
-                <strong>5 sec</strong>), Save, install Guard 1.2.37+, assign employee on Interact
-                Guard page — then open the screenshots gallery.
+                Tip: enable <strong>Auto screenshots</strong>, pick interval (e.g.{" "}
+                <strong>5 sec</strong>), Save, install Guard 1.2.40+, assign employee — screenshots
+                start without clock-in. Gallery opens only with password.
               </p>
             </div>
           )}
