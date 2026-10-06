@@ -10,7 +10,9 @@ type Challenge = {
 };
 
 /**
- * Break-style FaceVerifyModal on the employee dashboard when Guard idle fires.
+ * Optional in-page FaceVerify when a session is NOT agent-hosted.
+ * Idle Guard (1.2.41+) uses its own topmost WebView — those sessions are skipped
+ * by the API (agentHost) so camera works even if this tab is in the background.
  */
 export function GuardPresenceFaceHost({
   employeeId,

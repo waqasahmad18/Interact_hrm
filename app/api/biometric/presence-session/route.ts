@@ -20,18 +20,20 @@ export async function POST(req: NextRequest) {
       result?: PresenceSessionResult;
       check_id?: string;
       action?: string;
+      agent_host?: boolean;
     };
 
-    // Guard: employee clicked Here → dashboard FaceVerifyModal (Break-style) should open
+    // Guard: employee clicked Here → agent WebView (agent_host) or dashboard modal
     if (body.check_id && body.action === "start") {
-      const ok = signalPresenceStart(body.check_id);
+      const agentHost = body.agent_host === true;
+      const ok = signalPresenceStart(body.check_id, { agentHost });
       if (!ok) {
         return NextResponse.json(
           { success: false, error: "Unknown or expired check_id" },
           { status: 404 },
         );
       }
-      return NextResponse.json({ success: true, start: true });
+      return NextResponse.json({ success: true, start: true, agent_host: agentHost });
     }
 
     if (body.check_id && body.action === "cancel") {

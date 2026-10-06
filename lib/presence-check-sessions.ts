@@ -22,6 +22,11 @@ type Session = {
   result: PresenceSessionResult | null;
   /** Guard sets true after employee clicks Here — armed page then scans. */
   start: boolean;
+  /**
+   * When true, Interact Guard hosts FaceVerify in its own WebView2 window.
+   * Dashboard must not also open a modal (avoids dual UI / blank slab).
+   */
+  agentHost: boolean;
 };
 
 const DIR = path.join(os.tmpdir(), "interact-hrm-presence-sessions");
@@ -55,6 +60,7 @@ function readSession(id: string): Session | null {
       return null;
     }
     if (typeof s.start !== "boolean") s.start = false;
+    if (typeof s.agentHost !== "boolean") s.agentHost = false;
     return s;
   } catch {
     return null;
@@ -74,6 +80,7 @@ export function createPresenceSession(employeeId: string): string {
     createdAt: Date.now(),
     result: null,
     start: false,
+    agentHost: false,
   });
   return id;
 }
@@ -82,10 +89,14 @@ export function getPresenceSession(id: string): Session | null {
   return readSession(id);
 }
 
-export function signalPresenceStart(id: string): boolean {
+export function signalPresenceStart(
+  id: string,
+  opts?: { agentHost?: boolean }
+): boolean {
   const s = readSession(id);
   if (!s) return false;
   s.start = true;
+  if (opts?.agentHost) s.agentHost = true;
   writeSession(id, s);
   return true;
 }
@@ -121,7 +132,10 @@ export function cancelPresenceSession(id: string): void {
   }
 }
 
-/** Dashboard: find an armed (Here clicked) session waiting for Break-style FaceVerifyModal. */
+/**
+ * Dashboard: find an armed session for in-page FaceVerifyModal.
+ * Skips agentHost sessions — Guard WebView owns those.
+ */
 export function findPendingPresenceForEmployee(
   employeeId: string,
 ): { checkId: string; employeeId: string } | null {
@@ -139,7 +153,7 @@ export function findPendingPresenceForEmployee(
     if (!name.endsWith(".json")) continue;
     const checkId = name.slice(0, -".json".length);
     const s = readSession(checkId);
-    if (!s || s.result || !s.start) continue;
+    if (!s || s.result || !s.start || s.agentHost) continue;
     if (String(s.employeeId).trim() !== eid) continue;
     if (!best || s.createdAt > best.createdAt) {
       best = { checkId, employeeId: s.employeeId, createdAt: s.createdAt };
