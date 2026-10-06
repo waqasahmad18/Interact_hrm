@@ -50,8 +50,10 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // reflections, glass partitions — only produces small, low-score "ghost"
 // detections. Counting ignores those so one real person is never reported as
 // "multiple faces".
-const COUNT_MIN_FACE_AREA_RATIO = 0.045;
-const COUNT_MIN_SCORE = 0.5;
+// Genuine second person near the edge often projects smaller — keep this low
+// enough that edge faces still count (not centre-only), but above tiny ghosts.
+const COUNT_MIN_FACE_AREA_RATIO = 0.018;
+const COUNT_MIN_SCORE = 0.38;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -84,12 +86,12 @@ async function initFaceRuntime(): Promise<void> {
   // detections (lights, walls, reflections) are never mistaken for a person.
   // Only confident, real-face detections are counted.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.5,
+    inputSize: 512,
+    scoreThreshold: 0.35,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.38 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 }),
   ];
   ENROLL_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
@@ -164,10 +166,10 @@ export async function ensureFaceModelsLoaded(opts?: {
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
 
+    // Ready for scans immediately — warm-up runs in background so "Starting
+    // camera / Loading face engine" is not blocked by shader compile.
     modelsLoaded = true;
-
-    // Await warm-up so the first real scan is not a cold/slow frame (avoids idle timeouts)
-    await warmUpInference();
+    void warmUpInference();
   })();
 
   return loadPromise;
@@ -343,7 +345,8 @@ export async function quickCountFacesInVideo(video: HTMLVideoElement): Promise<n
   await ensureFaceModelsLoaded();
   if (!faceapi || !LIVE_FACE_COUNT) return 0;
 
-  const whole = drawWholeFrameCanvas(video, 640);
+  // Prefer larger canvas so edge faces keep enough pixels to pass area filter.
+  const whole = drawWholeFrameCanvas(video, 720);
   if (!whole) return 0;
   const detections = await faceapi.detectAllFaces(whole, LIVE_FACE_COUNT);
   return filterRealFaces(whole, detections, COUNT_MIN_FACE_AREA_RATIO).length;

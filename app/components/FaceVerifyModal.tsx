@@ -48,13 +48,14 @@ type Props = {
 };
 
 const SCAN_INTERVAL_MS = 280;
+const SCAN_INTERVAL_PRESENCE_MS = 200;
 const RETRY_AFTER_FAIL_MS = 200;
 // Good consecutive frames whose descriptors are averaged into one stable probe.
 // Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
 // match is far more reliable — and harder to fool — than a single snapshot.
-// This is a big accuracy gain that costs almost nothing (pure math).
-// Keep in sync with Break / Clock path (same capture depth before server match).
+// Break / Clock keep 5; Guard presence uses 3 for faster seat check (same models).
 const REQUIRED_PROBES = 5;
+const REQUIRED_PROBES_PRESENCE = 3;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
@@ -162,17 +163,19 @@ export function FaceVerifyModal({
     const video = videoRef.current;
     if (!video) return;
 
+    const probeNeed = presenceCheck ? REQUIRED_PROBES_PRESENCE : REQUIRED_PROBES;
+    const scanInterval = presenceCheck ? SCAN_INTERVAL_PRESENCE_MS : SCAN_INTERVAL_MS;
+
     scanInFlightRef.current = true;
     try {
+      // Same Break engine: full-frame multi-face + whole-frame descriptors (edges included).
       const scan = await scanVideoFrame(video);
 
       if (scan.status === "multiple") {
-        // Require two consecutive multi-face frames before blocking. A single
-        // flicker / momentary background ghost must not slam up the red wall —
-        // this keeps the experience smooth and avoids false blocks on one
-        // person.
+        // Guard: block immediately. Break: need 2 frames to ignore a ghost flicker.
         multiFaceStreakRef.current += 1;
-        if (multiFaceStreakRef.current >= 2) {
+        const needStreak = presenceCheck ? 1 : 2;
+        if (multiFaceStreakRef.current >= needStreak) {
           blockMultipleFaces(scan.count);
         }
         return;
@@ -200,7 +203,7 @@ export function FaceVerifyModal({
         if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Adjusting…");
-        setGuidance("Center your face, look straight and hold still.");
+        setGuidance("Keep your face in frame (edges OK), look straight and hold still.");
         return;
       }
 
@@ -232,10 +235,10 @@ export function FaceVerifyModal({
       // (slight angle, glasses glare, blur); the averaged embedding is much
       // closer to the enrolled photos and far harder to fool.
       probeBufferRef.current.push(descriptorToJson(scan.descriptor));
-      if (probeBufferRef.current.length < REQUIRED_PROBES) {
+      if (probeBufferRef.current.length < probeNeed) {
         setError(null);
         setGuidance("Good — hold still…");
-        setStatus(`Capturing face… (${probeBufferRef.current.length}/${REQUIRED_PROBES})`);
+        setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
         return;
       }
 
@@ -247,9 +250,7 @@ export function FaceVerifyModal({
       busyRef.current = true;
       setVerifying(true);
 
-      // Thorough multi-pass count (full + crop) right before accepting so a
-      // second face near the edge / smaller / farther is reliably caught and
-      // the clock action is blocked. Only one face may proceed.
+      // Whole-frame multi-pass count (edges included) — never verify if 2+ people.
       const faceCount = await countFacesInVideo(video);
       if (faceCount >= 2) {
         busyRef.current = false;
@@ -341,13 +342,13 @@ export function FaceVerifyModal({
         probeBufferRef.current = [];
         setError(failErr || "Face not verified. Hold still — retrying…");
         setStatus("Scanning again…");
-        lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS + RETRY_AFTER_FAIL_MS;
+        lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
       } catch {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         setError("Network error. Retrying…");
         setStatus("Scanning again…");
-        lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS + RETRY_AFTER_FAIL_MS;
+        lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
       } finally {
         busyRef.current = false;
         setVerifying(false);
@@ -399,17 +400,13 @@ export function FaceVerifyModal({
         setStatus("Starting camera…");
         setError(null);
 
+        // Models in parallel with camera — same as Break; warm-up no longer blocks ready.
         const modelsPromise = ensureFaceModelsLoaded();
 
-        // Presence / Guard: lighter stream so camera opens fast.
-        // Break keeps higher ideal resolution for enrollment-quality frames.
+        // Guard: bare facingMode opens fastest in WebView2 (no renegotiation).
+        // Break: higher ideal for enrollment-quality frames.
         const videoConstraints: MediaTrackConstraints = presenceCheck
-          ? {
-              facingMode: "user",
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              frameRate: { ideal: 20, max: 30 },
-            }
+          ? { facingMode: "user" }
           : {
               facingMode: "user",
               width: { ideal: 1280 },
@@ -424,7 +421,6 @@ export function FaceVerifyModal({
             audio: false,
           });
         } catch {
-          // Fallback if ideal constraints fail (common in WebView2)
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false,
@@ -445,7 +441,12 @@ export function FaceVerifyModal({
         video.playsInline = true;
         await video.play().catch(() => undefined);
 
-        // Don't hang forever on loadeddata — show preview as soon as we can
+        // Show preview immediately — do not wait on loadeddata (WebView often stalls).
+        if (cancelled) return;
+        setCameraReady(true);
+        setStatus("Look at the camera — scanning…");
+
+        // Brief race only so first frames exist; never block UI on this.
         await Promise.race([
           new Promise<void>((resolve) => {
             if (video.readyState >= 2) resolve();
@@ -455,12 +456,8 @@ export function FaceVerifyModal({
               video.onloadedmetadata = done;
             }
           }),
-          new Promise<void>((resolve) => window.setTimeout(resolve, 800)),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 280)),
         ]);
-
-        if (cancelled) return;
-        setCameraReady(true);
-        setStatus("Look at the camera — scanning…");
 
         await modelsPromise;
         if (cancelled) return;
@@ -489,14 +486,15 @@ export function FaceVerifyModal({
   React.useEffect(() => {
     if (!open || !modelsReady || !cameraReady) return;
 
-    lastScanAtRef.current = performance.now() - SCAN_INTERVAL_MS;
+    const scanInterval = presenceCheck ? SCAN_INTERVAL_PRESENCE_MS : SCAN_INTERVAL_MS;
+    lastScanAtRef.current = performance.now() - scanInterval;
     void submitScan();
 
     let active = true;
 
     const tick = (now: number) => {
       if (!active) return;
-      if (now - lastScanAtRef.current >= SCAN_INTERVAL_MS) {
+      if (now - lastScanAtRef.current >= scanInterval) {
         lastScanAtRef.current = now;
         void submitScan();
       }
@@ -512,7 +510,7 @@ export function FaceVerifyModal({
         rafRef.current = null;
       }
     };
-  }, [open, modelsReady, cameraReady, submitScan]);
+  }, [open, modelsReady, cameraReady, presenceCheck, submitScan]);
 
   // Guard presence only: no face in frame for N seconds → auto-fail (Break omits this prop)
   React.useEffect(() => {
@@ -558,7 +556,11 @@ export function FaceVerifyModal({
 
   const captureMatch = status.match(/\((\d+)\/(\d+)\)/);
   const captureCurrent = captureMatch ? Number(captureMatch[1]) : 0;
-  const captureTotal = captureMatch ? Number(captureMatch[2]) : REQUIRED_PROBES;
+  const captureTotal = captureMatch
+    ? Number(captureMatch[2])
+    : presenceCheck
+      ? REQUIRED_PROBES_PRESENCE
+      : REQUIRED_PROBES;
   const scanMode = resolveScanMode({
     verifySuccess,
     multipleFaces,

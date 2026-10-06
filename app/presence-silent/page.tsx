@@ -2,7 +2,10 @@
 
 import React from "react";
 import { GuardIdleFaceVerifyModal } from "@/app/components/GuardIdleFaceVerifyModal";
-import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
+import {
+  ensureFaceModelsLoaded,
+  preloadFaceRuntime,
+} from "@/lib/face-client-engine";
 
 /**
  * Guard idle seat check — same FaceVerifyModal popup as Break/Clock.
@@ -10,6 +13,12 @@ import { ensureFaceModelsLoaded } from "@/lib/face-client-engine";
  *
  * Embed mode must NEVER paint a blank white page — always show the card chrome.
  */
+
+// Kick TF/face-api parse as soon as the chunk loads (before React mount).
+if (typeof window !== "undefined") {
+  preloadFaceRuntime();
+  void ensureFaceModelsLoaded().catch(() => undefined);
+}
 
 type BridgeResult = {
   cameraOk: boolean;
