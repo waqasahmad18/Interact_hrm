@@ -6,14 +6,68 @@ export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 12 * 1024 * 1024; // 12MB
 
+function isPng(buf: Buffer): boolean {
+  return (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  );
+}
+
+async function readPngFromRequest(req: NextRequest): Promise<{
+  png: Buffer;
+  employeeId: string;
+  employeeName: string;
+  pseudonym: string;
+  capturedAtRaw: string;
+}> {
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
+
+  // Preferred path for Interact Guard (.NET): raw PNG + metadata headers.
+  // Avoids Next.js FormData parse failures with MultipartFormDataContent.
+  if (ct.includes("image/png") || ct.includes("application/octet-stream")) {
+    const ab = await req.arrayBuffer();
+    const png = Buffer.from(ab);
+    const dec = (raw: string | null) => {
+      const v = String(raw || "").trim();
+      if (!v) return "";
+      try {
+        return decodeURIComponent(v);
+      } catch {
+        return v;
+      }
+    };
+    return {
+      png,
+      employeeId: dec(req.headers.get("x-employee-id")),
+      employeeName: dec(req.headers.get("x-employee-name")),
+      pseudonym: dec(req.headers.get("x-pseudonym")),
+      capturedAtRaw: dec(req.headers.get("x-captured-at")),
+    };
+  }
+
+  // Fallback: multipart (curl / browsers)
+  const form = await req.formData();
+  const image = form.get("image");
+  if (!(image instanceof Blob) || image.size <= 0) {
+    throw new Error("image required");
+  }
+  const png = Buffer.from(await image.arrayBuffer());
+  return {
+    png,
+    employeeId: String(form.get("employee_id") || "").trim(),
+    employeeName: String(form.get("employee_name") || "").trim(),
+    pseudonym: String(form.get("pseudonym") || "").trim(),
+    capturedAtRaw: String(form.get("captured_at") || "").trim(),
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const form = await req.formData();
-    const image = form.get("image");
-    const employeeId = String(form.get("employee_id") || "").trim();
-    const employeeName = String(form.get("employee_name") || "").trim();
-    const pseudonym = String(form.get("pseudonym") || "").trim();
-    const capturedAtRaw = String(form.get("captured_at") || "").trim();
+    const { png, employeeId, employeeName, pseudonym, capturedAtRaw } =
+      await readPngFromRequest(req);
 
     if (!employeeId) {
       return NextResponse.json(
@@ -21,29 +75,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    // Next/Node FormData may yield Blob (not always File)
-    if (!(image instanceof Blob) || image.size <= 0) {
-      return NextResponse.json(
-        { success: false, error: "image required" },
-        { status: 400 }
-      );
-    }
-    if (image.size > MAX_BYTES) {
+    if (png.length <= 0 || png.length > MAX_BYTES) {
       return NextResponse.json(
         { success: false, error: "image size invalid" },
         { status: 400 }
       );
     }
-
-    const buf = Buffer.from(await image.arrayBuffer());
-    // PNG magic bytes
-    if (
-      buf.length < 8 ||
-      buf[0] !== 0x89 ||
-      buf[1] !== 0x50 ||
-      buf[2] !== 0x4e ||
-      buf[3] !== 0x47
-    ) {
+    if (!isPng(png)) {
       return NextResponse.json(
         { success: false, error: "PNG required" },
         { status: 400 }
@@ -57,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
 
     const saved = await saveGuardScreenshot({
-      png: buf,
+      png,
       employeeId,
       employeeName,
       pseudonym,
