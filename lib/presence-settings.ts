@@ -32,6 +32,8 @@ export type PresenceSettings = {
    * Empty array = all employees (when presenceEnabled is true).
    */
   enabledEmployeeIds: string[];
+  /** Seconds between Guard tray-enabled auto screenshots (30–3600). */
+  screenshotIntervalSeconds: number;
 };
 
 export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
@@ -43,6 +45,7 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   recheckWhileIdleSeconds: 120,
   agentExitPassword: "InteractAdmin",
   enabledEmployeeIds: [],
+  screenshotIntervalSeconds: 300,
 };
 
 const KEYS = {
@@ -54,6 +57,7 @@ const KEYS = {
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
   agentExitPassword: "presence_agent_exit_password",
   enabledEmployeeIds: "presence_enabled_employee_ids",
+  screenshotIntervalSeconds: "presence_screenshot_interval_seconds",
 } as const;
 
 async function getRaw(key: string): Promise<string | null> {
@@ -135,6 +139,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     recheckWhileIdleSeconds,
     agentExitPassword,
     enabledEmployeeIds,
+    screenshotIntervalSeconds,
   ] = await Promise.all([
     getRaw(KEYS.agentsRetired),
     getRaw(KEYS.presenceEnabled),
@@ -144,6 +149,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.recheckWhileIdleSeconds),
     getRaw(KEYS.agentExitPassword),
     getRaw(KEYS.enabledEmployeeIds),
+    getRaw(KEYS.screenshotIntervalSeconds),
   ]);
 
   return {
@@ -168,6 +174,12 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     ),
     agentExitPassword: sanitizeExitPassword(agentExitPassword, d.agentExitPassword),
     enabledEmployeeIds: parseIdList(enabledEmployeeIds),
+    screenshotIntervalSeconds: parseIntClamped(
+      screenshotIntervalSeconds,
+      d.screenshotIntervalSeconds,
+      30,
+      3600
+    ),
   };
 }
 
@@ -221,6 +233,12 @@ export async function savePresenceSettings(
       current.agentExitPassword
     ),
     enabledEmployeeIds: ids !== undefined ? ids : current.enabledEmployeeIds,
+    screenshotIntervalSeconds: parseIntClamped(
+      String(input.screenshotIntervalSeconds ?? current.screenshotIntervalSeconds),
+      current.screenshotIntervalSeconds,
+      30,
+      3600
+    ),
   };
 
   await Promise.all([
@@ -235,6 +253,7 @@ export async function savePresenceSettings(
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
     setRaw(KEYS.agentExitPassword, next.agentExitPassword),
     setRaw(KEYS.enabledEmployeeIds, JSON.stringify(next.enabledEmployeeIds)),
+    setRaw(KEYS.screenshotIntervalSeconds, String(next.screenshotIntervalSeconds)),
   ]);
 
   return next;

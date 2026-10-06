@@ -6,6 +6,7 @@ import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "./presence-idle.module.css";
 import PresenceAgentsPanel from "./PresenceAgentsPanel";
+import GuardScreenshotsGallery from "./GuardScreenshotsGallery";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type PresenceSettings = {
@@ -17,6 +18,7 @@ type PresenceSettings = {
   recheckWhileIdleSeconds: number;
   agentExitPassword: string;
   enabledEmployeeIds: string[];
+  screenshotIntervalSeconds: number;
 };
 
 type EmpRow = {
@@ -135,6 +137,8 @@ export default function PresenceIdleSettingsPage() {
   const [countdownSeconds, setCountdownSeconds] = React.useState(0);
   const [recheckMinutes, setRecheckMinutes] = React.useState(2);
   const [recheckSeconds, setRecheckSeconds] = React.useState(0);
+  const [shotMinutes, setShotMinutes] = React.useState(5);
+  const [shotSeconds, setShotSeconds] = React.useState(0);
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
   const [agentHasBinary, setAgentHasBinary] = React.useState(false);
@@ -152,6 +156,7 @@ export default function PresenceIdleSettingsPage() {
   const idleTotal = combineSeconds(idleMinutes, idleSeconds);
   const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
   const recheckTotal = combineSeconds(recheckMinutes, recheckSeconds);
+  const shotTotal = combineSeconds(shotMinutes, shotSeconds);
 
   const applySettings = React.useCallback((s: PresenceSettings) => {
     setSettings({
@@ -170,6 +175,9 @@ export default function PresenceIdleSettingsPage() {
     const recheck = splitSeconds(s.recheckWhileIdleSeconds);
     setRecheckMinutes(recheck.minutes);
     setRecheckSeconds(recheck.seconds);
+    const shot = splitSeconds(s.screenshotIntervalSeconds ?? 300);
+    setShotMinutes(shot.minutes);
+    setShotSeconds(shot.seconds);
   }, []);
 
   const loadEmployeesAndDepts = React.useCallback(async () => {
@@ -248,6 +256,12 @@ export default function PresenceIdleSettingsPage() {
     setCountdownSeconds(parts.seconds);
   }
 
+  function setShotTotal(totalSeconds: number) {
+    const parts = splitSeconds(totalSeconds);
+    setShotMinutes(parts.minutes);
+    setShotSeconds(parts.seconds);
+  }
+
   async function save() {
     if (!settings) return;
     setSaving(true);
@@ -259,6 +273,7 @@ export default function PresenceIdleSettingsPage() {
         idleWarningSeconds: Math.max(5, idleTotal),
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
+        screenshotIntervalSeconds: Math.min(3600, Math.max(30, shotTotal)),
         agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
       };
@@ -670,6 +685,19 @@ export default function PresenceIdleSettingsPage() {
                     onSeconds={setRecheckSeconds}
                   />
 
+                  <DurationEditor
+                    title="Auto screenshot interval (Guard tray Screenshots On)"
+                    minutes={shotMinutes}
+                    seconds={shotSeconds}
+                    total={shotTotal}
+                    disabled={disabled}
+                    maxMinutes={60}
+                    presets={[30, 60, 120, 300, 600]}
+                    onMinutes={setShotMinutes}
+                    onSeconds={setShotSeconds}
+                    onPreset={setShotTotal}
+                  />
+
                   <div className={styles.block}>
                     <h3 className={styles.blockTitle}>Agent exit password (admin only)</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
@@ -785,6 +813,8 @@ export default function PresenceIdleSettingsPage() {
               </div>
 
               <PresenceAgentsPanel employees={employees} />
+
+              <GuardScreenshotsGallery />
 
               <p className={styles.tip}>
                 Tip: for quick testing use the <strong>5 sec</strong> / <strong>30 sec</strong> chips,

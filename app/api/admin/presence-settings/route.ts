@@ -71,6 +71,12 @@ export async function PUT(req: NextRequest) {
       enabledEmployeeIds: Array.isArray(body.enabledEmployeeIds)
         ? (body.enabledEmployeeIds as unknown[]).map((v) => String(v))
         : undefined,
+      screenshotIntervalSeconds:
+        typeof body.screenshotIntervalSeconds === "number"
+          ? body.screenshotIntervalSeconds
+          : typeof body.screenshotIntervalSeconds === "string"
+            ? parseInt(body.screenshotIntervalSeconds, 10)
+            : undefined,
     });
     return noStoreJson({ success: true, settings });
   } catch (err) {
