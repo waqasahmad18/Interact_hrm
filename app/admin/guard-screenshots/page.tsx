@@ -7,6 +7,7 @@ import { FaEye, FaEyeSlash } from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
+import GuardScreenshotSettings from "./GuardScreenshotSettings";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type EmpSummary = {
@@ -336,6 +337,8 @@ export default function GuardScreenshotsPage() {
             </Link>
           </div>
 
+          <GuardScreenshotSettings />
+
           {checking ? (
             <p className={styles.tip}>Checking access…</p>
           ) : !unlocked ? (
@@ -403,8 +406,9 @@ export default function GuardScreenshotsPage() {
 
               {employees.length === 0 ? (
                 <p className={styles.tip}>
-                  No screenshots on server yet. Enable Auto screenshots, assign
-                  employee, wait for upload, then Refresh.
+                  No screenshots on server yet. Enable Auto screenshots in Capture
+                  settings above, Save, assign employee on Presence / Idle — then
+                  Refresh.
                 </p>
               ) : (
                 <>

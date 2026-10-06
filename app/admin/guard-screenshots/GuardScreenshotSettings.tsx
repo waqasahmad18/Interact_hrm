@@ -1,0 +1,186 @@
+"use client";
+
+import React from "react";
+import adminStyles from "../admin-page.module.css";
+import styles from "../presence-idle/presence-idle.module.css";
+import { toastError, toastSuccess } from "@/lib/app-toast";
+
+function splitSeconds(total: number) {
+  const safe = Math.max(0, Math.floor(total || 0));
+  return { minutes: Math.floor(safe / 60), seconds: safe % 60 };
+}
+
+function combineSeconds(minutes: number, seconds: number) {
+  return (
+    Math.max(0, Math.floor(Number(minutes) || 0)) * 60 +
+    Math.max(0, Math.floor(Number(seconds) || 0))
+  );
+}
+
+function formatDuration(totalSeconds: number) {
+  const { minutes, seconds } = splitSeconds(totalSeconds);
+  if (minutes <= 0) return `${seconds} sec`;
+  if (seconds === 0) return `${minutes} min`;
+  return `${minutes} min ${seconds} sec`;
+}
+
+/**
+ * Auto screenshot enable + interval — lives on Guard Screenshots gallery only.
+ * Does not touch Presence Idle / face-verify settings.
+ */
+export default function GuardScreenshotSettings() {
+  const [enabled, setEnabled] = React.useState(false);
+  const [minutes, setMinutes] = React.useState(5);
+  const [seconds, setSeconds] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+
+  const total = combineSeconds(minutes, seconds);
+
+  const applyInterval = React.useCallback((totalSeconds: number) => {
+    const parts = splitSeconds(Math.max(5, totalSeconds));
+    setMinutes(parts.minutes);
+    setSeconds(parts.seconds);
+  }, []);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/presence-settings", { cache: "no-store" });
+      const data = await res.json();
+      if (!data.success || !data.settings) {
+        toastError(data.error || "Could not load screenshot settings");
+        return;
+      }
+      setEnabled(!!data.settings.screenshotCaptureEnabled);
+      applyInterval(data.settings.screenshotIntervalSeconds ?? 300);
+    } catch {
+      toastError("Network error loading screenshot settings");
+    } finally {
+      setLoading(false);
+    }
+  }, [applyInterval]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/presence-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        body: JSON.stringify({
+          screenshotCaptureEnabled: enabled,
+          screenshotIntervalSeconds: Math.min(3600, Math.max(5, total || 5)),
+        }),
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Save failed");
+        return;
+      }
+      setEnabled(!!data.settings?.screenshotCaptureEnabled);
+      applyInterval(data.settings?.screenshotIntervalSeconds ?? total);
+      toastSuccess("Screenshot settings saved. Agents pick up within a few seconds.");
+    } catch {
+      toastError("Network error saving screenshot settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const presets = [5, 10, 15, 30, 60, 120, 300];
+  const disabled = loading || saving;
+
+  return (
+    <div className={styles.section} style={{ marginBottom: 16 }}>
+      <h2 className={styles.blockTitle} style={{ marginBottom: 10 }}>
+        Capture settings
+      </h2>
+
+      <label className={styles.toggleRow}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={disabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
+        <span className={styles.toggleText}>
+          <span className={styles.toggleTitle}>Auto screenshots (Interact Guard)</span>
+          <span className={styles.toggleHint}>
+            When on, Guard agents upload full-screen captures on the interval below.
+            Save, then agents pick it up within a few seconds.
+          </span>
+        </span>
+      </label>
+
+      <div className={styles.block}>
+        <h3 className={styles.blockTitle}>Auto screenshot interval</h3>
+        <div className={styles.durationRow}>
+          <div className={styles.field}>
+            <label htmlFor="shot-gallery-min">Minutes</label>
+            <input
+              id="shot-gallery-min"
+              type="number"
+              min={0}
+              max={60}
+              value={minutes}
+              disabled={disabled || !enabled}
+              onChange={(e) => setMinutes(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="shot-gallery-sec">Seconds</label>
+            <input
+              id="shot-gallery-sec"
+              type="number"
+              min={0}
+              max={59}
+              value={seconds}
+              disabled={disabled || !enabled}
+              onChange={(e) =>
+                setSeconds(Math.min(59, Math.max(0, Number(e.target.value) || 0)))
+              }
+            />
+          </div>
+          <span className={styles.total}>{formatDuration(Math.max(5, total))}</span>
+        </div>
+        <div className={styles.chips} style={{ marginTop: 8 }}>
+          {presets.map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              className={`${styles.chip}${Math.max(5, total) === sec ? ` ${styles.chipActive}` : ""}`}
+              disabled={disabled || !enabled}
+              onClick={() => applyInterval(sec)}
+            >
+              {formatDuration(sec)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.actions} style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          className={adminStyles.btnPrimary}
+          disabled={disabled}
+          onClick={() => void save()}
+        >
+          {saving ? "Saving…" : loading ? "Loading…" : "Save screenshot settings"}
+        </button>
+        <button
+          type="button"
+          className={adminStyles.btnSecondary}
+          disabled={disabled}
+          onClick={() => void load()}
+        >
+          Reload
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -18,8 +18,6 @@ type PresenceSettings = {
   recheckWhileIdleSeconds: number;
   agentExitPassword: string;
   enabledEmployeeIds: string[];
-  screenshotCaptureEnabled: boolean;
-  screenshotIntervalSeconds: number;
   agentHrmBaseUrl: string;
 };
 
@@ -141,8 +139,6 @@ export default function PresenceIdleSettingsPage() {
   const [countdownSeconds, setCountdownSeconds] = React.useState(0);
   const [recheckMinutes, setRecheckMinutes] = React.useState(2);
   const [recheckSeconds, setRecheckSeconds] = React.useState(0);
-  const [shotMinutes, setShotMinutes] = React.useState(1);
-  const [shotSeconds, setShotSeconds] = React.useState(0);
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
   const [agentHasBinary, setAgentHasBinary] = React.useState(false);
@@ -160,7 +156,6 @@ export default function PresenceIdleSettingsPage() {
   const idleTotal = combineSeconds(idleMinutes, idleSeconds);
   const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
   const recheckTotal = combineSeconds(recheckMinutes, recheckSeconds);
-  const shotTotal = combineSeconds(shotMinutes, shotSeconds);
 
   const applySettings = React.useCallback((s: PresenceSettings) => {
     setSettings({
@@ -169,8 +164,6 @@ export default function PresenceIdleSettingsPage() {
       enabledEmployeeIds: Array.isArray(s.enabledEmployeeIds)
         ? s.enabledEmployeeIds.map(String)
         : [],
-      screenshotCaptureEnabled: !!s.screenshotCaptureEnabled,
-      screenshotIntervalSeconds: s.screenshotIntervalSeconds ?? 60,
       agentHrmBaseUrl: (s.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
     });
     const idle = splitSeconds(s.idleWarningSeconds);
@@ -182,9 +175,6 @@ export default function PresenceIdleSettingsPage() {
     const recheck = splitSeconds(s.recheckWhileIdleSeconds);
     setRecheckMinutes(recheck.minutes);
     setRecheckSeconds(recheck.seconds);
-    const shot = splitSeconds(s.screenshotIntervalSeconds ?? 60);
-    setShotMinutes(shot.minutes);
-    setShotSeconds(shot.seconds);
   }, []);
 
   const loadEmployeesAndDepts = React.useCallback(async () => {
@@ -263,12 +253,6 @@ export default function PresenceIdleSettingsPage() {
     setCountdownSeconds(parts.seconds);
   }
 
-  function setShotTotal(totalSeconds: number) {
-    const parts = splitSeconds(totalSeconds);
-    setShotMinutes(parts.minutes);
-    setShotSeconds(parts.seconds);
-  }
-
   async function save() {
     if (!settings) return;
     setSaving(true);
@@ -280,8 +264,6 @@ export default function PresenceIdleSettingsPage() {
         idleWarningSeconds: Math.max(5, idleTotal),
         popupCountdownSeconds: Math.max(5, countdownTotal),
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
-        screenshotCaptureEnabled: !!settings.screenshotCaptureEnabled,
-        screenshotIntervalSeconds: Math.min(3600, Math.max(5, shotTotal || 5)),
         agentHrmBaseUrl: (settings.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
         agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
@@ -535,29 +517,6 @@ export default function PresenceIdleSettingsPage() {
                     </span>
                   </label>
 
-                  <label className={styles.toggleRow}>
-                    <input
-                      type="checkbox"
-                      checked={!!settings.screenshotCaptureEnabled}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          screenshotCaptureEnabled: e.target.checked,
-                        })
-                      }
-                    />
-                    <span className={styles.toggleText}>
-                      <span className={styles.toggleTitle}>
-                        Auto screenshots (Interact Guard)
-                      </span>
-                      <span className={styles.toggleHint}>
-                        When on, Guard agents upload full-screen captures on the interval
-                        below. Save, then agents pick it up within a few seconds.
-                      </span>
-                    </span>
-                  </label>
-
                   <div className={styles.block}>
                     <h3 className={styles.blockTitle}>Enable for employees</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
@@ -715,19 +674,6 @@ export default function PresenceIdleSettingsPage() {
                     maxMinutes={120}
                     onMinutes={setRecheckMinutes}
                     onSeconds={setRecheckSeconds}
-                  />
-
-                  <DurationEditor
-                    title="Auto screenshot interval"
-                    minutes={shotMinutes}
-                    seconds={shotSeconds}
-                    total={Math.max(5, shotTotal)}
-                    disabled={disabled || !settings.screenshotCaptureEnabled}
-                    maxMinutes={60}
-                    presets={[5, 10, 15, 30, 60, 120, 300]}
-                    onMinutes={setShotMinutes}
-                    onSeconds={setShotSeconds}
-                    onPreset={setShotTotal}
                   />
 
                   <div className={styles.block}>
@@ -888,9 +834,9 @@ export default function PresenceIdleSettingsPage() {
               <GuardScreenshotsGallery />
 
               <p className={styles.tip}>
-                Tip: enable <strong>Auto screenshots</strong>, pick interval (e.g.{" "}
-                <strong>5 sec</strong>), Save, install Guard 1.2.40+, assign employee — screenshots
-                start without clock-in. Gallery opens only with password.
+                Tip: open <strong>Guard Screenshots</strong> (password) to enable Auto
+                screenshots and set the interval. Face / idle settings above stay on this
+                page only.
               </p>
             </div>
           )}
