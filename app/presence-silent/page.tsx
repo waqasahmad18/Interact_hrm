@@ -1,241 +1,33 @@
-"use client";
-
-import React from "react";
-import { GuardIdleFaceVerifyModal } from "@/app/components/GuardIdleFaceVerifyModal";
-import {
-  ensureFaceModelsLoaded,
-  preloadFaceRuntime,
-} from "@/lib/face-client-engine";
+import PresenceSilentClient from "./PresenceSilentClient";
 
 /**
- * Guard idle seat check — same FaceVerifyModal as Break/Clock.
- * UI paints first; camera starts only after the FaceVerify card is mounted
- * (synced with agent ui-ready). Never open camera against a blank white page.
+ * Server reads query so first paint is already the FaceVerify embed card —
+ * avoids blank/white WebView slab while client useEffect runs.
  */
+export default async function PresenceSilentPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const one = (k: string) => {
+    const v = sp[k];
+    return typeof v === "string" ? v : Array.isArray(v) ? v[0] ?? "" : "";
+  };
 
-// Models only — do NOT open camera here (that caused LED on + white slab).
-if (typeof window !== "undefined") {
-  preloadFaceRuntime();
-  window.setTimeout(() => {
-    void ensureFaceModelsLoaded().catch(() => undefined);
-  }, 0);
-}
-
-type BridgeResult = {
-  cameraOk: boolean;
-  atSeat: boolean;
-  code: string;
-  error?: string | null;
-  similarity?: number | null;
-};
-
-function postUiReady() {
-  try {
-    const w = window as Window & {
-      chrome?: { webview?: { postMessage: (msg: string) => void } };
-    };
-    w.chrome?.webview?.postMessage(JSON.stringify({ type: "ui-ready" }));
-  } catch {
-    /* not in WebView2 */
-  }
-}
-
-async function postToAgent(payload: BridgeResult, checkId: string | null) {
-  if (checkId) {
-    try {
-      await fetch("/api/biometric/presence-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ check_id: checkId, result: payload }),
-      });
-    } catch {
-      /* agent may still poll */
-    }
-  }
-
-  try {
-    const w = window as Window & {
-      chrome?: { webview?: { postMessage: (msg: string) => void } };
-    };
-    w.chrome?.webview?.postMessage(JSON.stringify(payload));
-  } catch {
-    /* not in WebView2 */
-  }
-
-  (window as unknown as { __presenceResult?: BridgeResult }).__presenceResult = payload;
-  document.title = `presence:${payload.atSeat ? "1" : "0"}:${payload.code}`;
-
-  window.setTimeout(() => {
-    try {
-      window.close();
-    } catch {
-      /* ignore */
-    }
-  }, 200);
-}
-
-export default function PresenceSilentPage() {
-  const [ready, setReady] = React.useState(false);
-  const [employeeId, setEmployeeId] = React.useState("");
-  const [employeeName, setEmployeeName] = React.useState("");
-  const [checkId, setCheckId] = React.useState<string | null>(null);
-  const [status, setStatus] = React.useState("Preparing face check…");
-  const [embed, setEmbed] = React.useState(false);
-  const doneRef = React.useRef(false);
-  const uiReadySent = React.useRef(false);
-
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    // warm=1 = agent core warm only — no camera, no modal
-    if (params.get("warm") === "1") {
-      setEmbed(params.get("embed") === "1");
-      setStatus("Ready");
-      return;
-    }
-
-    const eid = (params.get("employeeId") || params.get("employee_id") || "").trim();
-    const ename = (params.get("employeeName") || "").trim();
-    const cid = (params.get("checkId") || params.get("check_id") || "").trim() || null;
-    const isEmbed = params.get("embed") === "1";
-    setEmbed(isEmbed);
-    setEmployeeId(eid);
-    setEmployeeName(ename);
-    setCheckId(cid);
-
-    if (!eid) {
-      setStatus("Missing employeeId");
-      void postToAgent(
-        { cameraOk: false, atSeat: false, code: "error", error: "employeeId missing" },
-        cid,
-      );
-      return;
-    }
-
-    void ensureFaceModelsLoaded().catch(() => undefined);
-    setStatus("Scanning…");
-    setReady(true);
-  }, []);
-
-  // After FaceVerify card is in the DOM: tell agent to reveal window, then camera may start.
-  React.useEffect(() => {
-    if (!ready || !employeeId || uiReadySent.current) return;
-    uiReadySent.current = true;
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        postUiReady();
-      });
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [ready, employeeId]);
-
-  const finish = React.useCallback(
-    (payload: BridgeResult) => {
-      if (doneRef.current) return;
-      doneRef.current = true;
-      setReady(false);
-      setStatus(payload.atSeat ? "Present" : "Failed");
-      void postToAgent(payload, checkId);
-    },
-    [checkId],
-  );
-
-  React.useEffect(() => {
-    if (!embed) return;
-    const html = document.documentElement;
-    const body = document.body;
-    html.style.background = "#ffffff";
-    body.style.background = "#ffffff";
-    body.style.margin = "0";
-    html.style.height = "100%";
-    body.style.height = "100%";
-    body.style.overflow = "hidden";
-  }, [embed]);
-
-  const shell = (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "100%",
-        boxSizing: "border-box",
-        padding: "14px 16px 12px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-        fontFamily: "system-ui, sans-serif",
-        color: "#0f172a",
-      }}
-    >
-      <div style={{ fontWeight: 800, fontSize: "1.02rem", marginBottom: 4 }}>Face Verification</div>
-      <div style={{ fontSize: "0.82rem", color: "#64748b", marginBottom: 12 }}>{status}</div>
-      <button
-        type="button"
-        onClick={() =>
-          finish({
-            cameraOk: true,
-            atSeat: false,
-            code: "cancelled",
-            error: "Face verification cancelled",
-          })
-        }
-        style={{
-          marginTop: 8,
-          padding: "8px 18px",
-          borderRadius: 8,
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          cursor: "pointer",
-          fontWeight: 600,
-        }}
-      >
-        Cancel
-      </button>
-    </div>
-  );
+  const employeeId = (one("employeeId") || one("employee_id")).trim();
+  const employeeName = one("employeeName").trim();
+  const checkId = (one("checkId") || one("check_id")).trim() || null;
+  const embed = one("embed") === "1";
+  const warm = one("warm") === "1";
 
   return (
-    <div
-      style={{
-        margin: 0,
-        height: embed ? "100%" : undefined,
-        minHeight: embed ? "100%" : "100vh",
-        width: embed ? "100%" : undefined,
-        background: embed ? "#ffffff" : "rgba(15, 23, 42, 0.92)",
-        display: "flex",
-        alignItems: embed ? "stretch" : "center",
-        justifyContent: embed ? "stretch" : "center",
-        fontFamily: "system-ui, sans-serif",
-        color: embed ? "#0f172a" : "#e2e8f0",
-        overflow: embed ? "hidden" : undefined,
-      }}
-    >
-      {ready && employeeId ? (
-        <GuardIdleFaceVerifyModal
-          employeeId={employeeId}
-          employeeName={employeeName || "Employee"}
-          clearBackdrop={embed}
-          onResult={(r) => {
-            finish({
-              cameraOk: true,
-              atSeat: r.verified,
-              code: r.code,
-              error: r.error ?? null,
-              similarity: r.similarity ?? null,
-            });
-          }}
-          onCancelled={() => {
-            finish({
-              cameraOk: true,
-              atSeat: false,
-              code: "cancelled",
-              error: "Face verification cancelled",
-            });
-          }}
-        />
-      ) : (
-        shell
-      )}
-    </div>
+    <PresenceSilentClient
+      initialEmployeeId={employeeId}
+      initialEmployeeName={employeeName}
+      initialCheckId={checkId}
+      initialEmbed={embed}
+      warmOnly={warm}
+    />
   );
 }
