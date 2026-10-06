@@ -6,20 +6,16 @@ import {
   ensureFaceModelsLoaded,
   preloadFaceRuntime,
 } from "@/lib/face-client-engine";
-import { startCameraPrewarm } from "@/lib/camera-prewarm";
 
 /**
- * Guard idle seat check — same FaceVerifyModal popup as Break/Clock.
- * Result posted to presence-session for Interact Guard.
- *
- * Embed mode must NEVER paint a blank white page — always show the card chrome.
+ * Guard idle seat check — same FaceVerifyModal as Break/Clock.
+ * UI paints first; camera starts only after the FaceVerify card is mounted
+ * (synced with agent ui-ready). Never open camera against a blank white page.
  */
 
-// CAMERA FIRST — do not let TF.js/WebGL init delay getUserMedia in WebView2.
+// Models only — do NOT open camera here (that caused LED on + white slab).
 if (typeof window !== "undefined") {
-  startCameraPrewarm();
   preloadFaceRuntime();
-  // Models after a tick so camera request wins the first event-loop slots.
   window.setTimeout(() => {
     void ensureFaceModelsLoaded().catch(() => undefined);
   }, 0);
@@ -32,6 +28,17 @@ type BridgeResult = {
   error?: string | null;
   similarity?: number | null;
 };
+
+function postUiReady() {
+  try {
+    const w = window as Window & {
+      chrome?: { webview?: { postMessage: (msg: string) => void } };
+    };
+    w.chrome?.webview?.postMessage(JSON.stringify({ type: "ui-ready" }));
+  } catch {
+    /* not in WebView2 */
+  }
+}
 
 async function postToAgent(payload: BridgeResult, checkId: string | null) {
   if (checkId) {
@@ -75,15 +82,14 @@ export default function PresenceSilentPage() {
   const [status, setStatus] = React.useState("Preparing face check…");
   const [embed, setEmbed] = React.useState(false);
   const doneRef = React.useRef(false);
+  const uiReadySent = React.useRef(false);
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const warmOnly = params.get("warm") === "1";
-    if (warmOnly) {
-      // Agent WebView prewarm — open camera only, no FaceVerify UI.
-      startCameraPrewarm();
-      setStatus("Camera warm");
+    // warm=1 = agent core warm only — no camera, no modal
+    if (params.get("warm") === "1") {
       setEmbed(params.get("embed") === "1");
+      setStatus("Ready");
       return;
     }
 
@@ -105,11 +111,22 @@ export default function PresenceSilentPage() {
       return;
     }
 
-    startCameraPrewarm();
     void ensureFaceModelsLoaded().catch(() => undefined);
     setStatus("Scanning…");
     setReady(true);
   }, []);
+
+  // After FaceVerify card is in the DOM: tell agent to reveal window, then camera may start.
+  React.useEffect(() => {
+    if (!ready || !employeeId || uiReadySent.current) return;
+    uiReadySent.current = true;
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        postUiReady();
+      });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [ready, employeeId]);
 
   const finish = React.useCallback(
     (payload: BridgeResult) => {

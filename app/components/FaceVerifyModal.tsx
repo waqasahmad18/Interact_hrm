@@ -10,7 +10,6 @@ import {
   ensureFaceModelsLoaded,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
-import { takePrewarmedCamera, startCameraPrewarm } from "@/lib/camera-prewarm";
 import { FaceScanViewport, type FaceScanMode } from "@/app/components/FaceScanHud";
 import modalStyles from "./face-verify-modal.module.css";
 
@@ -401,17 +400,29 @@ export function FaceVerifyModal({
         setStatus("Starting camera…");
         setError(null);
 
-        // Presence/Guard: take prewarmed stream FIRST (already opening from page load).
-        // Break: open in parallel with models as before.
-        let stream: MediaStream | null = null;
-        let modelsPromise: Promise<void>;
+        // Paint FaceVerify card first (2 frames), THEN open camera — sync UI ↔ LED.
+        await new Promise<void>((r) =>
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => r())),
+        );
+        if (cancelled) return;
 
+        const modelsPromise = ensureFaceModelsLoaded();
+
+        let stream: MediaStream | null = null;
         if (presenceCheck) {
-          startCameraPrewarm();
-          stream = await takePrewarmedCamera();
-          modelsPromise = ensureFaceModelsLoaded();
+          // Fresh open after UI is visible — no early prewarm LED against blank page.
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "user" },
+              audio: false,
+            });
+          }
         } else {
-          modelsPromise = ensureFaceModelsLoaded();
           const videoConstraints: MediaTrackConstraints = {
             facingMode: "user",
             width: { ideal: 1280 },
@@ -444,9 +455,8 @@ export function FaceVerifyModal({
 
         streamRef.current = stream;
 
-        // Video element may not be mounted yet — retry briefly (avoid stuck "Starting camera").
         let video = videoRef.current;
-        for (let i = 0; i < 30 && !video; i++) {
+        for (let i = 0; i < 40 && !video; i++) {
           await new Promise((r) => window.setTimeout(r, 16));
           if (cancelled) {
             stream.getTracks().forEach((t) => t.stop());
