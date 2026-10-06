@@ -183,40 +183,179 @@ export async function listScreenshotEmployees(): Promise<
   }
 }
 
-export async function listScreenshotsForEmployee(
+export async function listDateFoldersForEmployee(
   employeeIdRaw: string
-): Promise<ScreenshotFileRow[]> {
+): Promise<string[]> {
   const employeeId = safeSegment(employeeIdRaw, "");
   if (!employeeId) return [];
   const empRoot = path.join(GUARD_SCREENSHOTS_ROOT, employeeId);
   try {
     const dateDirs = await fs.readdir(empRoot, { withFileTypes: true });
+    return dateDirs
+      .filter((d) => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name))
+      .map((d) => d.name)
+      .sort((a, b) => b.localeCompare(a));
+  } catch {
+    return [];
+  }
+}
+
+export type ListScreenshotsOpts = {
+  employeeId: string;
+  /** yyyy-MM-dd — only scan that day folder (fast). */
+  date?: string;
+  /** HH:mm or HH:mm:ss inclusive */
+  timeFrom?: string;
+  /** HH:mm or HH:mm:ss inclusive */
+  timeTo?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+function timeToSeconds(raw: string): number | null {
+  const m = String(raw || "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  const s = Number(m[3] || 0);
+  if (h > 23 || mi > 59 || s > 59) return null;
+  return h * 3600 + mi * 60 + s;
+}
+
+function capturedTimeSeconds(capturedAt: string): number | null {
+  const m = capturedAt.match(/T(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+export async function listScreenshotsForEmployee(
+  opts: ListScreenshotsOpts | string
+): Promise<{ files: ScreenshotFileRow[]; total: number; page: number; pageSize: number }> {
+  const o: ListScreenshotsOpts =
+    typeof opts === "string" ? { employeeId: opts } : opts;
+  const employeeId = safeSegment(o.employeeId, "");
+  const page = Math.max(1, Math.floor(o.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Math.floor(o.pageSize || 24)));
+  if (!employeeId) return { files: [], total: 0, page, pageSize };
+
+  const empRoot = path.join(GUARD_SCREENSHOTS_ROOT, employeeId);
+  const dateFilter =
+    o.date && /^\d{4}-\d{2}-\d{2}$/.test(o.date.trim()) ? o.date.trim() : "";
+  const fromSec = o.timeFrom ? timeToSeconds(o.timeFrom) : null;
+  const toSec = o.timeTo ? timeToSeconds(o.timeTo) : null;
+
+  try {
+    let dateNames: string[];
+    if (dateFilter) {
+      dateNames = [dateFilter];
+    } else {
+      const dateDirs = await fs.readdir(empRoot, { withFileTypes: true });
+      dateNames = dateDirs
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+        .sort((a, b) => b.localeCompare(a));
+    }
+
     const rows: ScreenshotFileRow[] = [];
-    for (const d of dateDirs) {
-      if (!d.isDirectory()) continue;
-      const files = await fs.readdir(path.join(empRoot, d.name), {
-        withFileTypes: true,
-      });
+    for (const dName of dateNames) {
+      const dir = path.join(empRoot, dName);
+      let files: { name: string; isFile: () => boolean }[];
+      try {
+        files = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
       for (const f of files) {
         if (!f.isFile() || !f.name.toLowerCase().endsWith(".png")) continue;
-        const abs = path.join(empRoot, d.name, f.name);
-        const st = await fs.stat(abs);
-        const relativePath = [employeeId, d.name, f.name].join("/");
+        const abs = path.join(dir, f.name);
+        let st: Awaited<ReturnType<typeof fs.stat>>;
+        try {
+          st = await fs.stat(abs);
+        } catch {
+          continue;
+        }
+        const capturedAt = capturedAtFromName(f.name, st.mtimeMs);
+        if (fromSec != null || toSec != null) {
+          const t = capturedTimeSeconds(capturedAt);
+          if (t == null) continue;
+          if (fromSec != null && t < fromSec) continue;
+          if (toSec != null && t > toSec) continue;
+        }
         rows.push({
-          relativePath,
+          relativePath: [employeeId, dName, f.name].join("/"),
           fileName: f.name,
           employeeId,
-          dateFolder: d.name,
+          dateFolder: dName,
           size: st.size,
           mtimeMs: st.mtimeMs,
-          capturedAt: capturedAtFromName(f.name, st.mtimeMs),
+          capturedAt,
         });
       }
     }
     rows.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return rows;
+    const total = rows.length;
+    const start = (page - 1) * pageSize;
+    return {
+      files: rows.slice(start, start + pageSize),
+      total,
+      page,
+      pageSize,
+    };
   } catch {
-    return [];
+    return { files: [], total: 0, page, pageSize };
+  }
+}
+
+export async function deleteScreenshotFiles(
+  relativePaths: string[]
+): Promise<{ deleted: string[]; failed: string[] }> {
+  const deleted: string[] = [];
+  const failed: string[] = [];
+  for (const rel of relativePaths) {
+    try {
+      const abs = await resolveScreenshotFile(rel);
+      await fs.unlink(abs);
+      deleted.push(rel);
+      // Best-effort: remove empty date / employee dirs
+      try {
+        const dateDir = path.dirname(abs);
+        const left = await fs.readdir(dateDir);
+        if (left.length === 0) await fs.rmdir(dateDir);
+      } catch {
+        /* ignore */
+      }
+    } catch {
+      failed.push(rel);
+    }
+  }
+  return { deleted, failed };
+}
+
+export async function deleteScreenshotsForDay(
+  employeeIdRaw: string,
+  dateFolder: string
+): Promise<number> {
+  const employeeId = safeSegment(employeeIdRaw, "");
+  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(dateFolder)) return 0;
+  const dir = path.join(GUARD_SCREENSHOTS_ROOT, employeeId, dateFolder);
+  try {
+    const files = await fs.readdir(dir, { withFileTypes: true });
+    let n = 0;
+    for (const f of files) {
+      if (!f.isFile() || !f.name.toLowerCase().endsWith(".png")) continue;
+      await fs.unlink(path.join(dir, f.name));
+      n += 1;
+    }
+    try {
+      await fs.rmdir(dir);
+    } catch {
+      /* ignore */
+    }
+    return n;
+  } catch {
+    return 0;
   }
 }
 

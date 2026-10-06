@@ -27,6 +27,14 @@ type FileRow = {
   capturedAt: string;
 };
 
+const PAGE_SIZE = 24;
+
+function todayYmd() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export default function GuardScreenshotsPage() {
   const router = useRouter();
   const [unlocked, setUnlocked] = React.useState(false);
@@ -36,10 +44,24 @@ export default function GuardScreenshotsPage() {
   const [unlocking, setUnlocking] = React.useState(false);
   const [employees, setEmployees] = React.useState<EmpSummary[]>([]);
   const [selectedId, setSelectedId] = React.useState("");
+  const [dates, setDates] = React.useState<string[]>([]);
+  const [filterDate, setFilterDate] = React.useState(todayYmd());
+  const [timeFrom, setTimeFrom] = React.useState("");
+  const [timeTo, setTimeTo] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [total, setTotal] = React.useState(0);
   const [files, setFiles] = React.useState<FileRow[]>([]);
+  const [selected, setSelected] = React.useState<Record<string, boolean>>({});
   const [loadingList, setLoadingList] = React.useState(false);
   const [loadingFiles, setLoadingFiles] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
   const [viewPath, setViewPath] = React.useState<string | null>(null);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const selectedPaths = React.useMemo(
+    () => Object.keys(selected).filter((k) => selected[k]),
+    [selected]
+  );
 
   const checkUnlock = React.useCallback(async () => {
     setChecking(true);
@@ -87,17 +109,63 @@ export default function GuardScreenshotsPage() {
     if (unlocked) void loadEmployees();
   }, [unlocked, loadEmployees]);
 
-  const loadFiles = React.useCallback(async (employeeId: string) => {
+  const loadDates = React.useCallback(async (employeeId: string) => {
     if (!employeeId) {
+      setDates([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/admin/guard-screenshots?employeeId=${encodeURIComponent(employeeId)}&datesOnly=1`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (res.status === 401 || data.locked) {
+        setUnlocked(false);
+        return;
+      }
+      const list = (data.dates || []) as string[];
+      setDates(list);
+      if (list.length && !list.includes(filterDate)) {
+        setFilterDate(list[0]);
+      }
+    } catch {
+      setDates([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset date when employee changes
+  }, []);
+
+  React.useEffect(() => {
+    if (unlocked && selectedId) {
+      setPage(1);
+      setSelected({});
+      void loadDates(selectedId);
+    } else {
+      setDates([]);
       setFiles([]);
+      setTotal(0);
+    }
+  }, [unlocked, selectedId, loadDates]);
+
+  const loadFiles = React.useCallback(async () => {
+    if (!selectedId) {
+      setFiles([]);
+      setTotal(0);
       return;
     }
     setLoadingFiles(true);
     try {
-      const res = await fetch(
-        `/api/admin/guard-screenshots?employeeId=${encodeURIComponent(employeeId)}`,
-        { cache: "no-store" }
-      );
+      const q = new URLSearchParams({
+        employeeId: selectedId,
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+      });
+      if (filterDate) q.set("date", filterDate);
+      if (timeFrom) q.set("timeFrom", timeFrom);
+      if (timeTo) q.set("timeTo", timeTo);
+      const res = await fetch(`/api/admin/guard-screenshots?${q}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (res.status === 401 || data.locked) {
         setUnlocked(false);
@@ -108,15 +176,16 @@ export default function GuardScreenshotsPage() {
         return;
       }
       setFiles((data.files || []) as FileRow[]);
+      setTotal(Number(data.total) || 0);
     } catch {
       toastError("Network error loading files");
     } finally {
       setLoadingFiles(false);
     }
-  }, []);
+  }, [selectedId, filterDate, timeFrom, timeTo, page]);
 
   React.useEffect(() => {
-    if (unlocked && selectedId) void loadFiles(selectedId);
+    if (unlocked && selectedId) void loadFiles();
   }, [unlocked, selectedId, loadFiles]);
 
   async function unlock() {
@@ -162,6 +231,85 @@ export default function GuardScreenshotsPage() {
     return `/api/admin/guard-screenshots/file?${q.toString()}`;
   }
 
+  function toggleSelect(path: string) {
+    setSelected((prev) => ({ ...prev, [path]: !prev[path] }));
+  }
+
+  function toggleSelectAllOnPage() {
+    const allOn = files.length > 0 && files.every((f) => selected[f.relativePath]);
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const f of files) {
+        next[f.relativePath] = !allOn;
+      }
+      return next;
+    });
+  }
+
+  async function deletePaths(paths: string[]) {
+    if (!paths.length) return;
+    if (!window.confirm(`Delete ${paths.length} screenshot(s)? This cannot be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/guard-screenshots", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Delete failed");
+        return;
+      }
+      toastSuccess(`Deleted ${data.deleted?.length ?? 0}`);
+      setSelected({});
+      setViewPath(null);
+      await loadFiles();
+      await loadEmployees();
+      if (selectedId) await loadDates(selectedId);
+    } catch {
+      toastError("Network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDay() {
+    if (!selectedId || !filterDate) return;
+    if (
+      !window.confirm(
+        `Delete ALL screenshots for this employee on ${filterDate}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/guard-screenshots", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: selectedId, date: filterDate }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Delete failed");
+        return;
+      }
+      toastSuccess(`Deleted ${data.deletedCount ?? 0} file(s)`);
+      setSelected({});
+      setViewPath(null);
+      await loadDates(selectedId);
+      await loadFiles();
+      await loadEmployees();
+    } catch {
+      toastError("Network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <OptionalAdminShell>
       <div className={adminStyles.page}>
@@ -179,8 +327,8 @@ export default function GuardScreenshotsPage() {
             <div>
               <h1 className={adminStyles.title}>Guard Screenshots</h1>
               <p className={adminStyles.subtitle}>
-                Full-screen captures from Interact Guard. Not public — password
-                gated.
+                Files stay on the HRM server. Filters load one day at a time for
+                speed.
               </p>
             </div>
             <Link href="/admin/presence-idle" className={adminStyles.btnSecondary}>
@@ -193,7 +341,7 @@ export default function GuardScreenshotsPage() {
           ) : !unlocked ? (
             <div className={styles.section}>
               <p className={styles.tip} style={{ marginBottom: 12 }}>
-                Enter the gallery password to view and download screenshots.
+                Enter the gallery password to view, filter, and delete screenshots.
               </p>
               <div className={styles.durationRow}>
                 <div className={styles.field} style={{ minWidth: 280 }}>
@@ -236,10 +384,13 @@ export default function GuardScreenshotsPage() {
                 <button
                   type="button"
                   className={adminStyles.btnSecondary}
-                  onClick={() => void loadEmployees()}
-                  disabled={loadingList}
+                  onClick={() => {
+                    void loadEmployees();
+                    if (selectedId) void loadFiles();
+                  }}
+                  disabled={loadingList || loadingFiles || busy}
                 >
-                  {loadingList ? "Refreshing…" : "Refresh list"}
+                  {loadingList || loadingFiles ? "Refreshing…" : "Refresh"}
                 </button>
                 <button
                   type="button"
@@ -252,61 +403,176 @@ export default function GuardScreenshotsPage() {
 
               {employees.length === 0 ? (
                 <p className={styles.tip}>
-                  No screenshots uploaded yet. On Presence / Idle: enable{" "}
-                  <strong>Auto screenshots</strong>, set interval (e.g. 5 sec),
-                  Save. Install Guard <strong>1.2.37+</strong> with an assigned
-                  employee, then wait one interval and Refresh.
+                  No screenshots on server yet. Enable Auto screenshots, assign
+                  employee, wait for upload, then Refresh.
                 </p>
               ) : (
                 <>
-                  <div className={styles.field} style={{ maxWidth: 420 }}>
-                    <label htmlFor="ss-emp">Employee</label>
-                    <select
-                      id="ss-emp"
-                      value={selectedId}
-                      onChange={(e) => setSelectedId(e.target.value)}
-                    >
-                      <option value="">Select employee…</option>
-                      {employees.map((e) => (
-                        <option key={e.employeeId} value={e.employeeId}>
-                          {[e.sampleName, e.samplePseudonym]
-                            .filter(Boolean)
-                            .join(" / ") || e.employeeId}{" "}
-                          (id {e.employeeId}) — {e.count} file
-                          {e.count === 1 ? "" : "s"}
-                        </option>
-                      ))}
-                    </select>
+                  <div className={styles.durationRow}>
+                    <div className={styles.field} style={{ minWidth: 220, flex: 1 }}>
+                      <label htmlFor="ss-emp">Employee</label>
+                      <select
+                        id="ss-emp"
+                        value={selectedId}
+                        onChange={(e) => setSelectedId(e.target.value)}
+                      >
+                        <option value="">Select employee…</option>
+                        {employees.map((e) => (
+                          <option key={e.employeeId} value={e.employeeId}>
+                            {[e.sampleName, e.samplePseudonym]
+                              .filter(Boolean)
+                              .join(" / ") || e.employeeId}{" "}
+                            (id {e.employeeId}) — {e.count}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.field}>
+                      <label htmlFor="ss-date">Date</label>
+                      <input
+                        id="ss-date"
+                        type="date"
+                        value={filterDate}
+                        list="ss-date-list"
+                        disabled={!selectedId}
+                        onChange={(e) => {
+                          setFilterDate(e.target.value);
+                          setPage(1);
+                          setSelected({});
+                        }}
+                      />
+                      <datalist id="ss-date-list">
+                        {dates.map((d) => (
+                          <option key={d} value={d} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className={styles.field}>
+                      <label htmlFor="ss-from">Time from</label>
+                      <input
+                        id="ss-from"
+                        type="time"
+                        step={1}
+                        value={timeFrom}
+                        disabled={!selectedId}
+                        onChange={(e) => {
+                          setTimeFrom(e.target.value);
+                          setPage(1);
+                        }}
+                      />
+                    </div>
+                    <div className={styles.field}>
+                      <label htmlFor="ss-to">Time to</label>
+                      <input
+                        id="ss-to"
+                        type="time"
+                        step={1}
+                        value={timeTo}
+                        disabled={!selectedId}
+                        onChange={(e) => {
+                          setTimeTo(e.target.value);
+                          setPage(1);
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {selectedId ? (
-                    loadingFiles ? (
-                      <p className={styles.tip}>Loading…</p>
-                    ) : files.length === 0 ? (
-                      <p className={styles.tip}>No files for this employee.</p>
-                    ) : (
-                      <div className={styles.thumbGrid}>
-                        {files.map((f) => (
-                          <button
-                            key={f.relativePath}
-                            type="button"
-                            className={styles.thumbCard}
-                            onClick={() => setViewPath(f.relativePath)}
-                            title={f.fileName}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={fileUrl(f.relativePath)}
-                              alt={f.fileName}
-                              className={styles.thumbImg}
-                            />
-                            <span className={styles.thumbMeta}>
-                              {f.capturedAt}
-                            </span>
-                          </button>
-                        ))}
+                    <>
+                      <div className={styles.durationRow} style={{ marginTop: 4 }}>
+                        <span className={styles.tip}>
+                          {loadingFiles
+                            ? "Loading…"
+                            : `${total} file(s)${filterDate ? ` on ${filterDate}` : ""} · page ${page}/${totalPages}`}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.chip}
+                          disabled={!files.length || busy}
+                          onClick={toggleSelectAllOnPage}
+                        >
+                          Select page
+                        </button>
+                        <button
+                          type="button"
+                          className={adminStyles.btnSecondary}
+                          disabled={!selectedPaths.length || busy}
+                          onClick={() => void deletePaths(selectedPaths)}
+                        >
+                          Delete selected ({selectedPaths.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={adminStyles.btnSecondary}
+                          disabled={!filterDate || busy}
+                          onClick={() => void deleteDay()}
+                        >
+                          Delete whole day
+                        </button>
                       </div>
-                    )
+
+                      {!loadingFiles && files.length === 0 ? (
+                        <p className={styles.tip}>
+                          No screenshots for this filter. Pick another date or clear
+                          time range.
+                        </p>
+                      ) : (
+                        <div className={styles.thumbGrid}>
+                          {files.map((f) => (
+                            <div key={f.relativePath} className={styles.thumbCard}>
+                              <label className={styles.thumbCheck}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!selected[f.relativePath]}
+                                  onChange={() => toggleSelect(f.relativePath)}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className={styles.thumbOpen}
+                                onClick={() => setViewPath(f.relativePath)}
+                                title={f.fileName}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={fileUrl(f.relativePath)}
+                                  alt={f.fileName}
+                                  className={styles.thumbImg}
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                                <span className={styles.thumbMeta}>
+                                  {f.capturedAt.replace("T", " ")}
+                                </span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {totalPages > 1 ? (
+                        <div className={styles.durationRow} style={{ marginTop: 8 }}>
+                          <button
+                            type="button"
+                            className={adminStyles.btnSecondary}
+                            disabled={page <= 1 || loadingFiles}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            className={adminStyles.btnSecondary}
+                            disabled={page >= totalPages || loadingFiles}
+                            onClick={() =>
+                              setPage((p) => Math.min(totalPages, p + 1))
+                            }
+                          >
+                            Next
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </>
               )}
@@ -332,6 +598,14 @@ export default function GuardScreenshotsPage() {
                   >
                     Download
                   </a>
+                  <button
+                    type="button"
+                    className={adminStyles.btnSecondary}
+                    disabled={busy}
+                    onClick={() => void deletePaths([viewPath])}
+                  >
+                    Delete
+                  </button>
                   <button
                     type="button"
                     className={adminStyles.btnSecondary}

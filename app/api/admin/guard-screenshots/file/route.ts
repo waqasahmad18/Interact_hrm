@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "private, no-store",
+        // Short private cache so flipping pages feels snappy; files stay on disk.
+        "Cache-Control": download
+          ? "private, no-store"
+          : "private, max-age=120",
         "Content-Disposition": download
           ? `attachment; filename="${fileName}"`
           : `inline; filename="${fileName}"`,
