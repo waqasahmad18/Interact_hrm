@@ -36,6 +36,11 @@ export type PresenceSettings = {
   screenshotCaptureEnabled: boolean;
   /** Seconds between Guard auto screenshots (5–3600). */
   screenshotIntervalSeconds: number;
+  /**
+   * HRM base URL agents should use (set on admin page; synced via heartbeat).
+   * Example staging: https://192.168.10.6:8443
+   */
+  agentHrmBaseUrl: string;
 };
 
 export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
@@ -49,6 +54,7 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   enabledEmployeeIds: [],
   screenshotCaptureEnabled: false,
   screenshotIntervalSeconds: 60,
+  agentHrmBaseUrl: "https://192.168.10.6:8443",
 };
 
 const KEYS = {
@@ -62,6 +68,7 @@ const KEYS = {
   enabledEmployeeIds: "presence_enabled_employee_ids",
   screenshotCaptureEnabled: "presence_screenshot_capture_enabled",
   screenshotIntervalSeconds: "presence_screenshot_interval_seconds",
+  agentHrmBaseUrl: "presence_agent_hrm_base_url",
 } as const;
 
 async function getRaw(key: string): Promise<string | null> {
@@ -145,6 +152,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     enabledEmployeeIds,
     screenshotCaptureEnabled,
     screenshotIntervalSeconds,
+    agentHrmBaseUrl,
   ] = await Promise.all([
     getRaw(KEYS.agentsRetired),
     getRaw(KEYS.presenceEnabled),
@@ -156,6 +164,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.enabledEmployeeIds),
     getRaw(KEYS.screenshotCaptureEnabled),
     getRaw(KEYS.screenshotIntervalSeconds),
+    getRaw(KEYS.agentHrmBaseUrl),
   ]);
 
   return {
@@ -190,6 +199,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       5,
       3600
     ),
+    agentHrmBaseUrl: sanitizeHrmBaseUrl(agentHrmBaseUrl, d.agentHrmBaseUrl),
   };
 }
 
@@ -197,6 +207,14 @@ function sanitizeExitPassword(raw: string | null, fallback: string): string {
   const v = (raw ?? "").trim();
   if (v.length < 4) return fallback;
   if (v.length > 64) return v.slice(0, 64);
+  return v;
+}
+
+function sanitizeHrmBaseUrl(raw: string | null, fallback: string): string {
+  const v = (raw ?? "").trim().replace(/\/+$/, "");
+  if (!v) return fallback;
+  if (!/^https?:\/\//i.test(v)) return fallback;
+  if (v.length > 200) return v.slice(0, 200);
   return v;
 }
 
@@ -253,6 +271,12 @@ export async function savePresenceSettings(
       5,
       3600
     ),
+    agentHrmBaseUrl: sanitizeHrmBaseUrl(
+      typeof input.agentHrmBaseUrl === "string"
+        ? input.agentHrmBaseUrl
+        : current.agentHrmBaseUrl,
+      current.agentHrmBaseUrl
+    ),
   };
 
   await Promise.all([
@@ -272,6 +296,7 @@ export async function savePresenceSettings(
       next.screenshotCaptureEnabled ? "true" : "false"
     ),
     setRaw(KEYS.screenshotIntervalSeconds, String(next.screenshotIntervalSeconds)),
+    setRaw(KEYS.agentHrmBaseUrl, next.agentHrmBaseUrl),
   ]);
 
   return next;

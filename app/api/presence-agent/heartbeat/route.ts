@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
         clocked_in: result.clockedIn,
         screenshot_capture_enabled: result.screenshotCaptureEnabled,
         screenshot_interval_seconds: result.screenshotIntervalSeconds,
+        agent_hrm_base_url: result.agentHrmBaseUrl,
       },
       {
         headers: {

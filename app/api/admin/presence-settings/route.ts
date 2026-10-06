@@ -81,6 +81,10 @@ export async function PUT(req: NextRequest) {
           : typeof body.screenshotIntervalSeconds === "string"
             ? parseInt(body.screenshotIntervalSeconds, 10)
             : undefined,
+      agentHrmBaseUrl:
+        typeof body.agentHrmBaseUrl === "string"
+          ? body.agentHrmBaseUrl.trim()
+          : undefined,
     });
     return noStoreJson({ success: true, settings });
   } catch (err) {

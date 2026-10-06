@@ -20,7 +20,10 @@ type PresenceSettings = {
   enabledEmployeeIds: string[];
   screenshotCaptureEnabled: boolean;
   screenshotIntervalSeconds: number;
+  agentHrmBaseUrl: string;
 };
+
+const STAGING_HRM_URL = "https://192.168.10.6:8443";
 
 type EmpRow = {
   id: number;
@@ -168,6 +171,7 @@ export default function PresenceIdleSettingsPage() {
         : [],
       screenshotCaptureEnabled: !!s.screenshotCaptureEnabled,
       screenshotIntervalSeconds: s.screenshotIntervalSeconds ?? 60,
+      agentHrmBaseUrl: (s.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
     });
     const idle = splitSeconds(s.idleWarningSeconds);
     setIdleMinutes(idle.minutes);
@@ -278,6 +282,7 @@ export default function PresenceIdleSettingsPage() {
         recheckWhileIdleSeconds: Math.max(5, recheckTotal),
         screenshotCaptureEnabled: !!settings.screenshotCaptureEnabled,
         screenshotIntervalSeconds: Math.min(3600, Math.max(5, shotTotal || 5)),
+        agentHrmBaseUrl: (settings.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
         agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
       };
@@ -726,17 +731,56 @@ export default function PresenceIdleSettingsPage() {
                   />
 
                   <div className={styles.block}>
-                    <h3 className={styles.blockTitle}>Agent exit password (admin only)</h3>
+                    <h3 className={styles.blockTitle}>Agent HRM server URL</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
-                      Employees cannot Exit the tray agent without this password.
-                      Agents sync from the <strong>same host</strong> they point at (Staging
-                      and Localhost passwords are separate). Click Save, then on the agent use
-                      tray → <strong>Sync settings from HRM now</strong> or any admin action.
-                      Default if unset: <code>InteractAdmin</code>.
+                      Agents sync this URL from heartbeat (no tray Staging switch). Use{" "}
+                      <strong>Staging (10.6)</strong> for this environment, then Save.
+                    </p>
+                    <div className={styles.durationRow}>
+                      <div className={styles.field} style={{ minWidth: 320, flex: 1 }}>
+                        <label htmlFor="agent-hrm-url">HRM base URL</label>
+                        <input
+                          id="agent-hrm-url"
+                          type="url"
+                          value={settings.agentHrmBaseUrl || STAGING_HRM_URL}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              agentHrmBaseUrl: e.target.value,
+                            })
+                          }
+                          style={{ width: "100%", minWidth: 280 }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.chip}
+                        disabled={disabled}
+                        onClick={() =>
+                          setSettings({
+                            ...settings,
+                            agentHrmBaseUrl: STAGING_HRM_URL,
+                          })
+                        }
+                      >
+                        Staging (10.6)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>
+                      Agent tray password (Status &amp; Exit)
+                    </h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      Tray menu is only <strong>Status</strong> and <strong>Exit</strong> — both
+                      require this password. Agents sync from the host they point at. Default if
+                      unset: <code>InteractAdmin</code>.
                     </p>
                     <div className={styles.durationRow}>
                       <div className={styles.field} style={{ minWidth: 280 }}>
-                        <label htmlFor="agent-exit-password">Exit password</label>
+                        <label htmlFor="agent-exit-password">Admin password</label>
                         <div className={styles.passwordWrap}>
                           <input
                             id="agent-exit-password"

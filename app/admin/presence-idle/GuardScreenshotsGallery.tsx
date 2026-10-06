@@ -162,7 +162,7 @@ export default function GuardScreenshotsGallery() {
       <h3 className={styles.blockTitle}>Guard Screenshots</h3>
       <p className={styles.tip} style={{ marginBottom: 8 }}>
         Password-gated gallery of full-screen captures from Interact Guard (when
-        tray Screenshots is On). Files stay on the HRM server — not public.
+        Admin “Auto screenshots” is On). Files stay on the HRM server — not public.
       </p>
 
       {checking ? (
@@ -224,7 +224,7 @@ export default function GuardScreenshotsGallery() {
 
           {employees.length === 0 ? (
             <p className={styles.tip}>
-              No screenshots uploaded yet. Enable tray Screenshots on an agent.
+              No screenshots uploaded yet. Enable Auto screenshots on this page and Save.
             </p>
           ) : (
             <>

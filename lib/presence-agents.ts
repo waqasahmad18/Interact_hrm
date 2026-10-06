@@ -300,6 +300,7 @@ export type HeartbeatResult = {
   clockedIn: boolean;
   screenshotCaptureEnabled: boolean;
   screenshotIntervalSeconds: number;
+  agentHrmBaseUrl: string;
 };
 
 export async function upsertAgentHeartbeat(
@@ -501,6 +502,7 @@ export async function upsertAgentHeartbeat(
     clockedIn,
     screenshotCaptureEnabled: settings.screenshotCaptureEnabled,
     screenshotIntervalSeconds: settings.screenshotIntervalSeconds,
+    agentHrmBaseUrl: settings.agentHrmBaseUrl,
   };
 }
 
