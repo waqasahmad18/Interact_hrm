@@ -303,6 +303,11 @@ export type HeartbeatResult = {
   screenshotJpegQuality: number;
   screenshotScalePercent: number;
   agentHrmBaseUrl: string;
+  /** Admin Guard Screenshots live view is open. */
+  livePreviewActive: boolean;
+  liveIntervalMs: number;
+  liveJpegQuality: number;
+  liveScalePercent: number;
 };
 
 export async function upsertAgentHeartbeat(
@@ -489,6 +494,25 @@ export async function upsertAgentHeartbeat(
   }
 
   const monitoringOn = settings.presenceEnabled && !settings.agentsRetired;
+
+  let livePreviewActive = false;
+  let liveIntervalMs = 2000;
+  let liveJpegQuality = 45;
+  let liveScalePercent = 45;
+  try {
+    const { liveStreamParamsForEmployee, readLiveSession } = await import(
+      "./guard-live"
+    );
+    const liveSession = await readLiveSession();
+    const live = liveStreamParamsForEmployee(liveSession, assignedEmployeeId);
+    livePreviewActive = live.livePreviewActive;
+    liveIntervalMs = live.liveIntervalMs;
+    liveJpegQuality = live.liveJpegQuality;
+    liveScalePercent = live.liveScalePercent;
+  } catch {
+    /* live optional */
+  }
+
   return {
     assignedEmployeeId,
     assignedEmployeeName,
@@ -507,6 +531,10 @@ export async function upsertAgentHeartbeat(
     screenshotJpegQuality: settings.screenshotJpegQuality,
     screenshotScalePercent: settings.screenshotScalePercent,
     agentHrmBaseUrl: settings.agentHrmBaseUrl,
+    livePreviewActive,
+    liveIntervalMs,
+    liveJpegQuality,
+    liveScalePercent,
   };
 }
 

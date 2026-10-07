@@ -7,6 +7,7 @@ import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
+import GuardLiveView from "./GuardLiveView";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type ShotSummary = {
@@ -215,6 +216,7 @@ export default function GuardScreenshotsPage() {
   const [loadingFiles, setLoadingFiles] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [viewPath, setViewPath] = React.useState<string | null>(null);
+  const [liveMode, setLiveMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -594,7 +596,18 @@ export default function GuardScreenshotsPage() {
                 </button>
               </div>
 
-              {!selectedId ? (
+              {liveMode ? (
+                <GuardLiveView
+                  profiles={filteredProfiles.map((p) => ({
+                    employeeId: p.employeeId,
+                    name: p.name,
+                    pseudonym: p.pseudonym,
+                    department: p.department,
+                    health: p.health,
+                  }))}
+                  onClose={() => setLiveMode(false)}
+                />
+              ) : !selectedId ? (
                 <>
                   <div className={styles.profileFilterBar}>
                     <div className={`${styles.field} ${styles.profileSearchField}`}>
@@ -626,6 +639,14 @@ export default function GuardScreenshotsPage() {
                         })}
                       </select>
                     </div>
+                    <button
+                      type="button"
+                      className={adminStyles.btnPrimary}
+                      disabled={filteredProfiles.length === 0}
+                      onClick={() => setLiveMode(true)}
+                    >
+                      Live screens
+                    </button>
                   </div>
 
                   {loadingRoster && profiles.length === 0 ? (

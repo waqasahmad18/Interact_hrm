@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
         screenshot_jpeg_quality: result.screenshotJpegQuality,
         screenshot_scale_percent: result.screenshotScalePercent,
         agent_hrm_base_url: result.agentHrmBaseUrl,
+        live_preview_active: result.livePreviewActive,
+        live_interval_ms: result.liveIntervalMs,
+        live_jpeg_quality: result.liveJpegQuality,
+        live_scale_percent: result.liveScalePercent,
       },
       {
         headers: {
