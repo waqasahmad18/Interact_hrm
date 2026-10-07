@@ -832,12 +832,6 @@ export default function PresenceIdleSettingsPage() {
               <PresenceAgentsPanel employees={employees} />
 
               <GuardScreenshotsGallery />
-
-              <p className={styles.tip}>
-                Tip: open <strong>Guard Screenshots</strong> (password) to enable Auto
-                screenshots and set the interval. Face / idle settings above stay on this
-                page only.
-              </p>
             </div>
           )}
         </div>

@@ -40,12 +40,6 @@ export default function GuardScreenshotsGallery() {
   return (
     <div className={styles.block}>
       <h3 className={styles.blockTitle}>Guard Screenshots</h3>
-      <p className={styles.tip} style={{ marginBottom: 8 }}>
-        Enter password to open the screenshots gallery. Auto screenshot on/off and
-        interval are configured <strong>inside the gallery page</strong>. Agents need{" "}
-        <strong>1.2.40+</strong> and an assigned employee. Clock-in is{" "}
-        <strong>not</strong> required.
-      </p>
 
       <div className={styles.durationRow}>
         <div className={styles.field} style={{ minWidth: 280 }}>
