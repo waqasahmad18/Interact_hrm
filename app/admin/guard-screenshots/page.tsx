@@ -200,8 +200,7 @@ export default function GuardScreenshotsPage() {
   const [shotSummaries, setShotSummaries] = React.useState<ShotSummary[]>([]);
   const [loadingRoster, setLoadingRoster] = React.useState(false);
 
-  const [nameQuery, setNameQuery] = React.useState("");
-  const [pseudoQuery, setPseudoQuery] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState("");
   const [deptFilter, setDeptFilter] = React.useState("");
 
   const [selectedId, setSelectedId] = React.useState("");
@@ -223,18 +222,17 @@ export default function GuardScreenshotsPage() {
   );
 
   const filteredProfiles = React.useMemo(() => {
-    const nq = nameQuery.trim().toLowerCase();
-    const pq = pseudoQuery.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     const dept = deptFilter.trim().toLowerCase();
     return profiles.filter((p) => {
-      if (nq && !p.name.toLowerCase().includes(nq) && !p.employeeId.includes(nq)) {
-        return false;
+      if (q) {
+        const hay = `${p.name} ${p.pseudonym} ${p.employeeId} ${p.employeeCode}`.toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-      if (pq && !p.pseudonym.toLowerCase().includes(pq)) return false;
       if (dept && p.department.toLowerCase() !== dept) return false;
       return true;
     });
-  }, [profiles, nameQuery, pseudoQuery, deptFilter]);
+  }, [profiles, searchQuery, deptFilter]);
 
   const selectedProfile = React.useMemo(
     () => profiles.find((p) => p.employeeId === selectedId) || null,
@@ -599,24 +597,14 @@ export default function GuardScreenshotsPage() {
               {!selectedId ? (
                 <>
                   <div className={styles.profileFilterBar}>
-                    <div className={styles.field} style={{ minWidth: 180, flex: 1 }}>
-                      <label htmlFor="ss-name">Employee name</label>
+                    <div className={styles.field} style={{ minWidth: 240, flex: 1 }}>
+                      <label htmlFor="ss-search">Search</label>
                       <input
-                        id="ss-name"
+                        id="ss-search"
                         type="text"
-                        value={nameQuery}
-                        placeholder="Search name or ID…"
-                        onChange={(e) => setNameQuery(e.target.value)}
-                      />
-                    </div>
-                    <div className={styles.field} style={{ minWidth: 160, flex: 1 }}>
-                      <label htmlFor="ss-pseudo">Pseudo name</label>
-                      <input
-                        id="ss-pseudo"
-                        type="text"
-                        value={pseudoQuery}
-                        placeholder="Search pseudonym…"
-                        onChange={(e) => setPseudoQuery(e.target.value)}
+                        value={searchQuery}
+                        placeholder="Name, pseudo name, or ID…"
+                        onChange={(e) => setSearchQuery(e.target.value)}
                       />
                     </div>
                     <div className={styles.field} style={{ minWidth: 180 }}>
