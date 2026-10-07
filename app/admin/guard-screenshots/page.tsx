@@ -2,7 +2,6 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
@@ -10,7 +9,7 @@ import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
-type EmpSummary = {
+type ShotSummary = {
   employeeId: string;
   count: number;
   latestAt: string | null;
@@ -28,6 +27,48 @@ type FileRow = {
   capturedAt: string;
 };
 
+type AgentHealth = "healthy" | "stale" | "offline";
+
+type AgentRow = {
+  machineId: string;
+  hostname: string | null;
+  windowsUser: string | null;
+  assignedEmployeeId: string | null;
+  agentVersion: string | null;
+  agentProduct?: string | null;
+  lastSeenAt: string | null;
+  health: AgentHealth;
+  assignedEmployeeName: string | null;
+  assignedEmployeeCode: string | null;
+  assignedPseudonym?: string | null;
+};
+
+type EmpRow = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  employee_code?: string | null;
+  pseudonym?: string | null;
+  department_name?: string | null;
+};
+
+type DeptRow = { id: number; name?: string; department_name?: string };
+
+type ProfileCard = {
+  employeeId: string;
+  name: string;
+  pseudonym: string;
+  department: string;
+  employeeCode: string;
+  screenshotCount: number;
+  latestShotAt: string | null;
+  machineCount: number;
+  hostnames: string[];
+  health: AgentHealth;
+  agentVersion: string | null;
+  lastSeenAt: string | null;
+};
+
 const PAGE_SIZE = 24;
 
 function todayYmd() {
@@ -36,14 +77,133 @@ function todayYmd() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function formatWhen(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function healthRank(h: AgentHealth) {
+  if (h === "healthy") return 0;
+  if (h === "stale") return 1;
+  return 2;
+}
+
+function healthLabel(h: AgentHealth) {
+  if (h === "healthy") return "Online";
+  if (h === "stale") return "Stale";
+  return "Offline";
+}
+
+function healthClass(h: AgentHealth) {
+  if (h === "healthy") return styles.healthOk;
+  if (h === "stale") return styles.healthWarn;
+  return styles.healthBad;
+}
+
+function buildProfiles(
+  agents: AgentRow[],
+  employees: EmpRow[],
+  shots: ShotSummary[]
+): ProfileCard[] {
+  const empById = new Map(employees.map((e) => [String(e.id), e]));
+  const shotById = new Map(shots.map((s) => [String(s.employeeId), s]));
+
+  const byEmp = new Map<string, AgentRow[]>();
+  for (const a of agents) {
+    const id = String(a.assignedEmployeeId || "").trim();
+    if (!id) continue;
+    const list = byEmp.get(id) ?? [];
+    list.push(a);
+    byEmp.set(id, list);
+  }
+
+  const cards: ProfileCard[] = [];
+  for (const [employeeId, list] of byEmp) {
+    const emp = empById.get(employeeId);
+    const shot = shotById.get(employeeId);
+    const best = [...list].sort(
+      (a, b) => healthRank(a.health) - healthRank(b.health)
+    )[0];
+    const nameFromEmp = emp
+      ? `${emp.first_name || ""} ${emp.last_name || ""}`.trim()
+      : "";
+    const name =
+      nameFromEmp ||
+      best?.assignedEmployeeName ||
+      shot?.sampleName ||
+      `Employee ${employeeId}`;
+    const pseudonym =
+      (emp?.pseudonym || "").trim() ||
+      (best?.assignedPseudonym || "").trim() ||
+      (shot?.samplePseudonym || "").trim() ||
+      "";
+    const hostnames = [
+      ...new Set(
+        list
+          .map((a) => (a.hostname || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    const lastSeenAt = list
+      .map((a) => a.lastSeenAt)
+      .filter(Boolean)
+      .sort()
+      .reverse()[0] || null;
+    const version =
+      list.map((a) => a.agentVersion).find((v) => !!v?.trim()) || null;
+
+    cards.push({
+      employeeId,
+      name,
+      pseudonym,
+      department: (emp?.department_name || "").trim() || "—",
+      employeeCode:
+        (emp?.employee_code || "").trim() ||
+        (best?.assignedEmployeeCode || "").trim() ||
+        "",
+      screenshotCount: shot?.count ?? 0,
+      latestShotAt: shot?.latestAt ?? null,
+      machineCount: list.length,
+      hostnames,
+      health: best?.health || "offline",
+      agentVersion: version,
+      lastSeenAt,
+    });
+  }
+
+  return cards.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+}
+
 export default function GuardScreenshotsPage() {
-  const router = useRouter();
   const [unlocked, setUnlocked] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
   const [password, setPassword] = React.useState("");
   const [showPw, setShowPw] = React.useState(false);
   const [unlocking, setUnlocking] = React.useState(false);
-  const [employees, setEmployees] = React.useState<EmpSummary[]>([]);
+
+  const [agents, setAgents] = React.useState<AgentRow[]>([]);
+  const [hrEmployees, setHrEmployees] = React.useState<EmpRow[]>([]);
+  const [departments, setDepartments] = React.useState<DeptRow[]>([]);
+  const [shotSummaries, setShotSummaries] = React.useState<ShotSummary[]>([]);
+  const [loadingRoster, setLoadingRoster] = React.useState(false);
+
+  const [nameQuery, setNameQuery] = React.useState("");
+  const [pseudoQuery, setPseudoQuery] = React.useState("");
+  const [deptFilter, setDeptFilter] = React.useState("");
+
   const [selectedId, setSelectedId] = React.useState("");
   const [dates, setDates] = React.useState<string[]>([]);
   const [filterDate, setFilterDate] = React.useState(todayYmd());
@@ -53,10 +213,33 @@ export default function GuardScreenshotsPage() {
   const [total, setTotal] = React.useState(0);
   const [files, setFiles] = React.useState<FileRow[]>([]);
   const [selected, setSelected] = React.useState<Record<string, boolean>>({});
-  const [loadingList, setLoadingList] = React.useState(false);
   const [loadingFiles, setLoadingFiles] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [viewPath, setViewPath] = React.useState<string | null>(null);
+
+  const profiles = React.useMemo(
+    () => buildProfiles(agents, hrEmployees, shotSummaries),
+    [agents, hrEmployees, shotSummaries]
+  );
+
+  const filteredProfiles = React.useMemo(() => {
+    const nq = nameQuery.trim().toLowerCase();
+    const pq = pseudoQuery.trim().toLowerCase();
+    const dept = deptFilter.trim().toLowerCase();
+    return profiles.filter((p) => {
+      if (nq && !p.name.toLowerCase().includes(nq) && !p.employeeId.includes(nq)) {
+        return false;
+      }
+      if (pq && !p.pseudonym.toLowerCase().includes(pq)) return false;
+      if (dept && p.department.toLowerCase() !== dept) return false;
+      return true;
+    });
+  }, [profiles, nameQuery, pseudoQuery, deptFilter]);
+
+  const selectedProfile = React.useMemo(
+    () => profiles.find((p) => p.employeeId === selectedId) || null,
+    [profiles, selectedId]
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const selectedPaths = React.useMemo(
@@ -83,32 +266,48 @@ export default function GuardScreenshotsPage() {
     void checkUnlock();
   }, [checkUnlock]);
 
-  const loadEmployees = React.useCallback(async () => {
-    setLoadingList(true);
+  const loadRoster = React.useCallback(async () => {
+    setLoadingRoster(true);
     try {
-      const res = await fetch("/api/admin/guard-screenshots", {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (res.status === 401 || data.locked) {
+      const [agentsRes, empRes, deptRes, shotsRes] = await Promise.all([
+        fetch("/api/admin/presence-agents", { cache: "no-store" }),
+        fetch("/api/employee-list", { cache: "no-store" }),
+        fetch("/api/departments", { cache: "no-store" }),
+        fetch("/api/admin/guard-screenshots", { cache: "no-store" }),
+      ]);
+      const agentsData = await agentsRes.json();
+      const empData = await empRes.json();
+      const deptData = await deptRes.json();
+      const shotsData = await shotsRes.json();
+
+      if (shotsRes.status === 401 || shotsData.locked) {
         setUnlocked(false);
         return;
       }
-      if (!data.success) {
-        toastError(data.error || "Could not load screenshots");
+      if (!agentsData.success) {
+        toastError(agentsData.error || "Could not load installed agents");
         return;
       }
-      setEmployees((data.employees || []) as EmpSummary[]);
+      setAgents((Array.isArray(agentsData.agents) ? agentsData.agents : []) as AgentRow[]);
+      if (empData.success && Array.isArray(empData.employees)) {
+        setHrEmployees(empData.employees as EmpRow[]);
+      }
+      if (deptData.success && Array.isArray(deptData.departments)) {
+        setDepartments(deptData.departments as DeptRow[]);
+      }
+      if (shotsData.success) {
+        setShotSummaries((shotsData.employees || []) as ShotSummary[]);
+      }
     } catch {
-      toastError("Network error loading screenshots");
+      toastError("Network error loading profiles");
     } finally {
-      setLoadingList(false);
+      setLoadingRoster(false);
     }
   }, []);
 
   React.useEffect(() => {
-    if (unlocked) void loadEmployees();
-  }, [unlocked, loadEmployees]);
+    if (unlocked) void loadRoster();
+  }, [unlocked, loadRoster]);
 
   const loadDates = React.useCallback(async (employeeId: string) => {
     if (!employeeId) {
@@ -133,13 +332,15 @@ export default function GuardScreenshotsPage() {
     } catch {
       setDates([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset date when employee changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when employee changes
   }, []);
 
   React.useEffect(() => {
     if (unlocked && selectedId) {
       setPage(1);
       setSelected({});
+      setTimeFrom("");
+      setTimeTo("");
       void loadDates(selectedId);
     } else {
       setDates([]);
@@ -202,9 +403,9 @@ export default function GuardScreenshotsPage() {
         toastError(data.error || "Invalid password");
         return;
       }
-      setUnlocked(true);
       setPassword("");
-      toastSuccess("Gallery unlocked");
+      setUnlocked(true);
+      toastSuccess("Unlocked");
     } catch {
       toastError("Network error");
     } finally {
@@ -219,15 +420,12 @@ export default function GuardScreenshotsPage() {
       /* ignore */
     }
     setUnlocked(false);
-    setEmployees([]);
-    setFiles([]);
     setSelectedId("");
     setViewPath(null);
-    router.push("/admin/presence-idle");
   }
 
-  function fileUrl(rel: string, download = false) {
-    const q = new URLSearchParams({ path: rel });
+  function fileUrl(relativePath: string, download = false) {
+    const q = new URLSearchParams({ path: relativePath });
     if (download) q.set("download", "1");
     return `/api/admin/guard-screenshots/file?${q.toString()}`;
   }
@@ -237,12 +435,10 @@ export default function GuardScreenshotsPage() {
   }
 
   function toggleSelectAllOnPage() {
-    const allOn = files.length > 0 && files.every((f) => selected[f.relativePath]);
+    const allOn = files.every((f) => selected[f.relativePath]);
     setSelected((prev) => {
       const next = { ...prev };
-      for (const f of files) {
-        next[f.relativePath] = !allOn;
-      }
+      for (const f of files) next[f.relativePath] = !allOn;
       return next;
     });
   }
@@ -264,12 +460,11 @@ export default function GuardScreenshotsPage() {
         toastError(data.error || "Delete failed");
         return;
       }
-      toastSuccess(`Deleted ${data.deleted?.length ?? 0}`);
+      toastSuccess(`Deleted ${data.deletedCount ?? paths.length} file(s)`);
       setSelected({});
-      setViewPath(null);
+      if (viewPath && paths.includes(viewPath)) setViewPath(null);
       await loadFiles();
-      await loadEmployees();
-      if (selectedId) await loadDates(selectedId);
+      await loadRoster();
     } catch {
       toastError("Network error");
     } finally {
@@ -303,7 +498,7 @@ export default function GuardScreenshotsPage() {
       setViewPath(null);
       await loadDates(selectedId);
       await loadFiles();
-      await loadEmployees();
+      await loadRoster();
     } catch {
       toastError("Network error");
     } finally {
@@ -328,8 +523,8 @@ export default function GuardScreenshotsPage() {
             <div>
               <h1 className={adminStyles.title}>Guard Screenshots</h1>
               <p className={adminStyles.subtitle}>
-                Files stay on the HRM server. Filters load one day at a time for
-                speed.
+                Profiles for PCs with Interact Guard installed. Open a card to
+                browse captures.
               </p>
             </div>
             <Link href="/admin/presence-idle" className={adminStyles.btnSecondary}>
@@ -343,12 +538,9 @@ export default function GuardScreenshotsPage() {
             <p className={styles.tip}>Checking access…</p>
           ) : !unlocked ? (
             <div className={styles.section}>
-              <p className={styles.tip} style={{ marginBottom: 12 }}>
-                Enter the gallery password to view, filter, and delete screenshots.
-              </p>
               <div className={styles.durationRow}>
                 <div className={styles.field} style={{ minWidth: 280 }}>
-                  <label htmlFor="gallery-password-page">Gallery password</label>
+                  <label htmlFor="gallery-password-page">Enter password</label>
                   <div className={styles.passwordWrap}>
                     <input
                       id="gallery-password-page"
@@ -377,60 +569,171 @@ export default function GuardScreenshotsPage() {
                   disabled={unlocking || !password}
                   onClick={() => void unlock()}
                 >
-                  {unlocking ? "Unlocking…" : "Unlock gallery"}
+                  {unlocking ? "Unlocking…" : "Enter"}
                 </button>
               </div>
             </div>
           ) : (
             <div className={styles.galleryWrap}>
-              <div className={styles.durationRow} style={{ marginBottom: 10 }}>
+              <div className={styles.durationRow} style={{ marginBottom: 2 }}>
                 <button
                   type="button"
                   className={adminStyles.btnSecondary}
                   onClick={() => {
-                    void loadEmployees();
+                    void loadRoster();
                     if (selectedId) void loadFiles();
                   }}
-                  disabled={loadingList || loadingFiles || busy}
+                  disabled={loadingRoster || loadingFiles || busy}
                 >
-                  {loadingList || loadingFiles ? "Refreshing…" : "Refresh"}
+                  {loadingRoster || loadingFiles ? "Refreshing…" : "Refresh"}
                 </button>
                 <button
                   type="button"
                   className={adminStyles.btnSecondary}
                   onClick={() => void lock()}
                 >
-                  Lock gallery
+                  Lock
                 </button>
               </div>
 
-              {employees.length === 0 ? (
-                <p className={styles.tip}>
-                  No screenshots on server yet. Enable Auto screenshots in Capture
-                  settings above, Save, assign employee on Presence / Idle — then
-                  Refresh.
-                </p>
-              ) : (
+              {!selectedId ? (
                 <>
-                  <div className={styles.durationRow}>
-                    <div className={styles.field} style={{ minWidth: 220, flex: 1 }}>
-                      <label htmlFor="ss-emp">Employee</label>
+                  <div className={styles.profileFilterBar}>
+                    <div className={styles.field} style={{ minWidth: 180, flex: 1 }}>
+                      <label htmlFor="ss-name">Employee name</label>
+                      <input
+                        id="ss-name"
+                        type="text"
+                        value={nameQuery}
+                        placeholder="Search name or ID…"
+                        onChange={(e) => setNameQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.field} style={{ minWidth: 160, flex: 1 }}>
+                      <label htmlFor="ss-pseudo">Pseudo name</label>
+                      <input
+                        id="ss-pseudo"
+                        type="text"
+                        value={pseudoQuery}
+                        placeholder="Search pseudonym…"
+                        onChange={(e) => setPseudoQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.field} style={{ minWidth: 180 }}>
+                      <label htmlFor="ss-dept">Department</label>
                       <select
-                        id="ss-emp"
-                        value={selectedId}
-                        onChange={(e) => setSelectedId(e.target.value)}
+                        id="ss-dept"
+                        value={deptFilter}
+                        onChange={(e) => setDeptFilter(e.target.value)}
                       >
-                        <option value="">Select employee…</option>
-                        {employees.map((e) => (
-                          <option key={e.employeeId} value={e.employeeId}>
-                            {[e.sampleName, e.samplePseudonym]
-                              .filter(Boolean)
-                              .join(" / ") || e.employeeId}{" "}
-                            (id {e.employeeId}) — {e.count}
-                          </option>
-                        ))}
+                        <option value="">All departments</option>
+                        {departments.map((d) => {
+                          const label = d.name || d.department_name || `Dept ${d.id}`;
+                          return (
+                            <option key={d.id} value={label}>
+                              {label}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
+                  </div>
+
+                  {loadingRoster && profiles.length === 0 ? (
+                    <p className={styles.tip}>Loading installed profiles…</p>
+                  ) : filteredProfiles.length === 0 ? (
+                    <p className={styles.tip}>
+                      No installed Guard profiles match these filters. Assign an
+                      employee on Presence / Idle after the agent is installed.
+                    </p>
+                  ) : (
+                    <div className={styles.profileGrid}>
+                      {filteredProfiles.map((p) => (
+                        <button
+                          key={p.employeeId}
+                          type="button"
+                          className={styles.profileCard}
+                          onClick={() => setSelectedId(p.employeeId)}
+                        >
+                          <div className={styles.profileCardTop}>
+                            <div>
+                              <h3 className={styles.profileName}>{p.name}</h3>
+                              {p.pseudonym ? (
+                                <p className={styles.profilePseudo}>{p.pseudonym}</p>
+                              ) : null}
+                            </div>
+                            <span className={healthClass(p.health)}>
+                              {healthLabel(p.health)}
+                            </span>
+                          </div>
+                          <div className={styles.profileMeta}>
+                            <div>
+                              <strong>Dept:</strong> {p.department}
+                            </div>
+                            <div>
+                              <strong>ID:</strong> {p.employeeId}
+                              {p.employeeCode ? ` · ${p.employeeCode}` : ""}
+                            </div>
+                            <div>
+                              <strong>PC:</strong>{" "}
+                              {p.hostnames.length
+                                ? p.hostnames.slice(0, 2).join(", ")
+                                : "—"}
+                              {p.machineCount > 1 ? ` (+${p.machineCount - 1})` : ""}
+                            </div>
+                            <div>
+                              <strong>Last seen:</strong> {formatWhen(p.lastSeenAt)}
+                            </div>
+                          </div>
+                          <div className={styles.profileStats}>
+                            <span className={`${styles.profileStat} ${styles.profileStatAccent}`}>
+                              {p.screenshotCount} shot{p.screenshotCount === 1 ? "" : "s"}
+                            </span>
+                            {p.agentVersion ? (
+                              <span className={styles.profileStat}>v{p.agentVersion}</span>
+                            ) : null}
+                            {p.latestShotAt ? (
+                              <span className={styles.profileStat}>
+                                last {formatWhen(p.latestShotAt)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className={styles.detailHeader}>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      onClick={() => {
+                        setSelectedId("");
+                        setViewPath(null);
+                        setSelected({});
+                      }}
+                    >
+                      ← Profiles
+                    </button>
+                    <div>
+                      <h2 className={styles.detailTitle}>
+                        {selectedProfile?.name || `Employee ${selectedId}`}
+                      </h2>
+                      <p className={styles.detailSub}>
+                        {[
+                          selectedProfile?.pseudonym,
+                          selectedProfile?.department,
+                          `ID ${selectedId}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={styles.durationRow}>
                     <div className={styles.field}>
                       <label htmlFor="ss-date">Date</label>
                       <input
@@ -438,7 +741,6 @@ export default function GuardScreenshotsPage() {
                         type="date"
                         value={filterDate}
                         list="ss-date-list"
-                        disabled={!selectedId}
                         onChange={(e) => {
                           setFilterDate(e.target.value);
                           setPage(1);
@@ -458,7 +760,6 @@ export default function GuardScreenshotsPage() {
                         type="time"
                         step={1}
                         value={timeFrom}
-                        disabled={!selectedId}
                         onChange={(e) => {
                           setTimeFrom(e.target.value);
                           setPage(1);
@@ -472,7 +773,6 @@ export default function GuardScreenshotsPage() {
                         type="time"
                         step={1}
                         value={timeTo}
-                        disabled={!selectedId}
                         onChange={(e) => {
                           setTimeTo(e.target.value);
                           setPage(1);
@@ -481,102 +781,96 @@ export default function GuardScreenshotsPage() {
                     </div>
                   </div>
 
-                  {selectedId ? (
-                    <>
-                      <div className={styles.durationRow} style={{ marginTop: 4 }}>
-                        <span className={styles.tip}>
-                          {loadingFiles
-                            ? "Loading…"
-                            : `${total} file(s)${filterDate ? ` on ${filterDate}` : ""} · page ${page}/${totalPages}`}
-                        </span>
-                        <button
-                          type="button"
-                          className={styles.chip}
-                          disabled={!files.length || busy}
-                          onClick={toggleSelectAllOnPage}
-                        >
-                          Select page
-                        </button>
-                        <button
-                          type="button"
-                          className={adminStyles.btnSecondary}
-                          disabled={!selectedPaths.length || busy}
-                          onClick={() => void deletePaths(selectedPaths)}
-                        >
-                          Delete selected ({selectedPaths.length})
-                        </button>
-                        <button
-                          type="button"
-                          className={adminStyles.btnSecondary}
-                          disabled={!filterDate || busy}
-                          onClick={() => void deleteDay()}
-                        >
-                          Delete whole day
-                        </button>
-                      </div>
+                  <div className={styles.durationRow} style={{ marginTop: 4 }}>
+                    <span className={styles.tip}>
+                      {loadingFiles
+                        ? "Loading…"
+                        : `${total} file(s)${filterDate ? ` on ${filterDate}` : ""} · page ${page}/${totalPages}`}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.chip}
+                      disabled={!files.length || busy}
+                      onClick={toggleSelectAllOnPage}
+                    >
+                      Select page
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      disabled={!selectedPaths.length || busy}
+                      onClick={() => void deletePaths(selectedPaths)}
+                    >
+                      Delete selected ({selectedPaths.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      disabled={!filterDate || busy}
+                      onClick={() => void deleteDay()}
+                    >
+                      Delete whole day
+                    </button>
+                  </div>
 
-                      {!loadingFiles && files.length === 0 ? (
-                        <p className={styles.tip}>
-                          No screenshots for this filter. Pick another date or clear
-                          time range.
-                        </p>
-                      ) : (
-                        <div className={styles.thumbGrid}>
-                          {files.map((f) => (
-                            <div key={f.relativePath} className={styles.thumbCard}>
-                              <label className={styles.thumbCheck}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!selected[f.relativePath]}
-                                  onChange={() => toggleSelect(f.relativePath)}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                className={styles.thumbOpen}
-                                onClick={() => setViewPath(f.relativePath)}
-                                title={f.fileName}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={fileUrl(f.relativePath)}
-                                  alt={f.fileName}
-                                  className={styles.thumbImg}
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                                <span className={styles.thumbMeta}>
-                                  {f.capturedAt.replace("T", " ")}
-                                </span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {totalPages > 1 ? (
-                        <div className={styles.durationRow} style={{ marginTop: 8 }}>
+                  {!loadingFiles && files.length === 0 ? (
+                    <p className={styles.tip}>
+                      No screenshots for this filter. Pick another date or clear
+                      time range.
+                    </p>
+                  ) : (
+                    <div className={styles.thumbGrid}>
+                      {files.map((f) => (
+                        <div key={f.relativePath} className={styles.thumbCard}>
+                          <label className={styles.thumbCheck}>
+                            <input
+                              type="checkbox"
+                              checked={!!selected[f.relativePath]}
+                              onChange={() => toggleSelect(f.relativePath)}
+                            />
+                          </label>
                           <button
                             type="button"
-                            className={adminStyles.btnSecondary}
-                            disabled={page <= 1 || loadingFiles}
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            className={styles.thumbOpen}
+                            onClick={() => setViewPath(f.relativePath)}
+                            title={f.fileName}
                           >
-                            Previous
-                          </button>
-                          <button
-                            type="button"
-                            className={adminStyles.btnSecondary}
-                            disabled={page >= totalPages || loadingFiles}
-                            onClick={() =>
-                              setPage((p) => Math.min(totalPages, p + 1))
-                            }
-                          >
-                            Next
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={fileUrl(f.relativePath)}
+                              alt={f.fileName}
+                              className={styles.thumbImg}
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <span className={styles.thumbMeta}>
+                              {f.capturedAt.replace("T", " ")}
+                            </span>
                           </button>
                         </div>
-                      ) : null}
-                    </>
+                      ))}
+                    </div>
+                  )}
+
+                  {totalPages > 1 ? (
+                    <div className={styles.durationRow} style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className={adminStyles.btnSecondary}
+                        disabled={page <= 1 || loadingFiles}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        className={adminStyles.btnSecondary}
+                        disabled={page >= totalPages || loadingFiles}
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
                   ) : null}
                 </>
               )}
