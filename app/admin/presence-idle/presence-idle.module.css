@@ -872,6 +872,8 @@
   object-fit: contain;
   display: block;
   background: #0f172a;
+  /* Avoid layout jump / flash while swapping frames */
+  image-rendering: auto;
 }
 
 .liveTileWait {

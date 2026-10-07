@@ -26,16 +26,63 @@ type Props = {
   onClose: () => void;
 };
 
-function frameUrl(employeeId: string, tick: number) {
-  return `/api/admin/guard-live/frame?employeeId=${encodeURIComponent(employeeId)}&t=${tick}`;
+function frameUrl(employeeId: string, updatedAt: string) {
+  // Bust cache only when the server frame actually changed — avoids useless reloads.
+  return `/api/admin/guard-live/frame?employeeId=${encodeURIComponent(employeeId)}&v=${encodeURIComponent(updatedAt)}`;
+}
+
+/**
+ * Keep the last good frame visible while the next JPEG loads (no blank blink).
+ */
+function SmoothLiveImg({
+  employeeId,
+  updatedAt,
+  alt,
+  className,
+}: {
+  employeeId: string;
+  updatedAt: string;
+  alt: string;
+  className: string;
+}) {
+  const [displaySrc, setDisplaySrc] = React.useState<string | null>(null);
+  const lastAtRef = React.useRef<string>("");
+  const loadGen = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!updatedAt || updatedAt === lastAtRef.current) return;
+    const url = frameUrl(employeeId, updatedAt);
+    const gen = ++loadGen.current;
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      if (gen !== loadGen.current) return;
+      lastAtRef.current = updatedAt;
+      setDisplaySrc(url);
+    };
+    img.onerror = () => {
+      /* keep previous frame */
+    };
+    img.src = url;
+  }, [employeeId, updatedAt]);
+
+  if (!displaySrc) {
+    return <span className={styles.liveTileWait}>Waiting for stream…</span>;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={displaySrc} alt={alt} className={className} decoding="async" />
+  );
 }
 
 export default function GuardLiveView({ profiles, onClose }: Props) {
   const [running, setRunning] = React.useState(false);
-  const [tick, setTick] = React.useState(0);
   const [frames, setFrames] = React.useState<Record<string, FrameMeta>>({});
   const [focusId, setFocusId] = React.useState<string | null>(null);
   const [starting, setStarting] = React.useState(false);
+  const framesRef = React.useRef(frames);
+  framesRef.current = frames;
 
   const stop = React.useCallback(async () => {
     try {
@@ -75,6 +122,8 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
   React.useEffect(() => {
     if (!running) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     async function poll() {
       try {
         const q = focusId
@@ -94,21 +143,34 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
           setRunning(false);
           return;
         }
-        const map: Record<string, FrameMeta> = {};
-        for (const f of (data.frames || []) as FrameMeta[]) {
-          map[f.employeeId] = f;
-        }
-        setFrames(map);
-        setTick((t) => t + 1);
+        const nextList = (data.frames || []) as FrameMeta[];
+        setFrames((prev) => {
+          const next: Record<string, FrameMeta> = { ...prev };
+          let changed = false;
+          for (const f of nextList) {
+            const old = prev[f.employeeId];
+            if (!old || old.updatedAt !== f.updatedAt || old.size !== f.size) {
+              next[f.employeeId] = f;
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
       } catch {
         /* retry */
+      } finally {
+        if (!cancelled) {
+          // Slightly slower grid poll = less thrash; popup stays snappier.
+          const delay = focusId ? 400 : 700;
+          timer = setTimeout(() => void poll(), delay);
+        }
       }
     }
+
     void poll();
-    const id = window.setInterval(() => void poll(), focusId ? 450 : 750);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      if (timer) clearTimeout(timer);
     };
   }, [running, focusId, onClose]);
 
@@ -118,6 +180,7 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
   }
 
   const focusProfile = profiles.find((p) => p.employeeId === focusId) || null;
+  const focusMeta = focusId ? frames[focusId] : null;
 
   return (
     <div className={styles.galleryWrap}>
@@ -151,7 +214,7 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
       ) : (
         <div className={styles.liveGrid}>
           {profiles.map((p) => {
-            const hasFrame = !!frames[p.employeeId];
+            const meta = frames[p.employeeId];
             return (
               <button
                 key={p.employeeId}
@@ -178,13 +241,12 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
                   </span>
                 </div>
                 <div className={styles.liveTileStage}>
-                  {hasFrame ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={frameUrl(p.employeeId, tick)}
+                  {meta ? (
+                    <SmoothLiveImg
+                      employeeId={p.employeeId}
+                      updatedAt={meta.updatedAt}
                       alt={p.name}
                       className={styles.liveTileImg}
-                      decoding="async"
                     />
                   ) : (
                     <span className={styles.liveTileWait}>
@@ -230,10 +292,10 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
               </button>
             </div>
             <div className={styles.modalBody}>
-              {frames[focusId] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={frameUrl(focusId, tick)}
+              {focusMeta ? (
+                <SmoothLiveImg
+                  employeeId={focusId}
+                  updatedAt={focusMeta.updatedAt}
                   alt="Live screen"
                   className={styles.modalImg}
                 />

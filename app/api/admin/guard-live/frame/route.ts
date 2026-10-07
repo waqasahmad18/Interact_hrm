@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "image/jpeg",
-        "Cache-Control": "private, no-store",
+        // Short cache keyed by ?v=updatedAt — stops mid-load blank blinks.
+        "Cache-Control": "private, max-age=2",
       },
     });
   } catch (err) {

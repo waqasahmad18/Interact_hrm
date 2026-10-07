@@ -127,8 +127,11 @@ export async function saveLiveFrame(input: {
 
   await ensureRoot();
   const jpgPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.jpg`);
+  const tmpPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.jpg.tmp`);
   const metaPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.json`);
-  await fs.writeFile(jpgPath, input.bytes);
+  // Atomic replace so the browser never reads a half-written JPEG (blink/jerk).
+  await fs.writeFile(tmpPath, input.bytes);
+  await fs.rename(tmpPath, jpgPath);
   const meta: LiveFrameMeta = {
     employeeId,
     updatedAt: new Date().toISOString(),
