@@ -16,31 +16,45 @@ function isPng(buf: Buffer): boolean {
   );
 }
 
-async function readPngFromRequest(req: NextRequest): Promise<{
-  png: Buffer;
+function isJpeg(buf: Buffer): boolean {
+  return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+}
+
+async function readImageFromRequest(req: NextRequest): Promise<{
+  bytes: Buffer;
+  ext: "png" | "jpg";
   employeeId: string;
   employeeName: string;
   pseudonym: string;
   capturedAtRaw: string;
 }> {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
+  const dec = (raw: string | null) => {
+    const v = String(raw || "").trim();
+    if (!v) return "";
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v;
+    }
+  };
 
-  // Preferred path for Interact Guard (.NET): raw PNG + metadata headers.
-  // Avoids Next.js FormData parse failures with MultipartFormDataContent.
-  if (ct.includes("image/png") || ct.includes("application/octet-stream")) {
+  // Preferred path for Interact Guard (.NET): raw image + metadata headers.
+  if (
+    ct.includes("image/png") ||
+    ct.includes("image/jpeg") ||
+    ct.includes("image/jpg") ||
+    ct.includes("application/octet-stream")
+  ) {
     const ab = await req.arrayBuffer();
-    const png = Buffer.from(ab);
-    const dec = (raw: string | null) => {
-      const v = String(raw || "").trim();
-      if (!v) return "";
-      try {
-        return decodeURIComponent(v);
-      } catch {
-        return v;
-      }
-    };
+    const bytes = Buffer.from(ab);
+    let ext: "png" | "jpg" = "png";
+    if (ct.includes("jpeg") || ct.includes("jpg") || isJpeg(bytes)) ext = "jpg";
+    else if (isPng(bytes)) ext = "png";
+    else if (isJpeg(bytes)) ext = "jpg";
     return {
-      png,
+      bytes,
+      ext,
       employeeId: dec(req.headers.get("x-employee-id")),
       employeeName: dec(req.headers.get("x-employee-name")),
       pseudonym: dec(req.headers.get("x-pseudonym")),
@@ -54,9 +68,15 @@ async function readPngFromRequest(req: NextRequest): Promise<{
   if (!(image instanceof Blob) || image.size <= 0) {
     throw new Error("image required");
   }
-  const png = Buffer.from(await image.arrayBuffer());
+  const bytes = Buffer.from(await image.arrayBuffer());
+  const formCt = (image.type || "").toLowerCase();
+  const ext: "png" | "jpg" =
+    formCt.includes("jpeg") || formCt.includes("jpg") || isJpeg(bytes)
+      ? "jpg"
+      : "png";
   return {
-    png,
+    bytes,
+    ext,
     employeeId: String(form.get("employee_id") || "").trim(),
     employeeName: String(form.get("employee_name") || "").trim(),
     pseudonym: String(form.get("pseudonym") || "").trim(),
@@ -66,8 +86,8 @@ async function readPngFromRequest(req: NextRequest): Promise<{
 
 export async function POST(req: NextRequest) {
   try {
-    const { png, employeeId, employeeName, pseudonym, capturedAtRaw } =
-      await readPngFromRequest(req);
+    const { bytes, ext, employeeId, employeeName, pseudonym, capturedAtRaw } =
+      await readImageFromRequest(req);
 
     if (!employeeId) {
       return NextResponse.json(
@@ -75,15 +95,15 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (png.length <= 0 || png.length > MAX_BYTES) {
+    if (bytes.length <= 0 || bytes.length > MAX_BYTES) {
       return NextResponse.json(
         { success: false, error: "image size invalid" },
         { status: 400 }
       );
     }
-    if (!isPng(png)) {
+    if (!isPng(bytes) && !isJpeg(bytes)) {
       return NextResponse.json(
-        { success: false, error: "PNG required" },
+        { success: false, error: "PNG or JPEG required" },
         { status: 400 }
       );
     }
@@ -95,11 +115,12 @@ export async function POST(req: NextRequest) {
     }
 
     const saved = await saveGuardScreenshot({
-      png,
+      png: bytes,
       employeeId,
       employeeName,
       pseudonym,
       capturedAt,
+      ext: isJpeg(bytes) ? "jpg" : ext,
     });
 
     return NextResponse.json({

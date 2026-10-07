@@ -51,11 +51,14 @@ export function formatCaptureParts(d: Date) {
 }
 
 export type SaveScreenshotInput = {
+  /** Image bytes (PNG or JPEG). */
   png: Buffer;
   employeeId: string;
   employeeName?: string;
   pseudonym?: string;
   capturedAt?: Date;
+  /** File extension without dot — png | jpg */
+  ext?: "png" | "jpg";
 };
 
 export type SavedScreenshot = {
@@ -74,7 +77,8 @@ export async function saveGuardScreenshot(
     ? input.capturedAt
     : new Date();
   const { dateFolder, stamp } = formatCaptureParts(when);
-  const fileName = `${name}_${pseudo}_${stamp}.png`;
+  const ext = input.ext === "jpg" ? "jpg" : "png";
+  const fileName = `${name}_${pseudo}_${stamp}.${ext}`;
   const dir = path.join(GUARD_SCREENSHOTS_ROOT, employeeId, dateFolder);
   await fs.mkdir(dir, { recursive: true });
   const absolutePath = path.join(dir, fileName);
@@ -104,19 +108,32 @@ export type ScreenshotFileRow = {
   capturedAt: string;
 };
 
+function isScreenshotImageName(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return (
+    lower.endsWith(".png") ||
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg")
+  );
+}
+
+function stripImageExt(fileName: string): string {
+  return fileName.replace(/\.(png|jpe?g)$/i, "");
+}
+
 function parseNameParts(fileName: string): {
   name: string | null;
   pseudonym: string | null;
 } {
-  // SafeName_SafePseudo_yyyy-MM-dd_HH-mm-ss.png
-  const base = fileName.replace(/\.png$/i, "");
+  // SafeName_SafePseudo_yyyy-MM-dd_HH-mm-ss.(png|jpg)
+  const base = stripImageExt(fileName);
   const m = base.match(/^(.+)_(.+)_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})$/);
   if (!m) return { name: null, pseudonym: null };
   return { name: m[1], pseudonym: m[2] };
 }
 
 function capturedAtFromName(fileName: string, mtimeMs: number): string {
-  const base = fileName.replace(/\.png$/i, "");
+  const base = stripImageExt(fileName);
   const m = base.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})$/);
   if (m) {
     return `${m[1]}T${m[2]}:${m[3]}:${m[4]}`;
@@ -152,7 +169,7 @@ export async function listScreenshotEmployees(): Promise<
           { withFileTypes: true }
         );
         for (const f of files) {
-          if (!f.isFile() || !f.name.toLowerCase().endsWith(".png")) continue;
+          if (!f.isFile() || !isScreenshotImageName(f.name)) continue;
           count += 1;
           const st = await fs.stat(
             path.join(GUARD_SCREENSHOTS_ROOT, employeeId, d.name, f.name)
@@ -268,7 +285,7 @@ export async function listScreenshotsForEmployee(
         continue;
       }
       for (const f of files) {
-        if (!f.isFile() || !f.name.toLowerCase().endsWith(".png")) continue;
+        if (!f.isFile() || !isScreenshotImageName(f.name)) continue;
         const abs = path.join(dir, f.name);
         let st: Awaited<ReturnType<typeof fs.stat>>;
         try {
@@ -344,7 +361,7 @@ export async function deleteScreenshotsForDay(
     const files = await fs.readdir(dir, { withFileTypes: true });
     let n = 0;
     for (const f of files) {
-      if (!f.isFile() || !f.name.toLowerCase().endsWith(".png")) continue;
+      if (!f.isFile() || !isScreenshotImageName(f.name)) continue;
       await fs.unlink(path.join(dir, f.name));
       n += 1;
     }
@@ -392,7 +409,7 @@ export async function resolveScreenshotFile(
   if (!realFile.startsWith(realRoot + path.sep) && realFile !== realRoot) {
     throw new Error("Invalid path");
   }
-  if (!realFile.toLowerCase().endsWith(".png")) {
+  if (!isScreenshotImageName(path.basename(realFile))) {
     throw new Error("Invalid path");
   }
   return realFile;

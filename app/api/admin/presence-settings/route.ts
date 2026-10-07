@@ -81,6 +81,18 @@ export async function PUT(req: NextRequest) {
           : typeof body.screenshotIntervalSeconds === "string"
             ? parseInt(body.screenshotIntervalSeconds, 10)
             : undefined,
+      screenshotJpegQuality:
+        typeof body.screenshotJpegQuality === "number"
+          ? body.screenshotJpegQuality
+          : typeof body.screenshotJpegQuality === "string"
+            ? parseInt(body.screenshotJpegQuality, 10)
+            : undefined,
+      screenshotScalePercent:
+        typeof body.screenshotScalePercent === "number"
+          ? body.screenshotScalePercent
+          : typeof body.screenshotScalePercent === "string"
+            ? parseInt(body.screenshotScalePercent, 10)
+            : undefined,
       agentHrmBaseUrl:
         typeof body.agentHrmBaseUrl === "string"
           ? body.agentHrmBaseUrl.trim()

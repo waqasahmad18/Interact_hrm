@@ -24,18 +24,58 @@ function formatDuration(totalSeconds: number) {
   return `${minutes} min ${seconds} sec`;
 }
 
+type QualityPreset = {
+  id: string;
+  label: string;
+  hint: string;
+  quality: number;
+  scale: number;
+};
+
+const QUALITY_PRESETS: QualityPreset[] = [
+  {
+    id: "high",
+    label: "High",
+    hint: "Best clarity · larger files",
+    quality: 80,
+    scale: 100,
+  },
+  {
+    id: "medium",
+    label: "Medium",
+    hint: "Balanced · recommended",
+    quality: 55,
+    scale: 70,
+  },
+  {
+    id: "low",
+    label: "Low",
+    hint: "Smallest files · less detail",
+    quality: 40,
+    scale: 50,
+  },
+];
+
+function matchPreset(quality: number, scale: number): string | "custom" {
+  const hit = QUALITY_PRESETS.find((p) => p.quality === quality && p.scale === scale);
+  return hit?.id ?? "custom";
+}
+
 /**
- * Auto screenshot enable + interval — lives on Guard Screenshots gallery only.
+ * Auto screenshot enable + interval + image quality — gallery page only.
  * Does not touch Presence Idle / face-verify settings.
  */
 export default function GuardScreenshotSettings() {
   const [enabled, setEnabled] = React.useState(false);
   const [minutes, setMinutes] = React.useState(5);
   const [seconds, setSeconds] = React.useState(0);
+  const [jpegQuality, setJpegQuality] = React.useState(55);
+  const [scalePercent, setScalePercent] = React.useState(70);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
   const total = combineSeconds(minutes, seconds);
+  const presetId = matchPreset(jpegQuality, scalePercent);
 
   const applyInterval = React.useCallback((totalSeconds: number) => {
     const parts = splitSeconds(Math.max(5, totalSeconds));
@@ -54,6 +94,12 @@ export default function GuardScreenshotSettings() {
       }
       setEnabled(!!data.settings.screenshotCaptureEnabled);
       applyInterval(data.settings.screenshotIntervalSeconds ?? 300);
+      setJpegQuality(
+        Math.min(95, Math.max(10, Number(data.settings.screenshotJpegQuality) || 55))
+      );
+      setScalePercent(
+        Math.min(100, Math.max(25, Number(data.settings.screenshotScalePercent) || 70))
+      );
     } catch {
       toastError("Network error loading screenshot settings");
     } finally {
@@ -74,6 +120,8 @@ export default function GuardScreenshotSettings() {
         body: JSON.stringify({
           screenshotCaptureEnabled: enabled,
           screenshotIntervalSeconds: Math.min(3600, Math.max(5, total || 5)),
+          screenshotJpegQuality: Math.min(95, Math.max(10, jpegQuality || 55)),
+          screenshotScalePercent: Math.min(100, Math.max(25, scalePercent || 70)),
         }),
         cache: "no-store",
       });
@@ -84,6 +132,12 @@ export default function GuardScreenshotSettings() {
       }
       setEnabled(!!data.settings?.screenshotCaptureEnabled);
       applyInterval(data.settings?.screenshotIntervalSeconds ?? total);
+      setJpegQuality(
+        Math.min(95, Math.max(10, Number(data.settings?.screenshotJpegQuality) || jpegQuality))
+      );
+      setScalePercent(
+        Math.min(100, Math.max(25, Number(data.settings?.screenshotScalePercent) || scalePercent))
+      );
       toastSuccess("Screenshot settings saved. Agents pick up within a few seconds.");
     } catch {
       toastError("Network error saving screenshot settings");
@@ -111,7 +165,7 @@ export default function GuardScreenshotSettings() {
         <span className={styles.toggleText}>
           <span className={styles.toggleTitle}>Auto screenshots (Interact Guard)</span>
           <span className={styles.toggleHint}>
-            When on, Guard agents upload full-screen captures on the interval below.
+            When on, Guard agents upload screen captures on the interval below.
             Save, then agents pick it up within a few seconds.
           </span>
         </span>
@@ -158,6 +212,78 @@ export default function GuardScreenshotSettings() {
               onClick={() => applyInterval(sec)}
             >
               {formatDuration(sec)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.block}>
+        <h3 className={styles.blockTitle}>Image quality (saves disk space)</h3>
+        <p className={styles.tip} style={{ marginBottom: 8 }}>
+          Lower quality / scale = smaller JPEG files. Needs Guard agent{" "}
+          <strong>1.2.47+</strong>.
+        </p>
+        <div className={styles.chips} style={{ marginBottom: 10 }}>
+          {QUALITY_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`${styles.chip}${presetId === p.id ? ` ${styles.chipActive}` : ""}`}
+              disabled={disabled || !enabled}
+              title={p.hint}
+              onClick={() => {
+                setJpegQuality(p.quality);
+                setScalePercent(p.scale);
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.durationRow}>
+          <div className={styles.field} style={{ minWidth: 140 }}>
+            <label htmlFor="shot-jpeg-q">JPEG quality</label>
+            <input
+              id="shot-jpeg-q"
+              type="number"
+              min={10}
+              max={95}
+              value={jpegQuality}
+              disabled={disabled || !enabled}
+              onChange={(e) =>
+                setJpegQuality(Math.min(95, Math.max(10, Number(e.target.value) || 10)))
+              }
+            />
+          </div>
+          <div className={styles.field} style={{ minWidth: 140 }}>
+            <label htmlFor="shot-scale">Scale %</label>
+            <input
+              id="shot-scale"
+              type="number"
+              min={25}
+              max={100}
+              step={5}
+              value={scalePercent}
+              disabled={disabled || !enabled}
+              onChange={(e) =>
+                setScalePercent(Math.min(100, Math.max(25, Number(e.target.value) || 25)))
+              }
+            />
+          </div>
+          <span className={styles.total}>
+            Q{jpegQuality} · {scalePercent}%
+          </span>
+        </div>
+        <div className={styles.chips} style={{ marginTop: 8 }}>
+          {[100, 75, 70, 50, 40, 25].map((pct) => (
+            <button
+              key={pct}
+              type="button"
+              className={`${styles.chip}${scalePercent === pct ? ` ${styles.chipActive}` : ""}`}
+              disabled={disabled || !enabled}
+              onClick={() => setScalePercent(pct)}
+            >
+              {pct}%
             </button>
           ))}
         </div>

@@ -36,6 +36,10 @@ export type PresenceSettings = {
   screenshotCaptureEnabled: boolean;
   /** Seconds between Guard auto screenshots (5–3600). */
   screenshotIntervalSeconds: number;
+  /** JPEG quality 10–95 — lower = smaller files. Synced to Guard agents. */
+  screenshotJpegQuality: number;
+  /** Capture scale 25–100% of screen pixels — lower = smaller files. */
+  screenshotScalePercent: number;
   /**
    * HRM base URL agents should use (set on admin page; synced via heartbeat).
    * Example staging: https://192.168.10.6:8443
@@ -54,6 +58,8 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   enabledEmployeeIds: [],
   screenshotCaptureEnabled: false,
   screenshotIntervalSeconds: 60,
+  screenshotJpegQuality: 55,
+  screenshotScalePercent: 70,
   agentHrmBaseUrl: "https://192.168.10.6:8443",
 };
 
@@ -68,6 +74,8 @@ const KEYS = {
   enabledEmployeeIds: "presence_enabled_employee_ids",
   screenshotCaptureEnabled: "presence_screenshot_capture_enabled",
   screenshotIntervalSeconds: "presence_screenshot_interval_seconds",
+  screenshotJpegQuality: "presence_screenshot_jpeg_quality",
+  screenshotScalePercent: "presence_screenshot_scale_percent",
   agentHrmBaseUrl: "presence_agent_hrm_base_url",
 } as const;
 
@@ -152,6 +160,8 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     enabledEmployeeIds,
     screenshotCaptureEnabled,
     screenshotIntervalSeconds,
+    screenshotJpegQuality,
+    screenshotScalePercent,
     agentHrmBaseUrl,
   ] = await Promise.all([
     getRaw(KEYS.agentsRetired),
@@ -164,6 +174,8 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.enabledEmployeeIds),
     getRaw(KEYS.screenshotCaptureEnabled),
     getRaw(KEYS.screenshotIntervalSeconds),
+    getRaw(KEYS.screenshotJpegQuality),
+    getRaw(KEYS.screenshotScalePercent),
     getRaw(KEYS.agentHrmBaseUrl),
   ]);
 
@@ -198,6 +210,18 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       d.screenshotIntervalSeconds,
       5,
       3600
+    ),
+    screenshotJpegQuality: parseIntClamped(
+      screenshotJpegQuality,
+      d.screenshotJpegQuality,
+      10,
+      95
+    ),
+    screenshotScalePercent: parseIntClamped(
+      screenshotScalePercent,
+      d.screenshotScalePercent,
+      25,
+      100
     ),
     agentHrmBaseUrl: sanitizeHrmBaseUrl(agentHrmBaseUrl, d.agentHrmBaseUrl),
   };
@@ -271,6 +295,18 @@ export async function savePresenceSettings(
       5,
       3600
     ),
+    screenshotJpegQuality: parseIntClamped(
+      String(input.screenshotJpegQuality ?? current.screenshotJpegQuality),
+      current.screenshotJpegQuality,
+      10,
+      95
+    ),
+    screenshotScalePercent: parseIntClamped(
+      String(input.screenshotScalePercent ?? current.screenshotScalePercent),
+      current.screenshotScalePercent,
+      25,
+      100
+    ),
     agentHrmBaseUrl: sanitizeHrmBaseUrl(
       typeof input.agentHrmBaseUrl === "string"
         ? input.agentHrmBaseUrl
@@ -296,6 +332,8 @@ export async function savePresenceSettings(
       next.screenshotCaptureEnabled ? "true" : "false"
     ),
     setRaw(KEYS.screenshotIntervalSeconds, String(next.screenshotIntervalSeconds)),
+    setRaw(KEYS.screenshotJpegQuality, String(next.screenshotJpegQuality)),
+    setRaw(KEYS.screenshotScalePercent, String(next.screenshotScalePercent)),
     setRaw(KEYS.agentHrmBaseUrl, next.agentHrmBaseUrl),
   ]);
 

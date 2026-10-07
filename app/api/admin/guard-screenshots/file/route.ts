@@ -33,11 +33,16 @@ export async function GET(req: NextRequest) {
     const abs = await resolveScreenshotFile(rel);
     const buf = await fs.readFile(abs);
     const fileName = path.basename(abs);
+    const lower = fileName.toLowerCase();
+    const contentType =
+      lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+        ? "image/jpeg"
+        : "image/png";
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
-        "Content-Type": "image/png",
+        "Content-Type": contentType,
         // Short private cache so flipping pages feels snappy; files stay on disk.
         "Cache-Control": download
           ? "private, no-store"
