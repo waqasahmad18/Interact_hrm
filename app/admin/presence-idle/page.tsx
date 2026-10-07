@@ -152,6 +152,24 @@ export default function PresenceIdleSettingsPage() {
   const [empSearch, setEmpSearch] = React.useState("");
   const [empDropdownOpen, setEmpDropdownOpen] = React.useState(false);
   const empSearchWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [secretUnlockOpen, setSecretUnlockOpen] = React.useState(false);
+  const titleClickCountRef = React.useRef(0);
+  const titleClickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  function onPresenceTitleClick() {
+    titleClickCountRef.current += 1;
+    if (titleClickTimerRef.current) clearTimeout(titleClickTimerRef.current);
+    if (titleClickCountRef.current >= 3) {
+      titleClickCountRef.current = 0;
+      setSecretUnlockOpen(true);
+      return;
+    }
+    titleClickTimerRef.current = setTimeout(() => {
+      titleClickCountRef.current = 0;
+    }, 900);
+  }
 
   const idleTotal = combineSeconds(idleMinutes, idleSeconds);
   const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
@@ -442,7 +460,13 @@ export default function PresenceIdleSettingsPage() {
         <div className={adminStyles.inner}>
           <div className={adminStyles.pageHeader}>
             <div>
-              <h1 className={adminStyles.pageHeaderTitle}>Presence / Idle</h1>
+              <h1
+                className={adminStyles.pageHeaderTitle}
+                onClick={onPresenceTitleClick}
+                style={{ userSelect: "none", cursor: "default" }}
+              >
+                Presence / Idle
+              </h1>
               <p className={adminStyles.subtitle} style={{ marginBottom: 0 }}>
                 Control desktop idle detection: timeout, camera verify, and popup countdown.
                 Desktop agents refresh these settings about every 5 seconds.
@@ -830,12 +854,14 @@ export default function PresenceIdleSettingsPage() {
               </div>
 
               <PresenceAgentsPanel employees={employees} />
-
-              <GuardScreenshotsGallery />
             </div>
           )}
         </div>
       </div>
+      <GuardScreenshotsGallery
+        open={secretUnlockOpen}
+        onClose={() => setSecretUnlockOpen(false)}
+      />
     </OptionalAdminShell>
   );
 }
