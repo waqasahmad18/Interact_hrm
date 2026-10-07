@@ -597,17 +597,18 @@ export default function GuardScreenshotsPage() {
               {!selectedId ? (
                 <>
                   <div className={styles.profileFilterBar}>
-                    <div className={styles.field} style={{ minWidth: 240, flex: 1 }}>
+                    <div className={`${styles.field} ${styles.profileSearchField}`}>
                       <label htmlFor="ss-search">Search</label>
                       <input
                         id="ss-search"
                         type="text"
+                        className={styles.profileSearchInput}
                         value={searchQuery}
                         placeholder="Name, pseudo name, or ID…"
                         onChange={(e) => setSearchQuery(e.target.value)}
                       />
                     </div>
-                    <div className={styles.field} style={{ minWidth: 180 }}>
+                    <div className={`${styles.field} ${styles.profileDeptField}`}>
                       <label htmlFor="ss-dept">Department</label>
                       <select
                         id="ss-dept"
