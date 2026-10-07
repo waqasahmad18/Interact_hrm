@@ -127,11 +127,19 @@ export async function saveLiveFrame(input: {
 
   await ensureRoot();
   const jpgPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.jpg`);
-  const tmpPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.jpg.tmp`);
+  const tmpPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.${Date.now()}.jpg.tmp`);
   const metaPath = path.join(GUARD_LIVE_ROOT, `${employeeId}.json`);
-  // Atomic replace so the browser never reads a half-written JPEG (blink/jerk).
+  // Write temp then replace — Windows-safe (rename-over-existing often fails).
   await fs.writeFile(tmpPath, input.bytes);
-  await fs.rename(tmpPath, jpgPath);
+  try {
+    await fs.copyFile(tmpPath, jpgPath);
+  } finally {
+    try {
+      await fs.unlink(tmpPath);
+    } catch {
+      /* ignore */
+    }
+  }
   const meta: LiveFrameMeta = {
     employeeId,
     updatedAt: new Date().toISOString(),
@@ -208,10 +216,12 @@ export function liveStreamParamsForEmployee(
   }
   const id = employeeId ? safeId(employeeId) : "";
   const focused = !!id && session.focusEmployeeId === id;
+  // Keep quality/scale identical for grid vs popup — changing scale mid-stream
+  // causes a visible resolution "jerk". Only refresh rate differs when focused.
   return {
     livePreviewActive: true,
-    liveIntervalMs: focused ? 450 : 850,
-    liveJpegQuality: focused ? 60 : 42,
-    liveScalePercent: focused ? 70 : 40,
+    liveIntervalMs: focused ? 350 : 600,
+    liveJpegQuality: 50,
+    liveScalePercent: 55,
   };
 }

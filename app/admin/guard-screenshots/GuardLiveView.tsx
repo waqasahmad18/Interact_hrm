@@ -27,52 +27,145 @@ type Props = {
 };
 
 function frameUrl(employeeId: string, updatedAt: string) {
-  // Bust cache only when the server frame actually changed — avoids useless reloads.
   return `/api/admin/guard-live/frame?employeeId=${encodeURIComponent(employeeId)}&v=${encodeURIComponent(updatedAt)}`;
 }
 
 /**
- * Keep the last good frame visible while the next JPEG loads (no blank blink).
+ * Canvas painter — never blanks the surface. New JPEG is drawn only after decode.
+ * This removes the <img src> swap flash that still caused jerk after preload.
  */
-function SmoothLiveImg({
+function SmoothLiveCanvas({
   employeeId,
   updatedAt,
-  alt,
   className,
+  fit = "contain",
 }: {
   employeeId: string;
   updatedAt: string;
-  alt: string;
   className: string;
+  fit?: "contain" | "cover";
 }) {
-  const [displaySrc, setDisplaySrc] = React.useState<string | null>(null);
-  const lastAtRef = React.useRef<string>("");
-  const loadGen = React.useRef(0);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const lastAtRef = React.useRef("");
+  const hasFrameRef = React.useRef(false);
+  const [ready, setReady] = React.useState(false);
+  const genRef = React.useRef(0);
+
+  const paint = React.useCallback(
+    (bitmap: ImageBitmap | HTMLImageElement) => {
+      const canvas = canvasRef.current;
+      const wrap = wrapRef.current;
+      if (!canvas || !wrap) return;
+      const cssW = Math.max(1, Math.floor(wrap.clientWidth));
+      const cssH = Math.max(1, Math.floor(wrap.clientHeight));
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const pw = Math.max(1, Math.floor(cssW * dpr));
+      const ph = Math.max(1, Math.floor(cssH * dpr));
+      if (canvas.width !== pw || canvas.height !== ph) {
+        canvas.width = pw;
+        canvas.height = ph;
+      }
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      // Keep previous pixels until we draw — never clear to black mid-frame.
+      const iw = "width" in bitmap ? bitmap.width : (bitmap as HTMLImageElement).naturalWidth;
+      const ih = "height" in bitmap ? bitmap.height : (bitmap as HTMLImageElement).naturalHeight;
+      if (!iw || !ih) return;
+      let dw = pw;
+      let dh = ph;
+      let dx = 0;
+      let dy = 0;
+      const scale =
+        fit === "cover"
+          ? Math.max(pw / iw, ph / ih)
+          : Math.min(pw / iw, ph / ih);
+      dw = iw * scale;
+      dh = ih * scale;
+      dx = (pw - dw) / 2;
+      dy = (ph - dh) / 2;
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, pw, ph);
+      ctx.drawImage(bitmap as CanvasImageSource, dx, dy, dw, dh);
+      hasFrameRef.current = true;
+      setReady(true);
+    },
+    [fit]
+  );
 
   React.useEffect(() => {
     if (!updatedAt || updatedAt === lastAtRef.current) return;
+    const gen = ++genRef.current;
     const url = frameUrl(employeeId, updatedAt);
-    const gen = ++loadGen.current;
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = () => {
-      if (gen !== loadGen.current) return;
-      lastAtRef.current = updatedAt;
-      setDisplaySrc(url);
-    };
-    img.onerror = () => {
-      /* keep previous frame */
-    };
-    img.src = url;
-  }, [employeeId, updatedAt]);
+    let cancelled = false;
+    let objectUrl: string | null = null;
 
-  if (!displaySrc) {
-    return <span className={styles.liveTileWait}>Waiting for stream…</span>;
-  }
+    (async () => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok || cancelled || gen !== genRef.current) return;
+        const blob = await res.blob();
+        if (cancelled || gen !== genRef.current) return;
+        objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.decoding = "async";
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("decode"));
+          img.src = objectUrl!;
+        });
+        if (cancelled || gen !== genRef.current) return;
+        if (typeof createImageBitmap === "function") {
+          try {
+            const bmp = await createImageBitmap(img);
+            if (cancelled || gen !== genRef.current) {
+              bmp.close();
+              return;
+            }
+            paint(bmp);
+            bmp.close();
+          } catch {
+            paint(img);
+          }
+        } else {
+          paint(img);
+        }
+        lastAtRef.current = updatedAt;
+      } catch {
+        /* keep last painted frame */
+      } finally {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, updatedAt, paint]);
+
+  React.useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const ro = new ResizeObserver(() => {
+      // Re-paint isn't needed for size-only — next frame will fit. Avoid flicker.
+    });
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, []);
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={displaySrc} alt={alt} className={className} decoding="async" />
+    <div ref={wrapRef} className={styles.liveCanvasWrap}>
+      <canvas
+        ref={canvasRef}
+        className={className}
+        aria-label="Live screen"
+      />
+      {!ready ? (
+        <span className={styles.liveTileWait}>Waiting for stream…</span>
+      ) : null}
+    </div>
   );
 }
 
@@ -81,8 +174,6 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
   const [frames, setFrames] = React.useState<Record<string, FrameMeta>>({});
   const [focusId, setFocusId] = React.useState<string | null>(null);
   const [starting, setStarting] = React.useState(false);
-  const framesRef = React.useRef(frames);
-  framesRef.current = frames;
 
   const stop = React.useCallback(async () => {
     try {
@@ -149,7 +240,7 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
           let changed = false;
           for (const f of nextList) {
             const old = prev[f.employeeId];
-            if (!old || old.updatedAt !== f.updatedAt || old.size !== f.size) {
+            if (!old || old.updatedAt !== f.updatedAt) {
               next[f.employeeId] = f;
               changed = true;
             }
@@ -160,8 +251,7 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
         /* retry */
       } finally {
         if (!cancelled) {
-          // Slightly slower grid poll = less thrash; popup stays snappier.
-          const delay = focusId ? 400 : 700;
+          const delay = focusId ? 320 : 550;
           timer = setTimeout(() => void poll(), delay);
         }
       }
@@ -242,10 +332,9 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
                 </div>
                 <div className={styles.liveTileStage}>
                   {meta ? (
-                    <SmoothLiveImg
+                    <SmoothLiveCanvas
                       employeeId={p.employeeId}
                       updatedAt={meta.updatedAt}
-                      alt={p.name}
                       className={styles.liveTileImg}
                     />
                   ) : (
@@ -293,12 +382,13 @@ export default function GuardLiveView({ profiles, onClose }: Props) {
             </div>
             <div className={styles.modalBody}>
               {focusMeta ? (
-                <SmoothLiveImg
-                  employeeId={focusId}
-                  updatedAt={focusMeta.updatedAt}
-                  alt="Live screen"
-                  className={styles.modalImg}
-                />
+                <div className={styles.liveFocusStage}>
+                  <SmoothLiveCanvas
+                    employeeId={focusId}
+                    updatedAt={focusMeta.updatedAt}
+                    className={styles.liveFocusCanvas}
+                  />
+                </div>
               ) : (
                 <p className={styles.tip}>Waiting for live frames…</p>
               )}
