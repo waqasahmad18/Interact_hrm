@@ -901,13 +901,15 @@ export default function GuardScreenshotsPage() {
                     Close
                   </button>
                 </div>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={fileUrl(viewPath)}
-                  alt="Screenshot"
-                  className={styles.modalImg}
-                />
-                <p className={styles.tip}>{viewPath}</p>
+                <div className={styles.modalBody}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={fileUrl(viewPath)}
+                    alt="Screenshot"
+                    className={styles.modalImg}
+                  />
+                  <p className={styles.tip}>{viewPath}</p>
+                </div>
               </div>
             </div>
           ) : null}
