@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import { execFile } from "node:child_process";
 import path from "node:path";
 import fs from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 const MAX_BYTES = 15 * 1024 * 1024;
 const TEXT_CACHE_ROOT = path.join(process.cwd(), "uploads", "guard-screenshot-text");
 const MODES = new Set(["summary", "raw", "clean", "paragraph"]);
-const LANGS = new Set(["eng", "urd", "eng+urd"]);
 
 type ScanResult = {
   text: string;
@@ -55,15 +54,51 @@ async function writeCache(relativePath: string, imageMtimeMs: number, text: stri
   );
 }
 
-function loadScanner(): {
-  scanImageBuffer: (
-    data: Buffer,
-    filename: string,
-    opts?: { mode?: string; lang?: string; fallbackToOcr?: boolean }
-  ) => Promise<ScanResult>;
-} {
-  const require = createRequire(path.join(process.cwd(), "package.json"));
-  return require(path.join(process.cwd(), "image-to-text", "lib", "scanImage.js"));
+function scanInChild(absPath: string): Promise<ScanResult> {
+  const script = path.join(process.cwd(), "image-to-text", "run-scan.js");
+  return new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      ["--max-old-space-size=192", script, absPath],
+      {
+        cwd: process.cwd(),
+        env: process.env,
+        timeout: 28000,
+        maxBuffer: 1024 * 1024,
+      },
+      (err, stdout) => {
+        const raw = String(stdout || "").trim();
+        try {
+          const parsed = JSON.parse(raw) as {
+            ok?: boolean;
+            text?: string;
+            provider?: string;
+            error?: string;
+          };
+          if (!parsed.ok) {
+            reject(new Error(parsed.error || "Scan failed"));
+            return;
+          }
+          resolve({
+            text: parsed.text || "",
+            mode: "summary",
+            provider: parsed.provider || "gemini",
+          });
+          return;
+        } catch {
+          /* child crashed before printing JSON */
+        }
+        const killed = Boolean(err && (err as NodeJS.ErrnoException & { killed?: boolean }).killed);
+        reject(
+          new Error(
+            killed
+              ? "Scan stopped because the server was low on memory. Try again."
+              : "Image to text failed. Try again."
+          )
+        );
+      }
+    );
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -91,9 +126,6 @@ export async function POST(req: NextRequest) {
     const mode = MODES.has(String(body?.mode || ""))
       ? String(body?.mode)
       : "summary";
-    const lang = LANGS.has(String(body?.lang || ""))
-      ? String(body?.lang)
-      : "eng";
 
     const abs = await resolveScreenshotFile(rel);
     const stat = await fs.stat(abs);
@@ -118,13 +150,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const buf = await fs.readFile(abs);
-    const { scanImageBuffer } = loadScanner();
-    const scanned = await scanImageBuffer(buf, path.basename(abs), {
-      mode,
-      lang,
-      fallbackToOcr: false,
-    });
+    const scanned = await scanInChild(abs);
 
     if (mode === "summary" && scanned.text) {
       await writeCache(rel, stat.mtimeMs, scanned.text);

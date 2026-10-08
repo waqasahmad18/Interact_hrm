@@ -6,7 +6,6 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { createWorker } = require("tesseract.js");
 const { cleanOcrText } = require("./cleanText");
 const { summarizeImage, loadEnvFile } = require("./summarize");
 
@@ -28,6 +27,7 @@ async function shrinkForSummary(data, filename) {
 }
 
 async function ocrBuffer(data, filename, lang, mode) {
+  const { createWorker } = require("tesseract.js");
   const worker = await createWorker(lang, 1, { logger: () => {} });
   const ext = path.extname(filename || "").toLowerCase();
   const safeExt = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"].includes(ext)

@@ -479,7 +479,9 @@ export default function GuardScreenshotsPage() {
           data?.error ||
             (res.status === 504
               ? "Scan timed out. Try again."
-              : "Image to text failed")
+              : res.status === 502
+                ? "The server restarted during the scan. Try again."
+                : "Image to text failed")
         );
         return;
       }
