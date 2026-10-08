@@ -8,6 +8,7 @@ import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
 import GuardLiveView from "./GuardLiveView";
+import GuardAppActivityPanel from "./GuardAppActivityPanel";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type ShotSummary = {
@@ -217,6 +218,7 @@ export default function GuardScreenshotsPage() {
   const [busy, setBusy] = React.useState(false);
   const [viewPath, setViewPath] = React.useState<string | null>(null);
   const [liveMode, setLiveMode] = React.useState(false);
+  const [activityMode, setActivityMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -607,6 +609,8 @@ export default function GuardScreenshotsPage() {
                   }))}
                   onClose={() => setLiveMode(false)}
                 />
+              ) : activityMode ? (
+                <GuardAppActivityPanel onBack={() => setActivityMode(false)} />
               ) : !selectedId ? (
                 <>
                   <div className={styles.profileFilterBar}>
@@ -646,6 +650,13 @@ export default function GuardScreenshotsPage() {
                       onClick={() => setLiveMode(true)}
                     >
                       Live screens
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      onClick={() => setActivityMode(true)}
+                    >
+                      App activity
                     </button>
                   </div>
 
