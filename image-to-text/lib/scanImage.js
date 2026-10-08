@@ -18,8 +18,8 @@ async function shrinkForSummary(data, filename) {
     const sharp = require("sharp");
     const out = await sharp(data, { failOn: "none", limitInputPixels: 80_000_000 })
       .rotate()
-      .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 60 })
+      .resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 42 })
       .toBuffer();
     return { data: out, filename: "scan.jpg" };
   } catch {

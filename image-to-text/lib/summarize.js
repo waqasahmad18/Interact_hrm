@@ -7,16 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SUMMARY_PROMPT = `You are helping someone understand a screenshot.
-
-Write 1 or 2 short paragraphs in simple clear English explaining what this image is about.
-Rules:
-- Focus on the meaningful content (chat, plan, document text).
-- Ignore menu bars, file trees, icons, window chrome, and random symbols.
-- Do not invent details that are not in the image.
-- Keep language workplace-safe and neutral.
-- No bullet lists, no markdown headings, no code fences — paragraphs only.
-- If the chat mixes English and Roman Urdu, explain the meaning in English.`;
+const SUMMARY_PROMPT = `What is on this screenshot? Reply in 2 or 3 short sentences of plain English. Skip menus, icons, and window chrome. Do not invent details.`;
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, "..", ".env");
@@ -37,6 +28,33 @@ function loadEnvFile() {
   }
 }
 
+async function geminiGenerate(url, imagePart, generationConfig) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: SUMMARY_PROMPT }, imagePart] }],
+        generationConfig,
+      }),
+    });
+  } catch (err) {
+    if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new Error("Scan timed out before a summary came back. Try again.");
+    }
+    throw err;
+  }
+
+  const json = await res.json();
+  if (!res.ok) {
+    const msg = json.error?.message || "Gemini request failed";
+    throw new Error(`Gemini error: ${String(msg).slice(0, 240)}`);
+  }
+  return json;
+}
+
 function mimeFromName(filename) {
   const ext = path.extname(filename || "").toLowerCase();
   if (ext === ".png") return "image/png";
@@ -52,42 +70,33 @@ async function summarizeWithGemini(imageBuffer, mimeType) {
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
-  let res;
-  try {
-    res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(40000),
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: SUMMARY_PROMPT },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: imageBuffer.toString("base64"),
-              },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-  } catch (err) {
-    if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
-      throw new Error("Scan timed out before a summary came back. Try again.");
-    }
-    throw err;
-  }
+  const imagePart = {
+    inline_data: {
+      mime_type: mimeType,
+      data: imageBuffer.toString("base64"),
+    },
+  };
+  const fastConfig = {
+    temperature: 0.2,
+    maxOutputTokens: 160,
+    mediaResolution: "MEDIA_RESOLUTION_LOW",
+    thinkingConfig: { thinkingBudget: 0 },
+  };
 
-  const json = await res.json();
-  if (!res.ok) {
-    const msg = json.error?.message || "Gemini request failed";
-    throw new Error(`Gemini error: ${String(msg).slice(0, 240)}`);
+  let json;
+  try {
+    json = await geminiGenerate(url, imagePart, fastConfig);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/thinking|mediaResolution|thinkingBudget|Unknown name/i.test(msg)) throw err;
+    json = await geminiGenerate(url, imagePart, {
+      temperature: 0.2,
+      maxOutputTokens: 160,
+    });
   }
 
   const text = json.candidates?.[0]?.content?.parts
+    ?.filter((p) => p && !p.thought)
     ?.map((p) => p.text || "")
     .join("\n")
     .trim();

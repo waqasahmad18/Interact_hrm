@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 15 * 1024 * 1024;
+const TEXT_CACHE_ROOT = path.join(process.cwd(), "uploads", "guard-screenshot-text");
 const MODES = new Set(["summary", "raw", "clean", "paragraph"]);
 const LANGS = new Set(["eng", "urd", "eng+urd"]);
 
@@ -20,6 +21,39 @@ type ScanResult = {
   provider: string;
   note?: string;
 };
+
+function cachePathFor(relativePath: string): string {
+  const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.some((p) => p === "." || p === "..")) {
+    throw new Error("Invalid path");
+  }
+  const file = path.join(TEXT_CACHE_ROOT, ...parts) + ".json";
+  const root = path.resolve(TEXT_CACHE_ROOT);
+  const abs = path.resolve(file);
+  if (!abs.startsWith(root + path.sep)) throw new Error("Invalid path");
+  return abs;
+}
+
+async function readCache(relativePath: string, imageMtimeMs: number) {
+  try {
+    const raw = await fs.readFile(cachePathFor(relativePath), "utf8");
+    const saved = JSON.parse(raw) as { text?: string; mtimeMs?: number };
+    if (saved.mtimeMs !== imageMtimeMs || !saved.text) return null;
+    return saved.text;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCache(relativePath: string, imageMtimeMs: number, text: string) {
+  const file = cachePathFor(relativePath);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    JSON.stringify({ mtimeMs: imageMtimeMs, text }),
+    "utf8"
+  );
+}
 
 function loadScanner(): {
   scanImageBuffer: (
@@ -70,6 +104,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (mode === "summary") {
+      const cached = await readCache(rel, stat.mtimeMs);
+      if (cached) {
+        return NextResponse.json({
+          success: true,
+          text: cached,
+          mode: "summary",
+          provider: "cache",
+          note: null,
+          fileName: path.basename(abs),
+        });
+      }
+    }
+
     const buf = await fs.readFile(abs);
     const { scanImageBuffer } = loadScanner();
     const scanned = await scanImageBuffer(buf, path.basename(abs), {
@@ -77,6 +125,10 @@ export async function POST(req: NextRequest) {
       lang,
       fallbackToOcr: false,
     });
+
+    if (mode === "summary" && scanned.text) {
+      await writeCache(rel, stat.mtimeMs, scanned.text);
+    }
 
     return NextResponse.json({
       success: true,
