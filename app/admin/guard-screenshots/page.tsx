@@ -464,7 +464,7 @@ export default function GuardScreenshotsPage() {
       const res = await fetch("/api/admin/guard-screenshots/image-to-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: relativePath, mode: "summary" }),
+        body: JSON.stringify({ path: relativePath, mode: "lines" }),
       });
       const raw = await res.text();
       let data: { success?: boolean; error?: string; text?: string; note?: string } | null =
@@ -1108,7 +1108,7 @@ export default function GuardScreenshotsPage() {
                     className={styles.scanOutput}
                     readOnly
                     value={scanText}
-                    placeholder={scanBusy ? "Working…" : "Text will appear here."}
+                    placeholder={scanBusy ? "Reading the screenshot…" : "Extracted text will appear here."}
                     rows={14}
                   />
                 </div>

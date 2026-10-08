@@ -15,14 +15,15 @@ async function main() {
   if (!file) throw new Error("image path required");
   const buf = fs.readFileSync(file);
   const scanned = await scanImageBuffer(buf, path.basename(file), {
-    mode: "summary",
-    fallbackToOcr: false,
+    mode: "lines",
+    lang: "eng",
   });
   process.stdout.write(
     JSON.stringify({
       ok: true,
       text: scanned.text || "",
-      provider: scanned.provider || "gemini",
+      mode: scanned.mode || "lines",
+      provider: scanned.provider || "tesseract",
     }),
   );
 }

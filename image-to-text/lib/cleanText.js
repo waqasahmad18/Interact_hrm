@@ -61,8 +61,14 @@ function fixCommonOcrTypos(text) {
  */
 function cleanOcrText(raw, mode = "paragraph") {
   if (!raw) return "";
-  if (mode === "raw") {
-    return String(raw).replace(/\r\n/g, "\n").trim();
+  if (mode === "raw" || mode === "lines") {
+    return String(raw)
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .filter((line) => line.length > 0)
+      .join("\n")
+      .trim();
   }
 
   let text = String(raw).replace(/\r\n/g, "\n");

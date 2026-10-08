@@ -9,7 +9,9 @@ const path = require("path");
 const { cleanOcrText } = require("./cleanText");
 const { summarizeImage, loadEnvFile } = require("./summarize");
 
-const MODES = new Set(["summary", "raw", "clean", "paragraph"]);
+const MODES = new Set(["summary", "raw", "clean", "paragraph", "lines"]);
+const TESSDATA = path.join(__dirname, "..", "tessdata");
+const TESS_CACHE = path.join(process.cwd(), "uploads", "tesseract-cache");
 
 /** Full screenshots are multi‑MB PNGs. Shrink so the vision call returns inside the proxy timeout. */
 async function shrinkForSummary(data, filename) {
@@ -26,19 +28,36 @@ async function shrinkForSummary(data, filename) {
   }
 }
 
+async function prepareForOcr(data) {
+  try {
+    const sharp = require("sharp");
+    return await sharp(data, { failOn: "none", limitInputPixels: 80_000_000 })
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .grayscale()
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch {
+    return data;
+  }
+}
+
 async function ocrBuffer(data, filename, lang, mode) {
   const { createWorker } = require("tesseract.js");
-  const worker = await createWorker(lang, 1, { logger: () => {} });
-  const ext = path.extname(filename || "").toLowerCase();
-  const safeExt = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"].includes(ext)
-    ? ext
-    : ".png";
+  fs.mkdirSync(TESS_CACHE, { recursive: true });
+  const worker = await createWorker(lang, 1, {
+    logger: () => {},
+    cachePath: TESS_CACHE,
+    langPath: TESSDATA,
+    gzip: false,
+  });
+  const image = await prepareForOcr(data);
   const tmpFile = path.join(
     os.tmpdir(),
-    `hrm-i2t-${Date.now()}-${Math.random().toString(16).slice(2)}${safeExt}`,
+    `hrm-i2t-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`,
   );
   try {
-    fs.writeFileSync(tmpFile, data);
+    fs.writeFileSync(tmpFile, image);
     await worker.setParameters({
       tessedit_pageseg_mode: "6",
       preserve_interword_spaces: "1",

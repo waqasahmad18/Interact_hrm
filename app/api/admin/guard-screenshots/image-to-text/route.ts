@@ -12,8 +12,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const TEXT_CACHE_ROOT = path.join(process.cwd(), "uploads", "guard-screenshot-text");
-const MODES = new Set(["summary", "raw", "clean", "paragraph"]);
-
 type ScanResult = {
   text: string;
   mode: string;
@@ -26,7 +24,7 @@ function cachePathFor(relativePath: string): string {
   if (parts.some((p) => p === "." || p === "..")) {
     throw new Error("Invalid path");
   }
-  const file = path.join(TEXT_CACHE_ROOT, ...parts) + ".json";
+  const file = path.join(TEXT_CACHE_ROOT, ...parts) + ".ocr.json";
   const root = path.resolve(TEXT_CACHE_ROOT);
   const abs = path.resolve(file);
   if (!abs.startsWith(root + path.sep)) throw new Error("Invalid path");
@@ -59,11 +57,11 @@ function scanInChild(absPath: string): Promise<ScanResult> {
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
-      ["--max-old-space-size=192", script, absPath],
+        ["--max-old-space-size=448", script, absPath],
       {
         cwd: process.cwd(),
         env: process.env,
-        timeout: 28000,
+        timeout: 55000,
         maxBuffer: 1024 * 1024,
       },
       (err, stdout) => {
@@ -72,6 +70,7 @@ function scanInChild(absPath: string): Promise<ScanResult> {
           const parsed = JSON.parse(raw) as {
             ok?: boolean;
             text?: string;
+            mode?: string;
             provider?: string;
             error?: string;
           };
@@ -81,8 +80,8 @@ function scanInChild(absPath: string): Promise<ScanResult> {
           }
           resolve({
             text: parsed.text || "",
-            mode: "summary",
-            provider: parsed.provider || "gemini",
+            mode: parsed.mode || "lines",
+            provider: parsed.provider || "tesseract",
           });
           return;
         } catch {
@@ -112,8 +111,6 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json().catch(() => null)) as {
       path?: string;
-      mode?: string;
-      lang?: string;
     } | null;
     const rel = String(body?.path || "").trim();
     if (!rel) {
@@ -122,10 +119,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    const mode = MODES.has(String(body?.mode || ""))
-      ? String(body?.mode)
-      : "summary";
 
     const abs = await resolveScreenshotFile(rel);
     const stat = await fs.stat(abs);
@@ -136,23 +129,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (mode === "summary") {
-      const cached = await readCache(rel, stat.mtimeMs);
-      if (cached) {
-        return NextResponse.json({
-          success: true,
-          text: cached,
-          mode: "summary",
-          provider: "cache",
-          note: null,
-          fileName: path.basename(abs),
-        });
-      }
+    const cached = await readCache(rel, stat.mtimeMs);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        text: cached,
+        mode: "lines",
+        provider: "cache",
+        note: null,
+        fileName: path.basename(abs),
+      });
     }
 
     const scanned = await scanInChild(abs);
 
-    if (mode === "summary" && scanned.text) {
+    if (scanned.text) {
       await writeCache(rel, stat.mtimeMs, scanned.text);
     }
 
@@ -161,9 +152,7 @@ export async function POST(req: NextRequest) {
       text: scanned.text || "",
       mode: scanned.mode,
       provider: scanned.provider,
-      note: scanned.note
-        ? "Readable summary was unavailable, so local OCR text was used."
-        : null,
+      note: null,
       fileName: path.basename(abs),
     });
   } catch (err) {
