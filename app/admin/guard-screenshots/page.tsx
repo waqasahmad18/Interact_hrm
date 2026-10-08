@@ -466,9 +466,21 @@ export default function GuardScreenshotsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: relativePath, mode: "summary" }),
       });
-      const data = await res.json();
-      if (!data.success) {
-        setScanError(data.error || "Image to text failed");
+      const raw = await res.text();
+      let data: { success?: boolean; error?: string; text?: string; note?: string } | null =
+        null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+      if (!res.ok || !data?.success) {
+        setScanError(
+          data?.error ||
+            (res.status === 504
+              ? "Scan timed out. Try again."
+              : "Image to text failed")
+        );
         return;
       }
       setScanText(String(data.text || ""));

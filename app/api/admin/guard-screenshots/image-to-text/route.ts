@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     const scanned = await scanImageBuffer(buf, path.basename(abs), {
       mode,
       lang,
-      fallbackToOcr: true,
+      fallbackToOcr: false,
     });
 
     return NextResponse.json({
@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
       fileName: path.basename(abs),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Scan failed";
+    const raw = err instanceof Error ? err.message : "Scan failed";
+    const msg = raw.replace(/key=[^&\s]+/gi, "key=redacted").slice(0, 300);
     const status = msg === "Not found" || msg === "Invalid path" ? 404 : 500;
     return NextResponse.json({ success: false, error: msg }, { status });
   }

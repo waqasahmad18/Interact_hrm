@@ -12,6 +12,21 @@ const { summarizeImage, loadEnvFile } = require("./summarize");
 
 const MODES = new Set(["summary", "raw", "clean", "paragraph"]);
 
+/** Full screenshots are multi‑MB PNGs. Shrink so the vision call returns inside the proxy timeout. */
+async function shrinkForSummary(data, filename) {
+  try {
+    const sharp = require("sharp");
+    const out = await sharp(data, { failOn: "none", limitInputPixels: 80_000_000 })
+      .rotate()
+      .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 60 })
+      .toBuffer();
+    return { data: out, filename: "scan.jpg" };
+  } catch {
+    return { data, filename };
+  }
+}
+
 async function ocrBuffer(data, filename, lang, mode) {
   const worker = await createWorker(lang, 1, { logger: () => {} });
   const ext = path.extname(filename || "").toLowerCase();
@@ -51,7 +66,8 @@ async function scanImageBuffer(data, filename, opts = {}) {
 
   if (requested === "summary") {
     try {
-      const { text, provider } = await summarizeImage(data, filename);
+      const prepared = await shrinkForSummary(data, filename);
+      const { text, provider } = await summarizeImage(prepared.data, prepared.filename);
       return { text, mode: "summary", provider };
     } catch (err) {
       if (!opts.fallbackToOcr) throw err;

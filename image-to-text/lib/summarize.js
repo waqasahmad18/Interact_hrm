@@ -52,9 +52,12 @@ async function summarizeWithGemini(imageBuffer, mimeType) {
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
-  const res = await fetch(url, {
+  let res;
+  try {
+    res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(40000),
     body: JSON.stringify({
       contents: [
         {
@@ -71,11 +74,17 @@ async function summarizeWithGemini(imageBuffer, mimeType) {
       ],
     }),
   });
+  } catch (err) {
+    if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new Error("Scan timed out before a summary came back. Try again.");
+    }
+    throw err;
+  }
 
   const json = await res.json();
   if (!res.ok) {
-    const msg = json.error?.message || JSON.stringify(json);
-    throw new Error(`Gemini error: ${msg}`);
+    const msg = json.error?.message || "Gemini request failed";
+    throw new Error(`Gemini error: ${String(msg).slice(0, 240)}`);
   }
 
   const text = json.candidates?.[0]?.content?.parts
