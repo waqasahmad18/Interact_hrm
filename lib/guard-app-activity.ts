@@ -68,7 +68,8 @@ export async function ingestAppActivity(
   const appName = trim(input.appName, 255) || "Unknown";
   if (!employeeId) throw new Error("employee_id required");
 
-  const caption = trim(input.caption, 512) || null;
+  // Store caption as "" not NULL — IFNULL() breaks Mongo SQL adapter WHERE parsing.
+  const caption = trim(input.caption, 512) || "";
   const at = input.at && Number.isFinite(input.at.getTime()) ? input.at : new Date();
   const employeeName = trim(input.employeeName, 255) || null;
   const pseudonym = trim(input.pseudonym, 255) || null;
@@ -82,7 +83,7 @@ export async function ingestAppActivity(
     `SELECT id FROM guard_app_activity
      WHERE employee_id = ?
        AND app_name = ?
-       AND IFNULL(caption, '') = IFNULL(?, '')
+       AND caption = ?
        AND last_seen_at >= ?
      ORDER BY last_seen_at DESC
      LIMIT 1`,

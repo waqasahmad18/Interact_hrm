@@ -5,6 +5,14 @@ import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import { toastError } from "@/lib/app-toast";
 
+type SimEvent = {
+  ord: number;
+  token: string;
+  capturedAt: string;
+  appName: string;
+  windowTitle: string | null;
+};
+
 type Row = {
   id: number;
   batchId: string;
@@ -21,6 +29,9 @@ type Row = {
   keyboardIdleMs: number;
   periodStart: string;
   periodEnd: string;
+  isSimulation?: boolean;
+  simulationSequence?: string | null;
+  simulationEvents?: SimEvent[] | null;
 };
 
 function todayYmd() {
@@ -68,6 +79,7 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [appFilter, setAppFilter] = React.useState("");
+  const [simOnly, setSimOnly] = React.useState(false);
   const [dateFrom, setDateFrom] = React.useState(todayYmd());
   const [dateTo, setDateTo] = React.useState(todayYmd());
   const pageSize = 50;
@@ -84,6 +96,7 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
       if (appFilter.trim()) q.set("app", appFilter.trim());
       if (dateFrom) q.set("dateFrom", dateFrom);
       if (dateTo) q.set("dateTo", dateTo);
+      if (simOnly) q.set("simulationOnly", "1");
       const res = await fetch(`/api/admin/guard-keyboard-activity?${q}`, {
         cache: "no-store",
       });
@@ -103,7 +116,7 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, appFilter, dateFrom, dateTo]);
+  }, [page, search, appFilter, dateFrom, dateTo, simOnly]);
 
   React.useEffect(() => {
     void load();
@@ -122,8 +135,10 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
         <div>
           <h2 className={styles.detailTitle}>Keyboard activity</h2>
           <p className={styles.detailSub}>
-            Keystroke counts and typing/idle durations by app. No typed text,
-            passwords, or message content. Needs Guard <strong>1.2.50+</strong>.
+            Live metrics: keystroke <em>counts</em> + durations only.{" "}
+            <strong>TEST/SIMULATION</strong> rows store a synthetic token
+            sequence (not live OS typing) and show it under Keystrokes. Tray →{" "}
+            <em>TEST: Keyboard pipeline sim…</em>
           </p>
         </div>
         <button
@@ -144,7 +159,7 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
             type="text"
             className={styles.profileSearchInput}
             value={search}
-            placeholder="Name, pseudo, PC…"
+            placeholder="Name, pseudo, PC, sequence…"
             onChange={(e) => {
               setPage(1);
               setSearch(e.target.value);
@@ -157,7 +172,7 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
             id="kbd-app"
             type="text"
             value={appFilter}
-            placeholder="Discord, Excel…"
+            placeholder="InteractGuard.SIMULATION…"
             onChange={(e) => {
               setPage(1);
               setAppFilter(e.target.value);
@@ -189,6 +204,23 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
             }}
           />
         </div>
+        <div className={styles.field} style={{ justifyContent: "flex-end" }}>
+          <label
+            htmlFor="kbd-sim"
+            style={{ display: "flex", gap: 8, alignItems: "center" }}
+          >
+            <input
+              id="kbd-sim"
+              type="checkbox"
+              checked={simOnly}
+              onChange={(e) => {
+                setPage(1);
+                setSimOnly(e.target.checked);
+              }}
+            />
+            TEST/SIM only
+          </label>
+        </div>
       </div>
 
       <div className={styles.activityTableWrap}>
@@ -209,11 +241,21 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
                 <td colSpan={6} className={styles.tip}>
                   {loading
                     ? "Loading…"
-                    : "No keyboard metrics yet. Update agents to 1.2.50+ and turn Admin monitoring ON."}
+                    : "No rows yet. Run tray → TEST: Keyboard pipeline sim… or wait for live metrics (1.2.50+)."}
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
+              rows.map((r) => {
+                const simSeq =
+                  r.isSimulation &&
+                  (r.simulationSequence ||
+                    (r.simulationEvents?.length
+                      ? [...r.simulationEvents]
+                          .sort((a, b) => a.ord - b.ord)
+                          .map((e) => e.token)
+                          .join(" → ")
+                      : ""));
+                return (
                 <tr key={r.id}>
                   <td>
                     <div>{r.employeeName || `ID ${r.employeeId}`}</div>
@@ -222,6 +264,14 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
                         .filter(Boolean)
                         .join(" · ")}
                     </div>
+                    {r.isSimulation ? (
+                      <div className={styles.liveTileMeta}>
+                        <strong>TEST / SIMULATION</strong>
+                        {r.keyDownCount
+                          ? ` · ${r.keyDownCount} tokens`
+                          : null}
+                      </div>
+                    ) : null}
                   </td>
                   <td>
                     <strong>{r.appName}</strong>
@@ -229,7 +279,15 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
                       <div className={styles.liveTileMeta}>{r.appPath}</div>
                     ) : null}
                   </td>
-                  <td>{r.keyDownCount.toLocaleString()}</td>
+                  <td>
+                    {simSeq ? (
+                      <code style={{ fontSize: 12, whiteSpace: "normal" }}>
+                        {simSeq}
+                      </code>
+                    ) : (
+                      r.keyDownCount.toLocaleString()
+                    )}
+                  </td>
                   <td>{fmtDuration(r.typingActiveMs)}</td>
                   <td>{fmtDuration(r.keyboardIdleMs)}</td>
                   <td>
@@ -237,7 +295,8 @@ export default function GuardKeyboardActivityPanel({ onBack }: Props) {
                     <div className={styles.liveTileMeta}>→ {fmt(r.periodEnd)}</div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

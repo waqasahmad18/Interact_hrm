@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   findForbiddenKeyboardFields,
   ingestKeyboardActivity,
+  parseSimulationEvents,
   type KeyboardActivitySegment,
 } from "@/lib/guard-keyboard-activity";
 
@@ -27,8 +28,9 @@ function parseDate(v: unknown): Date | null {
 }
 
 /**
- * Guard agent posts aggregated keyboard metrics only (counts + durations by app).
- * Rejects any payload that includes typed text / key codes.
+ * Guard agent posts aggregated keyboard metrics (counts + durations).
+ * Optional TEST/SIMULATION: is_simulation=true + simulation_events (synthetic tokens only).
+ * Rejects real typed-text / key-code capture fields.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -43,6 +45,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const isSimulation =
+      body.is_simulation === true ||
+      body.isSimulation === true ||
+      String(body.mode ?? "").toUpperCase() === "TEST_SIMULATION";
 
     const employeeId =
       String(body.employee_id ?? body.employeeId ?? "").trim() ||
@@ -82,12 +89,40 @@ export async function POST(req: NextRequest) {
       const s = raw as Record<string, unknown>;
       const appName = String(s.app_name ?? s.appName ?? "").trim();
       if (!appName) continue;
+
+      const hasSimPayload =
+        s.simulation_events != null ||
+        s.simulationEvents != null ||
+        s.simulation_sequence != null ||
+        s.simulationSequence != null;
+      if (hasSimPayload && !isSimulation) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "simulation_events require is_simulation=true",
+          },
+          { status: 400 }
+        );
+      }
+
+      const simEvents = isSimulation
+        ? parseSimulationEvents(
+            s.simulation_events ?? s.simulationEvents,
+            appName
+          )
+        : null;
+
       segments.push({
         appName,
         appPath: String(s.app_path ?? s.appPath ?? "").trim() || null,
         keyDownCount: Number(s.key_down_count ?? s.keyDownCount ?? 0) || 0,
         typingActiveMs: Number(s.typing_active_ms ?? s.typingActiveMs ?? 0) || 0,
         keyboardIdleMs: Number(s.keyboard_idle_ms ?? s.keyboardIdleMs ?? 0) || 0,
+        simulationEvents: simEvents,
+        simulationSequence: isSimulation
+          ? String(s.simulation_sequence ?? s.simulationSequence ?? "").trim() ||
+            null
+          : null,
       });
     }
     if (!segments.length) {
@@ -100,6 +135,7 @@ export async function POST(req: NextRequest) {
     const result = await ingestKeyboardActivity({
       batchId,
       employeeId,
+      isSimulation,
       employeeName:
         String(body.employee_name ?? body.employeeName ?? "").trim() ||
         dec(req.headers.get("x-employee-name")) ||
@@ -120,7 +156,11 @@ export async function POST(req: NextRequest) {
       segments,
     });
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({
+      success: true,
+      is_simulation: isSimulation,
+      ...result,
+    });
   } catch (err) {
     console.error("[guard/keyboard-activity] ingest failed", err);
     return NextResponse.json(

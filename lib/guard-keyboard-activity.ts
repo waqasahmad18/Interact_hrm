@@ -1,6 +1,14 @@
 import type { Collection, Document, Filter } from "mongodb";
 import { mongoCollection } from "@/lib/mongo";
 
+export type SimulationEvent = {
+  ord: number;
+  token: string;
+  capturedAt: string;
+  appName: string;
+  windowTitle: string | null;
+};
+
 export type KeyboardActivityRow = {
   id: number;
   batchId: string;
@@ -17,6 +25,9 @@ export type KeyboardActivityRow = {
   keyboardIdleMs: number;
   periodStart: string;
   periodEnd: string;
+  isSimulation: boolean;
+  simulationSequence: string | null;
+  simulationEvents: SimulationEvent[] | null;
 };
 
 export type KeyboardActivitySegment = {
@@ -25,6 +36,8 @@ export type KeyboardActivitySegment = {
   keyDownCount: number;
   typingActiveMs: number;
   keyboardIdleMs: number;
+  simulationEvents?: SimulationEvent[] | null;
+  simulationSequence?: string | null;
 };
 
 export type IngestKeyboardActivityInput = {
@@ -37,6 +50,7 @@ export type IngestKeyboardActivityInput = {
   windowsUser?: string | null;
   periodStart: Date;
   periodEnd: Date;
+  isSimulation?: boolean;
   segments: KeyboardActivitySegment[];
 };
 
@@ -57,9 +71,18 @@ type KeyboardActivityDoc = Document & {
   period_start: Date;
   period_end: Date;
   created_at: Date;
+  is_simulation?: boolean;
+  simulation_sequence?: string | null;
+  simulation_events?: Array<{
+    ord: number;
+    token: string;
+    captured_at: string;
+    app_name: string;
+    window_title?: string | null;
+  }> | null;
 };
 
-/** Reject payloads that look like typed-text / key-code capture. */
+/** Reject payloads that look like real typed-text / key-code capture. */
 export const FORBIDDEN_KEYBOARD_BODY_KEYS = [
   "text",
   "typed_text",
@@ -78,6 +101,21 @@ export const FORBIDDEN_KEYBOARD_BODY_KEYS = [
   "messages",
   "content",
 ] as const;
+
+/** Tokens for TEST / controlled-app TextBox capture only (not OS-wide hooks). */
+function normalizeSimToken(raw: string): string | null {
+  const t = String(raw ?? "");
+  if (!t) return null;
+  if (t === " " || /^\[space\]$/i.test(t.trim())) return "[space]";
+  if (/^\[(?:enter|tab)\]$/i.test(t.trim())) return t.trim().toLowerCase();
+  const trimmed = t.trim();
+  // Single printable character (letter / digit / punctuation) from Guard's own TextBox
+  if ([...trimmed].length === 1) {
+    const code = trimmed.codePointAt(0) ?? 0;
+    if (code >= 32 && code !== 127) return trimmed;
+  }
+  return null;
+}
 
 export function findForbiddenKeyboardFields(
   body: Record<string, unknown>
@@ -100,6 +138,36 @@ export function findForbiddenKeyboardFields(
   return [...new Set(hit)];
 }
 
+/**
+ * Parse simulation_events only when is_simulation is true.
+ * Tokens are allow-listed synthetic labels — not captured key codes from OS hooks.
+ */
+export function parseSimulationEvents(
+  raw: unknown,
+  fallbackApp: string
+): SimulationEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SimulationEvent[] = [];
+  for (const item of raw.slice(0, 128)) {
+    if (!item || typeof item !== "object") continue;
+    const e = item as Record<string, unknown>;
+    const token = normalizeSimToken(String(e.token ?? ""));
+    if (!token) continue;
+    const ord = Math.max(0, Math.floor(Number(e.ord ?? out.length) || 0));
+    const captured =
+      String(e.captured_at ?? e.capturedAt ?? "").trim() ||
+      new Date().toISOString();
+    out.push({
+      ord,
+      token,
+      capturedAt: captured,
+      appName: trim(e.app_name ?? e.appName ?? fallbackApp, 255) || fallbackApp,
+      windowTitle: trim(e.window_title ?? e.windowTitle, 512) || null,
+    });
+  }
+  return out.sort((a, b) => a.ord - b.ord);
+}
+
 function trim(v: unknown, max: number): string {
   return String(v ?? "")
     .trim()
@@ -119,6 +187,15 @@ function clampUint(n: unknown, max = 86_400_000): number {
 }
 
 function mapRow(r: KeyboardActivityDoc): KeyboardActivityRow {
+  const simEvents = Array.isArray(r.simulation_events)
+    ? r.simulation_events.map((e) => ({
+        ord: Number(e.ord) || 0,
+        token: String(e.token ?? ""),
+        capturedAt: String(e.captured_at ?? ""),
+        appName: String(e.app_name ?? r.app_name ?? ""),
+        windowTitle: e.window_title != null ? String(e.window_title) : null,
+      }))
+    : null;
   return {
     id: Number(r.id),
     batchId: String(r.batch_id ?? ""),
@@ -135,6 +212,10 @@ function mapRow(r: KeyboardActivityDoc): KeyboardActivityRow {
     keyboardIdleMs: Number(r.keyboard_idle_ms) || 0,
     periodStart: toIso(r.period_start),
     periodEnd: toIso(r.period_end),
+    isSimulation: Boolean(r.is_simulation),
+    simulationSequence:
+      r.simulation_sequence != null ? String(r.simulation_sequence) : null,
+    simulationEvents: simEvents,
   };
 }
 
@@ -157,6 +238,10 @@ async function col(): Promise<Collection<KeyboardActivityDoc>> {
         await c.createIndex({ app_name: 1 }, { name: "idx_gka_app" });
         await c.createIndex({ machine_id: 1 }, { name: "idx_gka_machine" });
         await c.createIndex({ id: 1 }, { unique: true, name: "uq_gka_id" });
+        await c.createIndex(
+          { is_simulation: 1 },
+          { name: "idx_gka_simulation" }
+        );
       } catch {
         /* indexes may already exist */
       }
@@ -173,7 +258,6 @@ async function nextId(): Promise<number> {
     { $inc: { seq: 1 } },
     { upsert: true, returnDocument: "after" }
   );
-  // Driver 6 returns the doc directly; older shapes used { value }.
   const doc = (res as { seq?: number; value?: { seq?: number } } | null) ?? null;
   const seq = Number(doc?.seq ?? doc?.value?.seq);
   if (Number.isFinite(seq) && seq > 0) return seq;
@@ -188,6 +272,7 @@ function isDupKeyError(err: unknown): boolean {
 
 /**
  * Insert batch segments into MongoDB. Duplicate (batch_id, app_name) is skipped.
+ * Simulation rows may include ordered synthetic tokens (TEST only).
  */
 export async function ingestKeyboardActivity(
   input: IngestKeyboardActivityInput
@@ -213,6 +298,7 @@ export async function ingestKeyboardActivity(
     throw new Error("period window too large");
   }
 
+  const isSimulation = Boolean(input.isSimulation);
   const employeeName = trim(input.employeeName, 255) || null;
   const pseudonym = trim(input.pseudonym, 255) || null;
   const machineId = trim(input.machineId, 128) || null;
@@ -229,7 +315,32 @@ export async function ingestKeyboardActivity(
     const keyDownCount = clampUint(seg.keyDownCount, 500_000);
     const typingActiveMs = clampUint(seg.typingActiveMs);
     const keyboardIdleMs = clampUint(seg.keyboardIdleMs);
-    if (keyDownCount === 0 && typingActiveMs === 0 && keyboardIdleMs === 0) {
+
+    let simEvents: SimulationEvent[] | null = null;
+    let simSeq: string | null = null;
+    if (isSimulation) {
+      simEvents = seg.simulationEvents?.length
+        ? seg.simulationEvents
+        : null;
+      simSeq =
+        trim(seg.simulationSequence, 512) ||
+        (simEvents?.length
+          ? simEvents.map((e) => e.token).join(" → ")
+          : null);
+      if (simEvents?.length && keyDownCount === 0) {
+        // allow count derived from events
+      }
+    } else if (seg.simulationEvents?.length || seg.simulationSequence) {
+      throw new Error("simulation_events only allowed when is_simulation=true");
+    }
+
+    const effectiveCount =
+      keyDownCount || (simEvents?.length ? simEvents.length : 0);
+    if (
+      effectiveCount === 0 &&
+      typingActiveMs === 0 &&
+      keyboardIdleMs === 0
+    ) {
       skipped += 1;
       continue;
     }
@@ -245,12 +356,23 @@ export async function ingestKeyboardActivity(
       windows_user: windowsUser,
       app_name: appName,
       app_path: appPath,
-      key_down_count: keyDownCount,
+      key_down_count: effectiveCount,
       typing_active_ms: typingActiveMs,
       keyboard_idle_ms: keyboardIdleMs,
       period_start: periodStart,
       period_end: periodEnd,
       created_at: new Date(),
+      is_simulation: isSimulation,
+      simulation_sequence: isSimulation ? simSeq : null,
+      simulation_events: isSimulation
+        ? simEvents?.map((e) => ({
+            ord: e.ord,
+            token: e.token,
+            captured_at: e.capturedAt,
+            app_name: e.appName,
+            window_title: e.windowTitle,
+          })) ?? null
+        : null,
     };
 
     try {
@@ -274,6 +396,7 @@ export type ListKeyboardActivityOpts = {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  simulationOnly?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -296,6 +419,9 @@ export async function listKeyboardActivity(
   if (opts.appQuery?.trim()) {
     filter.app_name = { $regex: opts.appQuery.trim(), $options: "i" };
   }
+  if (opts.simulationOnly) {
+    filter.is_simulation = true;
+  }
   if (opts.search?.trim()) {
     const q = opts.search.trim();
     const rx = { $regex: q, $options: "i" as const };
@@ -304,6 +430,7 @@ export async function listKeyboardActivity(
       { pseudonym: rx },
       { app_name: rx },
       { hostname: rx },
+      { simulation_sequence: rx },
     ];
   }
   const period: { $gte?: Date; $lte?: Date } = {};

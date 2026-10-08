@@ -194,7 +194,7 @@ export default function GuardAppActivityPanel({ onBack }: Props) {
                 <td colSpan={6} className={styles.tip}>
                   {loading
                     ? "Loading…"
-                    : "No activity yet. Update agents to 1.2.49+ and wait for app switches."}
+                    : "No activity for this date range. Check: agent 1.2.49+ installed, employee bound (Status), HRM URL points to this server, then switch apps (Chrome↔Discord) and Refresh. Clear From/To or widen dates if needed."}
                 </td>
               </tr>
             ) : (

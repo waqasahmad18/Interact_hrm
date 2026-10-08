@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
       search: sp.get("search") || undefined,
       dateFrom: sp.get("dateFrom") || undefined,
       dateTo: sp.get("dateTo") || undefined,
+      simulationOnly:
+        sp.get("simulationOnly") === "1" || sp.get("simulationOnly") === "true",
       page: parseInt(sp.get("page") || "1", 10),
       pageSize: parseInt(sp.get("pageSize") || "50", 10),
     });
