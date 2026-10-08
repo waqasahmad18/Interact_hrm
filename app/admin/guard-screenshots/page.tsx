@@ -9,6 +9,7 @@ import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
 import GuardLiveView from "./GuardLiveView";
 import GuardAppActivityPanel from "./GuardAppActivityPanel";
+import GuardKeyboardActivityPanel from "./GuardKeyboardActivityPanel";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type ShotSummary = {
@@ -219,6 +220,7 @@ export default function GuardScreenshotsPage() {
   const [viewPath, setViewPath] = React.useState<string | null>(null);
   const [liveMode, setLiveMode] = React.useState(false);
   const [activityMode, setActivityMode] = React.useState(false);
+  const [keyboardMode, setKeyboardMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -611,6 +613,10 @@ export default function GuardScreenshotsPage() {
                 />
               ) : activityMode ? (
                 <GuardAppActivityPanel onBack={() => setActivityMode(false)} />
+              ) : keyboardMode ? (
+                <GuardKeyboardActivityPanel
+                  onBack={() => setKeyboardMode(false)}
+                />
               ) : !selectedId ? (
                 <>
                   <div className={styles.profileFilterBar}>
@@ -657,6 +663,13 @@ export default function GuardScreenshotsPage() {
                       onClick={() => setActivityMode(true)}
                     >
                       App activity
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      onClick={() => setKeyboardMode(true)}
+                    >
+                      Keyboard activity
                     </button>
                   </div>
 
