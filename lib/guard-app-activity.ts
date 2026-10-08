@@ -180,13 +180,14 @@ export async function listAppActivity(
     );
     params.push(q, q, q, q, q);
   }
+  // Use Date objects — Mongo stores Date; string bounds match nothing.
   if (opts.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateFrom)) {
     where.push("started_at >= ?");
-    params.push(`${opts.dateFrom} 00:00:00.000`);
+    params.push(new Date(`${opts.dateFrom}T00:00:00.000`));
   }
   if (opts.dateTo && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateTo)) {
     where.push("started_at <= ?");
-    params.push(`${opts.dateTo} 23:59:59.999`);
+    params.push(new Date(`${opts.dateTo}T23:59:59.999`));
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";

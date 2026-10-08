@@ -435,6 +435,7 @@ export async function listKeyboardActivity(
   }
   const period: { $gte?: Date; $lte?: Date } = {};
   if (opts.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateFrom)) {
+    // Local calendar day bounds (same as list UI From/To).
     period.$gte = new Date(`${opts.dateFrom}T00:00:00.000`);
   }
   if (opts.dateTo && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateTo)) {
