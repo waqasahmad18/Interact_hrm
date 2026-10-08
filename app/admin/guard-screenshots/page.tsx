@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaEllipsisV, FaEye, FaEyeSlash } from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
@@ -218,6 +218,12 @@ export default function GuardScreenshotsPage() {
   const [loadingFiles, setLoadingFiles] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [viewPath, setViewPath] = React.useState<string | null>(null);
+  const [menuPath, setMenuPath] = React.useState<string | null>(null);
+  const [scanPath, setScanPath] = React.useState<string | null>(null);
+  const [scanText, setScanText] = React.useState("");
+  const [scanNote, setScanNote] = React.useState("");
+  const [scanBusy, setScanBusy] = React.useState(false);
+  const [scanError, setScanError] = React.useState("");
   const [liveMode, setLiveMode] = React.useState(false);
   const [activityMode, setActivityMode] = React.useState(false);
   const [keyboardMode, setKeyboardMode] = React.useState(false);
@@ -426,6 +432,62 @@ export default function GuardScreenshotsPage() {
     setUnlocked(false);
     setSelectedId("");
     setViewPath(null);
+    setMenuPath(null);
+    setScanPath(null);
+  }
+
+  React.useEffect(() => {
+    if (!menuPath) return;
+    function onDoc(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest("[data-shot-menu]")) setMenuPath(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuPath(null);
+    }
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuPath]);
+
+  async function runImageToText(relativePath: string) {
+    setMenuPath(null);
+    setScanPath(relativePath);
+    setScanText("");
+    setScanNote("");
+    setScanError("");
+    setScanBusy(true);
+    try {
+      const res = await fetch("/api/admin/guard-screenshots/image-to-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: relativePath, mode: "summary" }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setScanError(data.error || "Image to text failed");
+        return;
+      }
+      setScanText(String(data.text || ""));
+      if (data.note) setScanNote(String(data.note));
+    } catch {
+      setScanError("Network error");
+    } finally {
+      setScanBusy(false);
+    }
+  }
+
+  async function copyScanText() {
+    if (!scanText) return;
+    try {
+      await navigator.clipboard.writeText(scanText);
+      toastSuccess("Copied");
+    } catch {
+      toastError("Could not copy");
+    }
   }
 
   function fileUrl(relativePath: string, download = false) {
@@ -863,6 +925,33 @@ export default function GuardScreenshotsPage() {
                               onChange={() => toggleSelect(f.relativePath)}
                             />
                           </label>
+                          <div className={styles.thumbMenu} data-shot-menu="">
+                            <button
+                              type="button"
+                              className={styles.thumbMenuBtn}
+                              aria-label="Screenshot actions"
+                              aria-expanded={menuPath === f.relativePath}
+                              onClick={() =>
+                                setMenuPath((cur) =>
+                                  cur === f.relativePath ? null : f.relativePath
+                                )
+                              }
+                            >
+                              <FaEllipsisV />
+                            </button>
+                            {menuPath === f.relativePath ? (
+                              <div className={styles.thumbMenuList} role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className={styles.thumbMenuItem}
+                                  onClick={() => void runImageToText(f.relativePath)}
+                                >
+                                  Image to text
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
                           <button
                             type="button"
                             className={styles.thumbOpen}
@@ -954,6 +1043,60 @@ export default function GuardScreenshotsPage() {
                     className={styles.modalImg}
                   />
                   <p className={styles.tip}>{viewPath}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {scanPath ? (
+            <div
+              className={styles.modalBackdrop}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Image to text"
+              onClick={() => {
+                if (!scanBusy) setScanPath(null);
+              }}
+            >
+              <div
+                className={styles.modalPanel}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.modalActions}>
+                  <strong className={styles.scanTitle}>Image to text</strong>
+                  <button
+                    type="button"
+                    className={adminStyles.btnPrimary}
+                    disabled={scanBusy || !scanText}
+                    onClick={() => void copyScanText()}
+                  >
+                    Copy text
+                  </button>
+                  <button
+                    type="button"
+                    className={adminStyles.btnSecondary}
+                    disabled={scanBusy}
+                    onClick={() => setScanPath(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className={styles.modalBody}>
+                  <p className={styles.tip}>{scanPath}</p>
+                  {scanBusy ? (
+                    <p className={styles.tip}>Scanning screenshot…</p>
+                  ) : null}
+                  {scanError ? <p className={styles.scanError}>{scanError}</p> : null}
+                  {scanNote && !scanError ? (
+                    <p className={styles.tip}>{scanNote}</p>
+                  ) : null}
+                  <textarea
+                    className={styles.scanOutput}
+                    readOnly
+                    value={scanText}
+                    placeholder={scanBusy ? "Working…" : "Text will appear here."}
+                    rows={14}
+                  />
                 </div>
               </div>
             </div>
