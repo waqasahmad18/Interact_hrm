@@ -157,6 +157,27 @@ export type ListAppActivityOpts = {
   pageSize?: number;
 };
 
+/** Latest foreground app/window for an employee (for policy ticket context). */
+export async function getLatestAppActivity(
+  employeeId: string
+): Promise<AppActivityRow | null> {
+  const id = trim(employeeId, 64);
+  if (!id) return null;
+  try {
+    const [rows] = await pool.execute(
+      `SELECT * FROM guard_app_activity
+       WHERE employee_id = ?
+       ORDER BY last_seen_at DESC, id DESC
+       LIMIT 1`,
+      [id]
+    );
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? mapRow(row) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listAppActivity(
   opts: ListAppActivityOpts = {}
 ): Promise<{ rows: AppActivityRow[]; total: number; page: number; pageSize: number }> {

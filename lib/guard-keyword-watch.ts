@@ -12,6 +12,8 @@ import {
 import { broadcastWsEvent } from "@/lib/ws-broadcast";
 import { getEmployeePseudonym } from "@/lib/ticket-employee-meta";
 import { seedEmployeeMessage } from "@/lib/ticket-thread";
+import { getLatestAppActivity } from "@/lib/guard-app-activity";
+import { formatDateTimeInServerTz } from "@/lib/timezone";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { cleanOcrText } = require(path.join(
@@ -326,6 +328,64 @@ export type PolicyMatch = {
   evidence: string;
 };
 
+/** OCR of our own Policy admin UI — do not raise alerts for the word list itself. */
+export function isPolicySettingsSelfScan(text: string): boolean {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return false;
+  if (
+    /restricted words|save policy|reload|policy inbox|guard-screenshots|words \(ocr\)|enable policy alerts/.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  // Dense dump of many policy keywords = reading the Words textarea.
+  const markers = [
+    "adult video",
+    "harassment",
+    "bagairat",
+    "besharam",
+    "pornhub",
+    "onlyfans",
+  ];
+  const hits = markers.filter((m) => t.includes(m)).length;
+  return hits >= 3;
+}
+
+/**
+ * Keep only the word/phrase the employee most likely used — not the whole policy list.
+ */
+export function pickPrimaryMatches(
+  text: string,
+  matched: string[],
+  max = 1
+): string[] {
+  const uniq = [...new Set(matched.map((m) => String(m || "").trim()).filter(Boolean))];
+  if (uniq.length <= max) return uniq;
+  if (isPolicySettingsSelfScan(text)) return [];
+
+  const source = preparePolicyHaystack(text).toLowerCase();
+  const scored = uniq.map((word) => {
+    const needle = word.toLowerCase();
+    const idx = source.indexOf(needle);
+    let neighborHits = 0;
+    if (idx >= 0) {
+      const win = source.slice(Math.max(0, idx - 60), idx + needle.length + 60);
+      for (const other of uniq) {
+        if (other === word) continue;
+        if (win.includes(other.toLowerCase())) neighborHits += 1;
+      }
+    }
+    return {
+      word,
+      // Prefer isolated + longer phrases (e.g. "adult video" over noise).
+      score: neighborHits * 10 - word.length,
+    };
+  });
+  scored.sort((a, b) => a.score - b.score || b.word.length - a.word.length);
+  return scored.slice(0, max).map((s) => s.word);
+}
+
 /**
  * RULE (mandatory): every OCR / Image→Text result must run this against
  * Policy words + websites/links + uploads/docs (+ apps). Never skip the check
@@ -337,25 +397,39 @@ export function evaluateTextPolicy(
 ): PolicyMatch | null {
   const source = String(text || "");
   if (!source.trim()) return null;
+  if (isPolicySettingsSelfScan(source)) return null;
+
   const hay = preparePolicyHaystack(source);
   const evidence = source.slice(0, 1600);
 
-  const sites = findMatchedLoose(hay, settings.websites);
+  const sites = pickPrimaryMatches(
+    source,
+    findMatchedLoose(hay, settings.websites),
+    2
+  );
   if (sites.length) {
     return { kind: "website", matched: sites, evidence };
   }
 
-  const uploads = findMatchedLoose(hay, settings.uploads);
+  const uploads = pickPrimaryMatches(
+    source,
+    findMatchedLoose(hay, settings.uploads),
+    2
+  );
   if (uploads.length) {
     return { kind: "upload", matched: uploads, evidence };
   }
 
-  const apps = findMatchedLoose(hay, settings.apps);
+  const apps = pickPrimaryMatches(source, findMatchedLoose(hay, settings.apps), 2);
   if (apps.length) {
     return { kind: "app", matched: apps, evidence };
   }
 
-  const words = findMatchedKeywords(hay, settings.keywords);
+  const words = pickPrimaryMatches(
+    source,
+    findMatchedKeywords(hay, settings.keywords),
+    1
+  );
   if (words.length) {
     return { kind: "keyword", matched: words, evidence };
   }
@@ -456,6 +530,48 @@ function kindLabel(kind: GuardPolicyKind) {
   return "abusive / indecent wording";
 }
 
+function buildProfessionalSummary(input: {
+  kind: GuardPolicyKind;
+  matched: string[];
+  employeeName: string;
+  appName?: string | null;
+  caption?: string | null;
+}): { subject: string; summary: string; detailLines: string[] } {
+  const word = input.matched[0] || "restricted content";
+  const app = String(input.appName || "").trim();
+  const caption = String(input.caption || "").trim();
+  const whereApp = app || "an unknown application";
+  const whereCaption = caption ? ` (“${caption.slice(0, 120)}”)` : "";
+
+  let summary: string;
+  if (input.kind === "website") {
+    summary = `Employee accessed or viewed a restricted website/link “${word}” while using ${whereApp}${whereCaption}.`;
+  } else if (input.kind === "upload") {
+    summary = `Employee performed a restricted file/upload action involving “${word}” while using ${whereApp}${whereCaption}.`;
+  } else if (input.kind === "app") {
+    summary = `Employee used a restricted application “${word}”${caption ? ` — window: “${caption.slice(0, 120)}”` : ""}.`;
+  } else {
+    summary = `Employee used the restricted word “${word}” while using ${whereApp}${whereCaption}.`;
+  }
+
+  const subject =
+    input.kind === "keyword"
+      ? `Policy alert — ${input.employeeName} used “${word}” in ${whereApp}`
+      : `Policy alert — ${input.employeeName} · ${kindLabel(input.kind)} · ${word}`;
+
+  const detailLines = [
+    summary,
+    "",
+    `Employee: ${input.employeeName}`,
+    app ? `Application: ${app}` : null,
+    caption ? `Window title: ${caption.slice(0, 200)}` : null,
+    `Matched: ${input.matched.join(", ")}`,
+    `Detected: ${formatDateTimeInServerTz(new Date())}`,
+  ].filter((line): line is string => line != null);
+
+  return { subject, summary, detailLines };
+}
+
 /** Silent: inbox only — no manager toast popup. */
 function broadcastSilentTicket(ticket: Record<string, unknown>) {
   broadcastWsEvent({
@@ -474,13 +590,20 @@ export async function createGuardPolicyTicket(input: {
   evidence: string;
   relativePath?: string;
   sourceDetail?: string;
+  appName?: string | null;
+  caption?: string | null;
 }): Promise<KeywordAlertResult> {
   await ensureEmployeeTicketsTable();
   const settings = await getGuardKeywordWatchSettings();
   if (!settings.enabled) {
     return { ok: true, skipped: true, reason: "disabled" };
   }
-  if (!input.matched.length) {
+  const primaryMatched = pickPrimaryMatches(
+    input.evidence,
+    input.matched,
+    input.kind === "keyword" ? 1 : 2
+  );
+  if (!primaryMatched.length) {
     return { ok: true, skipped: true, reason: "no_match" };
   }
 
@@ -512,6 +635,20 @@ export async function createGuardPolicyTicket(input: {
   }
   if (!employeeName) employeeName = `Employee ${employeeId}`;
 
+  let appName = String(input.appName || "").trim();
+  let caption = String(input.caption || "").trim();
+  if (!appName) {
+    try {
+      const latest = await getLatestAppActivity(employeeId);
+      if (latest) {
+        appName = latest.appName || "";
+        if (!caption) caption = latest.caption || "";
+      }
+    } catch {
+      /* optional context */
+    }
+  }
+
   const dedupMs = settings.dedupMinutes * 60 * 1000;
   try {
     const [dupRows] = await pool.query(
@@ -531,7 +668,10 @@ export async function createGuardPolicyTicket(input: {
       if (raw instanceof Date) ts = raw.getTime();
       else if (raw != null) {
         const s = String(raw).trim();
-        ts = Date.parse(s.includes("T") ? s : s.replace(" ", "T"));
+        // Naive DB times are UTC wall clock (Mongo sqlNow).
+        const normalized = s.includes("T") ? s : s.replace(" ", "T");
+        const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized);
+        ts = Date.parse(hasTz ? normalized : `${normalized}Z`);
       }
       return Number.isFinite(ts) && ts >= cutoff;
     }) as { id: number } | undefined;
@@ -542,17 +682,20 @@ export async function createGuardPolicyTicket(input: {
     /* continue */
   }
 
-  const matchedLabel = input.matched.slice(0, 8).join(", ");
+  const displayName = pseudonym
+    ? `${employeeName} (${pseudonym})`
+    : employeeName;
   const evidenceClear = clearEvidenceText(input.evidence);
-  const subject = `Policy alert — ${employeeName}${
-    pseudonym ? ` (${pseudonym})` : ""
-  } · ${kindLabel(input.kind)}`;
+  const { subject, summary, detailLines } = buildProfessionalSummary({
+    kind: input.kind,
+    matched: primaryMatched,
+    employeeName: displayName,
+    appName,
+    caption,
+  });
   const description = [
-    `Policy watch detected ${kindLabel(input.kind)}.`,
-    `Employee: ${employeeName}`,
-    pseudonym ? `Pseudonym: ${pseudonym}` : null,
+    ...detailLines,
     `HRM ID: ${employeeId}`,
-    `Matched: ${matchedLabel}`,
     input.relativePath ? `Screenshot: ${input.relativePath}` : null,
     input.sourceDetail ? `Source: ${input.sourceDetail}` : null,
   ]
@@ -564,7 +707,10 @@ export async function createGuardPolicyTicket(input: {
     employee_name: employeeName,
     pseudonym: pseudonym || null,
     policy_kind: input.kind,
-    matched: input.matched,
+    matched: primaryMatched,
+    summary,
+    app_name: appName || null,
+    caption: caption || null,
     evidence: evidenceClear,
     screenshot_path: input.relativePath || null,
     source: "guard_policy_watch",
@@ -623,7 +769,7 @@ export async function createGuardPolicyTicket(input: {
     ok: true,
     ticketId: id,
     ticketNumber,
-    matched: input.matched,
+    matched: primaryMatched,
     kind: input.kind,
   };
 }
@@ -681,6 +827,17 @@ export async function scanScreenshotForKeywordAlerts(
       if (!hit) {
         return { ok: true, skipped: true, reason: "no_match" };
       }
+      let appName: string | null = null;
+      let caption: string | null = null;
+      try {
+        const latest = await getLatestAppActivity(employeeId);
+        if (latest) {
+          appName = latest.appName || null;
+          caption = latest.caption || null;
+        }
+      } catch {
+        /* optional */
+      }
       return await createGuardPolicyTicket({
         employeeId,
         employeeName: input.employeeName,
@@ -690,6 +847,8 @@ export async function scanScreenshotForKeywordAlerts(
         evidence: hit.evidence,
         relativePath: input.relativePath,
         sourceDetail: "screenshot OCR",
+        appName,
+        caption,
       });
     } finally {
       scanning.delete(scanKey);
@@ -746,6 +905,8 @@ export async function scanAppActivityForPolicyAlerts(input: {
       matched: hit.matched,
       evidence: hit.evidence,
       sourceDetail: `app activity · ${input.appName}`,
+      appName: input.appName,
+      caption: input.caption || null,
     });
   } catch (err) {
     return {

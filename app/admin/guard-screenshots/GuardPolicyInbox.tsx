@@ -4,6 +4,7 @@ import React from "react";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import { toastError, toastSuccess } from "@/lib/app-toast";
+import { formatDateTimeInServerTz } from "@/lib/timezone";
 
 type PolicyTicket = {
   id: number;
@@ -137,16 +138,23 @@ export default function GuardPolicyInbox() {
   }
 
   const form = selected?.form_data || {};
-  const matched = Array.isArray(form.matched)
+  const matchedRaw = Array.isArray(form.matched)
     ? (form.matched as unknown[]).map((m) => String(m))
     : String(form.matched || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+  // UI safety: never show the whole policy list — one primary word only.
+  const matched = matchedRaw.slice(0, 1);
   const evidence =
     String(form.evidence || "").trim() ||
     extractEvidenceFromDescription(selected?.description || "");
   const pseudonym = String(form.pseudonym || "").trim();
+  const summary =
+    String(form.summary || "").trim() ||
+    firstMeaningfulLine(selected?.description || "");
+  const appName = String(form.app_name || "").trim();
+  const caption = String(form.caption || "").trim();
 
   return (
     <div className={styles.policyInbox}>
@@ -198,7 +206,7 @@ export default function GuardPolicyInbox() {
                   {pseudonymFrom(t) ? ` (${pseudonymFrom(t)})` : ""}
                 </span>
                 <span className={styles.tip}>
-                  {t.status} · {formatWhen(t.requested_at)}
+                  {t.status} · {formatDateTimeInServerTz(t.requested_at)}
                 </span>
               </button>
             ))
@@ -214,6 +222,9 @@ export default function GuardPolicyInbox() {
                 <span className={styles.chipActive}>{selected.ticket_number}</span>
                 <span className={styles.chip}>{selected.status}</span>
                 <span className={styles.chip}>{selected.priority}</span>
+                <span className={styles.tip}>
+                  {formatDateTimeInServerTz(selected.requested_at)}
+                </span>
               </div>
               <h3 className={styles.detailTitle}>
                 {selected.subject || "Policy alert"}
@@ -223,8 +234,25 @@ export default function GuardPolicyInbox() {
                 {pseudonym ? ` · ${pseudonym}` : ""} · ID {selected.employee_id}
               </p>
 
+              {summary ? (
+                <div className={styles.block} style={{ marginTop: 10 }}>
+                  <h3 className={styles.blockTitle}>Summary</h3>
+                  <p className={styles.policySummary}>{summary}</p>
+                </div>
+              ) : null}
+
+              {(appName || caption) && (
+                <div className={styles.block}>
+                  <h3 className={styles.blockTitle}>Application</h3>
+                  <p className={styles.detailSub} style={{ margin: 0 }}>
+                    {appName || "Unknown app"}
+                    {caption ? ` — ${caption}` : ""}
+                  </p>
+                </div>
+              )}
+
               <div className={styles.block} style={{ marginTop: 10 }}>
-                <h3 className={styles.blockTitle}>Matched</h3>
+                <h3 className={styles.blockTitle}>Word used</h3>
                 <div className={styles.chips}>
                   {matched.length ? (
                     matched.map((m) => (
@@ -239,12 +267,14 @@ export default function GuardPolicyInbox() {
               </div>
 
               <div className={styles.block}>
-                <h3 className={styles.blockTitle}>Evidence (cleared OCR)</h3>
+                <h3 className={styles.blockTitle}>OCR excerpt</h3>
                 <HighlightEvidence text={evidence} matched={matched} />
               </div>
 
               {form.screenshot_path ? (
-                <p className={styles.tip}>Screenshot: {String(form.screenshot_path)}</p>
+                <p className={styles.tip}>
+                  Screenshot: {String(form.screenshot_path)}
+                </p>
               ) : null}
 
               <div className={styles.actions} style={{ marginTop: 12 }}>
@@ -286,15 +316,18 @@ function pseudonymFrom(t: PolicyTicket) {
   return p ? String(p) : "";
 }
 
-function formatWhen(iso: string) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
+function firstMeaningfulLine(desc: string) {
+  return (
+    String(desc || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 20) || ""
+  );
 }
 
 function extractEvidenceFromDescription(desc: string) {
-  const m = String(desc || "").match(/Evidence:\s*([\s\S]*?)(?:\nSilent alert|\n*$)/i);
+  const m = String(desc || "").match(
+    /Evidence:\s*([\s\S]*?)(?:\nSilent alert|\n*$)/i
+  );
   return m?.[1]?.trim() || "";
 }

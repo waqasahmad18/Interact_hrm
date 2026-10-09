@@ -3,7 +3,10 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { isGalleryUnlocked } from "@/lib/guard-screenshots";
-import { GUARD_KEYWORD_TICKET_TYPE } from "@/lib/guard-keyword-watch";
+import {
+  GUARD_KEYWORD_TICKET_TYPE,
+  pickPrimaryMatches,
+} from "@/lib/guard-keyword-watch";
 import {
   EMPLOYEE_TICKETS_TABLE,
   ensureEmployeeTicketsTable,
@@ -75,6 +78,23 @@ export async function GET(req: NextRequest) {
             ? { ...(t.form_data as Record<string, unknown>) }
             : ({} as Record<string, unknown>);
         if (fd.evidence) fd.evidence = clearEvidence(String(fd.evidence));
+        const matchedList = Array.isArray(fd.matched)
+          ? (fd.matched as unknown[]).map((m) => String(m))
+          : [];
+        if (matchedList.length > 1) {
+          fd.matched = pickPrimaryMatches(
+            String(fd.evidence || t.description || ""),
+            matchedList,
+            1
+          );
+        }
+        if (!fd.summary && t.description) {
+          const first = String(t.description)
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.length > 20);
+          if (first) fd.summary = first;
+        }
         return { ...t, form_data: fd };
       })
       .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
