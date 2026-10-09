@@ -14,6 +14,7 @@ import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
+import GuardKeywordWatchSettings from "./GuardKeywordWatchSettings";
 import GuardLiveView from "./GuardLiveView";
 import GuardAppActivityPanel from "./GuardAppActivityPanel";
 import GuardKeyboardActivityPanel from "./GuardKeyboardActivityPanel";
@@ -640,6 +641,7 @@ export default function GuardScreenshotsPage() {
           </div>
 
           <GuardScreenshotSettings />
+          <GuardKeywordWatchSettings />
 
           {checking ? (
             <p className={styles.tip}>Checking access…</p>

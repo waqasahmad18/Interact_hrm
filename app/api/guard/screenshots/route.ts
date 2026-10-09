@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveGuardScreenshot } from "@/lib/guard-screenshots";
+import { scanScreenshotForKeywordAlerts } from "@/lib/guard-keyword-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,6 +122,27 @@ export async function POST(req: NextRequest) {
       pseudonym,
       capturedAt,
       ext: isJpeg(bytes) ? "jpg" : ext,
+    });
+
+    // Background OCR + keyword watch → ticket inbox (does not delay upload ACK).
+    void scanScreenshotForKeywordAlerts({
+      absolutePath: saved.absolutePath,
+      relativePath: saved.relativePath,
+      employeeId,
+      employeeName,
+      pseudonym,
+    }).then((result) => {
+      if (!result.ok) {
+        console.warn("[guard/screenshots] keyword watch failed:", result.error);
+        return;
+      }
+      if (!result.skipped) {
+        console.log(
+          "[guard/screenshots] keyword ticket",
+          result.ticketNumber,
+          result.matched
+        );
+      }
     });
 
     return NextResponse.json({

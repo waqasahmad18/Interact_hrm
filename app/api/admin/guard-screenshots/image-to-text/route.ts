@@ -6,6 +6,7 @@ import {
   isGalleryUnlocked,
   resolveScreenshotFile,
 } from "@/lib/guard-screenshots";
+import { scanScreenshotForKeywordAlerts } from "@/lib/guard-keyword-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,8 +130,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const employeeId = rel.replace(/\\/g, "/").split("/").filter(Boolean)[0] || "";
+
     const cached = await readCache(rel, stat.mtimeMs);
     if (cached) {
+      if (employeeId) {
+        void scanScreenshotForKeywordAlerts({
+          absolutePath: abs,
+          relativePath: rel,
+          employeeId,
+          ocrText: cached,
+        });
+      }
       return NextResponse.json({
         success: true,
         text: cached,
@@ -145,6 +156,14 @@ export async function POST(req: NextRequest) {
 
     if (scanned.text) {
       await writeCache(rel, stat.mtimeMs, scanned.text);
+      if (employeeId) {
+        void scanScreenshotForKeywordAlerts({
+          absolutePath: abs,
+          relativePath: rel,
+          employeeId,
+          ocrText: scanned.text,
+        });
+      }
     }
 
     return NextResponse.json({
