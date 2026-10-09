@@ -2,7 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
-import { FaEllipsisV, FaEye, FaEyeSlash } from "react-icons/fa";
+import {
+  FaDownload,
+  FaEllipsisV,
+  FaEye,
+  FaEyeSlash,
+  FaTimes,
+  FaTrash,
+} from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
@@ -607,9 +614,29 @@ export default function GuardScreenshotsPage() {
                 browse captures.
               </p>
             </div>
-            <Link href="/admin/presence-idle" className={adminStyles.btnSecondary}>
-              ← Presence / Idle
-            </Link>
+            {unlocked &&
+            selectedId &&
+            !liveMode &&
+            !activityMode &&
+            !keyboardMode ? (
+              <button
+                type="button"
+                className={styles.navBackBtn}
+                onClick={() => {
+                  setSelectedId("");
+                  setViewPath(null);
+                  setSelected({});
+                  setMenuPath(null);
+                  setScanPath(null);
+                }}
+              >
+                ← Profiles
+              </button>
+            ) : (
+              <Link href="/admin/presence-idle" className={styles.navBackBtn}>
+                ← Presence / Idle
+              </Link>
+            )}
           </div>
 
           <GuardScreenshotSettings />
@@ -816,17 +843,6 @@ export default function GuardScreenshotsPage() {
               ) : (
                 <>
                   <div className={styles.detailHeader}>
-                    <button
-                      type="button"
-                      className={adminStyles.btnSecondary}
-                      onClick={() => {
-                        setSelectedId("");
-                        setViewPath(null);
-                        setSelected({});
-                      }}
-                    >
-                      ← Profiles
-                    </button>
                     <div>
                       <h2 className={styles.detailTitle}>
                         {selectedProfile?.name || `Employee ${selectedId}`}
@@ -1016,47 +1032,58 @@ export default function GuardScreenshotsPage() {
 
           {viewPath ? (
             <div
-              className={styles.modalBackdrop}
+              className={styles.shotLightbox}
               role="dialog"
               aria-modal="true"
+              aria-label="Screenshot preview"
               onClick={() => setViewPath(null)}
             >
               <div
-                className={styles.modalPanel}
+                className={styles.shotLightboxPanel}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={styles.modalActions}>
-                  <a
-                    className={adminStyles.btnPrimary}
-                    href={fileUrl(viewPath, true)}
-                    download
-                  >
-                    Download
-                  </a>
-                  <button
-                    type="button"
-                    className={adminStyles.btnSecondary}
-                    disabled={busy}
-                    onClick={() => void deletePaths([viewPath])}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    className={adminStyles.btnSecondary}
-                    onClick={() => setViewPath(null)}
-                  >
-                    Close
-                  </button>
+                <div className={styles.shotLightboxBar}>
+                  <div className={styles.shotLightboxMeta}>
+                    <span className={styles.shotLightboxTitle}>Screenshot</span>
+                    <span className={styles.shotLightboxPath} title={viewPath}>
+                      {viewPath}
+                    </span>
+                  </div>
+                  <div className={styles.shotLightboxActions}>
+                    <a
+                      className={styles.shotLightboxPrimary}
+                      href={fileUrl(viewPath, true)}
+                      download
+                    >
+                      <FaDownload aria-hidden />
+                      Download
+                    </a>
+                    <button
+                      type="button"
+                      className={styles.shotLightboxDanger}
+                      disabled={busy}
+                      onClick={() => void deletePaths([viewPath])}
+                    >
+                      <FaTrash aria-hidden />
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.shotLightboxClose}
+                      aria-label="Close"
+                      onClick={() => setViewPath(null)}
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
                 </div>
-                <div className={styles.modalBody}>
+                <div className={styles.shotLightboxStage}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={fileUrl(viewPath)}
                     alt="Screenshot"
-                    className={styles.modalImg}
+                    className={styles.shotLightboxImg}
                   />
-                  <p className={styles.tip}>{viewPath}</p>
                 </div>
               </div>
             </div>
