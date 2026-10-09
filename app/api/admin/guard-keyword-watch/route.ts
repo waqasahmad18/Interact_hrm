@@ -17,6 +17,15 @@ function noStoreJson(body: unknown, init?: { status?: number }) {
   });
 }
 
+function linesToList(raw: unknown): string[] | undefined {
+  if (raw == null) return undefined;
+  if (Array.isArray(raw)) return raw.map((k) => String(k));
+  if (typeof raw === "string") {
+    return raw.split(/\r?\n/).map((k) => k.trim());
+  }
+  return undefined;
+}
+
 export async function GET() {
   try {
     const settings = await getGuardKeywordWatchSettings();
@@ -34,22 +43,14 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as {
-      enabled?: boolean;
-      keywords?: string[] | string;
-      dedupMinutes?: number;
-    };
-
-    let keywords: string[] | undefined;
-    if (Array.isArray(body.keywords)) {
-      keywords = body.keywords.map((k) => String(k));
-    } else if (typeof body.keywords === "string") {
-      keywords = body.keywords.split(/\r?\n/).map((k) => k.trim());
-    }
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const settings = await saveGuardKeywordWatchSettings({
       enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
-      keywords,
+      keywords: linesToList(body.keywords),
+      websites: linesToList(body.websites),
+      apps: linesToList(body.apps),
+      uploads: linesToList(body.uploads),
       dedupMinutes:
         typeof body.dedupMinutes === "number"
           ? body.dedupMinutes

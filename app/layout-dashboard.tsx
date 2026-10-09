@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages, FaShieldAlt } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
@@ -59,6 +59,7 @@ const sidebarLinks = [
 					{ name: "Tungsten IN/OUT", path: "/admin/tungsten-in-out", icon: <FaExchangeAlt /> },
 					{ name: "Presence / Idle", path: "/admin/presence-idle", icon: <FaDesktop /> },
 					{ name: "Interact Guard", path: "/admin/interact-guard", icon: <FaDesktop /> },
+					{ name: "Guard Policy", path: "/admin/guard-policy", icon: <FaShieldAlt /> },
 					{ name: "Employee Report", path: "/attendance/employee-report", icon: <FaClipboardList /> },
 				]
 			},

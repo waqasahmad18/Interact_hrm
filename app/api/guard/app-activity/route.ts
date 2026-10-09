@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestAppActivity } from "@/lib/guard-app-activity";
+import { scanAppActivityForPolicyAlerts } from "@/lib/guard-keyword-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,16 +39,22 @@ export async function POST(req: NextRequest) {
       if (!Number.isNaN(d.getTime())) at = d;
     }
 
+    const employeeName =
+      String(body.employee_name ?? "").trim() ||
+      dec(req.headers.get("x-employee-name")) ||
+      null;
+    const pseudonym =
+      String(body.pseudonym ?? "").trim() ||
+      dec(req.headers.get("x-pseudonym")) ||
+      null;
+    const appPath = String(body.app_path ?? "").trim() || null;
+    const caption =
+      String(body.caption ?? body.window_title ?? "").trim() || null;
+
     const row = await ingestAppActivity({
       employeeId,
-      employeeName:
-        String(body.employee_name ?? "").trim() ||
-        dec(req.headers.get("x-employee-name")) ||
-        null,
-      pseudonym:
-        String(body.pseudonym ?? "").trim() ||
-        dec(req.headers.get("x-pseudonym")) ||
-        null,
+      employeeName,
+      pseudonym,
       machineId:
         String(body.machine_id ?? "").trim() ||
         dec(req.headers.get("x-machine-id")) ||
@@ -55,9 +62,31 @@ export async function POST(req: NextRequest) {
       hostname: String(body.hostname ?? "").trim() || null,
       windowsUser: String(body.windows_user ?? "").trim() || null,
       appName,
-      appPath: String(body.app_path ?? "").trim() || null,
-      caption: String(body.caption ?? body.window_title ?? "").trim() || null,
+      appPath,
+      caption,
       at,
+    });
+
+    void scanAppActivityForPolicyAlerts({
+      employeeId,
+      employeeName,
+      pseudonym,
+      appName,
+      appPath,
+      caption,
+    }).then((result) => {
+      if (!result.ok) {
+        console.warn("[guard/app-activity] policy watch failed:", result.error);
+        return;
+      }
+      if (!result.skipped) {
+        console.log(
+          "[guard/app-activity] policy ticket",
+          result.ticketNumber,
+          result.kind,
+          result.matched
+        );
+      }
     });
 
     return NextResponse.json({ success: true, row });
