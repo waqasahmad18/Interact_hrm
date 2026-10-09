@@ -14,6 +14,7 @@ import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
+import GuardPolicyPanel from "./GuardPolicyPanel";
 import GuardLiveView from "./GuardLiveView";
 import GuardAppActivityPanel from "./GuardAppActivityPanel";
 import GuardKeyboardActivityPanel from "./GuardKeyboardActivityPanel";
@@ -234,6 +235,7 @@ export default function GuardScreenshotsPage() {
   const [liveMode, setLiveMode] = React.useState(false);
   const [activityMode, setActivityMode] = React.useState(false);
   const [keyboardMode, setKeyboardMode] = React.useState(false);
+  const [policyMode, setPolicyMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -441,6 +443,10 @@ export default function GuardScreenshotsPage() {
     setViewPath(null);
     setMenuPath(null);
     setScanPath(null);
+    setLiveMode(false);
+    setActivityMode(false);
+    setKeyboardMode(false);
+    setPolicyMode(false);
   }
 
   React.useEffect(() => {
@@ -618,7 +624,8 @@ export default function GuardScreenshotsPage() {
             selectedId &&
             !liveMode &&
             !activityMode &&
-            !keyboardMode ? (
+            !keyboardMode &&
+            !policyMode ? (
               <button
                 type="button"
                 className={styles.navBackBtn}
@@ -703,7 +710,9 @@ export default function GuardScreenshotsPage() {
                 </button>
               </div>
 
-              {liveMode ? (
+              {policyMode ? (
+                <GuardPolicyPanel onBack={() => setPolicyMode(false)} />
+              ) : liveMode ? (
                 <GuardLiveView
                   profiles={filteredProfiles.map((p) => ({
                     employeeId: p.employeeId,
@@ -773,6 +782,16 @@ export default function GuardScreenshotsPage() {
                       onClick={() => setKeyboardMode(true)}
                     >
                       Keyboard activity
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      onClick={() => {
+                        setSelectedId("");
+                        setPolicyMode(true);
+                      }}
+                    >
+                      Policy
                     </button>
                   </div>
 
