@@ -6,7 +6,7 @@ import {
   isGalleryUnlocked,
   resolveScreenshotFile,
 } from "@/lib/guard-screenshots";
-import { scanScreenshotForKeywordAlerts } from "@/lib/guard-keyword-watch";
+import { enforcePolicyAfterOcr } from "@/lib/guard-keyword-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,7 +58,7 @@ function scanInChild(absPath: string): Promise<ScanResult> {
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
-        ["--max-old-space-size=448", script, absPath],
+      ["--max-old-space-size=448", script, absPath],
       {
         cwd: process.cwd(),
         env: process.env,
@@ -88,7 +88,9 @@ function scanInChild(absPath: string): Promise<ScanResult> {
         } catch {
           /* child crashed before printing JSON */
         }
-        const killed = Boolean(err && (err as NodeJS.ErrnoException & { killed?: boolean }).killed);
+        const killed = Boolean(
+          err && (err as NodeJS.ErrnoException & { killed?: boolean }).killed
+        );
         reject(
           new Error(
             killed
@@ -98,6 +100,34 @@ function scanInChild(absPath: string): Promise<ScanResult> {
         );
       }
     );
+  });
+}
+
+/** RULE: never skip Policy check after Image→Text (words / sites / links / docs). */
+function runMandatoryPolicyCheck(input: {
+  abs: string;
+  rel: string;
+  employeeId: string;
+  ocrText: string;
+}) {
+  if (!input.employeeId) return;
+  void enforcePolicyAfterOcr({
+    absolutePath: input.abs,
+    relativePath: input.rel,
+    employeeId: input.employeeId,
+    ocrText: input.ocrText || "",
+  }).then((result) => {
+    if (!result.ok) {
+      console.warn("[image-to-text] policy check failed:", result.error);
+      return;
+    }
+    if (!result.skipped) {
+      console.log(
+        "[image-to-text] policy ticket",
+        result.ticketNumber,
+        result.matched
+      );
+    }
   });
 }
 
@@ -130,18 +160,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const employeeId = rel.replace(/\\/g, "/").split("/").filter(Boolean)[0] || "";
+    const employeeId =
+      rel.replace(/\\/g, "/").split("/").filter(Boolean)[0] || "";
 
     const cached = await readCache(rel, stat.mtimeMs);
-    if (cached) {
-      if (employeeId) {
-        void scanScreenshotForKeywordAlerts({
-          absolutePath: abs,
-          relativePath: rel,
-          employeeId,
-          ocrText: cached,
-        });
-      }
+    if (cached != null) {
+      runMandatoryPolicyCheck({
+        abs,
+        rel,
+        employeeId,
+        ocrText: cached,
+      });
       return NextResponse.json({
         success: true,
         text: cached,
@@ -149,30 +178,33 @@ export async function POST(req: NextRequest) {
         provider: "cache",
         note: null,
         fileName: path.basename(abs),
+        policyChecked: true,
       });
     }
 
     const scanned = await scanInChild(abs);
+    const text = scanned.text || "";
 
-    if (scanned.text) {
-      await writeCache(rel, stat.mtimeMs, scanned.text);
-      if (employeeId) {
-        void scanScreenshotForKeywordAlerts({
-          absolutePath: abs,
-          relativePath: rel,
-          employeeId,
-          ocrText: scanned.text,
-        });
-      }
+    if (text) {
+      await writeCache(rel, stat.mtimeMs, text);
     }
+
+    // Always run — even when OCR text is empty (evaluate returns no_match).
+    runMandatoryPolicyCheck({
+      abs,
+      rel,
+      employeeId,
+      ocrText: text,
+    });
 
     return NextResponse.json({
       success: true,
-      text: scanned.text || "",
+      text,
       mode: scanned.mode,
       provider: scanned.provider,
       note: null,
       fileName: path.basename(abs),
+      policyChecked: true,
     });
   } catch (err) {
     const raw = err instanceof Error ? err.message : "Scan failed";

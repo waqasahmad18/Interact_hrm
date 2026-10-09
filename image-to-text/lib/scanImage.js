@@ -31,11 +31,19 @@ async function shrinkForSummary(data, filename) {
 async function prepareForOcr(data) {
   try {
     const sharp = require("sharp");
+    // Upscale small / dark UI screenshots so short slang (BC) and URLs OCR better.
     return await sharp(data, { failOn: "none", limitInputPixels: 80_000_000 })
       .rotate()
-      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .resize({
+        width: 2200,
+        height: 2200,
+        fit: "inside",
+        withoutEnlargement: false,
+      })
       .grayscale()
-      .jpeg({ quality: 80 })
+      .normalize()
+      .sharpen({ sigma: 1.1 })
+      .jpeg({ quality: 90 })
       .toBuffer();
   } catch {
     return data;

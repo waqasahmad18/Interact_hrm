@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveGuardScreenshot } from "@/lib/guard-screenshots";
-import { scanScreenshotForKeywordAlerts } from "@/lib/guard-keyword-watch";
+import { enforcePolicyAfterOcr } from "@/lib/guard-keyword-watch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,8 +124,8 @@ export async function POST(req: NextRequest) {
       ext: isJpeg(bytes) ? "jpg" : ext,
     });
 
-    // Background OCR + keyword watch → ticket inbox (does not delay upload ACK).
-    void scanScreenshotForKeywordAlerts({
+    // RULE: every screenshot upload must OCR + check Policy (words/sites/docs/apps).
+    void enforcePolicyAfterOcr({
       absolutePath: saved.absolutePath,
       relativePath: saved.relativePath,
       employeeId,
@@ -133,12 +133,12 @@ export async function POST(req: NextRequest) {
       pseudonym,
     }).then((result) => {
       if (!result.ok) {
-        console.warn("[guard/screenshots] keyword watch failed:", result.error);
+        console.warn("[guard/screenshots] policy check failed:", result.error);
         return;
       }
       if (!result.skipped) {
         console.log(
-          "[guard/screenshots] keyword ticket",
+          "[guard/screenshots] policy ticket",
           result.ticketNumber,
           result.matched
         );

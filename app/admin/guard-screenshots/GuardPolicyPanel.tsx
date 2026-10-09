@@ -172,7 +172,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
         <div className={styles.block}>
           <h3 className={styles.blockTitle}>Restricted words / phrases</h3>
           <p className={styles.tip} style={{ marginBottom: 8 }}>
-            Checked from screenshot OCR. One per line.
+            Always checked on every Image→Text / screenshot OCR. One per line.
           </p>
           <textarea
             className={styles.scanOutput}

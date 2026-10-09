@@ -80,6 +80,15 @@ export const DEFAULT_GUARD_APPS: string[] = [];
 
 export const DEFAULT_GUARD_UPLOADS = [
   ".torrent",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+  ".zip",
+  ".rar",
   "upload files",
   "open file",
   "choose file",
@@ -225,9 +234,38 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Word-aware match for OCR keywords. */
+/**
+ * Build a richer haystack from OCR so policy never relies on one raw line.
+ * Always includes: raw text, collapsed spaced letters (B C → BC), URLs/domains, file names.
+ */
+export function preparePolicyHaystack(text: string): string {
+  const raw = String(text || "");
+  if (!raw.trim()) return "";
+
+  // OCR often splits short slang: "B C" / "B.C" → "BC"
+  let collapsed = raw.replace(/\b([A-Za-z])(?:[\s._*-]+)([A-Za-z])\b/g, "$1$2");
+  collapsed = collapsed.replace(
+    /\b([A-Za-z])(?:[\s._*-]+)([A-Za-z])(?:[\s._*-]+)([A-Za-z])\b/g,
+    "$1$2$3"
+  );
+
+  const urls =
+    raw.match(
+      /https?:\/\/[^\s"'<>]+|www\.[^\s"'<>]+|[a-z0-9][a-z0-9.-]{1,60}\.(?:com|net|org|pk|io|co|info|tv|me|app|xyz)(?:\/[^\s"'<>]*)?/gi
+    ) || [];
+  const files =
+    raw.match(
+      /\b[\w.-]+\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|torrent|txt|csv|rtf)\b/gi
+    ) || [];
+
+  return [raw, collapsed, urls.join("\n"), files.join("\n")]
+    .filter((p) => p && p.trim())
+    .join("\n");
+}
+
+/** Word-aware match for OCR keywords (OCR-tolerant for short slang like BC). */
 export function findMatchedKeywords(text: string, keywords: string[]): string[] {
-  const source = String(text || "");
+  const source = preparePolicyHaystack(text);
   if (!source.trim()) return [];
   const hits: string[] = [];
   for (const kw of keywords) {
@@ -241,7 +279,22 @@ export function findMatchedKeywords(text: string, keywords: string[]): string[] 
       `(?:^|[^a-z0-9_])${escapeRegExp(needle)}(?:[^a-z0-9_]|$)`,
       "i"
     );
-    if (re.test(source)) hits.push(needle);
+    if (re.test(source)) {
+      hits.push(needle);
+      continue;
+    }
+    // Short words: allow OCR gaps between letters (B C, B.C, B-C)
+    if (needle.length <= 4 && /^[a-z0-9]+$/i.test(needle)) {
+      const flex = needle
+        .split("")
+        .map((ch) => escapeRegExp(ch))
+        .join("[\\W_]*");
+      const flexRe = new RegExp(
+        `(?:^|[^a-z0-9_])${flex}(?:[^a-z0-9_]|$)`,
+        "i"
+      );
+      if (flexRe.test(source)) hits.push(needle);
+    }
   }
   return [...new Set(hits)];
 }
@@ -256,7 +309,7 @@ function normalizeLoose(s: string) {
 
 /** Substring match for sites/apps/upload phrases. */
 export function findMatchedLoose(haystack: string, needles: string[]): string[] {
-  const source = normalizeLoose(haystack);
+  const source = normalizeLoose(preparePolicyHaystack(haystack));
   if (!source) return [];
   const hits: string[] = [];
   for (const item of needles) {
@@ -273,31 +326,38 @@ export type PolicyMatch = {
   evidence: string;
 };
 
+/**
+ * RULE (mandatory): every OCR / Image→Text result must run this against
+ * Policy words + websites/links + uploads/docs (+ apps). Never skip the check
+ * in callers — only ticket creation may skip (disabled / dedup / no_match).
+ */
 export function evaluateTextPolicy(
   text: string,
   settings: GuardKeywordWatchSettings
 ): PolicyMatch | null {
   const source = String(text || "");
   if (!source.trim()) return null;
+  const hay = preparePolicyHaystack(source);
+  const evidence = source.slice(0, 1600);
 
-  const sites = findMatchedLoose(source, settings.websites);
+  const sites = findMatchedLoose(hay, settings.websites);
   if (sites.length) {
-    return { kind: "website", matched: sites, evidence: source.slice(0, 1600) };
+    return { kind: "website", matched: sites, evidence };
   }
 
-  const uploads = findMatchedLoose(source, settings.uploads);
+  const uploads = findMatchedLoose(hay, settings.uploads);
   if (uploads.length) {
-    return { kind: "upload", matched: uploads, evidence: source.slice(0, 1600) };
+    return { kind: "upload", matched: uploads, evidence };
   }
 
-  const apps = findMatchedLoose(source, settings.apps);
+  const apps = findMatchedLoose(hay, settings.apps);
   if (apps.length) {
-    return { kind: "app", matched: apps, evidence: source.slice(0, 1600) };
+    return { kind: "app", matched: apps, evidence };
   }
 
-  const words = findMatchedKeywords(source, settings.keywords);
+  const words = findMatchedKeywords(hay, settings.keywords);
   if (words.length) {
-    return { kind: "keyword", matched: words, evidence: source.slice(0, 1600) };
+    return { kind: "keyword", matched: words, evidence };
   }
 
   return null;
@@ -612,8 +672,9 @@ export async function scanScreenshotForKeywordAlerts(
     }
     scanning.add(scanKey);
     try {
+      // Always obtain OCR text, then ALWAYS evaluate words / sites / docs / apps.
       const text =
-        typeof input.ocrText === "string" && input.ocrText.trim()
+        typeof input.ocrText === "string"
           ? input.ocrText
           : await ocrTextFromFile(abs);
       const hit = evaluateTextPolicy(text, settings);
@@ -639,6 +700,16 @@ export async function scanScreenshotForKeywordAlerts(
       error: err instanceof Error ? err.message : "Keyword scan failed",
     };
   }
+}
+
+/**
+ * RULE entry: Image→Text + screenshot upload must call this — never skip.
+ * Evaluates Policy words, websites/links, uploads/docs, apps against OCR text.
+ */
+export async function enforcePolicyAfterOcr(
+  input: KeywordAlertInput
+): Promise<KeywordAlertResult> {
+  return scanScreenshotForKeywordAlerts(input);
 }
 
 export async function scanAppActivityForPolicyAlerts(input: {
