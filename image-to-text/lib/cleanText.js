@@ -50,6 +50,9 @@ function fixCommonOcrTypos(text) {
     .replace(/\bUploadscreenshotAsync\b/gi, "UploadScreenshotAsync")
     .replace(/\binteract-him20\b/gi, "interact-hrm2.0")
     .replace(/\bNIERACT-HIRAE\b/gi, "interact-hrm2.0")
+    .replace(/\bJsshole\b/gi, "asshole")
+    .replace(/\bpomhub\b/gi, "pornhub")
+    .replace(/\bfucka\b/gi, "fuck")
     .replace(/\bOFf\b/g, "Off")
     .replace(/\s+([,.!?;:])/g, "$1")
     .replace(/([,.!?;:])([A-Za-z])/g, "$1 $2");

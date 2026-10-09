@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { pool } from "@/lib/db";
@@ -11,6 +12,23 @@ import {
 import { broadcastWsEvent } from "@/lib/ws-broadcast";
 import { getEmployeePseudonym } from "@/lib/ticket-employee-meta";
 import { seedEmployeeMessage } from "@/lib/ticket-thread";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const { cleanOcrText } = require(path.join(
+  process.cwd(),
+  "image-to-text",
+  "lib",
+  "cleanText.js"
+)) as { cleanOcrText: (raw: string, mode?: string) => string };
+
+function clearEvidenceText(raw: string): string {
+  const cleaned = cleanOcrText(String(raw || ""), "clean");
+  return (cleaned || String(raw || ""))
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 2500);
+}
 
 const TABLE = "hrm_admin_settings";
 const KEY_ENABLED = "guard_keyword_watch_enabled";
@@ -465,22 +483,18 @@ export async function createGuardPolicyTicket(input: {
   }
 
   const matchedLabel = input.matched.slice(0, 8).join(", ");
+  const evidenceClear = clearEvidenceText(input.evidence);
   const subject = `Policy alert — ${employeeName}${
     pseudonym ? ` (${pseudonym})` : ""
   } · ${kindLabel(input.kind)}`;
   const description = [
-    `Interact Guard policy watch detected ${kindLabel(input.kind)}.`,
+    `Policy watch detected ${kindLabel(input.kind)}.`,
     `Employee: ${employeeName}`,
     pseudonym ? `Pseudonym: ${pseudonym}` : null,
     `HRM ID: ${employeeId}`,
     `Matched: ${matchedLabel}`,
     input.relativePath ? `Screenshot: ${input.relativePath}` : null,
     input.sourceDetail ? `Source: ${input.sourceDetail}` : null,
-    "",
-    "Evidence:",
-    input.evidence.slice(0, 1200) || "(empty)",
-    "",
-    "Silent alert — ticket inbox only (no popup).",
   ]
     .filter((line) => line != null)
     .join("\n");
@@ -491,9 +505,11 @@ export async function createGuardPolicyTicket(input: {
     pseudonym: pseudonym || null,
     policy_kind: input.kind,
     matched: input.matched,
+    evidence: evidenceClear,
     screenshot_path: input.relativePath || null,
     source: "guard_policy_watch",
     silent: true,
+    secret_inbox: true,
   });
 
   const [result]: any = await pool.query(

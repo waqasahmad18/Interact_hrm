@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
     const ticketId = searchParams.get("id");
     const status = searchParams.get("status");
     const category = searchParams.get("category");
+    const ticketType = searchParams.get("ticketType");
+    const includePolicy = searchParams.get("includePolicy") === "1";
     const limit = Math.min(parseInt(searchParams.get("limit") || "500", 10), 1000);
 
     let sql = `SELECT * FROM ${EMPLOYEE_TICKETS_TABLE}`;
@@ -71,6 +73,10 @@ export async function GET(req: NextRequest) {
       clauses.push("category = ?");
       params.push(category);
     }
+    if (ticketType) {
+      clauses.push("ticket_type = ?");
+      params.push(ticketType);
+    }
 
     if (clauses.length) {
       sql += ` WHERE ${clauses.join(" AND ")}`;
@@ -80,9 +86,14 @@ export async function GET(req: NextRequest) {
     sql += ` ORDER BY id DESC LIMIT ${limit}`;
 
     const [rows]: unknown[] = await query(sql, params);
-    const tickets = (Array.isArray(rows) ? rows : [])
+    const POLICY_TYPES = new Set(["guard_policy_alert", "guard_keyword_alert"]);
+    let tickets = (Array.isArray(rows) ? rows : [])
       .map((r) => rowToTicket(r as Record<string, unknown>))
       .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+    // Keep Guard Policy alerts out of the normal Ticket Inbox unless asked for.
+    if (!ticketType && !includePolicy && !ticketId) {
+      tickets = tickets.filter((t) => !POLICY_TYPES.has(String(t.ticket_type || "")));
+    }
     return NextResponse.json({ success: true, tickets, count: tickets.length });
   } catch (error) {
     return NextResponse.json(

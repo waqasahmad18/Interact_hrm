@@ -70,6 +70,14 @@ export default function AdminTicketsPage() {
       try {
         const msg = JSON.parse(evt.data.toString());
         if (msg?.type === "ticket_update" || msg?.type === "ticket_created") {
+          // Policy alerts belong only in Screenshots → Policy inbox.
+          if (
+            msg?.silent ||
+            msg?.ticket?.ticket_type === "guard_policy_alert" ||
+            msg?.ticket?.ticket_type === "guard_keyword_alert"
+          ) {
+            return;
+          }
           void fetchTickets({ silent: true });
           if (msg.ticket?.id && selected?.id === msg.ticket.id) {
             if (msg.ticket.deleted) setSelected(null);

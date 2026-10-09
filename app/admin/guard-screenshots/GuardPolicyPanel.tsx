@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import { toastError, toastSuccess } from "@/lib/app-toast";
+import GuardPolicyInbox from "./GuardPolicyInbox";
 
-type TabId = "words" | "websites" | "apps" | "uploads" | "settings";
+type TabId = "inbox" | "words" | "websites" | "apps" | "uploads" | "settings";
 
 type PolicySettings = {
   enabled: boolean;
@@ -27,7 +27,7 @@ type Props = {
 
 /** Secret panel inside Guard Screenshots (unlocked gallery only). */
 export default function GuardPolicyPanel({ onBack }: Props) {
-  const [tab, setTab] = React.useState<TabId>("words");
+  const [tab, setTab] = React.useState<TabId>("inbox");
   const [enabled, setEnabled] = React.useState(true);
   const [keywordsText, setKeywordsText] = React.useState("");
   const [websitesText, setWebsitesText] = React.useState("");
@@ -102,7 +102,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
         Math.min(24 * 60, Math.max(5, Number(s.dedupMinutes) || dedupMinutes))
       );
       toastSuccess(
-        "Policy saved. Matches create a silent ticket in the inbox."
+        "Policy saved. Matches go to the secret Policy inbox only."
       );
     } catch {
       toastError("Network error saving policy");
@@ -113,6 +113,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
 
   const disabled = loading || saving;
   const tabs: { id: TabId; label: string }[] = [
+    { id: "inbox", label: "Policy inbox" },
     { id: "words", label: "Words (OCR)" },
     { id: "websites", label: "Websites" },
     { id: "apps", label: "Apps" },
@@ -129,25 +130,28 @@ export default function GuardPolicyPanel({ onBack }: Props) {
         <div>
           <h2 className={styles.detailTitle}>Policy</h2>
           <p className={styles.detailSub}>
-            Words, websites, apps, uploads — silent ticket inbox alerts only
+            Secret alerts for restricted words, sites, apps, uploads — not shown
+            in Admin Ticket Inbox
           </p>
         </div>
       </div>
 
-      <label className={styles.toggleRow} style={{ marginBottom: 14 }}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={disabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
-        <span className={styles.toggleText}>
-          <span className={styles.toggleTitle}>Enable policy alerts</span>
-          <span className={styles.toggleHint}>
-            Off = Image to text still works; no auto tickets.
+      {tab !== "inbox" ? (
+        <label className={styles.toggleRow} style={{ marginBottom: 14 }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={disabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+          />
+          <span className={styles.toggleText}>
+            <span className={styles.toggleTitle}>Enable policy alerts</span>
+            <span className={styles.toggleHint}>
+              Off = Image to text still works; no auto tickets.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      ) : null}
 
       <div className={styles.chips} style={{ marginBottom: 14 }}>
         {tabs.map((t) => (
@@ -161,6 +165,8 @@ export default function GuardPolicyPanel({ onBack }: Props) {
           </button>
         ))}
       </div>
+
+      {tab === "inbox" ? <GuardPolicyInbox /> : null}
 
       {tab === "words" ? (
         <div className={styles.block}>
@@ -249,36 +255,31 @@ export default function GuardPolicyPanel({ onBack }: Props) {
             <span className={styles.total}>{dedupMinutes} min</span>
           </div>
           <p className={styles.tip} style={{ marginTop: 8 }}>
-            Silent alerts — ticket inbox only, no toast popup.
+            Silent alerts — only in this Policy inbox (not Admin Ticket Inbox).
           </p>
         </div>
       ) : null}
 
-      <div className={styles.actions} style={{ marginTop: 14 }}>
-        <button
-          type="button"
-          className={adminStyles.btnPrimary}
-          disabled={disabled}
-          onClick={() => void save()}
-        >
-          {saving ? "Saving…" : loading ? "Loading…" : "Save policy"}
-        </button>
-        <button
-          type="button"
-          className={adminStyles.btnSecondary}
-          disabled={disabled}
-          onClick={() => void load()}
-        >
-          Reload
-        </button>
-        <Link
-          href="/admin/tickets"
-          className={adminStyles.btnSecondary}
-          style={{ display: "inline-flex", alignItems: "center" }}
-        >
-          Ticket inbox
-        </Link>
-      </div>
+      {tab !== "inbox" ? (
+        <div className={styles.actions} style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            className={adminStyles.btnPrimary}
+            disabled={disabled}
+            onClick={() => void save()}
+          >
+            {saving ? "Saving…" : loading ? "Loading…" : "Save policy"}
+          </button>
+          <button
+            type="button"
+            className={adminStyles.btnSecondary}
+            disabled={disabled}
+            onClick={() => void load()}
+          >
+            Reload
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
