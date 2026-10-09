@@ -218,12 +218,12 @@ export default function GuardScreenshotSettings() {
       </div>
 
       <div className={styles.block}>
-        <h3 className={styles.blockTitle}>Image quality (saves disk space)</h3>
+        <h3 className={styles.blockTitle}>Image quality</h3>
         <p className={styles.tip} style={{ marginBottom: 8 }}>
-          Lower quality / scale = smaller JPEG files. Needs Guard agent{" "}
-          <strong>1.2.47+</strong>.
+          Low uses less disk space. Medium is recommended. High keeps more detail.
+          Needs Guard agent <strong>1.2.47+</strong>.
         </p>
-        <div className={styles.chips} style={{ marginBottom: 10 }}>
+        <div className={styles.chips}>
           {QUALITY_PRESETS.map((p) => (
             <button
               key={p.id}
@@ -240,53 +240,16 @@ export default function GuardScreenshotSettings() {
             </button>
           ))}
         </div>
-        <div className={styles.durationRow}>
-          <div className={styles.field} style={{ minWidth: 140 }}>
-            <label htmlFor="shot-jpeg-q">JPEG quality</label>
-            <input
-              id="shot-jpeg-q"
-              type="number"
-              min={10}
-              max={95}
-              value={jpegQuality}
-              disabled={disabled || !enabled}
-              onChange={(e) =>
-                setJpegQuality(Math.min(95, Math.max(10, Number(e.target.value) || 10)))
-              }
-            />
-          </div>
-          <div className={styles.field} style={{ minWidth: 140 }}>
-            <label htmlFor="shot-scale">Scale %</label>
-            <input
-              id="shot-scale"
-              type="number"
-              min={25}
-              max={100}
-              step={5}
-              value={scalePercent}
-              disabled={disabled || !enabled}
-              onChange={(e) =>
-                setScalePercent(Math.min(100, Math.max(25, Number(e.target.value) || 25)))
-              }
-            />
-          </div>
-          <span className={styles.total}>
-            Q{jpegQuality} · {scalePercent}%
-          </span>
-        </div>
-        <div className={styles.chips} style={{ marginTop: 8 }}>
-          {[100, 75, 70, 50, 40, 25].map((pct) => (
-            <button
-              key={pct}
-              type="button"
-              className={`${styles.chip}${scalePercent === pct ? ` ${styles.chipActive}` : ""}`}
-              disabled={disabled || !enabled}
-              onClick={() => setScalePercent(pct)}
-            >
-              {pct}%
-            </button>
-          ))}
-        </div>
+        {presetId === "custom" ? (
+          <p className={styles.tip} style={{ marginTop: 8 }}>
+            Current saved values do not match a preset. Pick Low, Medium, or High,
+            then save.
+          </p>
+        ) : (
+          <p className={styles.tip} style={{ marginTop: 8 }}>
+            {QUALITY_PRESETS.find((p) => p.id === presetId)?.hint}
+          </p>
+        )}
       </div>
 
       <div className={styles.actions} style={{ marginTop: 10 }}>
