@@ -29,7 +29,7 @@ type Ticket = {
 };
 
 type TicketsPageProps = {
-  /** admin = main dashboard (excludes HR dept tickets). hr = HR Manager/TL inbox only. */
+  /** admin = main dashboard (excludes HR dept tickets). hr = HR department inbox (view all HR; approve Manager only). */
   inboxMode?: "admin" | "hr";
 };
 
@@ -353,8 +353,8 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
           </h1>
           <p className={adminStyles.subtitle}>
             {inboxMode === "hr"
-              ? "Leave, HRM issues, and other tickets from HR department staff — HR Manager / Team Lead only."
-              : "All employee tickets except HR department (those go to HR Manager / Team Lead)."}
+              ? "Leave, HRM issues, and other tickets from HR department staff. All HR can view — only Manager can approve or reject."
+              : "All employee tickets except HR department (those go to the HR ticket inbox)."}
           </p>
 
           <div className={adminStyles.ticketToolbar}>
@@ -592,7 +592,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
             ) : null}
             {!ticketClosed && !canModerate ? (
               <p className={adminStyles.muted} style={{ marginTop: 8 }}>
-                View only — approve / reject is limited to HR Manager and HR Team Lead.
+                View only — approve / reject is limited to Manager (Team Lead and other HR staff cannot approve).
               </p>
             ) : null}
           </div>

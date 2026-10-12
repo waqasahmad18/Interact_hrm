@@ -7,7 +7,6 @@ import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-d
 import {
   isCeoOrgRole,
   isManagerOrgRole,
-  isTeamLeadOrgRole,
   normalizeOrgRole,
   ORG_ROLE_DB,
 } from "@/lib/org-role";
@@ -34,7 +33,10 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "portal.my_info.view",
 ];
 
-/** Only HR Manager / Team Lead — company HR ticket inbox + approve/reject. */
+/** All HR staff — company HR ticket inbox (view). Approve is Manager-only. */
+export const HR_TICKET_VIEW_PERMISSIONS: string[] = ["ops.tickets.view"];
+
+/** Only HR Manager — approve / reject leave (and ticket moderation). */
 export const HR_TICKET_MODERATOR_PERMISSIONS: string[] = [
   "ops.tickets.view",
   "leave.approve",
@@ -86,21 +88,18 @@ export function mergeHrAccessPermissions(opts: {
   const slugs = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase()
   );
-  const hrLeadSlug = slugs.some(
-    (s) =>
-      s === "hr_manager" ||
-      s === "team_lead_hr" ||
-      s.includes("hr_manager") ||
-      s.includes("team_lead_hr")
-  );
-
   if (hr) {
     for (const k of HR_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
-    // Ticket inbox + approve only for HR Manager / Team Lead (not officers).
-    if (manager || isTeamLeadOrgRole(opts.orgRole) || hrLeadSlug) {
+    // All HR staff see Ticket Inbox (view-only). Approve only Manager / hr_manager.
+    for (const k of HR_TICKET_VIEW_PERMISSIONS) set.add(k);
+    const hrManagerSlug = slugs.some(
+      (s) => s === "hr_manager" || s.includes("hr_manager")
+    );
+    if (manager || hrManagerSlug) {
       for (const k of HR_TICKET_MODERATOR_PERMISSIONS) set.add(k);
     } else {
-      set.delete("ops.tickets.view");
+      // Team Lead / Officer: inbox yes, leave approve no.
+      set.delete("leave.approve");
     }
   }
 

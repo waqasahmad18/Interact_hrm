@@ -2,7 +2,7 @@
 
 import TicketsPage from "../../admin/tickets/page";
 
-/** HR Manager / Team Lead inbox — HR department tickets only. */
+/** HR ticket inbox — all HR staff may view; only Manager may approve/reject. */
 export default function EmployeeTicketsPage() {
   return <TicketsPage inboxMode="hr" />;
 }

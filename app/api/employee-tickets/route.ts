@@ -31,6 +31,7 @@ import {
   loadHrTicketViewer,
 } from "@/lib/hr-department-tickets";
 import { syncLeaveRecordFromTicket } from "@/lib/leave-ticket-sync";
+import { isTeamLeadOrgRole } from "@/lib/org-role";
 
 function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
   const q =
@@ -122,19 +123,27 @@ export async function GET(req: NextRequest) {
     const hrIds = await getHrEmployeeIdSet();
     const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
 
-    // Single-ticket fetch: owner or HR moderator (for HR tickets) or admin (non-HR).
+    // Single-ticket fetch: owner or HR inbox viewer (for HR tickets) or admin (non-HR).
     if (ticketId) {
       tickets = tickets.filter((t) => {
         const hrTicket = isHrDepartmentSubmitter(t.employee_id, hrIds);
         if (!hrTicket) return true;
         if (viewer && String(t.employee_id) === viewer.employeeId) return true;
-        return Boolean(viewer?.canModerateHrTickets);
+        return Boolean(viewer?.canViewHrInbox);
       });
+      const sample = tickets[0];
       return NextResponse.json({
         success: true,
         tickets,
         count: tickets.length,
-        canModerate: Boolean(viewer?.canModerateHrTickets),
+        canModerate: sample
+          ? canModerateTicketStatus({
+              ticketEmployeeId: sample.employee_id,
+              viewer,
+              hrIds,
+              ticketType: sample.ticket_type,
+            })
+          : Boolean(viewer?.canModerateHrTickets),
       });
     }
 
@@ -159,10 +168,15 @@ export async function GET(req: NextRequest) {
       success: true,
       tickets: filtered,
       count: filtered.length,
+      // Approve/reject: Manager only (HR inbox + any Team Lead is view-only).
       canModerate:
         inbox === "hr"
           ? Boolean(viewer?.canModerateHrTickets)
-          : inbox === "admin",
+          : inbox === "admin"
+            ? !viewer ||
+              (!isTeamLeadOrgRole(viewer.orgRole) &&
+                (!viewer.isHrStaff || Boolean(viewer.canModerateHrTickets)))
+            : false,
     });
   } catch (error) {
     return NextResponse.json(
@@ -337,7 +351,8 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // HR department tickets: only HR Manager / Team Lead may approve / reject / resolve.
+    // Status change: Manager only — Team Lead / HR officers cannot approve or reject
+    // (especially leave). Nobody may approve their own ticket.
     if (hasStatus && !isEmployeeReply) {
       const viewerId =
         String(body.viewerId || body.viewer_id || employee_id || "").trim() ||
@@ -349,13 +364,14 @@ export async function PATCH(req: NextRequest) {
           ticketEmployeeId: current.employee_id,
           viewer,
           hrIds,
+          ticketType: current.ticket_type,
         })
       ) {
         return NextResponse.json(
           {
             success: false,
             error:
-              "Only HR Manager or HR Team Lead can approve or reject HR department tickets.",
+              "Only a Manager can approve or reject tickets. Team Lead and other staff are view-only.",
           },
           { status: 403 }
         );
