@@ -1,6 +1,9 @@
 import { pool } from "@/lib/db";
 import { getAllOrgChartPhotos } from "@/lib/org-chart-photos-table";
-import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
+import {
+  orgDeptChipLabel,
+  ORG_DEPT_MANAGER_NAME,
+} from "@/app/admin/roles-permissions/system-control-data";
 
 export const HIERARCHY_TABLE = "hrm_employee_hierarchy";
 export const TEAM_MEMBERS_TABLE = "hrm_team_members";
@@ -210,6 +213,42 @@ function orgFamilyEmployees(emp: EmpRow, all: EmpRow[]): EmpRow[] {
   return all.filter((e) => sameOrgFamily(emp, e));
 }
 
+/**
+ * Dept head / CEO by org map:
+ * Max → HIT + HR + Finance | Mubeen → IT + CEst. (+ Marketing) | Joe → DM
+ */
+function findDeptHeadCeo(all: EmpRow[], chip: string | null): EmpRow | null {
+  if (!chip) return null;
+  const hint = ORG_DEPT_MANAGER_NAME[chip];
+  if (!hint) return null;
+  const hl = hint.toLowerCase();
+  const matches = all.filter((e) => {
+    const first = String(e.first_name || "").trim().toLowerCase();
+    const full = `${e.first_name || ""} ${e.last_name || ""}`.trim().toLowerCase();
+    return first === hl || first.startsWith(hl) || full.startsWith(hl);
+  });
+  if (!matches.length) return null;
+  const ceo = matches.find((e) => roleRank(e.role) <= 1);
+  return ceo || matches[0];
+}
+
+async function upsertReportsTo(
+  conn: Awaited<ReturnType<typeof pool.getConnection>>,
+  employeeId: number,
+  reportsToId: number | null,
+): Promise<void> {
+  try {
+    await conn.execute(
+      `INSERT INTO ${HIERARCHY_TABLE} (employee_id, reports_to_employee_id)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE reports_to_employee_id = VALUES(reports_to_employee_id)`,
+      [employeeId, reportsToId],
+    );
+  } catch {
+    /* mongo adapter / table missing — non-fatal */
+  }
+}
+
 export async function getEmployeeHierarchy(
   employeeId: string | number,
 ): Promise<EmployeeHierarchyResult | null> {
@@ -229,13 +268,34 @@ export async function getEmployeeHierarchy(
     const shellAvatars = photos.shellBranding.employeeAvatars;
 
     let reportsToRow: EmpRow | null = null;
+    const chip = orgDeptChipLabel(emp.department_name);
+    const deptHead = findDeptHeadCeo(all, chip);
     const explicitManagerId = await fetchExplicitReportsTo(conn, targetId);
+
     if (explicitManagerId) {
       reportsToRow = all.find((e) => e.id === explicitManagerId) ?? null;
     } else {
       reportsToRow = inferReportsTo(emp, deptEmployees);
       if (!reportsToRow) {
         reportsToRow = inferReportsTo(emp, all);
+      }
+    }
+
+    // Management / Leaders in a dept report to that dept's head CEO
+    // (Max for HR/HIT, Mubeen for IT/CEst, Joe for DM) — never a wrong board member.
+    if (deptHead && roleRank(emp.role) > 1 && emp.id !== deptHead.id) {
+      const explicitIsWrongCeo =
+        Boolean(reportsToRow) &&
+        roleRank(reportsToRow?.role) <= 1 &&
+        reportsToRow!.id !== deptHead.id;
+      const missingBoss = !reportsToRow;
+      const managerNeedsCeo =
+        roleRank(emp.role) <= 2 && (!reportsToRow || roleRank(reportsToRow.role) > 1);
+      if (explicitIsWrongCeo || missingBoss || managerNeedsCeo) {
+        reportsToRow = deptHead;
+        if (explicitIsWrongCeo || missingBoss) {
+          void upsertReportsTo(conn, targetId, deptHead.id);
+        }
       }
     }
 

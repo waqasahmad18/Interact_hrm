@@ -49,6 +49,14 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
     employment_status?: string;
   } | null>(null);
 
+  /** Never show Approve/Reject on your own ticket (esp. leave). */
+  const isOwnSelectedTicket = Boolean(
+    selected &&
+      viewerId &&
+      String(selected.employee_id) === String(viewerId),
+  );
+  const canModerateSelected = canModerate && !isOwnSelectedTicket;
+
   React.useEffect(() => {
     try {
       const id =
@@ -638,7 +646,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
             </div>
             ) : null}
 
-            {!ticketClosed && canModerate ? (
+            {!ticketClosed && canModerateSelected ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -666,7 +674,15 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
               </button>
             </div>
             ) : null}
-            {!ticketClosed && !canModerate ? (
+            {!ticketClosed && isOwnSelectedTicket ? (
+              <p className={adminStyles.muted} style={{ marginTop: 8 }}>
+                You cannot approve or reject your own{" "}
+                {selected.ticket_type === "leave" ? "leave" : "ticket"}. Ask your
+                department head / CEO (HR/HIT → Max Miles, IT/Marketing/CEst →
+                Mubeen, DM → Joe White).
+              </p>
+            ) : null}
+            {!ticketClosed && !canModerate && !isOwnSelectedTicket ? (
               <p className={adminStyles.muted} style={{ marginTop: 8 }}>
                 View only — leave approve is for Manager / Team Lead; other HR staff cannot approve.
               </p>
