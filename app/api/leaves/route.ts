@@ -13,6 +13,7 @@ import {
   rowInViewerScope,
 } from "@/lib/access-control/data-scope";
 import { isCeoOrgRole, isManagerOrgRole } from "@/lib/org-role";
+import { backfillLeavesFromTickets } from "@/lib/leave-ticket-sync";
 
 async function assertManagerLeaveApprover(
   actorId: string | null,
@@ -146,6 +147,13 @@ export async function GET(req: NextRequest) {
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
     const status = searchParams.get("status");
+
+    // Sync leave tickets → employee_leaves (fixes approved tickets missing Leave status).
+    try {
+      await backfillLeavesFromTickets();
+    } catch {
+      /* non-fatal */
+    }
 
     let sql = "SELECT * FROM employee_leaves WHERE 1=1";
     const params: any[] = [];

@@ -30,6 +30,7 @@ import {
   isHrDepartmentSubmitter,
   loadHrTicketViewer,
 } from "@/lib/hr-department-tickets";
+import { syncLeaveRecordFromTicket } from "@/lib/leave-ticket-sync";
 
 function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
   const q =
@@ -276,6 +277,15 @@ export async function POST(req: NextRequest) {
     );
     const ticket = rowToTicket(rows?.[0] ?? {});
 
+    // Leave tickets also create employee_leaves (pending) for attendance / leave inbox.
+    if (typeKey === "leave") {
+      try {
+        await syncLeaveRecordFromTicket(ticket);
+      } catch (err) {
+        console.warn("[employee-tickets] leave sync on create failed", err);
+      }
+    }
+
     broadcastWsEvent({
       type: "ticket_created",
       ticket: await ticketForBroadcast(ticket),
@@ -397,6 +407,16 @@ export async function PATCH(req: NextRequest) {
       [id]
     );
     const ticket = rows?.[0] ? rowToTicket(rows[0] as Record<string, unknown>) : null;
+
+    // Approve/reject leave ticket → employee_leaves (Monthly Attendance Leave status).
+    if (ticket && ticket.ticket_type === "leave" && hasStatus) {
+      try {
+        await syncLeaveRecordFromTicket(ticket);
+      } catch (err) {
+        console.warn("[employee-tickets] leave sync on status failed", err);
+      }
+    }
+
     if (ticket) {
       broadcastTicketUpdate(await ticketForBroadcast(ticket));
     } else {
