@@ -12,17 +12,33 @@ import {
   resolveViewerDataScope,
   rowInViewerScope,
 } from "@/lib/access-control/data-scope";
-import { isCeoOrgRole, isManagerOrgRole } from "@/lib/org-role";
+import {
+  isCeoOrgRole,
+  isManagerOrgRole,
+  isTeamLeadOrgRole,
+} from "@/lib/org-role";
 import { backfillLeavesFromTickets } from "@/lib/leave-ticket-sync";
 
-async function assertManagerLeaveApprover(
+async function assertLeaveApprover(
   actorId: string | null,
   leaveEmployeeId: string | number | null | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   if (!actorId || !/^\d+$/.test(actorId)) {
     return {
       ok: false,
-      error: "Only a Manager (Add Employee role) can approve leave — actor required",
+      error: "Manager or Team Lead required to approve leave — actor required",
+      status: 403,
+    };
+  }
+
+  // Nobody may approve their own leave.
+  if (
+    leaveEmployeeId != null &&
+    String(leaveEmployeeId).trim() === String(actorId).trim()
+  ) {
+    return {
+      ok: false,
+      error: "You cannot approve or reject your own leave",
       status: 403,
     };
   }
@@ -33,11 +49,15 @@ async function assertManagerLeaveApprover(
   )) as any;
   const actorRole = Array.isArray(roleRows) ? roleRows[0]?.role : null;
 
-  // Leave approval is Manager scope only (CEO may also approve — all departments)
-  if (!isManagerOrgRole(actorRole) && !isCeoOrgRole(actorRole)) {
+  // Manager, Team Lead, or CEO may approve leave (within department scope).
+  if (
+    !isManagerOrgRole(actorRole) &&
+    !isTeamLeadOrgRole(actorRole) &&
+    !isCeoOrgRole(actorRole)
+  ) {
     return {
       ok: false,
-      error: "Leave approval is limited to Managers (and CEO). Team Lead / Officer cannot approve.",
+      error: "Leave approval is limited to Managers and Team Leads (and CEO).",
       status: 403,
     };
   }
@@ -239,7 +259,7 @@ export async function PATCH(req: NextRequest) {
     const actorId = actor != null ? String(actor) : null;
 
     if (action === "reject" || action.startsWith("approve")) {
-      const gate = await assertManagerLeaveApprover(actorId, leave.employee_id);
+      const gate = await assertLeaveApprover(actorId, leave.employee_id);
       if (!gate.ok) {
         return NextResponse.json(
           { success: false, error: gate.error },

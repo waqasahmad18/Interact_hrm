@@ -353,7 +353,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
           </h1>
           <p className={adminStyles.subtitle}>
             {inboxMode === "hr"
-              ? "Leave, HRM issues, and other tickets from HR department staff. All HR can view — only Manager can approve or reject."
+              ? "Leave, HRM issues, and other tickets from HR department staff. All HR can view — Manager / Team Lead can approve leave."
               : "All employee tickets except HR department (those go to the HR ticket inbox)."}
           </p>
 
@@ -592,7 +592,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
             ) : null}
             {!ticketClosed && !canModerate ? (
               <p className={adminStyles.muted} style={{ marginTop: 8 }}>
-                View only — approve / reject is limited to Manager (Team Lead and other HR staff cannot approve).
+                View only — leave approve is for Manager / Team Lead; other HR staff cannot approve.
               </p>
             ) : null}
           </div>

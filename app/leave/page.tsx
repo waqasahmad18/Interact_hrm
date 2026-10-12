@@ -21,7 +21,11 @@ import {
 } from "@/lib/leave-approval";
 import { rowAllowedByScope, useViewerDataScope } from "@/lib/access-control/use-viewer-scope";
 import { toastError } from "@/lib/app-toast";
-import { isCeoOrgRole, isManagerOrgRole } from "@/lib/org-role";
+import {
+  isCeoOrgRole,
+  isManagerOrgRole,
+  isTeamLeadOrgRole,
+} from "@/lib/org-role";
 
 type LeaveSortKey =
   | "employee_id"
@@ -83,7 +87,9 @@ function stepBadgeClass(step: string) {
 export default function LeavePage() {
   const viewerScope = useViewerDataScope();
   const canApproveLeaves =
-    isManagerOrgRole(viewerScope.orgRole) || isCeoOrgRole(viewerScope.orgRole);
+    isManagerOrgRole(viewerScope.orgRole) ||
+    isTeamLeadOrgRole(viewerScope.orgRole) ||
+    isCeoOrgRole(viewerScope.orgRole);
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

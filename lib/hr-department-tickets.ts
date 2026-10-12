@@ -1,11 +1,10 @@
 /**
- * HR department tickets (leave / HRM issue / any ticket raised by HR staff)
- * stay in the HR ticket inbox — not the main Admin Ticket Inbox.
+ * HR department tickets stay in the HR ticket inbox — not the main Admin Ticket Inbox.
  *
  * - All HR employees may VIEW the HR inbox.
- * - Only HR Manager (or CEO) may approve / reject / resolve.
- * - Team Leads (any department) are view-only — never approve/reject tickets
- *   (especially leave).
+ * - HR Manager / HR Team Lead may approve / reject HR-dept tickets.
+ * - Any department Team Lead / Manager may approve leave tickets (not their own).
+ * - HR officers (non-manager, non-TL) are view-only.
  */
 
 import { pool } from "@/lib/db";
@@ -23,7 +22,7 @@ export type HrTicketViewer = {
   accessRoleSlugs: string[];
   /** True: any HR staff (or CEO) — may open HR ticket inbox (view). */
   canViewHrInbox: boolean;
-  /** True: HR Manager (or CEO) — may approve / reject HR-dept tickets. */
+  /** True: HR Manager / HR Team Lead (or CEO) — may approve HR-dept tickets. */
   canModerateHrTickets: boolean;
   /** True: employee is in HR department. */
   isHrStaff: boolean;
@@ -53,7 +52,7 @@ function parseSlugs(raw: unknown, primary?: string | null): string[] {
   return [...new Set(out.map((s) => s.toLowerCase()))];
 }
 
-/** HR Manager only (org role or access slug) — not Team Lead. */
+/** HR Manager or HR Team Lead (org role or access slug). */
 export function isHrTicketModerator(opts: {
   departmentName?: string | null;
   orgRole?: string | null;
@@ -61,10 +60,16 @@ export function isHrTicketModerator(opts: {
 }): boolean {
   if (isCeoOrgRole(opts.orgRole)) return true;
   if (!isHrDepartment(opts.departmentName)) return false;
-  if (isManagerOrgRole(opts.orgRole)) return true;
+  if (isManagerOrgRole(opts.orgRole) || isTeamLeadOrgRole(opts.orgRole)) {
+    return true;
+  }
   const slugs = opts.accessRoleSlugs || [];
   return slugs.some(
-    (s) => s === "hr_manager" || s.includes("hr_manager")
+    (s) =>
+      s === "hr_manager" ||
+      s === "team_lead_hr" ||
+      s.includes("hr_manager") ||
+      s.includes("team_lead_hr")
   );
 }
 
@@ -186,10 +191,19 @@ export function filterTicketsForInbox<T extends { employee_id?: string | number 
   return tickets.filter((t) => !isHrDepartmentSubmitter(t.employee_id, hrIds));
 }
 
+function isLeaveApproverRole(orgRole: string | null | undefined): boolean {
+  return (
+    isCeoOrgRole(orgRole) ||
+    isManagerOrgRole(orgRole) ||
+    isTeamLeadOrgRole(orgRole)
+  );
+}
+
 /**
  * May change status (approve/reject/resolve) on this ticket?
- * Manager / CEO only. Team Leads and HR officers are view-only.
- * Nobody may approve/reject their own ticket.
+ * - Leave: Manager or Team Lead (any dept), not own ticket.
+ * - Other HR tickets: HR Manager / HR Team Lead.
+ * - HR officers: view only.
  */
 export function canModerateTicketStatus(opts: {
   ticketEmployeeId: string | number;
@@ -197,39 +211,43 @@ export function canModerateTicketStatus(opts: {
   hrIds: Set<string>;
   ticketType?: string | null;
 }): boolean {
-  const { ticketEmployeeId, viewer, hrIds } = opts;
+  const { ticketEmployeeId, viewer, hrIds, ticketType } = opts;
 
-  // Never self-approve / self-reject (especially leave).
+  // Never self-approve / self-reject.
   if (viewer && String(ticketEmployeeId) === viewer.employeeId) {
     return false;
   }
 
-  // Team Lead (any department) — view only.
-  if (viewer && isTeamLeadOrgRole(viewer.orgRole)) {
-    return false;
-  }
+  const isLeave = String(ticketType || "").toLowerCase() === "leave";
 
-  // Non-manager HR staff — view only.
+  // HR officers (not Manager / Team Lead / CEO) — view only.
   if (
     viewer?.isHrStaff &&
     !isManagerOrgRole(viewer.orgRole) &&
+    !isTeamLeadOrgRole(viewer.orgRole) &&
     !isCeoOrgRole(viewer.orgRole)
   ) {
     return false;
   }
 
+  // Leave tickets — Manager or Team Lead (any department).
+  if (isLeave) {
+    if (!viewer) return true; // classic admin inbox
+    return isLeaveApproverRole(viewer.orgRole);
+  }
+
   const hrTicket = isHrDepartmentSubmitter(ticketEmployeeId, hrIds);
 
-  // HR department tickets → only HR Manager / CEO.
+  // Non-leave HR department tickets → HR Manager / HR Team Lead / CEO.
   if (hrTicket) {
     if (!viewer) return false;
     return viewer.canModerateHrTickets;
   }
 
-  // Non-HR tickets → classic Admin Ticket Inbox (no viewer id) may moderate;
-  // Managers / CEO may moderate from portal when permitted.
+  // Non-HR non-leave → admin inbox or Manager / CEO.
   if (!viewer) return true;
-  if (isCeoOrgRole(viewer.orgRole)) return true;
-  if (isManagerOrgRole(viewer.orgRole)) return true;
+  if (isCeoOrgRole(viewer.orgRole) || isManagerOrgRole(viewer.orgRole)) {
+    return true;
+  }
   return false;
 }

@@ -31,7 +31,7 @@ import {
   loadHrTicketViewer,
 } from "@/lib/hr-department-tickets";
 import { syncLeaveRecordFromTicket } from "@/lib/leave-ticket-sync";
-import { isTeamLeadOrgRole } from "@/lib/org-role";
+import { isManagerOrgRole, isTeamLeadOrgRole, isCeoOrgRole } from "@/lib/org-role";
 
 function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
   const q =
@@ -174,8 +174,10 @@ export async function GET(req: NextRequest) {
           ? Boolean(viewer?.canModerateHrTickets)
           : inbox === "admin"
             ? !viewer ||
-              (!isTeamLeadOrgRole(viewer.orgRole) &&
-                (!viewer.isHrStaff || Boolean(viewer.canModerateHrTickets)))
+              isCeoOrgRole(viewer.orgRole) ||
+              isManagerOrgRole(viewer.orgRole) ||
+              isTeamLeadOrgRole(viewer.orgRole) ||
+              Boolean(viewer.canModerateHrTickets)
             : false,
     });
   } catch (error) {
@@ -371,7 +373,7 @@ export async function PATCH(req: NextRequest) {
           {
             success: false,
             error:
-              "Only a Manager can approve or reject tickets. Team Lead and other staff are view-only.",
+              "Not allowed to approve or reject this ticket. Leave: Manager / Team Lead only. Other HR staff are view-only.",
           },
           { status: 403 }
         );
