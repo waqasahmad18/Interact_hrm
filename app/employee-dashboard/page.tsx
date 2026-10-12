@@ -417,10 +417,20 @@ export default function EmployeeDashboardPage() {
   const fetchHrInboxTickets = React.useCallback(async () => {
     if (!employeeId || !isHrTicketInbox) return;
     try {
-      const res = await fetch(
-        `/api/employee-tickets?status=open&limit=30&ts=${Date.now()}`,
-        { cache: "no-store" },
-      );
+      const params = new URLSearchParams({
+        status: "open",
+        limit: "30",
+        inbox: "hr",
+        viewerId: employeeId,
+        ts: String(Date.now()),
+      });
+      const res = await fetch(`/api/employee-tickets?${params}`, {
+        cache: "no-store",
+        headers: {
+          "x-employee-id": employeeId,
+          "x-hrm-employee-id": employeeId,
+        },
+      });
       const data = await res.json();
       if (data?.success) {
         setInboxTickets(Array.isArray(data.tickets) ? data.tickets : []);

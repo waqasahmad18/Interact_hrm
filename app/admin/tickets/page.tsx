@@ -28,13 +28,32 @@ type Ticket = {
   requested_at: string;
 };
 
-export default function AdminTicketsPage() {
+type TicketsPageProps = {
+  /** admin = main dashboard (excludes HR dept tickets). hr = HR Manager/TL inbox only. */
+  inboxMode?: "admin" | "hr";
+};
+
+export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPageProps) {
   const [tickets, setTickets] = React.useState<Ticket[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [filter, setFilter] = React.useState<"pending" | "all">("pending");
   const [selected, setSelected] = React.useState<Ticket | null>(null);
   const [reply, setReply] = React.useState("");
   const [processing, setProcessing] = React.useState(false);
+  const [canModerate, setCanModerate] = React.useState(inboxMode === "admin");
+  const [viewerId, setViewerId] = React.useState("");
+
+  React.useEffect(() => {
+    try {
+      const id =
+        localStorage.getItem("employeeId") ||
+        localStorage.getItem("loginId") ||
+        "";
+      setViewerId(String(id).trim());
+    } catch {
+      setViewerId("");
+    }
+  }, []);
 
   const fetchTickets = React.useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -42,15 +61,26 @@ export default function AdminTicketsPage() {
       const params = new URLSearchParams({
         ts: String(Date.now()),
         limit: "500",
+        inbox: inboxMode,
       });
       if (filter === "pending") params.set("status", "open");
-      const res = await fetch(`/api/employee-tickets?${params}`, { cache: "no-store" });
+      if (viewerId) params.set("viewerId", viewerId);
+      const res = await fetch(`/api/employee-tickets?${params}`, {
+        cache: "no-store",
+        headers: viewerId
+          ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+          : undefined,
+      });
       const data = await res.json();
-      if (data.success) setTickets(data.tickets || []);
+      if (data.success) {
+        setTickets(data.tickets || []);
+        if (typeof data.canModerate === "boolean") setCanModerate(data.canModerate);
+        else setCanModerate(inboxMode === "admin");
+      }
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [filter]);
+  }, [filter, inboxMode, viewerId]);
 
   React.useEffect(() => {
     void fetchTickets();
@@ -96,12 +126,18 @@ export default function AdminTicketsPage() {
     try {
       const res = await fetch("/api/employee-tickets", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(viewerId
+            ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+            : {}),
+        },
         body: JSON.stringify({
           id,
           status,
           reply: reply.trim() || undefined,
-          author_name: "Admin",
+          author_name: inboxMode === "hr" ? "HR" : "Admin",
+          viewerId: viewerId || undefined,
         }),
       });
       const data = await res.json();
@@ -312,9 +348,13 @@ export default function AdminTicketsPage() {
     <LayoutDashboard>
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
-          <h1 className={adminStyles.title}>Ticket inbox</h1>
+          <h1 className={adminStyles.title}>
+            {inboxMode === "hr" ? "HR ticket inbox" : "Ticket inbox"}
+          </h1>
           <p className={adminStyles.subtitle}>
-            All employee tickets from Generate Ticket — review and update status.
+            {inboxMode === "hr"
+              ? "Leave, HRM issues, and other tickets from HR department staff — HR Manager / Team Lead only."
+              : "All employee tickets except HR department (those go to HR Manager / Team Lead)."}
           </p>
 
           <div className={adminStyles.ticketToolbar}>
@@ -522,7 +562,7 @@ export default function AdminTicketsPage() {
             </div>
             ) : null}
 
-            {!ticketClosed ? (
+            {!ticketClosed && canModerate ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -549,6 +589,11 @@ export default function AdminTicketsPage() {
                 Reject
               </button>
             </div>
+            ) : null}
+            {!ticketClosed && !canModerate ? (
+              <p className={adminStyles.muted} style={{ marginTop: 8 }}>
+                View only — approve / reject is limited to HR Manager and HR Team Lead.
+              </p>
             ) : null}
           </div>
         </div>

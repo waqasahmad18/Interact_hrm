@@ -56,6 +56,7 @@ async function loadViewerPermissionKeys(employeeId: string): Promise<string[]> {
     permissions: base,
     departmentName: m?.department_name,
     orgRole: m?.role ?? emp.legacyRole,
+    accessRoleSlugs: emp.roleSlugs,
   });
 }
 

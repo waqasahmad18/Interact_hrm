@@ -23,6 +23,25 @@ import {
   ticketTypeLabel,
   type TicketCategory,
 } from "@/lib/ticket-catalog";
+import {
+  canModerateTicketStatus,
+  filterTicketsForInbox,
+  getHrEmployeeIdSet,
+  isHrDepartmentSubmitter,
+  loadHrTicketViewer,
+} from "@/lib/hr-department-tickets";
+
+function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
+  const q =
+    searchParams?.get("viewerId") ||
+    searchParams?.get("viewer_id") ||
+    "";
+  const h =
+    req.headers.get("x-employee-id") ||
+    req.headers.get("x-hrm-employee-id") ||
+    "";
+  return String(q || h || "").trim();
+}
 
 const VALID_CATEGORIES = new Set(["ESS", "IT", "HR", "ADMIN", "OPERATIONS"]);
 const VALID_STATUSES = new Set([
@@ -49,6 +68,10 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category");
     const ticketType = searchParams.get("ticketType");
     const includePolicy = searchParams.get("includePolicy") === "1";
+    const inboxRaw = String(searchParams.get("inbox") || "").trim().toLowerCase();
+    const inbox: "admin" | "hr" | "own" =
+      inboxRaw === "hr" ? "hr" : inboxRaw === "own" ? "own" : "admin";
+    const viewerId = viewerIdFromReq(req, searchParams);
     const limit = Math.min(parseInt(searchParams.get("limit") || "500", 10), 1000);
 
     let sql = `SELECT * FROM ${EMPLOYEE_TICKETS_TABLE}`;
@@ -94,7 +117,52 @@ export async function GET(req: NextRequest) {
     if (!ticketType && !includePolicy && !ticketId) {
       tickets = tickets.filter((t) => !POLICY_TYPES.has(String(t.ticket_type || "")));
     }
-    return NextResponse.json({ success: true, tickets, count: tickets.length });
+
+    const hrIds = await getHrEmployeeIdSet();
+    const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
+
+    // Single-ticket fetch: owner or HR moderator (for HR tickets) or admin (non-HR).
+    if (ticketId) {
+      tickets = tickets.filter((t) => {
+        const hrTicket = isHrDepartmentSubmitter(t.employee_id, hrIds);
+        if (!hrTicket) return true;
+        if (viewer && String(t.employee_id) === viewer.employeeId) return true;
+        return Boolean(viewer?.canModerateHrTickets);
+      });
+      return NextResponse.json({
+        success: true,
+        tickets,
+        count: tickets.length,
+        canModerate: Boolean(viewer?.canModerateHrTickets),
+      });
+    }
+
+    // Own tickets list (employee portal "my tickets") — always own only.
+    if (employeeId) {
+      return NextResponse.json({
+        success: true,
+        tickets,
+        count: tickets.length,
+        canModerate: false,
+      });
+    }
+
+    // Inbox lists — HR dept tickets never appear in admin inbox.
+    const filtered = filterTicketsForInbox(tickets, {
+      inbox,
+      viewer,
+      hrIds,
+    });
+
+    return NextResponse.json({
+      success: true,
+      tickets: filtered,
+      count: filtered.length,
+      canModerate:
+        inbox === "hr"
+          ? Boolean(viewer?.canModerateHrTickets)
+          : inbox === "admin",
+    });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : String(error) },
@@ -259,6 +327,31 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    // HR department tickets: only HR Manager / Team Lead may approve / reject / resolve.
+    if (hasStatus && !isEmployeeReply) {
+      const viewerId =
+        String(body.viewerId || body.viewer_id || employee_id || "").trim() ||
+        viewerIdFromReq(req);
+      const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
+      const hrIds = await getHrEmployeeIdSet();
+      if (
+        !canModerateTicketStatus({
+          ticketEmployeeId: current.employee_id,
+          viewer,
+          hrIds,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Only HR Manager or HR Team Lead can approve or reject HR department tickets.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     let messages = current.messages ?? [];
     if (replyText) {
       if (current.ticket_type === "leave") {
@@ -337,11 +430,27 @@ export async function DELETE(req: NextRequest) {
     }
 
     const [existing]: any = await query(
-      `SELECT id, ticket_number FROM ${EMPLOYEE_TICKETS_TABLE} WHERE id = ? LIMIT 1`,
+      `SELECT * FROM ${EMPLOYEE_TICKETS_TABLE} WHERE id = ? LIMIT 1`,
       [id]
     );
     if (!existing?.[0]) {
       return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 });
+    }
+    const current = rowToTicket(existing[0] as Record<string, unknown>);
+    const viewerId = viewerIdFromReq(req);
+    const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
+    const hrIds = await getHrEmployeeIdSet();
+    if (
+      !canModerateTicketStatus({
+        ticketEmployeeId: current.employee_id,
+        viewer,
+        hrIds,
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Not allowed to delete this ticket." },
+        { status: 403 }
+      );
     }
 
     await query(`DELETE FROM ${EMPLOYEE_TICKETS_TABLE} WHERE id = ?`, [id]);

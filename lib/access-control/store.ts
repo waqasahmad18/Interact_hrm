@@ -1407,6 +1407,7 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     permissions: basePermissions,
     departmentName: deptName,
     orgRole: emp.legacyRole,
+    accessRoleSlugs: emp.roleSlugs,
   });
 
   const enabledFeatures: Record<string, boolean> = {};

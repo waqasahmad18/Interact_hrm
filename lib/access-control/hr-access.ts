@@ -4,7 +4,13 @@
  */
 
 import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
-import { isCeoOrgRole, isManagerOrgRole, normalizeOrgRole, ORG_ROLE_DB } from "@/lib/org-role";
+import {
+  isCeoOrgRole,
+  isManagerOrgRole,
+  isTeamLeadOrgRole,
+  normalizeOrgRole,
+  ORG_ROLE_DB,
+} from "@/lib/org-role";
 import { permissionSetHas } from "@/lib/access-control/permission-scope";
 
 /** Tabs / ops every HR employee gets automatically (no System Control). */
@@ -24,9 +30,14 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "payroll.advance",
   "payroll.loan",
   "people.employee_list.view",
-  "ops.tickets.view",
   "portal.tickets.create",
   "portal.my_info.view",
+];
+
+/** Only HR Manager / Team Lead — company HR ticket inbox + approve/reject. */
+export const HR_TICKET_MODERATOR_PERMISSIONS: string[] = [
+  "ops.tickets.view",
+  "leave.approve",
 ];
 
 /** Managers only — features / roles update in System Control. */
@@ -67,13 +78,30 @@ export function mergeHrAccessPermissions(opts: {
   permissions: string[];
   departmentName: string | null | undefined;
   orgRole: string | null | undefined;
+  accessRoleSlugs?: string[] | null;
 }): string[] {
   const set = new Set(opts.permissions.filter(Boolean));
   const hr = isHrDepartment(opts.departmentName);
   const manager = isManagerOrgRole(opts.orgRole);
+  const slugs = (opts.accessRoleSlugs || []).map((s) =>
+    String(s || "").trim().toLowerCase()
+  );
+  const hrLeadSlug = slugs.some(
+    (s) =>
+      s === "hr_manager" ||
+      s === "team_lead_hr" ||
+      s.includes("hr_manager") ||
+      s.includes("team_lead_hr")
+  );
 
   if (hr) {
     for (const k of HR_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
+    // Ticket inbox + approve only for HR Manager / Team Lead (not officers).
+    if (manager || isTeamLeadOrgRole(opts.orgRole) || hrLeadSlug) {
+      for (const k of HR_TICKET_MODERATOR_PERMISSIONS) set.add(k);
+    } else {
+      set.delete("ops.tickets.view");
+    }
   }
 
   if (manager) {
