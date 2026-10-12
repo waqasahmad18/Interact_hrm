@@ -1,9 +1,16 @@
 import { pool } from "@/lib/db";
 import { getAllOrgChartPhotos } from "@/lib/org-chart-photos-table";
-import {
-  orgDeptChipLabel,
-  ORG_DEPT_MANAGER_NAME,
-} from "@/app/admin/roles-permissions/system-control-data";
+import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
+
+/** Max → HIT/HR/Finance | Mubeen → IT/CEst | Joe → DM */
+const DEPT_HEAD_NAME_HINT: Record<string, string> = {
+  IT: "mubeen",
+  "CEst.": "mubeen",
+  HIT: "max",
+  HR: "max",
+  Finance: "max",
+  DM: "joe",
+};
 
 export const HIERARCHY_TABLE = "hrm_employee_hierarchy";
 export const TEAM_MEMBERS_TABLE = "hrm_team_members";
@@ -219,13 +226,20 @@ function orgFamilyEmployees(emp: EmpRow, all: EmpRow[]): EmpRow[] {
  */
 function findDeptHeadCeo(all: EmpRow[], chip: string | null): EmpRow | null {
   if (!chip) return null;
-  const hint = ORG_DEPT_MANAGER_NAME[chip];
-  if (!hint) return null;
-  const hl = hint.toLowerCase();
+  const hl = DEPT_HEAD_NAME_HINT[chip];
+  if (!hl) return null;
   const matches = all.filter((e) => {
     const first = String(e.first_name || "").trim().toLowerCase();
-    const full = `${e.first_name || ""} ${e.last_name || ""}`.trim().toLowerCase();
-    return first === hl || first.startsWith(hl) || full.startsWith(hl);
+    const last = String(e.last_name || "").trim().toLowerCase();
+    const full = `${first} ${last}`.trim();
+    return (
+      first === hl ||
+      first.startsWith(hl) ||
+      full.startsWith(hl) ||
+      (hl === "max" && last === "miles") ||
+      (hl === "mubeen" && (last.includes("chugtai") || last.includes("chughtai"))) ||
+      (hl === "joe" && last === "white")
+    );
   });
   if (!matches.length) return null;
   const ceo = matches.find((e) => roleRank(e.role) <= 1);
