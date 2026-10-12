@@ -77,6 +77,14 @@ export function isOrgSeniorOf(targetRole: unknown, viewerRole: unknown): boolean
   return roleRank(targetRole) < roleRank(viewerRole);
 }
 
+/** Non-HR Team Lead / Manager — Leaves page (not Ticket Inbox). */
+export const DEPT_LEAVE_PAGE_PERMISSIONS: string[] = [
+  "leave.list.view",
+  "leave.approve.manager",
+  "leave.approval_status.view",
+  "department.leaves.view",
+];
+
 export function mergeHrAccessPermissions(opts: {
   permissions: string[];
   departmentName: string | null | undefined;
@@ -86,6 +94,7 @@ export function mergeHrAccessPermissions(opts: {
   const set = new Set(opts.permissions.filter(Boolean));
   const hr = isHrDepartment(opts.departmentName);
   const manager = isManagerOrgRole(opts.orgRole);
+  const teamLead = isTeamLeadOrgRole(opts.orgRole);
   const slugs = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase()
   );
@@ -100,12 +109,18 @@ export function mergeHrAccessPermissions(opts: {
         s.includes("hr_manager") ||
         s.includes("team_lead_hr")
     );
-    if (manager || isTeamLeadOrgRole(opts.orgRole) || hrLeadSlug) {
+    if (manager || teamLead || hrLeadSlug) {
       for (const k of HR_TICKET_MODERATOR_PERMISSIONS) set.add(k);
+      for (const k of DEPT_LEAVE_PAGE_PERMISSIONS) set.add(k);
     } else {
       // Officers: inbox yes, leave approve no.
       set.delete("leave.approve");
+      set.delete("leave.approve.manager");
     }
+  } else if (manager || teamLead) {
+    // Other departments: leave approve/reject on Leaves page only — never Ticket Inbox.
+    for (const k of DEPT_LEAVE_PAGE_PERMISSIONS) set.add(k);
+    set.delete("ops.tickets.view");
   }
 
   if (manager) {

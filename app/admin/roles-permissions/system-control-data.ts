@@ -71,7 +71,7 @@ const PERM_HINTS: Record<string, string> = {
   "attendance.presence.view": "Open desktop presence / idle monitoring.",
   "attendance.employee_report.view": "Open per-employee attendance report.",
   "leave.list.view": "See leave requests for scoped employees (not only self).",
-  "leave.approve.manager": "Leave approval — Managers only, within their department scope (set on Add Employee).",
+  "leave.approve.manager": "Leave approval — Managers and Team Leads, within their department scope (Leaves page).",
   "leave.approval_status.view": "See pending vs approved status on leave requests.",
   "leave.balances.edit": "Adjust leave balances and entitlements.",
   "leave.calendar.view": "Open company leave calendar.",
@@ -451,7 +451,10 @@ function permissionsForTier(tier: RoleTier): string[] {
       ];
     case "lead":
       return [
+        "leave.list.view",
+        "leave.approve.manager",
         "leave.approval_status.view",
+        "department.leaves.view",
         "team.dashboard.view",
         "team.attendance.view",
         "team.breaks.view",

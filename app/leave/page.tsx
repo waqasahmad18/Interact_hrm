@@ -84,12 +84,34 @@ function stepBadgeClass(step: string) {
   return styles.badgePending;
 }
 
+function readViewerEmployeeId(): string {
+  try {
+    const id = String(localStorage.getItem("employeeId") || "").trim();
+    if (/^\d+$/.test(id)) return id;
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
 export default function LeavePage() {
   const viewerScope = useViewerDataScope();
+  const viewerEmployeeId = readViewerEmployeeId();
   const canApproveLeaves =
     isManagerOrgRole(viewerScope.orgRole) ||
     isTeamLeadOrgRole(viewerScope.orgRole) ||
     isCeoOrgRole(viewerScope.orgRole);
+  const canActOnLeave = (leave: { employee_id?: string | number } | null) => {
+    if (!canApproveLeaves || !leave) return false;
+    // Nobody approves their own leave (use Leaves page for team/dept only).
+    if (
+      viewerEmployeeId &&
+      String(leave.employee_id || "").trim() === viewerEmployeeId
+    ) {
+      return false;
+    }
+    return true;
+  };
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -178,10 +200,16 @@ export default function LeavePage() {
   }, []);
 
   useEffect(() => {
+    if (!viewerScope.loaded) return;
     void fetchLeaves(viewerScope);
     // Refetch when scope finishes loading / changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewerScope.mode, viewerScope.employeeIds.join(",")]);
+  }, [
+    viewerScope.loaded,
+    viewerScope.mode,
+    viewerScope.employeeIds.join(","),
+    viewerScope.orgRole,
+  ]);
 
   const stats = useMemo(() => {
     let pending = 0;
@@ -365,9 +393,13 @@ export default function LeavePage() {
 
   const selectedStatus = leaveStatusLabel(selectedLeave || {});
   const selectedCanStep1 =
-    Boolean(selectedLeave) && canApproveLeaves && canApproveStep1(selectedLeave);
+    Boolean(selectedLeave) &&
+    canActOnLeave(selectedLeave) &&
+    canApproveStep1(selectedLeave);
   const selectedCanStep2 =
-    Boolean(selectedLeave) && canApproveLeaves && canApproveStep2(selectedLeave);
+    Boolean(selectedLeave) &&
+    canActOnLeave(selectedLeave) &&
+    canApproveStep2(selectedLeave);
   const selectedPending = selectedCanStep1 || selectedCanStep2;
 
   return (
@@ -376,7 +408,8 @@ export default function LeavePage() {
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
           <p className={styles.subtitle}>
-            Two-step approval: 1st step, then 2nd (final).
+            Two-step approval: 1st step, then 2nd (final). Manager / Team Lead
+            approve here on Leaves — not Ticket Inbox.
           </p>
 
           <div className={styles.statRow}>
@@ -430,8 +463,8 @@ export default function LeavePage() {
                         const statusLabel = leaveStatusLabel(l);
                         const s1 = normStep(l.step1_status);
                         const s2 = normStep(l.step2_status);
-                        const showStep1 = canApproveLeaves && canApproveStep1(l);
-                        const showStep2 = canApproveLeaves && canApproveStep2(l);
+                        const showStep1 = canActOnLeave(l) && canApproveStep1(l);
+                        const showStep2 = canActOnLeave(l) && canApproveStep2(l);
                         const pending = showStep1 || showStep2;
                         return (
                           <tr

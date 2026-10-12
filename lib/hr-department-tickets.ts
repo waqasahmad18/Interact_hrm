@@ -230,9 +230,18 @@ export function canModerateTicketStatus(opts: {
     return false;
   }
 
-  // Leave tickets — Manager or Team Lead (any department).
+  // Leave tickets via Ticket Inbox:
+  // - Admin / HR Manager / HR Team Lead may act here.
+  // - Other-department Team Leads approve on Leaves page only (not Ticket Inbox).
   if (isLeave) {
     if (!viewer) return true; // classic admin inbox
+    if (
+      isTeamLeadOrgRole(viewer.orgRole) &&
+      !viewer.isHrStaff &&
+      !isManagerOrgRole(viewer.orgRole)
+    ) {
+      return false;
+    }
     return isLeaveApproverRole(viewer.orgRole);
   }
 
