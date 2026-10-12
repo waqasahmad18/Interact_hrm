@@ -204,7 +204,7 @@ function isApprovedLeaveDay(
   employeeId: string,
   dateKey: string,
 ): boolean {
-  return Boolean(map[employeeId]?.[dateKey]);
+  return Boolean(map[String(employeeId)]?.[dateKey]);
 }
 
 /** Extra work beyond assigned shift before OT is shown/counted (1 hour). */
@@ -523,9 +523,8 @@ export default function MonthlyAttendancePage() {
       setAttendance(records);
       setLoading(false); // Show list immediately — do not wait for ZKBio / notes
 
-      const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
-      if (uniqueEmployees.length > 0) {
-        void fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
+      if (fromDate && toDate) {
+        void fetchApprovedLeaves(fromDate, toDate);
       }
 
       // Background enrichment (T.Punch pairing is the slow part)
@@ -653,11 +652,12 @@ export default function MonthlyAttendancePage() {
     }
   };
 
-  // Fetch approved leaves for given employees and date range
-  const fetchApprovedLeaves = async (employeeIds: string[], from: string, to: string) => {
+  // Fetch approved leaves for the month. Do NOT require attendance employee IDs —
+  // punch-only / search-only rows still need Leave status from ticket approvals.
+  const fetchApprovedLeaves = async (from: string, to: string) => {
     try {
       const params = new URLSearchParams();
-      params.append("employees", employeeIds.join(","));
+      params.append("status", "approved");
       params.append("fromDate", from);
       params.append("toDate", to);
 
@@ -665,31 +665,26 @@ export default function MonthlyAttendancePage() {
       const data = await response.json();
 
       if (data.success && data.leaves) {
-        // console.log('leaves from backend:', data.leaves);
-        // Build map of employee_id -> date -> true (for approved leaves)
         const leavesMap: Record<string, Record<string, boolean>> = {};
 
         data.leaves.forEach((leave: any) => {
-          if (leave.status === "approved") {
-            const empId = String(leave.employee_id);
-            if (!leavesMap[empId]) {
-              leavesMap[empId] = {};
-            }
+          if (String(leave.status || "").toLowerCase() !== "approved") return;
+          const empId = String(leave.employee_id);
+          if (!leavesMap[empId]) {
+            leavesMap[empId] = {};
+          }
 
-            // Parse dates and mark all dates within the range
-            const startDateKey = normalizeToDateKey(String(leave.start_date || ""));
-            const endDateKey = normalizeToDateKey(String(leave.end_date || ""));
-            if (!startDateKey || !endDateKey) return;
+          const startDateKey = normalizeToDateKey(String(leave.start_date || ""));
+          const endDateKey = normalizeToDateKey(String(leave.end_date || ""));
+          if (!startDateKey || !endDateKey) return;
 
-            let currentDateKey = startDateKey;
-            while (currentDateKey <= endDateKey) {
-              leavesMap[empId][currentDateKey] = true;
-              currentDateKey = addDaysToDateKey(currentDateKey, 1);
-            }
+          let currentDateKey = startDateKey;
+          while (currentDateKey <= endDateKey) {
+            leavesMap[empId][currentDateKey] = true;
+            currentDateKey = addDaysToDateKey(currentDateKey, 1);
           }
         });
 
-        // console.log('approvedLeavesMap:', leavesMap);
         setApprovedLeavesMap(leavesMap);
       }
     } catch (err) {
@@ -1930,6 +1925,11 @@ export default function MonthlyAttendancePage() {
           String(hrm.employeeId).includes(searchTerm) ||
           hrm.employeeCode.toLowerCase().includes(searchTerm));
 
+      const hasApprovedLeave = Boolean(
+        approvedLeavesMap[String(hrm.employeeId)] &&
+          Object.keys(approvedLeavesMap[String(hrm.employeeId)] || {}).length > 0,
+      );
+
       const hasPunches =
         Boolean(tungstenCtx) &&
         Boolean(fromDate) &&
@@ -1960,7 +1960,7 @@ export default function MonthlyAttendancePage() {
             ));
 
       const forcePunchOnlyCard = PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId));
-      if (!hasPunches && !matchesSearch && !forcePunchOnlyCard) continue;
+      if (!hasPunches && !matchesSearch && !forcePunchOnlyCard && !hasApprovedLeave) continue;
 
       const roster = punchOnlyById(String(hrm.employeeId));
       extra.push({
@@ -2009,6 +2009,7 @@ export default function MonthlyAttendancePage() {
     fromDate,
     toDate,
     deferredSearchName,
+    approvedLeavesMap,
   ]);
 
   /** Cheap name / pseudo / ID filter — deferred so typing does not block the input */

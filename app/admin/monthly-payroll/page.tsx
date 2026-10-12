@@ -409,10 +409,8 @@ export default function MonthlyAttendancePage() {
           }
           setAttendance(records);
 
-          // Fetch approved leaves for employees in the date range
-          const uniqueEmployees = [...new Set(records.map((r: any) => String(r.employee_id)))] as string[];
-          if (uniqueEmployees.length > 0) {
-            fetchApprovedLeaves(uniqueEmployees, fromDate, toDate);
+          if (fromDate && toDate) {
+            fetchApprovedLeaves(fromDate, toDate);
           }
         }
       })
@@ -420,11 +418,11 @@ export default function MonthlyAttendancePage() {
       .finally(() => setLoading(false));
   };
 
-  // Fetch approved leaves for given employees and date range
-  const fetchApprovedLeaves = async (employeeIds: string[], from: string, to: string) => {
+  // Month-wide approved leaves (includes employees with no clock-in rows).
+  const fetchApprovedLeaves = async (from: string, to: string) => {
     try {
       const params = new URLSearchParams();
-      params.append("employees", employeeIds.join(","));
+      params.append("status", "approved");
       params.append("fromDate", from);
       params.append("toDate", to);
 
@@ -432,34 +430,31 @@ export default function MonthlyAttendancePage() {
       const data = await response.json();
 
       if (data.success && data.leaves) {
-        // console.log('leaves from backend:', data.leaves);
-        // Build map of employee_id -> date -> true (for approved leaves)
         const leavesMap: Record<string, Record<string, boolean>> = {};
 
         data.leaves.forEach((leave: any) => {
-          if (leave.status === "approved") {
-            const empId = String(leave.employee_id);
-            if (!leavesMap[empId]) {
-              leavesMap[empId] = {};
-            }
+          if (String(leave.status || "").toLowerCase() !== "approved") return;
+          const empId = String(leave.employee_id);
+          if (!leavesMap[empId]) {
+            leavesMap[empId] = {};
+          }
 
-            // Parse dates and mark all dates within the range
-            const startDate = new Date(leave.start_date);
-            const endDate = new Date(leave.end_date);
-            let currentDate = new Date(startDate);
+          const startRaw = String(leave.start_date || "");
+          const endRaw = String(leave.end_date || "");
+          const startMatch = /^(\d{4}-\d{2}-\d{2})/.exec(startRaw);
+          const endMatch = /^(\d{4}-\d{2}-\d{2})/.exec(endRaw);
+          let currentDateKey = startMatch ? startMatch[1] : "";
+          const endDateKey = endMatch ? endMatch[1] : currentDateKey;
+          if (!currentDateKey || !endDateKey) return;
 
-            while (currentDate <= endDate) {
-              // Use local date string (not UTC) for correct mapping
-              const dateKey = currentDate.getFullYear() + '-' +
-                String(currentDate.getMonth() + 1).padStart(2, '0') + '-' +
-                String(currentDate.getDate()).padStart(2, '0');
-              leavesMap[empId][dateKey] = true;
-              currentDate.setDate(currentDate.getDate() + 1);
-            }
+          while (currentDateKey <= endDateKey) {
+            leavesMap[empId][currentDateKey] = true;
+            const [y, m, d] = currentDateKey.split("-").map(Number);
+            const next = new Date(Date.UTC(y, m - 1, d + 1));
+            currentDateKey = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
           }
         });
 
-        // console.log('approvedLeavesMap:', leavesMap);
         setApprovedLeavesMap(leavesMap);
       }
     } catch (err) {

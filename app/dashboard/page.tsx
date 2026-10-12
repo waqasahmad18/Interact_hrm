@@ -24,6 +24,7 @@ import {
 } from "react-icons/fa";
 
 import { categoryLabel, ticketTypeLabel, type TicketCategory } from "../../lib/ticket-catalog";
+import { getDateStringInTimeZone, SERVER_TIMEZONE } from "../../lib/timezone";
 
 type Ticket = {
   id: number;
@@ -507,9 +508,17 @@ export default function DashboardPage() {
       }
 
       const employees = empData.employees;
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+      const leaveDayKey = (v: unknown) => {
+        const s = String(v || "").trim();
+        const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+        if (m) return m[1];
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return "";
+        return getDateStringInTimeZone(d, SERVER_TIMEZONE);
+      };
 
-      const leaveRes = await fetch("/api/leaves", { cache: "no-store" });
+      const leaveRes = await fetch("/api/leaves?status=approved", { cache: "no-store" });
       const leaveData = await leaveRes.json();
       const leavesList =
         leaveData.success && leaveData.leaves ? leaveData.leaves : [];
@@ -517,18 +526,17 @@ export default function DashboardPage() {
       const employeesOnLeaveToday = new Set(
         leavesList
           .filter((l: any) => {
-            const startDate = l.start_date
-              ? new Date(l.start_date).toISOString().split("T")[0]
-              : "";
-            const endDate = l.end_date
-              ? new Date(l.end_date).toISOString().split("T")[0]
-              : "";
+            const startDate = leaveDayKey(l.start_date);
+            const endDate = leaveDayKey(l.end_date) || startDate;
             const status = (l.status || "").toLowerCase();
             return (
-              status === "approved" && startDate <= todayStr && todayStr <= endDate
+              status === "approved" &&
+              Boolean(startDate) &&
+              startDate <= todayStr &&
+              todayStr <= endDate
             );
           })
-          .map((l: any) => l.employee_id),
+          .map((l: any) => String(l.employee_id)),
       );
 
       let activeCount = 0;

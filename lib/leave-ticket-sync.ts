@@ -4,7 +4,11 @@
  */
 
 import { pool, query } from "@/lib/db";
-import type { EmployeeTicketRow } from "@/lib/employee-tickets-table";
+import {
+  EMPLOYEE_TICKETS_TABLE,
+  rowToTicket,
+  type EmployeeTicketRow,
+} from "@/lib/employee-tickets-table";
 import { broadcastWsEvent } from "@/lib/ws-broadcast";
 
 function ticketForm(ticket: EmployeeTicketRow): Record<string, unknown> {
@@ -61,8 +65,16 @@ export async function syncLeaveRecordFromTicket(
 
   const fd = ticketForm(ticket);
   const employeeId = String(ticket.employee_id || "").trim();
-  const startDate = ymd(fd.start_date);
-  const endDate = ymd(fd.end_date) || startDate;
+  // form_data dates may be Date objects from Mongo
+  const startDate = ymd(
+    fd.start_date instanceof Date
+      ? fd.start_date.toISOString()
+      : fd.start_date
+  );
+  const endDate =
+    ymd(
+      fd.end_date instanceof Date ? fd.end_date.toISOString() : fd.end_date
+    ) || startDate;
   if (!employeeId || !startDate) return null;
 
   const leaveCategory = String(fd.leave_category || "annual").trim() || "annual";
@@ -86,33 +98,48 @@ export async function syncLeaveRecordFromTicket(
   const step1 = leaveStatus === "rejected" ? "rejected" : leaveStatus;
   const step2 = leaveStatus === "approved" ? "approved" : leaveStatus === "rejected" ? "rejected" : "pending";
 
+  // Avoid SQL COALESCE/NOW() expressions — Mongo adapter stores them as literal strings.
+  const nowIso = new Date().toISOString().slice(0, 19).replace("T", " ");
+
   try {
     if (existingId) {
       try {
+        const sets = [
+          "employee_name = ?",
+          "leave_category = ?",
+          "total_days = ?",
+          "reason = ?",
+          "status = ?",
+          "step1_status = ?",
+          "step2_status = ?",
+          "document_paths = ?",
+          "updated_at = ?",
+        ];
+        const vals: unknown[] = [
+          employeeName,
+          leaveCategory,
+          totalDays,
+          reason,
+          leaveStatus,
+          step1,
+          step2,
+          JSON.stringify(docs),
+          nowIso,
+        ];
+        if (leaveStatus === "approved") {
+          sets.push("step1_at = ?", "step2_at = ?");
+          vals.push(nowIso, nowIso);
+        }
+        vals.push(existingId);
         await query(
-          `UPDATE employee_leaves
-           SET employee_name = ?, leave_category = ?, total_days = ?, reason = ?,
-               status = ?, step1_status = ?, step2_status = ?,
-               document_paths = ?, updated_at = NOW()
-               ${leaveStatus === "approved" ? ", step1_at = COALESCE(step1_at, NOW()), step2_at = COALESCE(step2_at, NOW())" : ""}
-           WHERE id = ?`,
-          [
-            employeeName,
-            leaveCategory,
-            totalDays,
-            reason,
-            leaveStatus,
-            step1,
-            step2,
-            JSON.stringify(docs),
-            existingId,
-          ]
+          `UPDATE employee_leaves SET ${sets.join(", ")} WHERE id = ?`,
+          vals
         );
       } catch {
         await query(
           `UPDATE employee_leaves
            SET employee_name = ?, leave_category = ?, total_days = ?, reason = ?,
-               status = ?, document_paths = ?, updated_at = NOW()
+               status = ?, document_paths = ?, updated_at = ?
            WHERE id = ?`,
           [
             employeeName,
@@ -121,6 +148,7 @@ export async function syncLeaveRecordFromTicket(
             reason,
             leaveStatus,
             JSON.stringify(docs),
+            nowIso,
             existingId,
           ]
         );
@@ -130,26 +158,44 @@ export async function syncLeaveRecordFromTicket(
     }
 
     try {
+      const cols = [
+        "employee_id",
+        "employee_name",
+        "leave_category",
+        "start_date",
+        "end_date",
+        "total_days",
+        "reason",
+        "status",
+        "step1_status",
+        "step2_status",
+        "document_paths",
+        "requested_at",
+        "updated_at",
+      ];
+      const vals: unknown[] = [
+        employeeId,
+        employeeName,
+        leaveCategory,
+        startDate,
+        endDate,
+        totalDays,
+        reason,
+        leaveStatus,
+        step1,
+        step2,
+        JSON.stringify(docs),
+        nowIso,
+        nowIso,
+      ];
+      if (leaveStatus === "approved") {
+        cols.push("step1_at", "step2_at");
+        vals.push(nowIso, nowIso);
+      }
       const [result]: any = await pool.query(
-        `INSERT INTO employee_leaves
-          (employee_id, employee_name, leave_category, start_date, end_date, total_days, reason, status,
-           step1_status, step2_status, document_paths, requested_at, updated_at
-           ${leaveStatus === "approved" ? ", step1_at, step2_at" : ""})
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
-           ${leaveStatus === "approved" ? ", NOW(), NOW()" : ""})`,
-        [
-          employeeId,
-          employeeName,
-          leaveCategory,
-          startDate,
-          endDate,
-          totalDays,
-          reason,
-          leaveStatus,
-          step1,
-          step2,
-          JSON.stringify(docs),
-        ]
+        `INSERT INTO employee_leaves (${cols.join(", ")})
+         VALUES (${cols.map(() => "?").join(", ")})`,
+        vals
       );
       broadcastWsEvent({ type: "leave_update" });
       return Number(result?.insertId) || null;
@@ -158,7 +204,7 @@ export async function syncLeaveRecordFromTicket(
         `INSERT INTO employee_leaves
           (employee_id, employee_name, leave_category, start_date, end_date, total_days, reason, status,
            document_paths, requested_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           employeeId,
           employeeName,
@@ -169,6 +215,8 @@ export async function syncLeaveRecordFromTicket(
           reason,
           leaveStatus,
           JSON.stringify(docs),
+          nowIso,
+          nowIso,
         ]
       );
       broadcastWsEvent({ type: "leave_update" });
@@ -186,56 +234,30 @@ let lastBackfillAt = 0;
  * Backfill: any resolved/rejected leave tickets missing from employee_leaves.
  * Throttled — safe to call from GET /api/leaves.
  */
-export async function backfillLeavesFromTickets(): Promise<number> {
+export async function backfillLeavesFromTickets(
+  opts?: { force?: boolean }
+): Promise<number> {
   const now = Date.now();
-  if (now - lastBackfillAt < 15_000) return 0;
+  if (!opts?.force && now - lastBackfillAt < 15_000) return 0;
   lastBackfillAt = now;
   try {
     const [rows] = await query(
-      `SELECT * FROM employee_tickets
-       WHERE ticket_type = 'leave'
-         AND status IN ('resolved', 'rejected', 'closed', 'pending', 'in_progress')
+      `SELECT * FROM ${EMPLOYEE_TICKETS_TABLE}
+       WHERE ticket_type = ?
        ORDER BY id DESC
-       LIMIT 300`
+       LIMIT 300`,
+      ["leave"]
     );
     const tickets = Array.isArray(rows) ? rows : [];
     let n = 0;
     for (const raw of tickets) {
-      const t = raw as Record<string, unknown>;
-      // Minimal row shape for sync
-      let form_data: Record<string, unknown> | null = null;
-      const fdRaw = t.form_data;
-      if (typeof fdRaw === "string") {
-        try {
-          form_data = JSON.parse(fdRaw);
-        } catch {
-          form_data = null;
-        }
-      } else if (fdRaw && typeof fdRaw === "object") {
-        form_data = fdRaw as Record<string, unknown>;
+      try {
+        const ticket = rowToTicket(raw as Record<string, unknown>);
+        const id = await syncLeaveRecordFromTicket(ticket);
+        if (id) n += 1;
+      } catch (err) {
+        console.warn("[leave-ticket-sync] row failed", err);
       }
-      const ticket = {
-        id: Number(t.id),
-        ticket_number: String(t.ticket_number || ""),
-        employee_id: String(t.employee_id || ""),
-        employee_name: String(t.employee_name || ""),
-        category: String(t.category || "HR"),
-        ticket_type: "leave",
-        is_custom: 0,
-        subject: t.subject != null ? String(t.subject) : null,
-        description: t.description != null ? String(t.description) : null,
-        form_data,
-        priority: String(t.priority || "normal"),
-        status: String(t.status || "pending"),
-        admin_remark: null,
-        messages: [],
-        requested_at: String(t.requested_at || ""),
-        updated_at: String(t.updated_at || ""),
-        resolved_at: t.resolved_at != null ? String(t.resolved_at) : null,
-      } as EmployeeTicketRow;
-
-      const id = await syncLeaveRecordFromTicket(ticket);
-      if (id) n += 1;
     }
     return n;
   } catch (err) {
