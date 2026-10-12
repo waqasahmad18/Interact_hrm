@@ -69,6 +69,37 @@ import { isAutoClockOutRecord, applyAutoClockOutTPunchDisplay } from "../../../l
 import { resolveBillableOvertimeSeconds } from "../../../lib/attendance-overtime";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 
+/** Admin / Admin Staff department. */
+function isAdminStaffDepartment(departmentName: string | null | undefined): boolean {
+  const d = String(departmentName || "").trim().toLowerCase();
+  if (!d) return false;
+  return d === "admin" || d === "admin staff" || d.startsWith("admin ");
+}
+
+/**
+ * T.Punch visibility:
+ * - Non-Admin: always show (pairing = punch before recent Clock In / after Clock Out).
+ * - Admin staff: only when opened via department filter or name search.
+ */
+function shouldRevealTPunches(
+  departmentName: string | null | undefined,
+  selectedDepartment: string,
+  searchName: string,
+): boolean {
+  if (!isAdminStaffDepartment(departmentName)) return true;
+  return Boolean(String(selectedDepartment || "").trim() || String(searchName || "").trim());
+}
+
+function maskTPunch(
+  value: string | null | undefined,
+  reveal: boolean,
+): string {
+  if (!reveal) return "---";
+  const v = String(value ?? "").trim();
+  if (!v || v === "-" || v === "---") return "---";
+  return v;
+}
+
 type MonthlyAttendanceEmployeeRow = {
   employeeId: string;
   employeeName: string;
@@ -1248,6 +1279,11 @@ export default function MonthlyAttendancePage() {
   ): MonthlyAttendanceExcelRow[] {
     const dataRows: MonthlyAttendanceExcelRow[] = [];
     if (!monthInfo.days) return dataRows;
+    const revealPunches = shouldRevealTPunches(
+      employee.departmentName,
+      selectedDepartment,
+      deferredSearchName,
+    );
 
     if (employee.isImported && employee.importedDays?.length) {
       const days = [...employee.importedDays].sort((a: ImportedMonthlyDay, b: ImportedMonthlyDay) =>
@@ -1263,10 +1299,10 @@ export default function MonthlyAttendancePage() {
           cells: [
             day.weekday,
             day.dateDisplay,
-            day.tPunchIn && day.tPunchIn !== "---" ? day.tPunchIn : "---",
+            maskTPunch(day.tPunchIn, revealPunches),
             day.clockIn,
             day.clockOut,
-            day.tPunchOut && day.tPunchOut !== "---" ? day.tPunchOut : "---",
+            maskTPunch(day.tPunchOut, revealPunches),
             day.totalWH,
             day.assignedWH,
             day.overtime,
@@ -1387,10 +1423,10 @@ export default function MonthlyAttendancePage() {
           cells: [
             day.weekday,
             formatDateKey(day.dateKey),
-            monthlyDash(session.tungstenPunchIn),
+            maskTPunch(monthlyDash(session.tungstenPunchIn), revealPunches),
             session.hrmClockIn === "-" ? "---" : session.hrmClockIn,
             session.hrmClockOut === "-" ? "---" : session.hrmClockOut,
-            monthlyDash(session.tungstenPunchOut),
+            maskTPunch(monthlyDash(session.tungstenPunchOut), revealPunches),
             record ? excelTotalHoursForExport(record) : "---",
             record ? excelAssignedWHForExport(record) : "---",
             record ? excelOvertimeForExport(record) : "---",
@@ -1560,13 +1596,21 @@ export default function MonthlyAttendancePage() {
       options.record ??
       (session ? findRecordForSession(dayRecords, session) : dayRecords[0]);
 
+    const revealPunches = shouldRevealTPunches(
+      employee.departmentName,
+      selectedDepartment,
+      deferredSearchName,
+    );
     rows.push({
       date: formatDateKey(dateKey),
-      tPunchIn: importedDay
-        ? deductionSummaryTungsten(importedDay.tPunchIn || "---")
-        : session
-          ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchIn))
-          : "--",
+      tPunchIn: maskTPunch(
+        importedDay
+          ? deductionSummaryTungsten(importedDay.tPunchIn || "---")
+          : session
+            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchIn))
+            : "--",
+        revealPunches,
+      ),
       clockIn:
         session && session.hrmClockIn !== "-"
           ? session.hrmClockIn
@@ -1575,11 +1619,14 @@ export default function MonthlyAttendancePage() {
         session && session.hrmClockOut !== "-"
           ? session.hrmClockOut
           : deductionSummaryClock(record, employee, dateKey, "out"),
-      tPunchOut: importedDay
-        ? deductionSummaryTungsten(importedDay.tPunchOut || "---")
-        : session
-          ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
-          : "--",
+      tPunchOut: maskTPunch(
+        importedDay
+          ? deductionSummaryTungsten(importedDay.tPunchOut || "---")
+          : session
+            ? deductionSummaryTungsten(monthlyDash(session.tungstenPunchOut))
+            : "--",
+        revealPunches,
+      ),
       totalWorkingHours: importedDay
         ? deductionSummaryTungsten(importedDay.totalWH || "---")
         : record?.total_hours
@@ -2196,6 +2243,11 @@ export default function MonthlyAttendancePage() {
             ) : (
               attendanceByEmployee.map((employee) => {
                 const isExpanded = Boolean(expandedEmployeeIds[employee.employeeId]);
+                const revealPunches = shouldRevealTPunches(
+                  employee.departmentName,
+                  selectedDepartment,
+                  deferredSearchName,
+                );
                 return (
                 <div
                   key={employee.employeeId}
@@ -2305,14 +2357,10 @@ export default function MonthlyAttendancePage() {
                               <tr key={`${employee.employeeId}-${day.dateKey}-import`}>
                                 <td>{day.weekday || rowCtx.weekday}</td>
                                 <td>{day.dateDisplay}</td>
-                                <td>
-                                  {day.tPunchIn && day.tPunchIn !== "---" ? day.tPunchIn : "---"}
-                                </td>
+                                <td>{maskTPunch(day.tPunchIn, revealPunches)}</td>
                                 <td>{day.clockIn}</td>
                                 <td>{day.clockOut}</td>
-                                <td>
-                                  {day.tPunchOut && day.tPunchOut !== "---" ? day.tPunchOut : "---"}
-                                </td>
+                                <td>{maskTPunch(day.tPunchOut, revealPunches)}</td>
                                 <td>{day.totalWH}</td>
                                 <td style={{ display: "none" }}>{day.assignedWH}</td>
                                 <td>{day.overtime}</td>
@@ -2422,7 +2470,12 @@ export default function MonthlyAttendancePage() {
                               >
                                 <td>{day.weekday}</td>
                                 <td>{formatDateKey(day.dateKey)}</td>
-                                <td>{monthlyDash(session.tungstenPunchIn)}</td>
+                                <td>
+                                  {maskTPunch(
+                                    monthlyDash(session.tungstenPunchIn),
+                                    revealPunches,
+                                  )}
+                                </td>
                                 <td>
                                   {session.hrmClockIn === "-" ? "---" : session.hrmClockIn}
                                 </td>
@@ -2438,7 +2491,12 @@ export default function MonthlyAttendancePage() {
                                     </>
                                   )}
                                 </td>
-                                <td>{monthlyDash(session.tungstenPunchOut)}</td>
+                                <td>
+                                  {maskTPunch(
+                                    monthlyDash(session.tungstenPunchOut),
+                                    revealPunches,
+                                  )}
+                                </td>
                                 <td>
                                   {record ? formatHoursMins(record.total_hours) : "---"}
                                 </td>

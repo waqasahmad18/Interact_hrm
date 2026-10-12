@@ -918,38 +918,62 @@ export function pairTungstenWithSessions(
           }
         : null);
 
-    // T.Punch In: always allow early arrival after noon / before shift start ("aty hoye").
-    // punchesInShiftWindow starts at shiftStart and was dropping real In punches
-    // (e.g. 2:31 PM / 4:57 PM when shift starts at 5:00 PM).
+    // T.Punch In:
+    // 1) Last door punch at/before this Clock In (recent clock-in ke pehle wala punch)
+    // 2) Else early arrival after noon / before shift start ("aty hoye")
+    // 3) Else first punch in shift window
     {
-      const shiftStart =
-        shiftTiming?.startTime ?? resolveShiftStart?.(sessionDate) ?? null;
-      const cacheKey = `${sessionDate}|${shiftStart ?? ""}`;
-      let arrival = arrivalPunchByShiftDay.get(cacheKey);
-      if (arrival === undefined) {
-        const found = firstArrivalPunchForShiftDay(
-          tungstenByTime,
-          sessionDate,
-          shiftStart,
+      if (!Number.isNaN(cinMs)) {
+        const beforeCin = tungstenByTime.filter(
+          (t) =>
+            t.atMs <= cinMs &&
+            t.atMs >= cinMs - 16 * 60 * 60 * 1000 &&
+            !usedPunchAt.has(t.atMs),
         );
-        arrival = found ?? "";
-        arrivalPunchByShiftDay.set(cacheKey, arrival);
+        if (beforeCin.length) {
+          const pick = beforeCin[beforeCin.length - 1];
+          punchIn = pick.time;
+          excludeExitAtMs = pick.atMs;
+          usedPunchAt.add(pick.atMs);
+        }
       }
-      if (arrival) {
-        punchIn = arrival;
-        const arrivalEvent = tungstenByTime.find(
-          (t) => t.date === sessionDate && t.time === arrival,
-        );
-        if (arrivalEvent) excludeExitAtMs = arrivalEvent.atMs;
-      } else if (shiftTiming?.startTime) {
-        const inWindow = punchesInShiftWindow(
-          tungstenByTime,
-          sessionDate,
-          shiftTiming,
-        );
-        if (inWindow.length) {
-          punchIn = inWindow[0].time;
-          excludeExitAtMs = inWindow[0].atMs;
+      if (punchIn === "-") {
+        const shiftStart =
+          shiftTiming?.startTime ?? resolveShiftStart?.(sessionDate) ?? null;
+        const cacheKey = `${sessionDate}|${shiftStart ?? ""}`;
+        let arrival = arrivalPunchByShiftDay.get(cacheKey);
+        if (arrival === undefined) {
+          const found = firstArrivalPunchForShiftDay(
+            tungstenByTime,
+            sessionDate,
+            shiftStart,
+          );
+          arrival = found ?? "";
+          arrivalPunchByShiftDay.set(cacheKey, arrival);
+        }
+        if (arrival) {
+          const arrivalEvent = tungstenByTime.find(
+            (t) =>
+              t.date === sessionDate &&
+              t.time === arrival &&
+              !usedPunchAt.has(t.atMs),
+          );
+          if (arrivalEvent) {
+            punchIn = arrival;
+            excludeExitAtMs = arrivalEvent.atMs;
+            usedPunchAt.add(arrivalEvent.atMs);
+          }
+        } else if (shiftTiming?.startTime) {
+          const inWindow = punchesInShiftWindow(
+            tungstenByTime,
+            sessionDate,
+            shiftTiming,
+          ).filter((t) => !usedPunchAt.has(t.atMs));
+          if (inWindow.length) {
+            punchIn = inWindow[0].time;
+            excludeExitAtMs = inWindow[0].atMs;
+            usedPunchAt.add(inWindow[0].atMs);
+          }
         }
       }
     }
