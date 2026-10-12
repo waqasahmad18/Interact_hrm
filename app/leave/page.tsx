@@ -119,10 +119,54 @@ export default function LeavePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
   const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
+  const [balanceByEmp, setBalanceByEmp] = useState<
+    Record<string, { annualBalance: number; annualAllowance: number; bereavementBalance: number }>
+  >({});
   const [sortConfig, setSortConfig] = useState<{ key: LeaveSortKey; direction: SortDirection } | null>(
     null
   );
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  const loadBalancesForLeaves = async (list: any[]) => {
+    const ids = [
+      ...new Set(
+        list
+          .map((l) => String(l.employee_id || "").trim())
+          .filter((id) => /^\d+$/.test(id)),
+      ),
+    ].slice(0, 80);
+    if (!ids.length) {
+      setBalanceByEmp({});
+      return;
+    }
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetch(
+            `/api/leave-balance?employee_id=${encodeURIComponent(id)}&ts=${Date.now()}`,
+            { cache: "no-store" },
+          );
+          const data = await res.json();
+          if (!data?.success) return null;
+          return [
+            id,
+            {
+              annualBalance: Number(data.annualBalance) || 0,
+              annualAllowance: Number(data.annualAllowance) || 0,
+              bereavementBalance: Number(data.bereavementBalance) || 0,
+            },
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const next: typeof balanceByEmp = {};
+    for (const e of entries) {
+      if (e) next[e[0]] = e[1];
+    }
+    setBalanceByEmp(next);
+  };
 
   const fetchLeaves = async (scope = viewerScope) => {
     setLoading(true);
@@ -169,6 +213,7 @@ export default function LeavePage() {
             rowAllowedByScope(scope, l.employee_id, l.department_name),
           );
         setLeaves(enrichedLeaves);
+        void loadBalancesForLeaves(enrichedLeaves);
       } else {
         setError(data.error || "Failed to fetch leaves");
       }
@@ -444,6 +489,7 @@ export default function LeavePage() {
                       <th>{renderSortableHeader("Category", "leave_category")}</th>
                       <th>{renderSortableHeader("Dates", "start_date")}</th>
                       <th>{renderSortableHeader("Days", "total_days")}</th>
+                      <th>Balance</th>
                       <th>{renderSortableHeader("1st step", "step1_status")}</th>
                       <th>{renderSortableHeader("2nd step", "step2_status")}</th>
                       <th>{renderSortableHeader("Status", "status")}</th>
@@ -454,7 +500,7 @@ export default function LeavePage() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={13} className={tableStyles.breakSummaryNoRecords}>
                           No leave requests yet.
                         </td>
                       </tr>
@@ -466,6 +512,18 @@ export default function LeavePage() {
                         const showStep1 = canActOnLeave(l) && canApproveStep1(l);
                         const showStep2 = canActOnLeave(l) && canApproveStep2(l);
                         const pending = showStep1 || showStep2;
+                        const bal = balanceByEmp[String(l.employee_id)];
+                        const isBereavement =
+                          String(l.leave_category || "").toLowerCase() === "bereavement";
+                        const currentBal = bal
+                          ? isBereavement
+                            ? bal.bereavementBalance
+                            : bal.annualBalance
+                          : null;
+                        const afterApprove =
+                          currentBal != null
+                            ? Math.max(0, currentBal - Number(l.total_days || 0))
+                            : null;
                         return (
                           <tr
                             key={
@@ -489,6 +547,26 @@ export default function LeavePage() {
                               {formatDate(l.start_date)} – {formatDate(l.end_date)}
                             </td>
                             <td>{l.total_days}</td>
+                            <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+                              {currentBal == null ? (
+                                "…"
+                              ) : (
+                                <>
+                                  {currentBal}
+                                  {bal && !isBereavement ? (
+                                    <span style={{ color: "#94a3b8", fontWeight: 500 }}>
+                                      {" "}
+                                      / {bal.annualAllowance}
+                                    </span>
+                                  ) : null}
+                                  {pending && afterApprove != null ? (
+                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                                      After approve: {afterApprove}
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </td>
                             <td>
                               <span className={`${styles.badge} ${stepBadgeClass(s1)}`}>{s1}</span>
                             </td>
@@ -596,7 +674,7 @@ export default function LeavePage() {
                 ) : null}
                 {balanceInfo ? (
                   <div className={styles.balanceBox}>
-                    <b>Current balances</b>
+                    <b>Current leave balance (before this action)</b>
                     <div>
                       {balanceInfo.employment_status === "Probation"
                         ? "Leave balance"
@@ -606,6 +684,12 @@ export default function LeavePage() {
                     <div>
                       Bereavement: {balanceInfo.bereavementBalance} / 3
                     </div>
+                    {selectedPending ? (
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>
+                        Approve → balance minus {selectedLeave.total_days || 1} day(s). Reject →
+                        balance unchanged.
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className={styles.modalRow}>

@@ -32,6 +32,10 @@ import {
 } from "@/lib/hr-department-tickets";
 import { syncLeaveRecordFromTicket } from "@/lib/leave-ticket-sync";
 import { isManagerOrgRole, isTeamLeadOrgRole, isCeoOrgRole } from "@/lib/org-role";
+import {
+  assertLeaveBalanceAllowsRequest,
+  getEmployeeLeaveBalance,
+} from "@/lib/leave-balance";
 
 function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
   const q =
@@ -250,6 +254,38 @@ export async function POST(req: NextRequest) {
     }
 
     const formJson = form_data ? JSON.stringify(form_data) : null;
+
+    // Leave tickets: block when balance is 0 or requested days exceed remaining.
+    if (typeKey === "leave") {
+      const fd =
+        form_data && typeof form_data === "object"
+          ? (form_data as Record<string, unknown>)
+          : {};
+      const leaveCategory = String(fd.leave_category || "annual");
+      const totalDays = Math.max(1, Number(fd.total_days) || 1);
+      const bal = await getEmployeeLeaveBalance(employee_id);
+      if (!bal.success) {
+        return NextResponse.json(
+          { success: false, error: bal.error || "Could not check leave balance" },
+          { status: 400 }
+        );
+      }
+      const gate = assertLeaveBalanceAllowsRequest(bal, {
+        leaveCategory,
+        totalDays,
+      });
+      if (!gate.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: gate.error,
+            annualBalance: bal.annualBalance,
+            bereavementBalance: bal.bereavementBalance,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     const [result]: any = await pool.query(
       `INSERT INTO ${EMPLOYEE_TICKETS_TABLE}

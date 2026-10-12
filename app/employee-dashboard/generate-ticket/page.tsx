@@ -308,6 +308,15 @@ function GenerateTicketPageInner() {
   const balanceLabel =
     employmentStatus === "Probation" ? "Leave balance" : "Annual leave balance";
 
+  const effectiveLeaveBalance =
+    leaveCategory === "bereavement" ? bereavementBalance : leaveBalance;
+  const leaveBalanceExhausted =
+    formKind === "leave" && effectiveLeaveBalance <= 0;
+  const leaveDaysExceedBalance =
+    formKind === "leave" &&
+    leaveDays > 0 &&
+    leaveDays > effectiveLeaveBalance;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files);
@@ -333,6 +342,16 @@ function GenerateTicketPageInner() {
       const days = calcDays(startDate, endDate);
       if (!startDate || !endDate) throw new Error("Please select leave start and end dates.");
       if (!description.trim()) throw new Error("Please enter a reason for leave.");
+      const rem =
+        leaveCategory === "bereavement" ? bereavementBalance : leaveBalance;
+      if (rem <= 0) {
+        throw new Error("Leave balance is 0. You cannot apply for leave.");
+      }
+      if (days > rem) {
+        throw new Error(
+          `Not enough leave balance. Remaining: ${rem} day(s), requested: ${days}.`
+        );
+      }
 
       let uploadedFilePaths: string[] = [];
       if (documents.length > 0) {
@@ -545,23 +564,57 @@ function GenerateTicketPageInner() {
           {formKind === "leave" ? (
             <>
               <div className={styles.leaveBalanceRow}>
-                <div className={`${styles.leaveBalanceCard} ${styles.leaveBalancePurple}`}>
+                <div
+                  className={`${styles.leaveBalanceCard} ${styles.leaveBalancePurple}`}
+                  style={
+                    leaveBalance <= 0
+                      ? { outline: "2px solid #dc2626", background: "#fef2f2" }
+                      : undefined
+                  }
+                >
                   <p className={styles.leaveBalanceLabel}>{balanceLabel}</p>
-                  <p className={styles.leaveBalanceValue}>
+                  <p
+                    className={styles.leaveBalanceValue}
+                    style={leaveBalance <= 0 ? { color: "#dc2626" } : undefined}
+                  >
                     {leaveBalance}
                     <span className={styles.leaveBalanceOf}> / {annualAllowance}</span>
                   </p>
-                  <p className={styles.leaveBalanceSub}>Days remaining this year</p>
+                  <p className={styles.leaveBalanceSub}>
+                    {leaveBalance <= 0
+                      ? "Balance finished — leave ticket disabled"
+                      : "Days remaining this year"}
+                  </p>
                 </div>
-                <div className={`${styles.leaveBalanceCard} ${styles.leaveBalanceGreen}`}>
+                <div
+                  className={`${styles.leaveBalanceCard} ${styles.leaveBalanceGreen}`}
+                  style={
+                    bereavementBalance <= 0
+                      ? { outline: "2px solid #dc2626", background: "#fef2f2" }
+                      : undefined
+                  }
+                >
                   <p className={styles.leaveBalanceLabel}>Bereavement leave</p>
-                  <p className={styles.leaveBalanceValue}>
+                  <p
+                    className={styles.leaveBalanceValue}
+                    style={bereavementBalance <= 0 ? { color: "#dc2626" } : undefined}
+                  >
                     {bereavementBalance}
                     <span className={styles.leaveBalanceOf}> / 3</span>
                   </p>
                   <p className={styles.leaveBalanceSub}>Days remaining</p>
                 </div>
               </div>
+              {leaveBalanceExhausted ? (
+                <div className={styles.alertError} role="alert">
+                  Leave balance is 0. You cannot submit a leave ticket until balance is available.
+                </div>
+              ) : null}
+              {leaveDaysExceedBalance && !leaveBalanceExhausted ? (
+                <div className={styles.alertError} role="alert">
+                  Requested {leaveDays} day(s) exceeds remaining balance ({effectiveLeaveBalance}).
+                </div>
+              ) : null}
               <div className={styles.field}>
                 <label className={styles.label}>Leave category</label>
                 <select
@@ -585,6 +638,7 @@ function GenerateTicketPageInner() {
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     required
+                    disabled={leaveBalanceExhausted}
                   />
                 </div>
                 <div className={styles.field}>
@@ -595,6 +649,7 @@ function GenerateTicketPageInner() {
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     required
+                    disabled={leaveBalanceExhausted}
                   />
                 </div>
               </div>
@@ -669,6 +724,7 @@ function GenerateTicketPageInner() {
                   : "Describe your request…"
               }
               required={formKind !== "salary_slip"}
+              disabled={leaveBalanceExhausted}
             />
           </div>
 
@@ -753,7 +809,17 @@ function GenerateTicketPageInner() {
             </div>
           ) : null}
 
-          <button type="submit" className={styles.submitBtn} disabled={submitting || !employeeId || !showFormSection}>
+          <button
+            type="submit"
+            className={styles.submitBtn}
+            disabled={
+              submitting ||
+              !employeeId ||
+              !showFormSection ||
+              leaveBalanceExhausted ||
+              leaveDaysExceedBalance
+            }
+          >
             {submitting ? "Submitting…" : "Submit ticket"}
           </button>
         </form>

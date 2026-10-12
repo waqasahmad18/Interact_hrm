@@ -196,6 +196,16 @@ export default function LeavePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const rem = category === "bereavement" ? bereavementBalance : leaveBalance;
+    const days = calcDays(startDate, endDate);
+    if (rem <= 0) {
+      setError("Leave balance is 0. You cannot apply for leave.");
+      return;
+    }
+    if (days > rem) {
+      setError(`Not enough leave balance. Remaining: ${rem}, requested: ${days}.`);
+      return;
+    }
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -263,6 +273,9 @@ export default function LeavePage() {
 
   const balanceLabel =
     employmentStatus === "Probation" ? "Leave balance" : "Annual leave balance";
+  const effectiveBalance =
+    category === "bereavement" ? bereavementBalance : leaveBalance;
+  const leaveDisabled = effectiveBalance <= 0;
 
   return (
     <div className={styles.page}>
@@ -270,16 +283,30 @@ export default function LeavePage() {
         <h1 className={styles.title}>Leave</h1>
 
         <div className={styles.statRow}>
-          <div className={`${styles.statCard} ${styles.statCardPurple}`}>
+          <div
+            className={`${styles.statCard} ${styles.statCardPurple}`}
+            style={
+              leaveBalance <= 0
+                ? { outline: "2px solid #dc2626", background: "#fef2f2" }
+                : undefined
+            }
+          >
             <p className={styles.statLabel}>{balanceLabel}</p>
-            <p className={styles.statValue}>
+            <p
+              className={styles.statValue}
+              style={leaveBalance <= 0 ? { color: "#dc2626" } : undefined}
+            >
               {leaveBalance}
               <span style={{ fontSize: "1rem", fontWeight: 600, color: "#94a3b8" }}>
                 {" "}
                 / {annualAllowance}
               </span>
             </p>
-            <p className={styles.statSub}>Days remaining this year</p>
+            <p className={styles.statSub}>
+              {leaveBalance <= 0
+                ? "Balance finished — leave apply disabled"
+                : "Days remaining this year"}
+            </p>
           </div>
           <div className={`${styles.statCard} ${styles.statCardGreen}`}>
             <p className={styles.statLabel}>Bereavement leave</p>
@@ -293,6 +320,11 @@ export default function LeavePage() {
 
         <form className={styles.formCard} onSubmit={handleSubmit}>
           <h2 className={styles.formTitle}>Apply for leave</h2>
+          {leaveDisabled ? (
+            <div className={styles.alertError} role="alert" style={{ marginBottom: 12 }}>
+              Leave balance is 0. You cannot apply for leave.
+            </div>
+          ) : null}
           <div className={styles.formGrid}>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="leave-category">
@@ -322,6 +354,7 @@ export default function LeavePage() {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 required
+                disabled={leaveDisabled}
               />
             </div>
             <div className={styles.field}>
@@ -335,6 +368,7 @@ export default function LeavePage() {
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 required
+                disabled={leaveDisabled}
               />
             </div>
           </div>
@@ -350,6 +384,7 @@ export default function LeavePage() {
               onChange={(e) => setReason(e.target.value)}
               required
               rows={3}
+              disabled={leaveDisabled}
             />
           </div>
 
@@ -382,8 +417,12 @@ export default function LeavePage() {
             ) : null}
           </div>
 
-          <button type="submit" className={styles.submitBtn} disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit request"}
+          <button
+            type="submit"
+            className={styles.submitBtn}
+            disabled={submitting || leaveDisabled}
+          >
+            {submitting ? "Submitting…" : leaveDisabled ? "Leave balance 0" : "Submit request"}
           </button>
           {error ? <div className={styles.alertError}>{error}</div> : null}
           {success ? <div className={styles.alertSuccess}>{success}</div> : null}

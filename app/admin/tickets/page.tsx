@@ -42,6 +42,12 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
   const [processing, setProcessing] = React.useState(false);
   const [canModerate, setCanModerate] = React.useState(inboxMode === "admin");
   const [viewerId, setViewerId] = React.useState("");
+  const [leaveBalanceInfo, setLeaveBalanceInfo] = React.useState<{
+    annualBalance: number;
+    annualAllowance: number;
+    bereavementBalance: number;
+    employment_status?: string;
+  } | null>(null);
 
   React.useEffect(() => {
     try {
@@ -85,6 +91,42 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
   React.useEffect(() => {
     void fetchTickets();
   }, [fetchTickets]);
+
+  React.useEffect(() => {
+    if (!selected || selected.ticket_type !== "leave") {
+      setLeaveBalanceInfo(null);
+      return;
+    }
+    let cancelled = false;
+    const empId = String(selected.employee_id || "").trim();
+    if (!empId) {
+      setLeaveBalanceInfo(null);
+      return;
+    }
+    fetch(
+      `/api/leave-balance?employee_id=${encodeURIComponent(empId)}&ts=${Date.now()}`,
+      { cache: "no-store" },
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data?.success) {
+          if (!cancelled) setLeaveBalanceInfo(null);
+          return;
+        }
+        setLeaveBalanceInfo({
+          annualBalance: Number(data.annualBalance) || 0,
+          annualAllowance: Number(data.annualAllowance) || 0,
+          bereavementBalance: Number(data.bereavementBalance) || 0,
+          employment_status: data.employment_status,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLeaveBalanceInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   // Poll so Guard tickets appear even if WS misses an event
   React.useEffect(() => {
@@ -498,9 +540,43 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
             {renderTicketDetails(selected)}
 
             {selected.ticket_type === "leave" ? (
-              <p className={adminStyles.muted} style={{ marginBottom: 12 }}>
-                Leave tickets are status-only — chat / replies are disabled.
-              </p>
+              <>
+                <p className={adminStyles.muted} style={{ marginBottom: 12 }}>
+                  Leave tickets are status-only — chat / replies are disabled.
+                </p>
+                {leaveBalanceInfo ? (
+                  <div
+                    style={{
+                      marginBottom: 14,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      Current leave balance
+                    </div>
+                    <div>
+                      {leaveBalanceInfo.employment_status === "Probation"
+                        ? "Leave balance"
+                        : "Annual"}
+                      :{" "}
+                      <b>
+                        {leaveBalanceInfo.annualBalance} /{" "}
+                        {leaveBalanceInfo.annualAllowance}
+                      </b>
+                    </div>
+                    <div>
+                      Bereavement: <b>{leaveBalanceInfo.bereavementBalance} / 3</b>
+                    </div>
+                    <div style={{ marginTop: 8, color: "#64748b", fontSize: 13 }}>
+                      Approve → balance minus requested days. Reject → balance unchanged.
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <div className={adminStyles.chatSection}>
                 <span className={adminStyles.chatSectionLabel}>Conversation</span>

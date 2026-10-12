@@ -18,6 +18,10 @@ import {
   isTeamLeadOrgRole,
 } from "@/lib/org-role";
 import { backfillLeavesFromTickets } from "@/lib/leave-ticket-sync";
+import {
+  assertLeaveBalanceAllowsRequest,
+  getEmployeeLeaveBalance,
+} from "@/lib/leave-balance";
 
 async function assertLeaveApprover(
   actorId: string | null,
@@ -113,6 +117,23 @@ export async function POST(req: NextRequest) {
     if (!employee_id || !leave_category || !start_date || !end_date || !total_days) {
       return NextResponse.json({ success: false, error: "Missing required fields" });
     }
+
+    const bal = await getEmployeeLeaveBalance(employee_id);
+    if (bal.success) {
+      const gate = assertLeaveBalanceAllowsRequest(bal, {
+        leaveCategory: leave_category,
+        totalDays: Number(total_days) || 1,
+      });
+      if (!gate.ok) {
+        return NextResponse.json({
+          success: false,
+          error: gate.error,
+          annualBalance: bal.annualBalance,
+          bereavementBalance: bal.bereavementBalance,
+        });
+      }
+    }
+
     try {
       await query(
         `INSERT INTO employee_leaves
@@ -284,7 +305,29 @@ export async function PATCH(req: NextRequest) {
         );
       }
       broadcastWsEvent({ type: "leave_update" });
-      return NextResponse.json({ success: true, status: "rejected" });
+      // Rejected: balance unchanged (only approved leaves deduct).
+      const bal = await getEmployeeLeaveBalance(leave.employee_id);
+      return NextResponse.json({
+        success: true,
+        status: "rejected",
+        balance: bal.success
+          ? {
+              annualBalance: bal.annualBalance,
+              bereavementBalance: bal.bereavementBalance,
+            }
+          : null,
+      });
+    }
+
+    async function balanceAfterApprove() {
+      const bal = await getEmployeeLeaveBalance(leave.employee_id);
+      return bal.success
+        ? {
+            annualBalance: bal.annualBalance,
+            annualAllowance: bal.annualAllowance,
+            bereavementBalance: bal.bereavementBalance,
+          }
+        : null;
     }
 
     // Resolve smart "approve" to the next required step
@@ -299,7 +342,11 @@ export async function PATCH(req: NextRequest) {
           [actorId, actorId, id],
         );
         broadcastWsEvent({ type: "leave_update" });
-        return NextResponse.json({ success: true, status: "approved" });
+        return NextResponse.json({
+          success: true,
+          status: "approved",
+          balance: await balanceAfterApprove(),
+        });
       }
       if (canApproveStep1(leave)) action = "approve_step1";
       else if (canApproveStep2(leave)) action = "approve_step2";
@@ -324,7 +371,12 @@ export async function PATCH(req: NextRequest) {
           [actorId, actorId, id],
         );
         broadcastWsEvent({ type: "leave_update" });
-        return NextResponse.json({ success: true, status: "approved", step: 1 });
+        return NextResponse.json({
+          success: true,
+          status: "approved",
+          step: 1,
+          balance: await balanceAfterApprove(),
+        });
       }
       await query(
         `UPDATE employee_leaves SET step1_status = 'approved', step1_by = ?, step1_at = NOW(),
@@ -359,6 +411,7 @@ export async function PATCH(req: NextRequest) {
         status: "approved",
         step: 2,
         status_label: "approved",
+        balance: await balanceAfterApprove(),
       });
     }
 
