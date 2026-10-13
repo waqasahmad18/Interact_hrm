@@ -265,20 +265,23 @@ export default function MonthlyAttendancePage() {
     return shiftSeconds;
   }
 
-  /** OT only if allow_overtime + manual clock-out (not auto) + ≥1h past shift. */
+  /**
+   * Monthly Attendance OT display: when shift allows overtime, show hours beyond
+   * assigned shift (≥1h). allow_overtime must be on the record (filled from
+   * shift-assignments). Auto clock-out does not hide OT here.
+   */
   function calculateOvertime(
     totalSeconds: number,
     assignedShiftSeconds: number | null,
     record?: {
       allow_overtime?: boolean | number | string | null;
-      auto_clock_out?: boolean | number | string | null;
     },
   ): number | null {
     return resolveBillableOvertimeSeconds({
       totalSeconds,
       assignedShiftSeconds,
       allowOvertime: record?.allow_overtime,
-      autoClockOut: record?.auto_clock_out,
+      autoClockOut: false,
       minSeconds: OVERTIME_MIN_SECONDS,
     });
   }
@@ -372,7 +375,13 @@ export default function MonthlyAttendancePage() {
   const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
   const [hrmEmployeesList, setHrmEmployeesList] = useState<HrmEmployeeRef[]>([]);
   const [shiftAssignments, setShiftAssignments] = useState<
-    { employeeId: string; startTime: string; endTime: string; assignedDate: string }[]
+    {
+      employeeId: string;
+      startTime: string;
+      endTime: string;
+      assignedDate: string;
+      allowOvertime: boolean;
+    }[]
   >([]);
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   /** Collapsed by default — full month tables for every employee freeze the browser */
@@ -427,11 +436,16 @@ export default function MonthlyAttendancePage() {
                 start_time: string;
                 end_time: string;
                 assigned_date?: string;
+                allow_overtime?: boolean | number | string | null;
               }) => ({
                 employeeId: String(e.id),
                 startTime: String(e.start_time).slice(0, 8),
                 endTime: String(e.end_time).slice(0, 8),
                 assignedDate: String(e.assigned_date || "").slice(0, 10),
+                allowOvertime:
+                  e.allow_overtime === true ||
+                  e.allow_overtime === 1 ||
+                  e.allow_overtime === "1",
               }),
             ),
         );
@@ -469,7 +483,10 @@ export default function MonthlyAttendancePage() {
     }
 
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      const [res, shiftRes] = await Promise.all([
+        fetch(url, { cache: "no-store" }),
+        fetch("/api/hrm-shifts-assignments", { cache: "no-store" }),
+      ]);
       const data = await res.json();
       if (gen !== fetchGenRef.current) return;
       if (!data.success) {
@@ -477,7 +494,42 @@ export default function MonthlyAttendancePage() {
         return;
       }
 
-      const empShiftMap: Record<string, { start: string; end: string; seconds: number }> = {};
+      let liveShifts = shiftAssignments;
+      try {
+        const shiftData = await shiftRes.json();
+        if (shiftData.success && Array.isArray(shiftData.employees)) {
+          liveShifts = shiftData.employees
+            .filter((e: { id?: number; start_time?: string; end_time?: string }) =>
+              Boolean(e.id && e.start_time && e.end_time),
+            )
+            .map(
+              (e: {
+                id: number;
+                start_time: string;
+                end_time: string;
+                assigned_date?: string;
+                allow_overtime?: boolean | number | string | null;
+              }) => ({
+                employeeId: String(e.id),
+                startTime: String(e.start_time).slice(0, 8),
+                endTime: String(e.end_time).slice(0, 8),
+                assignedDate: String(e.assigned_date || "").slice(0, 10),
+                allowOvertime:
+                  e.allow_overtime === true ||
+                  e.allow_overtime === 1 ||
+                  e.allow_overtime === "1",
+              }),
+            );
+          setShiftAssignments(liveShifts);
+        }
+      } catch {
+        /* keep existing shiftAssignments */
+      }
+
+      const empShiftMap: Record<
+        string,
+        { start: string; end: string; seconds: number; allow_overtime?: boolean }
+      > = {};
       (data.attendance || []).forEach((record: any) => {
         const assignedShiftSeconds = getAssignedShiftSeconds(
           record.shift_start_time,
@@ -490,15 +542,32 @@ export default function MonthlyAttendancePage() {
           assignedShiftSeconds &&
           assignedShiftSeconds > 0
         ) {
-          empShiftMap[record.employee_id] = {
+          empShiftMap[String(record.employee_id)] = {
             start: record.shift_start_time,
             end: record.shift_end_time,
             seconds: assignedShiftSeconds,
+            allow_overtime:
+              record.allow_overtime === true ||
+              record.allow_overtime === 1 ||
+              record.allow_overtime === "1",
           };
         }
       });
+      // Fill from shift-assignments API (source of allow_overtime on staging/Mongo).
+      for (const s of liveShifts) {
+        const secs = getAssignedShiftSeconds(s.startTime, s.endTime);
+        if (!secs || secs <= 0) continue;
+        const prev = empShiftMap[s.employeeId];
+        empShiftMap[s.employeeId] = {
+          start: s.startTime,
+          end: s.endTime,
+          seconds: secs,
+          allow_overtime: s.allowOvertime || prev?.allow_overtime,
+        };
+      }
 
       let records = (data.attendance || []).map((record: any) => {
+        const empId = String(record.employee_id ?? "");
         const totalSeconds =
           record.total_seconds && record.total_seconds > 0
             ? record.total_seconds
@@ -507,15 +576,20 @@ export default function MonthlyAttendancePage() {
           record.shift_start_time,
           record.shift_end_time,
         );
-        if (
-          (!assignedShiftSeconds || assignedShiftSeconds <= 0) &&
-          empShiftMap[record.employee_id]
-        ) {
-          assignedShiftSeconds = empShiftMap[record.employee_id].seconds;
+        if ((!assignedShiftSeconds || assignedShiftSeconds <= 0) && empShiftMap[empId]) {
+          assignedShiftSeconds = empShiftMap[empId].seconds;
         }
-        const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds, record);
+        const allowOt =
+          record.allow_overtime !== undefined && record.allow_overtime !== null
+            ? record.allow_overtime
+            : empShiftMap[empId]?.allow_overtime;
+        const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds, {
+          ...record,
+          allow_overtime: allowOt,
+        });
         return {
           ...record,
+          allow_overtime: allowOt,
           total_hours: formatDuration(totalSeconds),
           assigned_shift_seconds: assignedShiftSeconds,
           overtime: overtimeSeconds,

@@ -194,6 +194,11 @@ function attachLatestShift(
         }
       }
     }
+    // Mid-month assign: if no as-of-date row, still use latest known shift
+    // so OT / status can use timing + allow_overtime for earlier days.
+    if (!best && list.length) {
+      best = list[list.length - 1];
+    }
     if (!best) return row;
     return {
       ...row,
@@ -204,6 +209,10 @@ function attachLatestShift(
       start_time: best.start_time ?? row.start_time,
       end_time: best.end_time ?? row.end_time,
       assigned_date: best.assigned_date ?? row.assigned_date,
+      allow_overtime:
+        best.allow_overtime !== undefined && best.allow_overtime !== null
+          ? best.allow_overtime
+          : row.allow_overtime,
     };
   });
 }

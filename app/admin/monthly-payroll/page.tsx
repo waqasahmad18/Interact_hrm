@@ -119,6 +119,15 @@ export default function MonthlyAttendancePage() {
     return 9;
   }
 
+  /**
+   * Per-hour rate: Basic ÷ Working Days ÷ Hours/day.
+   * Drop decimals (no round-off) — e.g. 47.619… → 47; full day = 47 × 5 = 235.
+   */
+  function truncPerHourRate(basic: number, workingDays: number, hoursPerDay: number): number {
+    if (!(basic > 0) || !(workingDays > 0) || !(hoursPerDay > 0)) return 0;
+    return Math.floor(basic / workingDays / hoursPerDay);
+  }
+
   // Calculate overtime — only allow_overtime + manual clock-out (not auto) + ≥1h past shift
   function calculateOvertime(
     totalSeconds: number,
@@ -1228,11 +1237,14 @@ export default function MonthlyAttendancePage() {
       otHoursLabel = totalMinutes > 0 ? formatOtHoursLabel(otHours) : "0h 00m";
     }
 
+    const perHourRate = truncPerHourRate(basicSalary, workingDays, paidHoursPerDay);
+    const fullDayPay = perHourRate * paidHoursPerDay;
+
     let otSalary = 0;
     if (employee.allowOvertime !== false) {
-      if (basicSalary > 0 && workingDays > 0 && otHours > 0) {
-        const perHourRate = basicSalary / workingDays / paidHoursPerDay;
-        otSalary = Math.round(perHourRate * otHours);
+      if (perHourRate > 0 && otHours > 0) {
+        // Use truncated per-hour only (no re-rounding the rate).
+        otSalary = Math.floor(perHourRate * otHours);
       }
     }
 
@@ -1256,9 +1268,10 @@ export default function MonthlyAttendancePage() {
       trainerIncentive +
       floorIncentive;
 
+    // Unpaid cut from truncated full-day pay (e.g. 235/day), not rounded Basic÷W.Days.
     const unpaidDaysSalary =
-      basicSalary > 0 && workingDays > 0 && unpaidDays > 0
-        ? Math.round((basicSalary / workingDays) * unpaidDays)
+      fullDayPay > 0 && unpaidDays > 0
+        ? Math.floor(fullDayPay * unpaidDays)
         : 0;
 
     const breakExceedDed = Number.isFinite(opts.breakExceedDed) && (opts.breakExceedDed as number) > 0
