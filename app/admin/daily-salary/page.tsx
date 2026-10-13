@@ -15,10 +15,13 @@ type SummaryRow = {
   department_name: string;
   basic_salary: number;
   working_days: number;
+  paid_hours_per_day?: number;
+  hourly_rate?: number;
   daily_rate: number;
   total_earned: number;
   total_deducted: number;
   unpaid_days: number;
+  total_hours_credited?: number;
   updated_at?: string | null;
 };
 
@@ -29,6 +32,8 @@ type DayRow = {
   tardy_count: number | null;
   deduction_percent: number;
   daily_rate: number;
+  hourly_rate?: number;
+  hours_credited?: number;
   deducted_amount: number;
   earned_amount: number;
   clock_in: string | null;
@@ -38,6 +43,13 @@ type DayRow = {
 };
 
 function money(n: number) {
+  return Number(n || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function hoursLabel(n: number) {
   return Number(n || 0).toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -109,7 +121,6 @@ export default function DailySalaryPage() {
       const id = String(employeeId);
       setDetailLoading(true);
       setError(null);
-      // Show correct name immediately (don't keep previous employee's panel).
       if (hint && String(hint.employee_id) === id) {
         setDetail({ ...hint, days: [] });
       } else {
@@ -123,7 +134,7 @@ export default function DailySalaryPage() {
           { cache: "no-store" },
         );
         const data = await res.json();
-        if (reqId !== detailRequestRef.current) return; // stale response
+        if (reqId !== detailRequestRef.current) return;
         if (!data.success) throw new Error(data.error || "Failed to load detail");
         if (!data.summary) {
           setDetail(null);
@@ -131,7 +142,6 @@ export default function DailySalaryPage() {
           return;
         }
         const summary = data.summary;
-        // Guard: never show another employee's days under this selection.
         if (String(summary.employee_id) !== id) {
           throw new Error(
             `Mismatched employee (${summary.employee_id} ≠ ${id}). Refresh and try again.`,
@@ -232,6 +242,9 @@ export default function DailySalaryPage() {
                 total_deducted: data.summary.total_deducted,
                 unpaid_days: data.summary.unpaid_days,
                 daily_rate: data.summary.daily_rate,
+                hourly_rate: data.summary.hourly_rate,
+                paid_hours_per_day: data.summary.paid_hours_per_day,
+                total_hours_credited: data.summary.total_hours_credited,
                 working_days: data.summary.working_days,
                 basic_salary: data.summary.basic_salary,
               }
@@ -267,8 +280,9 @@ export default function DailySalaryPage() {
         <div style={{ marginBottom: 20 }}>
           <h1 className={styles.pageTitle}>Daily Salary Calculator</h1>
           <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
-            Full-month day-by-day salary from attendance (same tardy rules as Monthly Attendance).
-            Edit any day — totals and Monthly Payroll unpaid days update automatically.
+            Per hour = Basic ÷ Working days ÷ Hours/day. Each present day adds{" "}
+            <strong>hourly × hours credited</strong> by status (full / half / absent / tardy).
+            Edit any day — daily record + month totals update.
           </p>
         </div>
 
@@ -340,7 +354,10 @@ export default function DailySalaryPage() {
                   <th>Department</th>
                   <th>Basic</th>
                   <th>W.Days</th>
+                  <th>Hrs/Day</th>
+                  <th>Per Hour</th>
                   <th>Daily Rate</th>
+                  <th>Hours Paid</th>
                   <th>Unpaid Days</th>
                   <th>Earned</th>
                   <th>Deducted</th>
@@ -350,7 +367,7 @@ export default function DailySalaryPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: "center", color: "#64748b", padding: 24 }}>
+                    <td colSpan={13} style={{ textAlign: "center", color: "#64748b", padding: 24 }}>
                       No records for this month. Click <strong>Generate from Attendance</strong>.
                     </td>
                   </tr>
@@ -402,7 +419,10 @@ export default function DailySalaryPage() {
                       <td>{s.department_name || "—"}</td>
                       <td>{money(s.basic_salary)}</td>
                       <td>{s.working_days}</td>
+                      <td>{hoursLabel(s.paid_hours_per_day ?? 9)}</td>
+                      <td>{money(s.hourly_rate ?? 0)}</td>
                       <td>{money(s.daily_rate)}</td>
+                      <td>{hoursLabel(s.total_hours_credited ?? 0)}</td>
                       <td style={{ color: "#dc2626", fontWeight: 600 }}>{s.unpaid_days}</td>
                       <td style={{ color: "#047857", fontWeight: 600 }}>{money(s.total_earned)}</td>
                       <td style={{ color: "#dc2626" }}>{money(s.total_deducted)}</td>
@@ -441,7 +461,7 @@ export default function DailySalaryPage() {
                   filtered.find((x) => String(x.employee_id) === String(selectedEmployeeId))
                     ?.employee_name ||
                   selectedEmployeeId}{" "}
-                — day records ({selectedMonth})
+                — daily record ({selectedMonth})
                 <span style={{ color: "#94a3b8", fontWeight: 500, fontSize: "0.85rem", marginLeft: 8 }}>
                   ID {selectedEmployeeId}
                 </span>
@@ -487,7 +507,19 @@ export default function DailySalaryPage() {
                   Working days: <strong>{detail.working_days}</strong>
                 </span>
                 <span>
+                  Hours/day: <strong>{hoursLabel(detail.paid_hours_per_day ?? 9)}</strong>
+                </span>
+                <span>
+                  Per hour: <strong>{money(detail.hourly_rate ?? 0)}</strong>
+                  <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4 }}>
+                    (Basic ÷ W.Days ÷ Hrs)
+                  </span>
+                </span>
+                <span>
                   Daily rate: <strong>{money(detail.daily_rate)}</strong>
+                </span>
+                <span>
+                  Hours paid: <strong>{hoursLabel(detail.total_hours_credited ?? 0)}</strong>
                 </span>
                 <span>
                   Unpaid days: <strong style={{ color: "#dc2626" }}>{detail.unpaid_days}</strong>
@@ -505,13 +537,15 @@ export default function DailySalaryPage() {
               <div style={{ padding: 16, color: "#64748b" }}>Loading days…</div>
             ) : detail?.days?.length ? (
               <div className={styles.breakSummaryTableWrapper}>
-                <table className={styles.breakSummaryTable} style={{ minWidth: 1100 }}>
+                <table className={styles.breakSummaryTable} style={{ minWidth: 1200 }}>
                   <thead>
                     <tr>
                       <th>Date</th>
                       <th>Status</th>
                       <th>Tardy #</th>
                       <th>Deduction %</th>
+                      <th>Per Hour</th>
+                      <th>Hours</th>
                       <th>Daily Rate</th>
                       <th>Earned</th>
                       <th>Deducted</th>
@@ -658,6 +692,8 @@ function DayEditRow({
           style={{ width: 72, padding: "4px 8px" }}
         />
       </td>
+      <td>{money(day.hourly_rate ?? 0)}</td>
+      <td>{hoursLabel(day.hours_credited ?? 0)}</td>
       <td>{money(day.daily_rate)}</td>
       <td>
         <input

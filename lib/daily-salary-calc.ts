@@ -1,6 +1,9 @@
 /**
- * Daily Salary Calculator — same attendance/tardy rules as Monthly Attendance.
- * Daily rate = basic ÷ working days; unpaid days = sum(deduction%) / 100.
+ * Daily Salary Calculator — Monthly Payroll hourly formula + day-by-day status pay.
+ *
+ * Per hour = Basic ÷ Working Days ÷ Hours/Day  (same as Monthly Payroll OT rate)
+ * Full day pay = Per hour × Hours/Day = Basic ÷ Working Days
+ * Each working day: hours credited by status (100%/50%/0%) → earned = per hour × hours credited
  */
 import { normalizeAttendanceStatus } from "./attendance-status";
 import {
@@ -18,7 +21,12 @@ export type DailySalaryDayRow = {
   status_label: string;
   tardy_count: number | null;
   deduction_percent: number;
+  /** Same as Monthly Payroll full-day rate (Basic ÷ W.Days). */
   daily_rate: number;
+  /** Basic ÷ W.Days ÷ Hours/Day */
+  hourly_rate: number;
+  /** Hours credited for this day after status deduction (e.g. full 9, half 4.5, absent 0). */
+  hours_credited: number;
   deducted_amount: number;
   earned_amount: number;
   clock_in: string | null;
@@ -35,10 +43,15 @@ export type DailySalarySummary = {
   month: string;
   basic_salary: number;
   working_days: number;
+  /** Paid hours/day used in rate (Monthly Payroll: ~5 or 9). */
+  paid_hours_per_day: number;
+  hourly_rate: number;
   daily_rate: number;
   total_earned: number;
   total_deducted: number;
   unpaid_days: number;
+  /** Sum of hours credited on working days. */
+  total_hours_credited: number;
   days: DailySalaryDayRow[];
 };
 
@@ -83,14 +96,55 @@ export function roundMoney(n: number): number {
   return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
 }
 
-export function amountsForDay(dailyRate: number, deductionPercent: number, countsAsPaidDay: boolean) {
-  if (!countsAsPaidDay || dailyRate <= 0) {
-    return { deducted_amount: 0, earned_amount: 0 };
+export function roundHours(n: number): number {
+  return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+}
+
+/** Monthly Payroll: shift ≤ 5.5h → 5 paid hours; else 9. */
+export function paidHoursFromShiftSeconds(shiftSeconds: number | null | undefined): number {
+  if (shiftSeconds == null || !(shiftSeconds > 0)) return 9;
+  const hours = shiftSeconds / 3600;
+  if (hours <= 5.5) return 5;
+  return 9;
+}
+
+export function ratesFromBasic(
+  basicSalary: number,
+  workingDays: number,
+  paidHoursPerDay: number,
+): { hourly_rate: number; daily_rate: number } {
+  const basic = Number(basicSalary) || 0;
+  const wd = Number(workingDays) || 0;
+  const hours = Number(paidHoursPerDay) > 0 ? Number(paidHoursPerDay) : 9;
+  if (basic <= 0 || wd <= 0) return { hourly_rate: 0, daily_rate: 0 };
+  const hourly = basic / wd / hours;
+  return {
+    hourly_rate: roundMoney(hourly),
+    daily_rate: roundMoney(hourly * hours),
+  };
+}
+
+/**
+ * Status → pay: full hours, half, or zero (via deduction %).
+ * earned = hourly_rate × hours_credited
+ * deducted = hourly_rate × (fullHours − hours_credited)
+ */
+export function amountsForDay(params: {
+  hourlyRate: number;
+  paidHoursPerDay: number;
+  deductionPercent: number;
+  countsAsPaidDay: boolean;
+}) {
+  const hoursDay = Number(params.paidHoursPerDay) > 0 ? Number(params.paidHoursPerDay) : 9;
+  const hourly = Number(params.hourlyRate) || 0;
+  if (!params.countsAsPaidDay || hourly <= 0 || hoursDay <= 0) {
+    return { hours_credited: 0, deducted_amount: 0, earned_amount: 0 };
   }
-  const pct = Math.max(0, Math.min(100, deductionPercent)) / 100;
-  const deducted = roundMoney(dailyRate * pct);
-  const earned = roundMoney(dailyRate * (1 - pct));
-  return { deducted_amount: deducted, earned_amount: earned };
+  const pct = Math.max(0, Math.min(100, params.deductionPercent)) / 100;
+  const hoursCredited = roundHours(hoursDay * (1 - pct));
+  const earned = roundMoney(hourly * hoursCredited);
+  const deducted = roundMoney(hourly * (hoursDay - hoursCredited));
+  return { hours_credited: hoursCredited, deducted_amount: deducted, earned_amount: earned };
 }
 
 export function recordDateKey(record: {
@@ -116,8 +170,7 @@ function deductionForStatus(statusLabel: string, tardyCount: number | null): num
 }
 
 /**
- * Build day rows for one employee using Monthly Attendance rules.
- * Working days (denominator) = calendar working days minus approved leave.
+ * Build day rows: per-hour rate × hours credited by attendance status.
  */
 export function buildEmployeeDailySalary(params: {
   employeeId: string;
@@ -126,11 +179,12 @@ export function buildEmployeeDailySalary(params: {
   departmentName?: string;
   month: string;
   basicSalary: number;
+  /** Default 9 — same as Monthly Payroll when shift unknown. */
+  paidHoursPerDay?: number;
   gender?: string | null;
   attendanceByDate: Record<string, any[]>;
   approvedLeaveDates: Set<string>;
   calendarOverrides: Record<string, "off" | "working">;
-  /** Keep manual edits when regenerating (matched by work_date). */
   previousManualDays?: Map<string, DailySalaryDayRow>;
 }): DailySalarySummary {
   const dateKeys = monthDateKeys(params.month);
@@ -141,7 +195,13 @@ export function buildEmployeeDailySalary(params: {
   });
   const workingDays = workingDayKeys.length;
   const basic = Number(params.basicSalary) || 0;
-  const dailyRate = workingDays > 0 && basic > 0 ? roundMoney(basic / workingDays) : 0;
+  const paidHoursPerDay =
+    Number(params.paidHoursPerDay) > 0 ? Number(params.paidHoursPerDay) : 9;
+  const { hourly_rate: hourlyRate, daily_rate: dailyRate } = ratesFromBasic(
+    basic,
+    workingDays,
+    paidHoursPerDay,
+  );
 
   let runningLate = 0;
   const days: DailySalaryDayRow[] = [];
@@ -149,14 +209,20 @@ export function buildEmployeeDailySalary(params: {
   for (const dateKey of dateKeys) {
     const prevManual = params.previousManualDays?.get(dateKey);
     if (prevManual?.is_manual) {
-      // Re-apply amounts with current daily rate unless earned was custom-locked via notes? Keep stored %/status.
       const countsAsPaid =
         prevManual.is_working_day &&
         normalizeAttendanceStatus(prevManual.status_label) !== "Off";
-      const amts = amountsForDay(dailyRate, prevManual.deduction_percent, countsAsPaid);
+      const amts = amountsForDay({
+        hourlyRate,
+        paidHoursPerDay,
+        deductionPercent: prevManual.deduction_percent,
+        countsAsPaidDay: countsAsPaid,
+      });
       days.push({
         ...prevManual,
-        daily_rate: dailyRate,
+        daily_rate: countsAsPaid ? dailyRate : 0,
+        hourly_rate: countsAsPaid ? hourlyRate : 0,
+        hours_credited: amts.hours_credited,
         deducted_amount: amts.deducted_amount,
         earned_amount: amts.earned_amount,
         is_manual: true,
@@ -218,10 +284,13 @@ export function buildEmployeeDailySalary(params: {
       }
     }
 
-    // Leave days are paid (excluded from working-days denom) — show rate but no earn/deduct on leave row
-    // Paid day = working day in denominator (not Off, not Leave)
     const countsAsPaidDay = isWorking && !onLeave;
-    const amts = amountsForDay(dailyRate, deductionPercent, countsAsPaidDay);
+    const amts = amountsForDay({
+      hourlyRate,
+      paidHoursPerDay,
+      deductionPercent,
+      countsAsPaidDay,
+    });
 
     days.push({
       work_date: dateKey,
@@ -230,6 +299,8 @@ export function buildEmployeeDailySalary(params: {
       tardy_count: tardyCount,
       deduction_percent: deductionPercent,
       daily_rate: countsAsPaidDay ? dailyRate : 0,
+      hourly_rate: countsAsPaidDay ? hourlyRate : 0,
+      hours_credited: amts.hours_credited,
       deducted_amount: amts.deducted_amount,
       earned_amount: amts.earned_amount,
       clock_in: clockIn,
@@ -247,6 +318,8 @@ export function buildEmployeeDailySalary(params: {
     month: params.month,
     basic_salary: basic,
     working_days: workingDays,
+    paid_hours_per_day: paidHoursPerDay,
+    hourly_rate: hourlyRate,
     daily_rate: dailyRate,
     days,
   });
@@ -260,27 +333,31 @@ export function summarizeEmployeeDays(input: {
   month: string;
   basic_salary: number;
   working_days: number;
+  paid_hours_per_day: number;
+  hourly_rate: number;
   daily_rate: number;
   days: DailySalaryDayRow[];
 }): DailySalarySummary {
   let totalEarned = 0;
   let totalDeducted = 0;
   let unpaidUnits = 0;
+  let totalHours = 0;
   for (const day of input.days) {
     if (!day.is_working_day) continue;
     totalEarned += day.earned_amount;
     totalDeducted += day.deducted_amount;
     unpaidUnits += day.deduction_percent / 100;
+    totalHours += day.hours_credited || 0;
   }
   return {
     ...input,
     total_earned: roundMoney(totalEarned),
     total_deducted: roundMoney(totalDeducted),
     unpaid_days: roundMoney(unpaidUnits),
+    total_hours_credited: roundHours(totalHours),
   };
 }
 
-/** Apply an edit to one day and recompute money + summary. */
 export function applyDayEdit(
   summary: DailySalarySummary,
   workDate: string,
@@ -288,12 +365,15 @@ export function applyDayEdit(
     status_label?: string;
     deduction_percent?: number;
     notes?: string | null;
-    /** When true, use earned/deducted amounts and back-calc deduction %. */
     money_override?: boolean;
     earned_amount?: number;
     deducted_amount?: number;
   },
 ): DailySalarySummary {
+  const paidHours = summary.paid_hours_per_day > 0 ? summary.paid_hours_per_day : 9;
+  const hourly = summary.hourly_rate;
+  const dailyRate = summary.daily_rate;
+
   const days = summary.days.map((d) => {
     if (d.work_date !== workDate) return d;
     const status = patch.status_label != null ? normalizeAttendanceStatus(patch.status_label) : d.status_label;
@@ -304,39 +384,50 @@ export function applyDayEdit(
     if (patch.status_label != null && patch.deduction_percent == null) {
       deduction = deductionForStatus(status, d.tardy_count);
     }
-    const dailyRate = d.is_working_day ? summary.daily_rate : 0;
-    let amts = amountsForDay(dailyRate, deduction, d.is_working_day);
+
+    let amts = amountsForDay({
+      hourlyRate: hourly,
+      paidHoursPerDay: paidHours,
+      deductionPercent: deduction,
+      countsAsPaidDay: d.is_working_day,
+    });
 
     if (patch.money_override) {
       if (patch.earned_amount != null && Number.isFinite(patch.earned_amount)) {
+        const earned = roundMoney(patch.earned_amount);
+        const deducted =
+          patch.deducted_amount != null && Number.isFinite(patch.deducted_amount)
+            ? roundMoney(patch.deducted_amount)
+            : roundMoney(Math.max(0, dailyRate - earned));
         amts = {
-          earned_amount: roundMoney(patch.earned_amount),
-          deducted_amount:
-            patch.deducted_amount != null && Number.isFinite(patch.deducted_amount)
-              ? roundMoney(patch.deducted_amount)
-              : roundMoney(Math.max(0, dailyRate - roundMoney(patch.earned_amount))),
+          hours_credited: hourly > 0 ? roundHours(earned / hourly) : 0,
+          earned_amount: earned,
+          deducted_amount: deducted,
         };
         if (dailyRate > 0) {
-          deduction = Math.max(
-            0,
-            Math.min(100, roundMoney(((dailyRate - amts.earned_amount) / dailyRate) * 100)),
-          );
+          deduction = Math.max(0, Math.min(100, roundMoney((deducted / dailyRate) * 100)));
         }
       } else if (patch.deducted_amount != null && Number.isFinite(patch.deducted_amount)) {
+        const deducted = roundMoney(patch.deducted_amount);
+        const earned = roundMoney(Math.max(0, dailyRate - deducted));
         amts = {
-          deducted_amount: roundMoney(patch.deducted_amount),
-          earned_amount: roundMoney(Math.max(0, dailyRate - roundMoney(patch.deducted_amount))),
+          hours_credited: hourly > 0 ? roundHours(earned / hourly) : 0,
+          earned_amount: earned,
+          deducted_amount: deducted,
         };
         if (dailyRate > 0) {
-          deduction = Math.max(0, Math.min(100, roundMoney((amts.deducted_amount / dailyRate) * 100)));
+          deduction = Math.max(0, Math.min(100, roundMoney((deducted / dailyRate) * 100)));
         }
       }
     }
+
     return {
       ...d,
       status_label: status,
       deduction_percent: deduction,
-      daily_rate: dailyRate,
+      daily_rate: d.is_working_day ? dailyRate : 0,
+      hourly_rate: d.is_working_day ? hourly : 0,
+      hours_credited: amts.hours_credited,
       deducted_amount: amts.deducted_amount,
       earned_amount: amts.earned_amount,
       is_manual: true,
@@ -352,7 +443,9 @@ export function applyDayEdit(
     month: summary.month,
     basic_salary: summary.basic_salary,
     working_days: summary.working_days,
-    daily_rate: summary.daily_rate,
+    paid_hours_per_day: paidHours,
+    hourly_rate: hourly,
+    daily_rate: dailyRate,
     days,
   });
 }

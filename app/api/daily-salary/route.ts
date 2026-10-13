@@ -225,6 +225,8 @@ async function generateForMonth(
       departmentName: emp.department_name || "",
       month,
       basicSalary: Number(emp.basic_salary) || 0,
+      // Same default as Monthly Payroll when shift hours unknown (9h day).
+      paidHoursPerDay: 9,
       gender: emp.gender,
       attendanceByDate: attendance[id] || {},
       approvedLeaveDates: leaves[id] || new Set(),
@@ -254,10 +256,6 @@ export async function GET(request: NextRequest) {
 
       if (employeeId) {
         const id = String(employeeId);
-        const days = await loadSavedDays(conn, month, id);
-        const empRows = await loadEmployeesWithSalary(conn, id);
-        const emp =
-          empRows.find((e: any) => String(e.employee_id) === id) || empRows[0];
         const base =
           summaries.find((s) => String(s.employee_id) === id) || summaries[0];
         // Never return another employee's summary for this id.
@@ -268,6 +266,10 @@ export async function GET(request: NextRequest) {
             summary: null,
           });
         }
+        const days = await loadSavedDays(conn, month, id, base || undefined);
+        const empRows = await loadEmployeesWithSalary(conn, id);
+        const emp =
+          empRows.find((e: any) => String(e.employee_id) === id) || empRows[0];
         return NextResponse.json({
           success: true,
           month,
@@ -342,10 +344,13 @@ export async function POST(request: NextRequest) {
           department_name: r.department_name,
           basic_salary: r.basic_salary,
           working_days: r.working_days,
+          paid_hours_per_day: r.paid_hours_per_day,
+          hourly_rate: r.hourly_rate,
           daily_rate: r.daily_rate,
           total_earned: r.total_earned,
           total_deducted: r.total_deducted,
           unpaid_days: r.unpaid_days,
+          total_hours_credited: r.total_hours_credited,
         })),
       });
     } catch (err) {
@@ -403,6 +408,8 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ success: false, error: "No daily salary record found" }, { status: 404 });
       }
 
+      days = await loadSavedDays(conn, month, employeeId, saved);
+
       const current: DailySalarySummary = {
         employee_id: employeeId,
         employee_name: emp?.employee_name || employeeId,
@@ -411,10 +418,13 @@ export async function PUT(request: NextRequest) {
         month,
         basic_salary: saved.basic_salary,
         working_days: saved.working_days,
+        paid_hours_per_day: saved.paid_hours_per_day || 9,
+        hourly_rate: saved.hourly_rate,
         daily_rate: saved.daily_rate,
         total_earned: saved.total_earned,
         total_deducted: saved.total_deducted,
         unpaid_days: saved.unpaid_days,
+        total_hours_credited: saved.total_hours_credited || 0,
         days,
       };
 
