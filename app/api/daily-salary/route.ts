@@ -209,17 +209,29 @@ export async function GET(request: NextRequest) {
       const summaries = await loadSavedSummaries(conn, month, employeeId);
 
       if (employeeId) {
-        const days = await loadSavedDays(conn, month, employeeId);
-        const empRows = await loadEmployeesWithSalary(conn, employeeId);
-        const emp = empRows[0];
-        const base = summaries[0];
+        const id = String(employeeId);
+        const days = await loadSavedDays(conn, month, id);
+        const empRows = await loadEmployeesWithSalary(conn, id);
+        const emp =
+          empRows.find((e: any) => String(e.employee_id) === id) || empRows[0];
+        const base =
+          summaries.find((s) => String(s.employee_id) === id) || summaries[0];
+        // Never return another employee's summary for this id.
+        if (base && String(base.employee_id) !== id) {
+          return NextResponse.json({
+            success: true,
+            month,
+            summary: null,
+          });
+        }
         return NextResponse.json({
           success: true,
           month,
           summary: base
             ? {
                 ...base,
-                employee_name: emp?.employee_name || employeeId,
+                employee_id: id,
+                employee_name: emp?.employee_name || id,
                 pseudonym: emp?.pseudonym || "",
                 department_name: emp?.department_name || "",
                 days,

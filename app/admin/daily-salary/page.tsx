@@ -65,6 +65,7 @@ export default function DailySalaryPage() {
   const [detail, setDetail] = useState<(SummaryRow & { days: DayRow[] }) | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingDate, setSavingDate] = useState<string | null>(null);
+  const detailRequestRef = React.useRef(0);
 
   useEffect(() => {
     fetch("/api/departments")
@@ -103,35 +104,62 @@ export default function DailySalaryPage() {
   }, [loadSummaries]);
 
   const loadDetail = useCallback(
-    async (employeeId: string) => {
+    async (employeeId: string, hint?: SummaryRow) => {
+      const reqId = ++detailRequestRef.current;
+      const id = String(employeeId);
       setDetailLoading(true);
       setError(null);
+      // Show correct name immediately (don't keep previous employee's panel).
+      if (hint && String(hint.employee_id) === id) {
+        setDetail({ ...hint, days: [] });
+      } else {
+        setDetail((prev) =>
+          prev && String(prev.employee_id) === id ? prev : null,
+        );
+      }
       try {
         const res = await fetch(
-          `/api/daily-salary?month=${encodeURIComponent(selectedMonth)}&employee_id=${encodeURIComponent(employeeId)}`,
+          `/api/daily-salary?month=${encodeURIComponent(selectedMonth)}&employee_id=${encodeURIComponent(id)}`,
           { cache: "no-store" },
         );
         const data = await res.json();
+        if (reqId !== detailRequestRef.current) return; // stale response
         if (!data.success) throw new Error(data.error || "Failed to load detail");
         if (!data.summary) {
           setDetail(null);
           setMessage("No saved record yet — click Generate from Attendance.");
           return;
         }
-        setDetail(data.summary);
+        const summary = data.summary;
+        // Guard: never show another employee's days under this selection.
+        if (String(summary.employee_id) !== id) {
+          throw new Error(
+            `Mismatched employee (${summary.employee_id} ≠ ${id}). Refresh and try again.`,
+          );
+        }
+        setDetail({
+          ...summary,
+          employee_name:
+            hint?.employee_name || summary.employee_name || id,
+          pseudonym: hint?.pseudonym ?? summary.pseudonym ?? "",
+          department_name: hint?.department_name ?? summary.department_name ?? "",
+        });
       } catch (e) {
+        if (reqId !== detailRequestRef.current) return;
         setError(e instanceof Error ? e.message : "Failed to load detail");
         setDetail(null);
       } finally {
-        setDetailLoading(false);
+        if (reqId === detailRequestRef.current) setDetailLoading(false);
       }
     },
     [selectedMonth],
   );
 
-  const openEmployee = (employeeId: string) => {
-    setSelectedEmployeeId(employeeId);
-    void loadDetail(employeeId);
+  const openEmployee = (row: SummaryRow) => {
+    const id = String(row.employee_id);
+    setSelectedEmployeeId(id);
+    setMessage(null);
+    void loadDetail(id, row);
   };
 
   const generate = async (employeeId?: string | null) => {
@@ -156,8 +184,9 @@ export default function DailySalaryPage() {
           : `Generated daily salary for ${data.count} employees. Manual edits kept.`,
       );
       await loadSummaries();
-      if (employeeId || selectedEmployeeId) {
-        await loadDetail(employeeId || selectedEmployeeId!);
+      const focusId = employeeId || selectedEmployeeId;
+      if (focusId) {
+        await loadDetail(String(focusId));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generate failed");
@@ -328,27 +357,47 @@ export default function DailySalaryPage() {
                 ) : (
                   filtered.map((s) => (
                     <tr
-                      key={s.employee_id}
+                      key={String(s.employee_id)}
                       style={{
                         background:
-                          selectedEmployeeId === s.employee_id ? "rgba(97,31,105,0.06)" : undefined,
+                          String(selectedEmployeeId) === String(s.employee_id)
+                            ? "rgba(97,31,105,0.06)"
+                            : undefined,
+                        cursor: "pointer",
                       }}
+                      onClick={() => openEmployee(s)}
                     >
                       <td>{s.employee_id}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <EmployeeTableNameCell
                           employeeId={s.employee_id}
                           name={s.employee_name}
                           photo={getPhoto(s.employee_id)}
-                          onOpen={() =>
+                          onOpen={() => openEmployee(s)}
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             openFromRow({
                               employee_id: s.employee_id,
                               employee_name: s.employee_name,
                               pseudonym: s.pseudonym,
                               department_name: s.department_name,
-                            })
-                          }
-                        />
+                            });
+                          }}
+                          style={{
+                            marginLeft: 8,
+                            border: "none",
+                            background: "transparent",
+                            color: "#64748b",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Profile
+                        </button>
                       </td>
                       <td>{s.department_name || "—"}</td>
                       <td>{money(s.basic_salary)}</td>
@@ -357,12 +406,12 @@ export default function DailySalaryPage() {
                       <td style={{ color: "#dc2626", fontWeight: 600 }}>{s.unpaid_days}</td>
                       <td style={{ color: "#047857", fontWeight: 600 }}>{money(s.total_earned)}</td>
                       <td style={{ color: "#dc2626" }}>{money(s.total_deducted)}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           className={styles.breakSummaryXLSButton}
                           style={{ padding: "6px 12px", fontSize: 12 }}
-                          onClick={() => openEmployee(s.employee_id)}
+                          onClick={() => openEmployee(s)}
                         >
                           Days
                         </button>
@@ -388,7 +437,14 @@ export default function DailySalaryPage() {
               }}
             >
               <h3 className={styles.pageTitle} style={{ fontSize: "1.1rem", margin: 0 }}>
-                {detail?.employee_name || selectedEmployeeId} — day records ({selectedMonth})
+                {detail?.employee_name ||
+                  filtered.find((x) => String(x.employee_id) === String(selectedEmployeeId))
+                    ?.employee_name ||
+                  selectedEmployeeId}{" "}
+                — day records ({selectedMonth})
+                <span style={{ color: "#94a3b8", fontWeight: 500, fontSize: "0.85rem", marginLeft: 8 }}>
+                  ID {selectedEmployeeId}
+                </span>
               </h3>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
