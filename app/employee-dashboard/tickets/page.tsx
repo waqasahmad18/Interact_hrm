@@ -2,7 +2,7 @@
 
 import TicketsPage from "../../admin/tickets/page";
 
-/** HR ticket inbox — all HR staff may view; Manager / Team Lead may approve leave. */
+/** Ticket Inbox — leave + HR tickets; approve scoped to hierarchy. */
 export default function EmployeeTicketsPage() {
   return <TicketsPage inboxMode="hr" />;
 }

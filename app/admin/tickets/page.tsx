@@ -432,12 +432,12 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
           <h1 className={adminStyles.title}>
-            {inboxMode === "hr" ? "HR ticket inbox" : "Ticket inbox"}
+            Ticket Inbox
           </h1>
           <p className={adminStyles.subtitle}>
             {inboxMode === "hr"
-              ? "Leave, HRM issues, and other tickets from HR department staff. All HR can view — Manager / Team Lead can approve leave."
-              : "All employee tickets except HR department (those go to the HR ticket inbox)."}
+              ? "All leave tickets (company-wide) plus HR department tickets. View all — approve only within your department hierarchy."
+              : "Employee tickets. Department leave for CEOs (Joe / Max / Mubeen) appears here for their owned depts."}
           </p>
 
           <div className={adminStyles.ticketToolbar}>
