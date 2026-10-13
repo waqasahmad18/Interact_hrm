@@ -33,10 +33,7 @@ export function leaveStatusLabel(row: LeaveApprovalRow): string {
   const overall = overallLeaveStatus(row);
   if (overall === "approved") return "approved";
   if (overall === "rejected") return "rejected";
-  const s1 = normStep(row.step1_status);
-  const s2 = normStep(row.step2_status);
-  if (s1 === "pending") return "pending — 1st step";
-  if (s1 === "approved" && s2 === "pending") return "pending — 2nd step";
+  // Two-step UI removed — keep a single pending label.
   return "pending";
 }
 
