@@ -93,26 +93,70 @@ async function loadApprovedLeaves(
 }
 
 async function loadEmployeesWithSalary(conn: any, employeeId?: string | null) {
-  let sql = `
+  // Split queries: mongo SQL adapter often fails JOIN+SUM (and id number vs string).
+  // Match salaries in JS via String(employee_id).
+  let empSql = `
     SELECT e.id as employee_id,
-           COALESCE(NULLIF(TRIM(CONCAT(COALESCE(e.first_name,''),' ',COALESCE(e.last_name,''))), ''), e.id) as employee_name,
+           e.first_name,
+           e.last_name,
            e.pseudonym,
            e.gender,
-           d.name AS department_name,
-           COALESCE(SUM(s.amount), 0) as basic_salary
+           d.name AS department_name
     FROM hrm_employees e
     LEFT JOIN employee_jobs j ON e.id = j.employee_id
     LEFT JOIN departments d ON j.department_id = d.id
-    LEFT JOIN employee_salaries s ON e.id = s.employee_id
   `;
-  const params: any[] = [];
+  const empParams: any[] = [];
   if (employeeId) {
-    sql += ` WHERE e.id = ?`;
-    params.push(employeeId);
+    empSql += ` WHERE e.id = ?`;
+    empParams.push(employeeId);
+    // Also try string id for mongo mixed types
+    if (String(employeeId) !== String(Number(employeeId)) || Number.isNaN(Number(employeeId))) {
+      /* keep as-is */
+    }
   }
-  sql += ` GROUP BY e.id, e.first_name, e.last_name, e.pseudonym, e.gender, d.name ORDER BY e.id ASC`;
-  const [rows]: any = await conn.query(sql, params);
-  return rows || [];
+  empSql += ` ORDER BY e.id ASC`;
+  const [empRows]: any = await conn.query(empSql, empParams);
+
+  // If filtered by id and empty (type mismatch), retry without WHERE and filter in JS
+  let employees: any[] = empRows || [];
+  if (employeeId && employees.length === 0) {
+    const [all]: any = await conn.query(
+      `SELECT e.id as employee_id, e.first_name, e.last_name, e.pseudonym, e.gender, d.name AS department_name
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       ORDER BY e.id ASC`,
+      [],
+    );
+    employees = (all || []).filter((e: any) => String(e.employee_id) === String(employeeId));
+  }
+
+  const [salRows]: any = await conn.query(
+    `SELECT employee_id, amount FROM employee_salaries`,
+    [],
+  );
+  const salaryByEmp = new Map<string, number>();
+  for (const s of salRows || []) {
+    const key = String(s.employee_id ?? "").trim();
+    if (!key) continue;
+    const amt = Number(s.amount);
+    if (!Number.isFinite(amt) || amt === 0) continue;
+    salaryByEmp.set(key, (salaryByEmp.get(key) || 0) + amt);
+  }
+
+  return employees.map((e: any) => {
+    const id = String(e.employee_id);
+    const name = `${e.first_name || ""} ${e.last_name || ""}`.trim() || id;
+    return {
+      employee_id: id,
+      employee_name: name,
+      pseudonym: e.pseudonym || "",
+      gender: e.gender,
+      department_name: e.department_name || "",
+      basic_salary: salaryByEmp.get(id) || 0,
+    };
+  });
 }
 
 async function loadAttendanceByEmployee(
