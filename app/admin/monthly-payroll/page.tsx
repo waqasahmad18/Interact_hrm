@@ -199,6 +199,8 @@ export default function MonthlyAttendancePage() {
   const [fuelByEmployee, setFuelByEmployee] = useState<Record<string, number>>({});
   /** Override map; missing key = use system-calculated unpaid days */
   const [unpaidDaysByEmployee, setUnpaidDaysByEmployee] = useState<Record<string, number>>({});
+  /** Only persist unpaid override after the user edits the field (avoid locking system value on blur). */
+  const unpaidEditedRef = React.useRef<Set<string>>(new Set());
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   function setManualAmount(
@@ -258,6 +260,7 @@ export default function MonthlyAttendancePage() {
   }
 
   function setUnpaidDaysAmount(employeeId: string, raw: string) {
+    unpaidEditedRef.current.add(String(employeeId));
     setUnpaidDaysByEmployee((prev) => ({
       ...prev,
       [employeeId]: parseUnpaidDaysValue(raw),
@@ -266,6 +269,7 @@ export default function MonthlyAttendancePage() {
 
   function saveUnpaidDaysAmount(employeeId: string, raw?: string) {
     if (!selectedMonth) return;
+    if (!unpaidEditedRef.current.has(String(employeeId))) return;
     const unpaid_days =
       raw !== undefined
         ? parseUnpaidDaysValue(raw)
@@ -552,8 +556,10 @@ export default function MonthlyAttendancePage() {
       setCtdByEmployee({});
       setFuelByEmployee({});
       setUnpaidDaysByEmployee({});
+      unpaidEditedRef.current = new Set();
       return;
     }
+    unpaidEditedRef.current = new Set();
     let cancelled = false;
     fetch(`/api/monthly-payroll-adjustments?month=${encodeURIComponent(selectedMonth)}`, {
       cache: "no-store",
@@ -580,6 +586,7 @@ export default function MonthlyAttendancePage() {
               if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
                 fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
               }
+              // Only treat as override when HR saved a value (null = use attendance system calc).
               if (row.unpaid_days !== null && row.unpaid_days !== undefined) {
                 unpaidMap[id] = parseUnpaidDaysValue(row.unpaid_days);
               }
@@ -681,32 +688,36 @@ export default function MonthlyAttendancePage() {
     return getDateKey(record.clock_in || record.clock_out || record.date || "");
   }
 
+  /** Same rule as Monthly Attendance: future days (after today PKT) are not Absent yet. */
+  function isFutureAttendanceDay(dateKey: string) {
+    if (!dateKey) return false;
+    const todayKey = getDateStringInTimeZone(new Date(), SERVER_TIMEZONE);
+    return dateKey > todayKey;
+  }
+
+  /**
+   * Sum day deduction % for T.Unpaid Days (= total / 100).
+   * Matches Monthly Attendance: leave=0, future empty=0, past empty working=100%, punched days use meta %.
+   */
   function calculateTotalDeduction(employee: any) {
     let totalDeduction = 0;
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
       const meta = employee.dateMeta[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
-      
+      const onLeave = Boolean(
+        approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+      );
+
       let dayDeduction = 0;
-      if (dayRecords.length === 0) {
-        // No records for this day
-        if (workingDay) {
-          // Check for approved leave
-          if (
-            approvedLeavesMap[employee.employeeId] &&
-            approvedLeavesMap[employee.employeeId][day.dateKey]
-          ) {
-            dayDeduction = 0; // Approved leave, no deduction
-          } else {
-            dayDeduction = 100; // Absent on working day
-          }
+      if (onLeave) {
+        dayDeduction = 0;
+      } else if (dayRecords.length === 0) {
+        if (workingDay && !isFutureAttendanceDay(day.dateKey)) {
+          dayDeduction = 100;
         }
-      } else {
-        // Has records, use meta deduction
-        if (meta?.deduction) {
-          dayDeduction = parseInt(meta.deduction) || 0;
-        }
+      } else if (meta?.deduction) {
+        dayDeduction = parseInt(String(meta.deduction).replace(/%/g, ""), 10) || 0;
       }
       totalDeduction += dayDeduction;
     });

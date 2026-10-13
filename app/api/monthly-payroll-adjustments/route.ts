@@ -39,6 +39,40 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * POST { month, clear_unpaid_days: true }
+ * Clears saved unpaid_days overrides for the month (T.Unpaid falls back to attendance).
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const month = String(body.month ?? "").trim();
+    if (!/^\d{4}-\d{2}$/.test(month) || body.clear_unpaid_days !== true) {
+      return NextResponse.json(
+        { success: false, error: "month and clear_unpaid_days: true required" },
+        { status: 400 },
+      );
+    }
+    const connection = await pool.getConnection();
+    try {
+      const [result]: any = await connection.query(
+        `UPDATE monthly_payroll_adjustments SET unpaid_days = NULL WHERE month = ?`,
+        [month],
+      );
+      return NextResponse.json({
+        success: true,
+        month,
+        cleared: result?.affectedRows ?? 0,
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("monthly-payroll-adjustments POST clear:", error);
+    return NextResponse.json({ success: false, error: "Failed to clear unpaid days" }, { status: 500 });
+  }
+}
+
+/**
  * PUT { employee_id, month, ctd?, fuel_allowance?, unpaid_days? }
  * Upserts; only provided fields are overwritten (others kept).
  * NULL ctd / fuel_allowance / unpaid_days in DB = not set (UI uses employee/system default).
@@ -83,8 +117,11 @@ export async function PUT(request: NextRequest) {
         : existing
           ? existing.fuel_allowance
           : null;
+      // null / "" clears override so Monthly Payroll uses attendance-based T.Unpaid Days.
       const unpaidDays = hasUnpaid
-        ? parseUnpaidDays(body.unpaid_days)
+        ? body.unpaid_days === null || body.unpaid_days === ""
+          ? null
+          : parseUnpaidDays(body.unpaid_days)
         : existing
           ? existing.unpaid_days
           : null;
