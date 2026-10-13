@@ -72,9 +72,15 @@ export type FaceScanOutcome =
   | { status: "none" }
   | { status: "adjust" }
   | { status: "multiple"; count: number }
-  | { status: "ok"; descriptor: Float32Array; coverage: number };
+  | {
+      status: "ok";
+      descriptor: Float32Array;
+      coverage: number;
+      /** Detector confidence 0–1 — low scores are noisy and cross-match others. */
+      score: number;
+    };
 
-const MIN_FACE_AREA_RATIO = 0.03;
+const MIN_FACE_AREA_RATIO = 0.045;
 const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // A genuine second person (a real privacy/security concern) produces a sizable,
 // high-confidence detection. Background texture — ceiling lights, wall patterns,
@@ -84,7 +90,9 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // Genuine second person near the edge often projects smaller — keep this low
 // enough that edge faces still count (not centre-only), but above tiny ghosts.
 const COUNT_MIN_FACE_AREA_RATIO = 0.018;
-const COUNT_MIN_SCORE = 0.38;
+const COUNT_MIN_SCORE = 0.42;
+/** Live verify: only accept confident, well-framed faces for the descriptor. */
+const VERIFY_MIN_SCORE = 0.48;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -104,25 +112,25 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
-  // Fast live detector — accuracy comes from server match threshold, not huge inputSize
+  // Stronger live detector — higher score + larger input = sharper identity embedding
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.32,
+    inputSize: 512,
+    scoreThreshold: 0.42,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.24,
+    inputSize: 416,
+    scoreThreshold: 0.36,
   });
   // Counting detectors run at a HIGH score threshold so background "ghost"
   // detections (lights, walls, reflections) are never mistaken for a person.
   // Only confident, real-face detections are counted.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
     inputSize: 512,
-    scoreThreshold: 0.35,
+    scoreThreshold: 0.4,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.38 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.42 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.38 }),
   ];
   ENROLL_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
@@ -447,11 +455,21 @@ async function descriptorFromCanvases(
       }
 
       if (significant.length === 1 && significant[0].descriptor) {
-        const box = significant[0].detection.box;
+        const hit = significant[0];
+        const score = hit.detection.score;
+        // Weak detections produce muddy embeddings that look like several people.
+        // Try next detector / canvas instead of accepting a soft face.
+        if (score < VERIFY_MIN_SCORE) continue;
+        const box = hit.detection.box;
         // Linear height ratio is far more stable than area across the square
         // crop vs the rectangular whole frame, giving consistent distance hints.
         const coverage = box.height / canvas.height;
-        return { status: "ok", descriptor: significant[0].descriptor, coverage };
+        return {
+          status: "ok",
+          descriptor: hit.descriptor,
+          coverage,
+          score,
+        };
       }
     }
   }
@@ -478,7 +496,12 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
     if (significant.length === 1 && significant[0].descriptor) {
       const box = significant[0].detection.box;
       const coverage = (box.width * box.height) / (canvas.width * canvas.height);
-      return { status: "ok", descriptor: significant[0].descriptor, coverage };
+      return {
+        status: "ok",
+        descriptor: significant[0].descriptor,
+        coverage,
+        score: significant[0].detection.score,
+      };
     }
   }
 
@@ -503,8 +526,9 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   // and right edges, so a person standing a little off-centre gets cropped out
   // and falsely reads as "no face". The whole frame keeps off-centre faces
   // intact; the tighter centre crop is only a fallback for close-up framing.
-  const wholeCanvas = drawWholeFrameCanvas(video, 480);
-  const cropCanvas = drawVideoToCanvas(video, "crop", 320);
+  // Larger canvases keep facial detail for a stronger, more unique embedding.
+  const wholeCanvas = drawWholeFrameCanvas(video, 640);
+  const cropCanvas = drawVideoToCanvas(video, "crop", 416);
 
   const primary = await descriptorFromCanvases([wholeCanvas, cropCanvas]);
   if (primary) return primary;
@@ -550,11 +574,14 @@ export async function scanVideoFrameFast(
   const confident = significant.filter((r) => r.detection.score >= COUNT_MIN_SCORE);
   if (confident.length >= 2) return { status: "multiple", count: confident.length };
   if (significant.length === 1 && significant[0].descriptor) {
-    const box = significant[0].detection.box;
+    const hit = significant[0];
+    if (hit.detection.score < VERIFY_MIN_SCORE) return { status: "adjust" };
+    const box = hit.detection.box;
     return {
       status: "ok",
-      descriptor: significant[0].descriptor,
+      descriptor: hit.descriptor,
       coverage: box.height / canvas.height,
+      score: hit.detection.score,
     };
   }
   return { status: "none" };
@@ -635,3 +662,24 @@ export function averageDescriptors(
   for (let i = 0; i < 128; i++) sum[i] /= valid.length;
   return normalizeDescriptor(sum);
 }
+
+/**
+ * Euclidean distance between two unit-ish face-api descriptors (L2-normalized).
+ * Used to drop jittery / blurry frames that would muddy the averaged probe.
+ */
+export function descriptorDistance(
+  a: number[] | Float32Array,
+  b: number[] | Float32Array
+): number {
+  const na = normalizeDescriptor(a);
+  const nb = normalizeDescriptor(b);
+  let sum = 0;
+  for (let i = 0; i < 128; i++) {
+    const d = na[i] - nb[i];
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
+}
+
+/** Consecutive live frames of the same person should stay under this. */
+export const PROBE_FRAME_AGREE_MAX = 0.28;

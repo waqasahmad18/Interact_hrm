@@ -6,8 +6,10 @@ import type { BiometricAction } from "@/lib/face-types";
 import {
   averageDescriptors,
   countFacesInVideo,
+  descriptorDistance,
   descriptorToJson,
   ensureFaceModelsLoaded,
+  PROBE_FRAME_AGREE_MAX,
   scanVideoFrame,
 } from "@/lib/face-client-engine";
 import { FaceScanViewport, type FaceScanMode } from "@/app/components/FaceScanHud";
@@ -53,9 +55,12 @@ const RETRY_AFTER_FAIL_MS = 200;
 // Good consecutive frames whose descriptors are averaged into one stable probe.
 // Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
 // match is far more reliable — and harder to fool — than a single snapshot.
-// Break / Clock keep 5; Guard presence uses 3 for faster seat check (same models).
-const REQUIRED_PROBES = 5;
-const REQUIRED_PROBES_PRESENCE = 3;
+// Break / Clock: 6 strong frames; Guard presence: 4 for faster seat check.
+const REQUIRED_PROBES = 6;
+const REQUIRED_PROBES_PRESENCE = 4;
+/** Face height / frame height — sweet spot for a sharp, unique embedding. */
+const COVERAGE_MIN = 0.22;
+const COVERAGE_MAX = 0.72;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
@@ -217,18 +222,30 @@ export function FaceVerifyModal({
       // Distance guidance from face coverage. If the face is too close or too
       // far we DON'T verify yet — we show guidance and let the user adjust, so
       // the message is actually visible and verification happens at a good size.
-      if (scan.coverage >= 0.82) {
+      if (scan.coverage >= COVERAGE_MAX) {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         setStatus("Adjust distance…");
-        setGuidance("Too close — move back a little (about 40–50cm from the camera).");
+        setGuidance("Too close — move back so your whole face fits in the oval.");
         return;
       }
-      if (scan.coverage <= 0.16) {
+      if (scan.coverage <= COVERAGE_MIN) {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         setStatus("Adjust distance…");
-        setGuidance("Too far — move a little closer to the camera.");
+        setGuidance("Too far — move closer until your face fills the oval.");
+        return;
+      }
+
+      const frameDesc = descriptorToJson(scan.descriptor);
+      // Drop jittery/blurry frames — they make you look like other employees.
+      const prev = probeBufferRef.current[probeBufferRef.current.length - 1];
+      if (prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX) {
+        probeBufferRef.current = [];
+        singleFaceStreakRef.current = 0;
+        setError(null);
+        setStatus("Hold still…");
+        setGuidance("Face moved — look straight at the camera and hold still.");
         return;
       }
 
@@ -238,10 +255,10 @@ export function FaceVerifyModal({
       // stable probe before contacting the server. A single frame can be noisy
       // (slight angle, glasses glare, blur); the averaged embedding is much
       // closer to the enrolled photos and far harder to fool.
-      probeBufferRef.current.push(descriptorToJson(scan.descriptor));
+      probeBufferRef.current.push(frameDesc);
       if (probeBufferRef.current.length < probeNeed) {
         setError(null);
-        setGuidance("Good — hold still…");
+        setGuidance("Good — look straight, hold still…");
         setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
         return;
       }

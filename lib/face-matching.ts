@@ -6,14 +6,14 @@ export function isFaceVerificationEnabled(): boolean {
 
 /**
  * Max euclidean distance for same person (lower = stricter).
- * Default 0.38 — look-alikes often land ~0.40–0.50; genuine enrolled matches
- * are typically well under 0.38 with a few clear photos.
+ * Default 0.34 — clear same-person captures land ~0.18–0.32; different people
+ * usually sit ≥0.38+. Tight band stops cross-employee "also matches".
  */
 export function getMaxMatchDistance(): number {
   const raw = process.env.FACE_MATCH_MAX_DISTANCE;
-  const parsed = raw ? parseFloat(raw) : 0.38;
-  // Hard upper clamp 0.40 so misconfiguration (e.g. old .env 0.45) cannot loosen.
-  return Number.isFinite(parsed) ? Math.min(0.4, Math.max(0.3, parsed)) : 0.38;
+  const parsed = raw ? parseFloat(raw) : 0.34;
+  // Hard upper clamp 0.38 so misconfiguration cannot loosen past a safe band.
+  return Number.isFinite(parsed) ? Math.min(0.38, Math.max(0.28, parsed)) : 0.34;
 }
 
 /**
@@ -123,9 +123,9 @@ export function matchProbeToDescriptors(
 }
 
 /** How much closer claimed person must be than any OTHER enrolled person (clock/break). */
-const RIVAL_SAFETY_MARGIN = 0.15;
+const RIVAL_SAFETY_MARGIN = 0.12;
 /** Idle presence — still blocks clear look-alikes, admits genuine at desk. */
-const RIVAL_SAFETY_MARGIN_PRESENCE = 0.10;
+const RIVAL_SAFETY_MARGIN_PRESENCE = 0.08;
 
 export type UniqueIdentityMode = "action" | "presence";
 
@@ -249,23 +249,25 @@ export function assertClaimedIsGalleryWinner(
   const runnerUp = ranked.find((h) => !aliases.has(h.employeeId));
   if (runnerUp) {
     const gap = runnerUp.bestDistance - winner.bestDistance;
+    // Clear separation from every other enrolled person.
     if (gap < margin) {
       return {
         ok: false,
         code: "wrong_person",
         winnerId: runnerUp.employeeId,
         similarity: winner.similarity,
-        reason: `Face is too close to employee ID ${runnerUp.employeeId} as well — cannot uniquely identify who you are.`,
+        reason: `Face is too close to employee ID ${runnerUp.employeeId} as well — hold still in good light and look straight at the camera.`,
       };
     }
-    // Runner-up also inside accept band → ambiguous identity
-    if (runnerUp.bestDistance <= maxDistance) {
+    // Another identity fully matches (multi-photo pass) → not unique.
+    // Single lucky photo near the band is NOT enough to block a clear winner.
+    if (runnerUp.pass) {
       return {
         ok: false,
         code: "wrong_person",
         winnerId: runnerUp.employeeId,
         similarity: winner.similarity,
-        reason: `Face also matches employee ID ${runnerUp.employeeId}. Only a unique identity can proceed.`,
+        reason: `Face also matches employee ID ${runnerUp.employeeId}. Only a unique identity can proceed — recapture with face filling the oval, good light, looking straight.`,
       };
     }
   }
@@ -275,12 +277,12 @@ export function assertClaimedIsGalleryWinner(
 
 /**
  * Hard clarity cap — clock/break.
- * Must not be stricter than getMaxMatchDistance() (0.38) or genuine matches
+ * Must not be stricter than getMaxMatchDistance() or genuine matches
  * pass the first gate then get rejected here and FaceVerifyModal retries forever.
  */
-const ABSOLUTE_BEST_CAP = 0.38;
+const ABSOLUTE_BEST_CAP = 0.34;
 /** Idle presence cap — desk lighting / angle need a little more room. */
-const ABSOLUTE_BEST_CAP_PRESENCE = 0.42;
+const ABSOLUTE_BEST_CAP_PRESENCE = 0.40;
 
 /**
  * Average of L2-normalized enrollment vectors. Look-alikes may luck one photo
@@ -393,12 +395,13 @@ export function assertUniqueIdentity(
     };
   }
 
-  // Reject if another enrolled person is inside accept band OR near it
-  if (rival.distance <= maxDistance + rivalMargin * 0.5) {
+  // Reject only when another person is clearly inside the accept band
+  // (not a near-miss single photo that inflated distance noise).
+  if (rival.distance <= maxDistance) {
     return {
       ok: false,
       employeeId: rival.employeeId,
-      reason: `Face also matches employee ID ${rival.employeeId}. Action blocked.`,
+      reason: `Face also matches employee ID ${rival.employeeId}. Hold still, face the camera, and recapture in good light.`,
     };
   }
 
