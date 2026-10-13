@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { pool } from "@/lib/db";
+import { getDbDriver, pool } from "@/lib/db";
+import { getMongoDb } from "@/lib/mongo";
 import { ATTENDANCE_TABLE, ensureAttendanceTable } from "@/lib/attendance-table";
 import {
   applyDayEdit,
@@ -92,58 +93,57 @@ async function loadApprovedLeaves(
   return map;
 }
 
-async function loadEmployeesWithSalary(conn: any, employeeId?: string | null) {
-  // Split queries: mongo SQL adapter often fails JOIN+SUM (and id number vs string).
-  // Match salaries in JS via String(employee_id).
-  let empSql = `
-    SELECT e.id as employee_id,
-           e.first_name,
-           e.last_name,
-           e.pseudonym,
-           e.gender,
-           d.name AS department_name
-    FROM hrm_employees e
-    LEFT JOIN employee_jobs j ON e.id = j.employee_id
-    LEFT JOIN departments d ON j.department_id = d.id
-  `;
-  const empParams: any[] = [];
-  if (employeeId) {
-    empSql += ` WHERE e.id = ?`;
-    empParams.push(employeeId);
-    // Also try string id for mongo mixed types
-    if (String(employeeId) !== String(Number(employeeId)) || Number.isNaN(Number(employeeId))) {
-      /* keep as-is */
-    }
-  }
-  empSql += ` ORDER BY e.id ASC`;
-  const [empRows]: any = await conn.query(empSql, empParams);
+async function loadSalaryTotalsByEmployee(): Promise<Map<string, number>> {
+  const salaryByEmp = new Map<string, number>();
+  const add = (employeeId: unknown, amount: unknown) => {
+    const key = String(employeeId ?? "").trim();
+    if (!key) return;
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt === 0) return;
+    salaryByEmp.set(key, (salaryByEmp.get(key) || 0) + amt);
+  };
 
-  // If filtered by id and empty (type mismatch), retry without WHERE and filter in JS
-  let employees: any[] = empRows || [];
-  if (employeeId && employees.length === 0) {
-    const [all]: any = await conn.query(
-      `SELECT e.id as employee_id, e.first_name, e.last_name, e.pseudonym, e.gender, d.name AS department_name
-       FROM hrm_employees e
-       LEFT JOIN employee_jobs j ON e.id = j.employee_id
-       LEFT JOIN departments d ON j.department_id = d.id
-       ORDER BY e.id ASC`,
-      [],
-    );
-    employees = (all || []).filter((e: any) => String(e.employee_id) === String(employeeId));
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const salRows = await db
+      .collection("employee_salaries")
+      .find({}, { projection: { employee_id: 1, amount: 1 } })
+      .toArray();
+    for (const s of salRows) add(s.employee_id, s.amount);
+    return salaryByEmp;
   }
 
-  const [salRows]: any = await conn.query(
+  const [salRows]: any = await pool.query(
     `SELECT employee_id, amount FROM employee_salaries`,
     [],
   );
-  const salaryByEmp = new Map<string, number>();
-  for (const s of salRows || []) {
-    const key = String(s.employee_id ?? "").trim();
-    if (!key) continue;
-    const amt = Number(s.amount);
-    if (!Number.isFinite(amt) || amt === 0) continue;
-    salaryByEmp.set(key, (salaryByEmp.get(key) || 0) + amt);
+  for (const s of salRows || []) add(s.employee_id, s.amount);
+  return salaryByEmp;
+}
+
+async function loadEmployeesWithSalary(conn: any, employeeId?: string | null) {
+  // Avoid mongo SQL JOIN+SUM (drops amounts / ignores WHERE). Load + match in JS.
+  const [empRows]: any = await conn.query(
+    `SELECT e.id as employee_id,
+            e.first_name,
+            e.last_name,
+            e.pseudonym,
+            e.gender,
+            d.name AS department_name
+     FROM hrm_employees e
+     LEFT JOIN employee_jobs j ON e.id = j.employee_id
+     LEFT JOIN departments d ON j.department_id = d.id
+     ORDER BY e.id ASC`,
+    [],
+  );
+
+  let employees: any[] = empRows || [];
+  if (employeeId) {
+    const want = String(employeeId).trim();
+    employees = employees.filter((e: any) => String(e.employee_id) === want);
   }
+
+  const salaryByEmp = await loadSalaryTotalsByEmployee();
 
   return employees.map((e: any) => {
     const id = String(e.employee_id);
