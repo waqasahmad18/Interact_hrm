@@ -150,11 +150,20 @@ export default function PresenceIdleSettingsPage() {
     Record<string, number>
   >({});
   const [overrideEmpId, setOverrideEmpId] = React.useState("");
+  const [overrideEmpLabel, setOverrideEmpLabel] = React.useState("");
+  const [overrideEmpSearch, setOverrideEmpSearch] = React.useState("");
+  const [overrideEmpDeptFilter, setOverrideEmpDeptFilter] = React.useState("");
+  const [overrideEmpOpen, setOverrideEmpOpen] = React.useState(false);
+  const overrideEmpWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [overrideEmpMinutes, setOverrideEmpMinutes] = React.useState(10);
   const [overrideEmpSeconds, setOverrideEmpSeconds] = React.useState(0);
   const [overrideDeptId, setOverrideDeptId] = React.useState("");
+  const [overrideDeptSearch, setOverrideDeptSearch] = React.useState("");
+  const [overrideDeptOpen, setOverrideDeptOpen] = React.useState(false);
+  const overrideDeptWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [overrideDeptMinutes, setOverrideDeptMinutes] = React.useState(10);
   const [overrideDeptSeconds, setOverrideDeptSeconds] = React.useState(0);
+  const [listFilter, setListFilter] = React.useState("");
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
   const [agentHasBinary, setAgentHasBinary] = React.useState(false);
@@ -295,9 +304,10 @@ export default function PresenceIdleSettingsPage() {
 
   React.useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!empSearchWrapRef.current?.contains(e.target as Node)) {
-        setEmpDropdownOpen(false);
-      }
+      const t = e.target as Node;
+      if (!empSearchWrapRef.current?.contains(t)) setEmpDropdownOpen(false);
+      if (!overrideEmpWrapRef.current?.contains(t)) setOverrideEmpOpen(false);
+      if (!overrideDeptWrapRef.current?.contains(t)) setOverrideDeptOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -498,6 +508,149 @@ export default function PresenceIdleSettingsPage() {
     setSettings({ ...settings, enabledEmployeeIds: [] });
     setEmpSearch("");
     setEmpDropdownOpen(false);
+  }
+
+  const overrideDeptOptions = React.useMemo(() => {
+    const q = overrideDeptSearch.trim().toLowerCase();
+    return departments
+      .slice()
+      .sort((a, b) =>
+        String(a.name || a.department_name || "").localeCompare(
+          String(b.name || b.department_name || ""),
+          undefined,
+          { sensitivity: "base" }
+        )
+      )
+      .filter((d) => {
+        if (!q) return true;
+        const name = String(d.name || d.department_name || "").toLowerCase();
+        return name.includes(q) || String(d.id).includes(q);
+      });
+  }, [departments, overrideDeptSearch]);
+
+  const overrideEmpOptions = React.useMemo(() => {
+    const q = overrideEmpSearch.trim().toLowerCase();
+    let deptName = "";
+    if (overrideEmpDeptFilter) {
+      const d = departments.find((x) => String(x.id) === overrideEmpDeptFilter);
+      deptName = (d?.name || d?.department_name || "").trim();
+    }
+    return employees
+      .slice()
+      .sort((a, b) =>
+        empLabel(a).localeCompare(empLabel(b), undefined, { sensitivity: "base" })
+      )
+      .filter((e) => {
+        if (overrideEmpDeptFilter) {
+          const byId =
+            e.department_id != null &&
+            String(e.department_id) === overrideEmpDeptFilter;
+          const byName =
+            !!deptName &&
+            (e.department_name || "").trim() === deptName;
+          if (!byId && !byName) return false;
+        }
+        if (!q) return true;
+        const name = `${e.first_name || ""} ${e.last_name || ""}`.toLowerCase();
+        const code = String(e.employee_code || "").toLowerCase();
+        const dept = String(e.department_name || "").toLowerCase();
+        return (
+          name.includes(q) ||
+          code.includes(q) ||
+          dept.includes(q) ||
+          String(e.id).includes(q)
+        );
+      });
+  }, [employees, overrideEmpSearch, overrideEmpDeptFilter, departments]);
+
+  const overrideListRows = React.useMemo(() => {
+    const q = listFilter.trim().toLowerCase();
+    const rows: {
+      kind: "dept" | "emp";
+      id: string;
+      label: string;
+      seconds: number;
+    }[] = [];
+    for (const [id, sec] of Object.entries(deptIntervalMap)) {
+      const dept = departments.find((d) => String(d.id) === id);
+      const label = dept?.name || dept?.department_name || `Department ${id}`;
+      rows.push({ kind: "dept", id, label, seconds: Number(sec) || 0 });
+    }
+    for (const [id, sec] of Object.entries(empIntervalMap)) {
+      const emp = employees.find((e) => String(e.id) === id);
+      const label = emp
+        ? `${empLabel(emp)}${emp.department_name ? ` · ${emp.department_name}` : ""}`
+        : `Employee ${id}`;
+      rows.push({ kind: "emp", id, label, seconds: Number(sec) || 0 });
+    }
+    rows.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "dept" ? -1 : 1;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+    });
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.label.toLowerCase().includes(q) ||
+        r.id.includes(q) ||
+        r.kind.includes(q)
+    );
+  }, [deptIntervalMap, empIntervalMap, departments, employees, listFilter]);
+
+  function addDeptOverride() {
+    const id = overrideDeptId.trim();
+    if (!id) {
+      toastError("Select a department first");
+      return;
+    }
+    const total = Math.max(
+      30,
+      combineSeconds(overrideDeptMinutes, overrideDeptSeconds)
+    );
+    setDeptIntervalMap((prev) => ({ ...prev, [id]: total }));
+    const dept = departments.find((d) => String(d.id) === id);
+    toastSuccess(
+      `Department ${dept?.name || dept?.department_name || id}: ${formatDuration(total)} — click Save settings`
+    );
+    setOverrideDeptId("");
+    setOverrideDeptSearch("");
+    setOverrideDeptOpen(false);
+  }
+
+  function addEmpOverride() {
+    const id = overrideEmpId.trim();
+    if (!id) {
+      toastError("Select an employee first");
+      return;
+    }
+    const total = Math.max(
+      30,
+      combineSeconds(overrideEmpMinutes, overrideEmpSeconds)
+    );
+    setEmpIntervalMap((prev) => ({ ...prev, [id]: total }));
+    const emp = employees.find((e) => String(e.id) === id);
+    toastSuccess(
+      `${emp ? empLabel(emp) : `Employee ${id}`}: ${formatDuration(total)} — click Save settings`
+    );
+    setOverrideEmpId("");
+    setOverrideEmpLabel("");
+    setOverrideEmpSearch("");
+    setOverrideEmpOpen(false);
+  }
+
+  function removeDeptOverride(id: string) {
+    setDeptIntervalMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function removeEmpOverride(id: string) {
+    setEmpIntervalMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   return (
@@ -732,204 +885,324 @@ export default function PresenceIdleSettingsPage() {
                       Custom face verify intervals (department / employee)
                     </h3>
                     <p className={styles.tip} style={{ marginBottom: 12 }}>
-                      Set a different popup cadence per department or a single employee.
-                      Leave empty to use the default interval above.
+                      Search + pick, set minutes/seconds, click <strong>Add</strong>. Add as
+                      many as you want — each keeps its own timing. Then click{" "}
+                      <strong>Save settings</strong>.
                     </p>
 
-                    <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8 }}>
-                      <div className={styles.field} style={{ minWidth: 180 }}>
-                        <label htmlFor="override-dept">Department</label>
-                        <select
-                          id="override-dept"
-                          className={styles.select}
-                          value={overrideDeptId}
-                          disabled={disabled}
-                          onChange={(e) => setOverrideDeptId(e.target.value)}
+                    <div className={styles.overrideAddCard}>
+                      <div className={styles.overrideAddTitle}>Add department timing</div>
+                      <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8 }}>
+                        <div
+                          className={styles.field}
+                          style={{ minWidth: 220, flex: 1, position: "relative" }}
+                          ref={overrideDeptWrapRef}
                         >
-                          <option value="">Select department…</option>
-                          {departments.map((d) => {
-                            const id = String(d.id);
-                            const name = d.name || d.department_name || id;
-                            return (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            );
-                          })}
-                        </select>
+                          <label htmlFor="override-dept-search">Department</label>
+                          <input
+                            id="override-dept-search"
+                            type="text"
+                            autoComplete="off"
+                            disabled={disabled}
+                            placeholder="Search department…"
+                            value={
+                              overrideDeptId
+                                ? departments.find((d) => String(d.id) === overrideDeptId)
+                                    ?.name ||
+                                  departments.find((d) => String(d.id) === overrideDeptId)
+                                    ?.department_name ||
+                                  overrideDeptSearch
+                                : overrideDeptSearch
+                            }
+                            onFocus={() => setOverrideDeptOpen(true)}
+                            onClick={() => setOverrideDeptOpen(true)}
+                            onChange={(e) => {
+                              setOverrideDeptSearch(e.target.value);
+                              setOverrideDeptId("");
+                              setOverrideDeptOpen(true);
+                            }}
+                            style={{ width: "100%" }}
+                          />
+                          {overrideDeptOpen && !disabled ? (
+                            <div className={styles.empDropdown} role="listbox">
+                              {overrideDeptOptions.length === 0 ? (
+                                <div className={styles.empDropdownEmpty}>No match</div>
+                              ) : (
+                                overrideDeptOptions.map((d) => {
+                                  const id = String(d.id);
+                                  const name = d.name || d.department_name || id;
+                                  const already = deptIntervalMap[id] != null;
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      className={styles.empDropdownItem}
+                                      onClick={() => {
+                                        setOverrideDeptId(id);
+                                        setOverrideDeptSearch(name);
+                                        setOverrideDeptOpen(false);
+                                        if (already) {
+                                          const parts = splitSeconds(deptIntervalMap[id]);
+                                          setOverrideDeptMinutes(parts.minutes);
+                                          setOverrideDeptSeconds(parts.seconds);
+                                        }
+                                      }}
+                                    >
+                                      <strong>{name}</strong>
+                                      <span className={styles.empMeta}>
+                                        ID {id}
+                                        {already
+                                          ? ` · set ${formatDuration(deptIntervalMap[id])}`
+                                          : ""}
+                                      </span>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className={styles.field}>
+                          <label htmlFor="override-dept-min">Minutes</label>
+                          <input
+                            id="override-dept-min"
+                            type="number"
+                            min={0}
+                            max={480}
+                            value={overrideDeptMinutes}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setOverrideDeptMinutes(Math.max(0, Number(e.target.value) || 0))
+                            }
+                          />
+                        </div>
+                        <div className={styles.field}>
+                          <label htmlFor="override-dept-sec">Seconds</label>
+                          <input
+                            id="override-dept-sec"
+                            type="number"
+                            min={0}
+                            max={59}
+                            value={overrideDeptSeconds}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setOverrideDeptSeconds(
+                                Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                              )
+                            }
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${styles.chip} ${styles.chipSuccess}`}
+                          disabled={disabled || !overrideDeptId}
+                          onClick={addDeptOverride}
+                        >
+                          Add department
+                        </button>
                       </div>
-                      <div className={styles.field}>
-                        <label htmlFor="override-dept-min">Minutes</label>
-                        <input
-                          id="override-dept-min"
-                          type="number"
-                          min={0}
-                          max={480}
-                          value={overrideDeptMinutes}
-                          disabled={disabled}
-                          onChange={(e) =>
-                            setOverrideDeptMinutes(Math.max(0, Number(e.target.value) || 0))
-                          }
-                        />
-                      </div>
-                      <div className={styles.field}>
-                        <label htmlFor="override-dept-sec">Seconds</label>
-                        <input
-                          id="override-dept-sec"
-                          type="number"
-                          min={0}
-                          max={59}
-                          value={overrideDeptSeconds}
-                          disabled={disabled}
-                          onChange={(e) =>
-                            setOverrideDeptSeconds(
-                              Math.min(59, Math.max(0, Number(e.target.value) || 0))
-                            )
-                          }
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className={styles.chip}
-                        disabled={disabled || !overrideDeptId}
-                        onClick={() => {
-                          const total = Math.max(
-                            30,
-                            combineSeconds(overrideDeptMinutes, overrideDeptSeconds)
-                          );
-                          setDeptIntervalMap({
-                            ...deptIntervalMap,
-                            [overrideDeptId]: total,
-                          });
-                          setOverrideDeptId("");
-                        }}
-                      >
-                        Add / update dept
-                      </button>
                     </div>
 
-                    <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8, marginTop: 10 }}>
-                      <div className={styles.field} style={{ minWidth: 220 }}>
-                        <label htmlFor="override-emp">Employee</label>
-                        <select
-                          id="override-emp"
-                          className={styles.select}
-                          value={overrideEmpId}
-                          disabled={disabled}
-                          onChange={(e) => setOverrideEmpId(e.target.value)}
-                        >
-                          <option value="">Select employee…</option>
-                          {employees
-                            .slice()
-                            .sort((a, b) =>
-                              empLabel(a).localeCompare(empLabel(b), undefined, {
-                                sensitivity: "base",
-                              })
-                            )
-                            .map((e) => (
-                              <option key={e.id} value={String(e.id)}>
-                                {empLabel(e)}
-                                {e.department_name ? ` · ${e.department_name}` : ""}
+                    <div className={styles.overrideAddCard} style={{ marginTop: 12 }}>
+                      <div className={styles.overrideAddTitle}>Add employee timing</div>
+                      <div className={styles.durationRow} style={{ marginBottom: 8 }}>
+                        <div className={styles.field} style={{ minWidth: 180 }}>
+                          <label htmlFor="override-emp-dept">Filter by department</label>
+                          <select
+                            id="override-emp-dept"
+                            className={styles.select}
+                            value={overrideEmpDeptFilter}
+                            disabled={disabled}
+                            onChange={(e) => {
+                              setOverrideEmpDeptFilter(e.target.value);
+                              setOverrideEmpOpen(true);
+                            }}
+                          >
+                            <option value="">All departments</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={String(d.id)}>
+                                {d.name || d.department_name || `Dept ${d.id}`}
                               </option>
                             ))}
-                        </select>
+                          </select>
+                        </div>
                       </div>
-                      <div className={styles.field}>
-                        <label htmlFor="override-emp-min">Minutes</label>
-                        <input
-                          id="override-emp-min"
-                          type="number"
-                          min={0}
-                          max={480}
-                          value={overrideEmpMinutes}
-                          disabled={disabled}
-                          onChange={(e) =>
-                            setOverrideEmpMinutes(Math.max(0, Number(e.target.value) || 0))
-                          }
-                        />
+                      <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8 }}>
+                        <div
+                          className={styles.field}
+                          style={{ minWidth: 240, flex: 1, position: "relative" }}
+                          ref={overrideEmpWrapRef}
+                        >
+                          <label htmlFor="override-emp-search">Employee</label>
+                          <input
+                            id="override-emp-search"
+                            type="text"
+                            autoComplete="off"
+                            disabled={disabled}
+                            placeholder="Search name / ID / department…"
+                            value={overrideEmpId ? overrideEmpLabel : overrideEmpSearch}
+                            onFocus={() => setOverrideEmpOpen(true)}
+                            onClick={() => setOverrideEmpOpen(true)}
+                            onChange={(e) => {
+                              setOverrideEmpSearch(e.target.value);
+                              setOverrideEmpId("");
+                              setOverrideEmpLabel("");
+                              setOverrideEmpOpen(true);
+                            }}
+                            style={{ width: "100%" }}
+                          />
+                          {overrideEmpOpen && !disabled ? (
+                            <div className={styles.empDropdown} role="listbox">
+                              {overrideEmpOptions.length === 0 ? (
+                                <div className={styles.empDropdownEmpty}>No match</div>
+                              ) : (
+                                overrideEmpOptions.slice(0, 80).map((e) => {
+                                  const id = String(e.id);
+                                  const already = empIntervalMap[id] != null;
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      className={styles.empDropdownItem}
+                                      onClick={() => {
+                                        setOverrideEmpId(id);
+                                        setOverrideEmpLabel(
+                                          `${empLabel(e)}${
+                                            e.department_name ? ` · ${e.department_name}` : ""
+                                          }`
+                                        );
+                                        setOverrideEmpSearch("");
+                                        setOverrideEmpOpen(false);
+                                        if (already) {
+                                          const parts = splitSeconds(empIntervalMap[id]);
+                                          setOverrideEmpMinutes(parts.minutes);
+                                          setOverrideEmpSeconds(parts.seconds);
+                                        }
+                                      }}
+                                    >
+                                      <strong>{empLabel(e)}</strong>
+                                      <span className={styles.empMeta}>
+                                        {empMeta(e)}
+                                        {already
+                                          ? ` · set ${formatDuration(empIntervalMap[id])}`
+                                          : ""}
+                                      </span>
+                                      {already ? (
+                                        <span className={styles.empAdded}>Added</span>
+                                      ) : null}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className={styles.field}>
+                          <label htmlFor="override-emp-min">Minutes</label>
+                          <input
+                            id="override-emp-min"
+                            type="number"
+                            min={0}
+                            max={480}
+                            value={overrideEmpMinutes}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setOverrideEmpMinutes(Math.max(0, Number(e.target.value) || 0))
+                            }
+                          />
+                        </div>
+                        <div className={styles.field}>
+                          <label htmlFor="override-emp-sec">Seconds</label>
+                          <input
+                            id="override-emp-sec"
+                            type="number"
+                            min={0}
+                            max={59}
+                            value={overrideEmpSeconds}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              setOverrideEmpSeconds(
+                                Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                              )
+                            }
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${styles.chip} ${styles.chipSuccess}`}
+                          disabled={disabled || !overrideEmpId}
+                          onClick={addEmpOverride}
+                        >
+                          Add employee
+                        </button>
                       </div>
-                      <div className={styles.field}>
-                        <label htmlFor="override-emp-sec">Seconds</label>
-                        <input
-                          id="override-emp-sec"
-                          type="number"
-                          min={0}
-                          max={59}
-                          value={overrideEmpSeconds}
-                          disabled={disabled}
-                          onChange={(e) =>
-                            setOverrideEmpSeconds(
-                              Math.min(59, Math.max(0, Number(e.target.value) || 0))
-                            )
-                          }
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className={styles.chip}
-                        disabled={disabled || !overrideEmpId}
-                        onClick={() => {
-                          const total = Math.max(
-                            30,
-                            combineSeconds(overrideEmpMinutes, overrideEmpSeconds)
-                          );
-                          setEmpIntervalMap({
-                            ...empIntervalMap,
-                            [overrideEmpId]: total,
-                          });
-                          setOverrideEmpId("");
-                        }}
-                      >
-                        Add / update employee
-                      </button>
                     </div>
 
-                    {(Object.keys(deptIntervalMap).length > 0 ||
-                      Object.keys(empIntervalMap).length > 0) && (
-                      <div className={styles.selectedChips} style={{ marginTop: 12 }}>
-                        {Object.entries(deptIntervalMap).map(([id, sec]) => {
-                          const dept = departments.find((d) => String(d.id) === id);
-                          const label =
-                            dept?.name || dept?.department_name || `Dept ${id}`;
-                          return (
-                            <button
-                              key={`dept-${id}`}
-                              type="button"
-                              className={styles.selectedChip}
-                              disabled={disabled}
-                              title="Remove department override"
-                              onClick={() => {
-                                const next = { ...deptIntervalMap };
-                                delete next[id];
-                                setDeptIntervalMap(next);
-                              }}
-                            >
-                              Dept: {label} · {formatDuration(sec)}{" "}
-                              <span aria-hidden>×</span>
-                            </button>
-                          );
-                        })}
-                        {Object.entries(empIntervalMap).map(([id, sec]) => {
-                          const emp = employees.find((e) => String(e.id) === id);
-                          const label = emp ? empLabel(emp) : `Employee ${id}`;
-                          return (
-                            <button
-                              key={`emp-${id}`}
-                              type="button"
-                              className={styles.selectedChip}
-                              disabled={disabled}
-                              title="Remove employee override"
-                              onClick={() => {
-                                const next = { ...empIntervalMap };
-                                delete next[id];
-                                setEmpIntervalMap(next);
-                              }}
-                            >
-                              Emp: {label} · {formatDuration(sec)}{" "}
-                              <span aria-hidden>×</span>
-                            </button>
-                          );
-                        })}
+                    <div className={styles.overrideListHeader}>
+                      <h4 className={styles.overrideListTitle}>
+                        Saved overrides ({overrideListRows.length})
+                      </h4>
+                      <input
+                        type="text"
+                        className={styles.overrideListFilter}
+                        placeholder="Filter list…"
+                        value={listFilter}
+                        disabled={disabled}
+                        onChange={(e) => setListFilter(e.target.value)}
+                      />
+                    </div>
+                    {overrideListRows.length === 0 ? (
+                      <p className={styles.tip}>
+                        No custom intervals yet — everyone uses the default above.
+                      </p>
+                    ) : (
+                      <div className={styles.overrideTableWrap}>
+                        <table className={styles.overrideTable}>
+                          <thead>
+                            <tr>
+                              <th>Type</th>
+                              <th>Name</th>
+                              <th>Interval</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {overrideListRows.map((row) => (
+                              <tr key={`${row.kind}-${row.id}`}>
+                                <td>
+                                  <span
+                                    className={
+                                      row.kind === "dept"
+                                        ? styles.overrideTypeDept
+                                        : styles.overrideTypeEmp
+                                    }
+                                  >
+                                    {row.kind === "dept" ? "Department" : "Employee"}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>{row.label}</strong>
+                                  <div className={styles.empMeta}>ID {row.id}</div>
+                                </td>
+                                <td>{formatDuration(row.seconds)}</td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className={`${styles.chip} ${styles.chipDanger}`}
+                                    disabled={disabled}
+                                    onClick={() =>
+                                      row.kind === "dept"
+                                        ? removeDeptOverride(row.id)
+                                        : removeEmpOverride(row.id)
+                                    }
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>

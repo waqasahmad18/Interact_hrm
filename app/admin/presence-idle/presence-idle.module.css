@@ -347,6 +347,99 @@
   color: #611f69;
 }
 
+.overrideAddCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+
+.overrideAddTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.overrideListHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.overrideListTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.overrideListFilter {
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.overrideTableWrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.overrideTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.overrideTable th,
+.overrideTable td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.overrideTable th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.overrideTable tr:last-child td {
+  border-bottom: none;
+}
+
+.overrideTypeDept,
+.overrideTypeEmp {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.overrideTypeDept {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.overrideTypeEmp {
+  color: #6b21a8;
+  background: #f3e8ff;
+}
+
 .selectedChips {
   display: flex;
   flex-wrap: wrap;
