@@ -90,7 +90,6 @@ const sidebarLinks = [
 				icon: <FaDollarSign />,
 				dropdown: [
 					{ name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
-					{ name: "Daily Salary", path: "/admin/daily-salary", icon: <FaDollarSign /> },
 					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
 					{ name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
 					{ name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
