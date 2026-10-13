@@ -70,6 +70,18 @@ export async function PUT(req: NextRequest) {
           : typeof body.faceScanIntervalSeconds === "string"
             ? parseInt(body.faceScanIntervalSeconds, 10)
             : undefined,
+      faceScanIntervalByEmployee:
+        body.faceScanIntervalByEmployee &&
+        typeof body.faceScanIntervalByEmployee === "object" &&
+        !Array.isArray(body.faceScanIntervalByEmployee)
+          ? (body.faceScanIntervalByEmployee as Record<string, number>)
+          : undefined,
+      faceScanIntervalByDepartment:
+        body.faceScanIntervalByDepartment &&
+        typeof body.faceScanIntervalByDepartment === "object" &&
+        !Array.isArray(body.faceScanIntervalByDepartment)
+          ? (body.faceScanIntervalByDepartment as Record<string, number>)
+          : undefined,
       faceVerifyMaxAttempts:
         typeof body.faceVerifyMaxAttempts === "number"
           ? body.faceVerifyMaxAttempts

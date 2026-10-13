@@ -1,6 +1,10 @@
 import { createHash } from "crypto";
 import { pool } from "@/lib/db";
-import { getPresenceSettings, savePresenceSettings } from "@/lib/presence-settings";
+import {
+  getPresenceSettings,
+  resolveFaceScanIntervalSeconds,
+  savePresenceSettings,
+} from "@/lib/presence-settings";
 
 const TABLE = "presence_agents";
 
@@ -483,18 +487,17 @@ export async function upsertAgentHeartbeat(
     command = "exit";
     adminEnabled = false;
   }
-  // Presence / Idle page owns global timings for Guard + Presence agents
+  // Presence / Idle page owns timings for Guard + Presence agents
   if (settings.idleWarningSeconds > 0) {
     idleSeconds = settings.idleWarningSeconds;
   }
   const recheckWhileIdleSeconds =
     settings.recheckWhileIdleSeconds > 0 ? settings.recheckWhileIdleSeconds : 180;
-  const faceScanIntervalSeconds =
-    settings.faceScanIntervalSeconds > 0
-      ? settings.faceScanIntervalSeconds
-      : settings.idleWarningSeconds > 0
-        ? settings.idleWarningSeconds
-        : 600;
+  // Employee → department → global default
+  const faceScanIntervalSeconds = await resolveFaceScanIntervalSeconds(
+    settings,
+    assignedEmployeeId
+  );
   const faceVerifyMaxAttempts =
     settings.faceVerifyMaxAttempts > 0 ? settings.faceVerifyMaxAttempts : 3;
   const faceVerifyRetryGapSeconds =

@@ -24,9 +24,19 @@ export type PresenceSettings = {
   recheckWhileIdleSeconds: number;
   /**
    * Guard: while clocked in and NOT on break, run face verify this often (seconds).
-   * Idle state is ignored — timer only.
+   * Idle state is ignored — timer only. Default for everyone without an override.
    */
   faceScanIntervalSeconds: number;
+  /**
+   * Per-employee face scan interval overrides (employee id → seconds).
+   * Wins over department + default.
+   */
+  faceScanIntervalByEmployee: Record<string, number>;
+  /**
+   * Per-department face scan interval overrides (department id → seconds).
+   * Used when no employee override. Wins over default.
+   */
+  faceScanIntervalByDepartment: Record<string, number>;
   /** Guard: max face-verify attempts before seat-absent ticket (default 3). */
   faceVerifyMaxAttempts: number;
   /** Guard: seconds between failed face-verify attempts (default 10). */
@@ -64,6 +74,8 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   cameraVerificationEnabled: true,
   recheckWhileIdleSeconds: 120,
   faceScanIntervalSeconds: 600,
+  faceScanIntervalByEmployee: {},
+  faceScanIntervalByDepartment: {},
   faceVerifyMaxAttempts: 3,
   faceVerifyRetryGapSeconds: 10,
   agentExitPassword: "InteractAdmin",
@@ -83,6 +95,8 @@ const KEYS = {
   cameraVerificationEnabled: "presence_camera_verification_enabled",
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
   faceScanIntervalSeconds: "presence_face_scan_interval_seconds",
+  faceScanIntervalByEmployee: "presence_face_scan_interval_by_employee",
+  faceScanIntervalByDepartment: "presence_face_scan_interval_by_department",
   faceVerifyMaxAttempts: "presence_face_verify_max_attempts",
   faceVerifyRetryGapSeconds: "presence_face_verify_retry_gap_seconds",
   agentExitPassword: "presence_agent_exit_password",
@@ -162,6 +176,78 @@ function normalizeIdList(input: unknown): string[] | undefined {
   ];
 }
 
+function parseIntervalMap(raw: string | null): Record<string, number> {
+  if (raw == null || raw.trim() === "") return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      const id = String(k ?? "").trim();
+      if (!id) continue;
+      const n = parseIntClamped(String(v), 0, 30, 86400);
+      if (n >= 30) out[id] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeIntervalMap(input: unknown): Record<string, number> | undefined {
+  if (input === undefined) return undefined;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const id = String(k ?? "").trim();
+    if (!id) continue;
+    const n = parseIntClamped(String(v), 0, 30, 86400);
+    if (n >= 30) out[id] = n;
+  }
+  return out;
+}
+
+function defaultFaceScanInterval(settings: PresenceSettings): number {
+  if (settings.faceScanIntervalSeconds > 0) return settings.faceScanIntervalSeconds;
+  if (settings.idleWarningSeconds > 0) return settings.idleWarningSeconds;
+  return DEFAULT_PRESENCE_SETTINGS.faceScanIntervalSeconds;
+}
+
+/**
+ * Effective face-scan interval for an assigned employee.
+ * Priority: employee override → department override → global default.
+ */
+export async function resolveFaceScanIntervalSeconds(
+  settings: PresenceSettings,
+  employeeId: string | number | null | undefined
+): Promise<number> {
+  const fallback = defaultFaceScanInterval(settings);
+  const empKey = String(employeeId ?? "").trim();
+  if (!empKey) return fallback;
+
+  const empOverride = settings.faceScanIntervalByEmployee[empKey];
+  if (empOverride != null && empOverride >= 30) return empOverride;
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT department_id FROM employee_jobs WHERE employee_id = ? LIMIT 1`,
+      [empKey]
+    );
+    const deptId = String(
+      (rows as { department_id?: number | string | null }[])[0]?.department_id ??
+        ""
+    ).trim();
+    if (deptId) {
+      const deptOverride = settings.faceScanIntervalByDepartment[deptId];
+      if (deptOverride != null && deptOverride >= 30) return deptOverride;
+    }
+  } catch {
+    /* jobs optional */
+  }
+
+  return fallback;
+}
+
 export async function getPresenceSettings(): Promise<PresenceSettings> {
   const d = DEFAULT_PRESENCE_SETTINGS;
   const [
@@ -172,6 +258,8 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     cameraVerificationEnabled,
     recheckWhileIdleSeconds,
     faceScanIntervalSeconds,
+    faceScanIntervalByEmployee,
+    faceScanIntervalByDepartment,
     faceVerifyMaxAttempts,
     faceVerifyRetryGapSeconds,
     agentExitPassword,
@@ -189,6 +277,8 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.cameraVerificationEnabled),
     getRaw(KEYS.recheckWhileIdleSeconds),
     getRaw(KEYS.faceScanIntervalSeconds),
+    getRaw(KEYS.faceScanIntervalByEmployee),
+    getRaw(KEYS.faceScanIntervalByDepartment),
     getRaw(KEYS.faceVerifyMaxAttempts),
     getRaw(KEYS.faceVerifyRetryGapSeconds),
     getRaw(KEYS.agentExitPassword),
@@ -227,6 +317,8 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       30,
       86400
     ),
+    faceScanIntervalByEmployee: parseIntervalMap(faceScanIntervalByEmployee),
+    faceScanIntervalByDepartment: parseIntervalMap(faceScanIntervalByDepartment),
     faceVerifyMaxAttempts: parseIntClamped(
       faceVerifyMaxAttempts,
       d.faceVerifyMaxAttempts,
@@ -287,6 +379,8 @@ export async function savePresenceSettings(
 ): Promise<PresenceSettings> {
   const current = await getPresenceSettings();
   const ids = normalizeIdList(input.enabledEmployeeIds);
+  const empIntervals = normalizeIntervalMap(input.faceScanIntervalByEmployee);
+  const deptIntervals = normalizeIntervalMap(input.faceScanIntervalByDepartment);
   const next: PresenceSettings = {
     agentsRetired:
       typeof input.agentsRetired === "boolean"
@@ -324,6 +418,12 @@ export async function savePresenceSettings(
       30,
       86400
     ),
+    faceScanIntervalByEmployee:
+      empIntervals !== undefined ? empIntervals : current.faceScanIntervalByEmployee,
+    faceScanIntervalByDepartment:
+      deptIntervals !== undefined
+        ? deptIntervals
+        : current.faceScanIntervalByDepartment,
     faceVerifyMaxAttempts: parseIntClamped(
       String(input.faceVerifyMaxAttempts ?? current.faceVerifyMaxAttempts),
       current.faceVerifyMaxAttempts,
@@ -384,6 +484,14 @@ export async function savePresenceSettings(
     ),
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
     setRaw(KEYS.faceScanIntervalSeconds, String(next.faceScanIntervalSeconds)),
+    setRaw(
+      KEYS.faceScanIntervalByEmployee,
+      JSON.stringify(next.faceScanIntervalByEmployee)
+    ),
+    setRaw(
+      KEYS.faceScanIntervalByDepartment,
+      JSON.stringify(next.faceScanIntervalByDepartment)
+    ),
     setRaw(KEYS.faceVerifyMaxAttempts, String(next.faceVerifyMaxAttempts)),
     setRaw(KEYS.faceVerifyRetryGapSeconds, String(next.faceVerifyRetryGapSeconds)),
     setRaw(KEYS.agentExitPassword, next.agentExitPassword),

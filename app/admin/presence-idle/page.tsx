@@ -17,6 +17,8 @@ type PresenceSettings = {
   cameraVerificationEnabled: boolean;
   recheckWhileIdleSeconds: number;
   faceScanIntervalSeconds: number;
+  faceScanIntervalByEmployee: Record<string, number>;
+  faceScanIntervalByDepartment: Record<string, number>;
   faceVerifyMaxAttempts: number;
   faceVerifyRetryGapSeconds: number;
   agentExitPassword: string;
@@ -32,6 +34,7 @@ type EmpRow = {
   last_name?: string;
   employee_code?: string | null;
   department_name?: string | null;
+  department_id?: number | string | null;
 };
 
 type DeptRow = { id: number; name?: string; department_name?: string };
@@ -140,6 +143,18 @@ export default function PresenceIdleSettingsPage() {
   const [scanSeconds, setScanSeconds] = React.useState(0);
   const [maxAttempts, setMaxAttempts] = React.useState(3);
   const [retryGapSeconds, setRetryGapSeconds] = React.useState(10);
+  const [empIntervalMap, setEmpIntervalMap] = React.useState<Record<string, number>>(
+    {}
+  );
+  const [deptIntervalMap, setDeptIntervalMap] = React.useState<
+    Record<string, number>
+  >({});
+  const [overrideEmpId, setOverrideEmpId] = React.useState("");
+  const [overrideEmpMinutes, setOverrideEmpMinutes] = React.useState(10);
+  const [overrideEmpSeconds, setOverrideEmpSeconds] = React.useState(0);
+  const [overrideDeptId, setOverrideDeptId] = React.useState("");
+  const [overrideDeptMinutes, setOverrideDeptMinutes] = React.useState(10);
+  const [overrideDeptSeconds, setOverrideDeptSeconds] = React.useState(0);
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
   const [agentHasBinary, setAgentHasBinary] = React.useState(false);
@@ -182,6 +197,16 @@ export default function PresenceIdleSettingsPage() {
         ? s.enabledEmployeeIds.map(String)
         : [],
       agentHrmBaseUrl: (s.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
+      faceScanIntervalByEmployee:
+        s.faceScanIntervalByEmployee &&
+        typeof s.faceScanIntervalByEmployee === "object"
+          ? s.faceScanIntervalByEmployee
+          : {},
+      faceScanIntervalByDepartment:
+        s.faceScanIntervalByDepartment &&
+        typeof s.faceScanIntervalByDepartment === "object"
+          ? s.faceScanIntervalByDepartment
+          : {},
     });
     const scanSec =
       Number(s.faceScanIntervalSeconds) > 0
@@ -199,6 +224,18 @@ export default function PresenceIdleSettingsPage() {
       Number(s.faceVerifyRetryGapSeconds) > 0
         ? Number(s.faceVerifyRetryGapSeconds)
         : 10
+    );
+    setEmpIntervalMap(
+      s.faceScanIntervalByEmployee &&
+        typeof s.faceScanIntervalByEmployee === "object"
+        ? { ...s.faceScanIntervalByEmployee }
+        : {}
+    );
+    setDeptIntervalMap(
+      s.faceScanIntervalByDepartment &&
+        typeof s.faceScanIntervalByDepartment === "object"
+        ? { ...s.faceScanIntervalByDepartment }
+        : {}
     );
   }, []);
 
@@ -284,6 +321,8 @@ export default function PresenceIdleSettingsPage() {
         // Keep legacy fields in sync so older agents still get a cadence
         idleWarningSeconds: Math.max(30, scanTotal),
         recheckWhileIdleSeconds: Math.max(30, scanTotal),
+        faceScanIntervalByEmployee: empIntervalMap,
+        faceScanIntervalByDepartment: deptIntervalMap,
         faceVerifyMaxAttempts: Math.min(10, Math.max(1, Math.floor(maxAttempts) || 3)),
         faceVerifyRetryGapSeconds: Math.min(
           120,
@@ -672,7 +711,7 @@ export default function PresenceIdleSettingsPage() {
                   </div>
 
                   <DurationEditor
-                    title="Face verify interval (clocked in, no break)"
+                    title="Default face verify interval (clocked in, no break)"
                     minutes={scanMinutes}
                     seconds={scanSeconds}
                     total={scanTotal}
@@ -683,9 +722,217 @@ export default function PresenceIdleSettingsPage() {
                     onPreset={setScanTotal}
                   />
                   <p className={styles.tip} style={{ marginTop: -8, marginBottom: 16 }}>
-                    Idle is ignored. Guard scans on this timer while the employee is clocked
-                    in. If any break is marked, verification is skipped.
+                    Idle is ignored. This is the <strong>default</strong> for everyone.
+                    Use overrides below for different department / employee timings. Priority:{" "}
+                    <strong>employee → department → default</strong>. Break marked → skip.
                   </p>
+
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>
+                      Custom face verify intervals (department / employee)
+                    </h3>
+                    <p className={styles.tip} style={{ marginBottom: 12 }}>
+                      Set a different popup cadence per department or a single employee.
+                      Leave empty to use the default interval above.
+                    </p>
+
+                    <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8 }}>
+                      <div className={styles.field} style={{ minWidth: 180 }}>
+                        <label htmlFor="override-dept">Department</label>
+                        <select
+                          id="override-dept"
+                          className={styles.select}
+                          value={overrideDeptId}
+                          disabled={disabled}
+                          onChange={(e) => setOverrideDeptId(e.target.value)}
+                        >
+                          <option value="">Select department…</option>
+                          {departments.map((d) => {
+                            const id = String(d.id);
+                            const name = d.name || d.department_name || id;
+                            return (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                      <div className={styles.field}>
+                        <label htmlFor="override-dept-min">Minutes</label>
+                        <input
+                          id="override-dept-min"
+                          type="number"
+                          min={0}
+                          max={480}
+                          value={overrideDeptMinutes}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setOverrideDeptMinutes(Math.max(0, Number(e.target.value) || 0))
+                          }
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label htmlFor="override-dept-sec">Seconds</label>
+                        <input
+                          id="override-dept-sec"
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={overrideDeptSeconds}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setOverrideDeptSeconds(
+                              Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                            )
+                          }
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.chip}
+                        disabled={disabled || !overrideDeptId}
+                        onClick={() => {
+                          const total = Math.max(
+                            30,
+                            combineSeconds(overrideDeptMinutes, overrideDeptSeconds)
+                          );
+                          setDeptIntervalMap({
+                            ...deptIntervalMap,
+                            [overrideDeptId]: total,
+                          });
+                          setOverrideDeptId("");
+                        }}
+                      >
+                        Add / update dept
+                      </button>
+                    </div>
+
+                    <div className={styles.durationRow} style={{ alignItems: "flex-end", gap: 8, marginTop: 10 }}>
+                      <div className={styles.field} style={{ minWidth: 220 }}>
+                        <label htmlFor="override-emp">Employee</label>
+                        <select
+                          id="override-emp"
+                          className={styles.select}
+                          value={overrideEmpId}
+                          disabled={disabled}
+                          onChange={(e) => setOverrideEmpId(e.target.value)}
+                        >
+                          <option value="">Select employee…</option>
+                          {employees
+                            .slice()
+                            .sort((a, b) =>
+                              empLabel(a).localeCompare(empLabel(b), undefined, {
+                                sensitivity: "base",
+                              })
+                            )
+                            .map((e) => (
+                              <option key={e.id} value={String(e.id)}>
+                                {empLabel(e)}
+                                {e.department_name ? ` · ${e.department_name}` : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div className={styles.field}>
+                        <label htmlFor="override-emp-min">Minutes</label>
+                        <input
+                          id="override-emp-min"
+                          type="number"
+                          min={0}
+                          max={480}
+                          value={overrideEmpMinutes}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setOverrideEmpMinutes(Math.max(0, Number(e.target.value) || 0))
+                          }
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label htmlFor="override-emp-sec">Seconds</label>
+                        <input
+                          id="override-emp-sec"
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={overrideEmpSeconds}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setOverrideEmpSeconds(
+                              Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                            )
+                          }
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.chip}
+                        disabled={disabled || !overrideEmpId}
+                        onClick={() => {
+                          const total = Math.max(
+                            30,
+                            combineSeconds(overrideEmpMinutes, overrideEmpSeconds)
+                          );
+                          setEmpIntervalMap({
+                            ...empIntervalMap,
+                            [overrideEmpId]: total,
+                          });
+                          setOverrideEmpId("");
+                        }}
+                      >
+                        Add / update employee
+                      </button>
+                    </div>
+
+                    {(Object.keys(deptIntervalMap).length > 0 ||
+                      Object.keys(empIntervalMap).length > 0) && (
+                      <div className={styles.selectedChips} style={{ marginTop: 12 }}>
+                        {Object.entries(deptIntervalMap).map(([id, sec]) => {
+                          const dept = departments.find((d) => String(d.id) === id);
+                          const label =
+                            dept?.name || dept?.department_name || `Dept ${id}`;
+                          return (
+                            <button
+                              key={`dept-${id}`}
+                              type="button"
+                              className={styles.selectedChip}
+                              disabled={disabled}
+                              title="Remove department override"
+                              onClick={() => {
+                                const next = { ...deptIntervalMap };
+                                delete next[id];
+                                setDeptIntervalMap(next);
+                              }}
+                            >
+                              Dept: {label} · {formatDuration(sec)}{" "}
+                              <span aria-hidden>×</span>
+                            </button>
+                          );
+                        })}
+                        {Object.entries(empIntervalMap).map(([id, sec]) => {
+                          const emp = employees.find((e) => String(e.id) === id);
+                          const label = emp ? empLabel(emp) : `Employee ${id}`;
+                          return (
+                            <button
+                              key={`emp-${id}`}
+                              type="button"
+                              className={styles.selectedChip}
+                              disabled={disabled}
+                              title="Remove employee override"
+                              onClick={() => {
+                                const next = { ...empIntervalMap };
+                                delete next[id];
+                                setEmpIntervalMap(next);
+                              }}
+                            >
+                              Emp: {label} · {formatDuration(sec)}{" "}
+                              <span aria-hidden>×</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   <div className={styles.block}>
                     <h3 className={styles.blockTitle}>Face verify fail → ticket</h3>
