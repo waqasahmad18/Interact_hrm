@@ -128,7 +128,7 @@ export default function MonthlyAttendancePage() {
     return Math.floor(basic / workingDays / hoursPerDay);
   }
 
-  // Calculate overtime — only allow_overtime + manual clock-out (not auto) + ≥1h past shift
+  // Same OT rule as Monthly Attendance: allow_overtime + ≥1h past shift (worked hours).
   function calculateOvertime(
     totalSeconds: number,
     assignedShiftSeconds: number | null,
@@ -141,7 +141,8 @@ export default function MonthlyAttendancePage() {
       totalSeconds,
       assignedShiftSeconds,
       allowOvertime: opts?.allowOvertime,
-      autoClockOut: opts?.autoClockOut,
+      // Match Monthly Attendance Extra Hours — do not blank OT on auto clock-out.
+      autoClockOut: false,
       minSeconds: OVERTIME_MIN_SECONDS,
     });
   }
@@ -360,54 +361,89 @@ export default function MonthlyAttendancePage() {
       url += "?" + params.toString();
     }
 
-    fetch(url, { cache: "no-store" })
-      .then(res => res.json())
-      .then(data => {
+    Promise.all([
+      fetch(url, { cache: "no-store" }).then((res) => res.json()),
+      fetch("/api/hrm-shifts-assignments", { cache: "no-store" })
+        .then((res) => res.json())
+        .catch(() => null),
+    ])
+      .then(([data, shiftData]) => {
         if (data.success) {
-          // First, build a map of employee_id -> most recent valid shift timings
-          const empShiftMap: Record<string, {start: string, end: string, seconds: number}> = {};
+          const otFromShifts: Record<string, boolean> = { ...allowOvertimeMap };
+          const empShiftMap: Record<
+            string,
+            { start: string; end: string; seconds: number }
+          > = {};
+          if (shiftData?.success && Array.isArray(shiftData.employees)) {
+            const nextOt: Record<string, boolean> = {};
+            shiftData.employees.forEach((emp: any) => {
+              const empId = String(emp.id);
+              if (emp.allow_overtime !== undefined && emp.allow_overtime !== null) {
+                nextOt[empId] = emp.allow_overtime === 1 || emp.allow_overtime === true;
+                otFromShifts[empId] = nextOt[empId];
+              }
+              const secs = getAssignedShiftSeconds(emp.start_time, emp.end_time);
+              if (secs && secs > 0) {
+                empShiftMap[empId] = {
+                  start: emp.start_time,
+                  end: emp.end_time,
+                  seconds: secs,
+                };
+              }
+            });
+            setAllowOvertimeMap((prev) => ({ ...prev, ...nextOt }));
+          }
+
           (data.attendance || []).forEach((record: any) => {
-            const assignedShiftSeconds = getAssignedShiftSeconds(record.shift_start_time, record.shift_end_time);
+            const assignedShiftSeconds = getAssignedShiftSeconds(
+              record.shift_start_time,
+              record.shift_end_time,
+            );
             if (
               record.employee_id &&
-              record.shift_start_time && record.shift_end_time &&
-              assignedShiftSeconds && assignedShiftSeconds > 0
+              record.shift_start_time &&
+              record.shift_end_time &&
+              assignedShiftSeconds &&
+              assignedShiftSeconds > 0
             ) {
-              empShiftMap[record.employee_id] = {
+              empShiftMap[String(record.employee_id)] = {
                 start: record.shift_start_time,
                 end: record.shift_end_time,
-                seconds: assignedShiftSeconds
+                seconds: assignedShiftSeconds,
               };
             }
           });
 
           let records = (data.attendance || []).map((record: any) => {
-            // Calculate total seconds from clock_in and clock_out
-            const totalSeconds = record.total_seconds && record.total_seconds > 0 
-              ? record.total_seconds 
-              : calculateTotalSeconds(record.clock_in, record.clock_out);
-            // Use record's shift timings, or fallback to most recent for this employee
-            let assignedShiftSeconds = getAssignedShiftSeconds(record.shift_start_time, record.shift_end_time);
-            if ((!assignedShiftSeconds || assignedShiftSeconds <= 0) && empShiftMap[record.employee_id]) {
-              assignedShiftSeconds = empShiftMap[record.employee_id].seconds;
+            const empId = String(record.employee_id ?? "");
+            const totalSeconds =
+              record.total_seconds && record.total_seconds > 0
+                ? record.total_seconds
+                : calculateTotalSeconds(record.clock_in, record.clock_out);
+            let assignedShiftSeconds = getAssignedShiftSeconds(
+              record.shift_start_time,
+              record.shift_end_time,
+            );
+            if ((!assignedShiftSeconds || assignedShiftSeconds <= 0) && empShiftMap[empId]) {
+              assignedShiftSeconds = empShiftMap[empId].seconds;
             }
             const allowFromRecord = record.allow_overtime;
-            const allowFromMap = allowOvertimeMap[String(record.employee_id)];
+            const allowFromMap = otFromShifts[empId];
             const allowOT =
               allowFromRecord != null && allowFromRecord !== ""
                 ? isOvertimeAllowed(allowFromRecord)
                 : allowFromMap === true;
             const overtimeSeconds = calculateOvertime(totalSeconds, assignedShiftSeconds, {
               allowOvertime: allowOT ? 1 : 0,
-              autoClockOut: record.auto_clock_out,
             });
             return {
               ...record,
+              allow_overtime: allowOT ? 1 : 0,
               total_hours: formatDuration(totalSeconds),
               assigned_shift_seconds: assignedShiftSeconds,
               overtime: overtimeSeconds,
               is_late: record.is_late,
-              late_minutes: record.late_minutes || 0
+              late_minutes: record.late_minutes || 0,
             };
           });
           // Client-side filter for department and name (in case API doesn't filter)
