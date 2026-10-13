@@ -1157,6 +1157,8 @@ export async function syncAccessControlCatalog() {
 export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise<{
   employeeId: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
   legacyRole: string;
   roleSlug: string;
   roleSlugs: string[];
@@ -1185,12 +1187,16 @@ export async function resolveEmployeeAccessRoleSlug(employeeId: string): Promise
   const legacyRole = row.role != null ? String(row.role) : "";
   const roleSlugs = parseAccessRoleSlugs(row);
   const roleSlug = roleSlugs[0] || mapLegacyEmployeeRole(legacyRole);
+  const firstName = row.first_name != null ? String(row.first_name).trim() : null;
+  const lastName = row.last_name != null ? String(row.last_name).trim() : null;
   const name =
-    [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || `Employee ${eid}`;
+    [firstName, lastName].filter(Boolean).join(" ").trim() || `Employee ${eid}`;
 
   return {
     employeeId: String(row.id ?? eid),
     name,
+    firstName,
+    lastName,
     legacyRole,
     roleSlug,
     roleSlugs: roleSlugs.length ? roleSlugs : [roleSlug],
@@ -1408,6 +1414,8 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     departmentName: deptName,
     orgRole: emp.legacyRole,
     accessRoleSlugs: emp.roleSlugs,
+    firstName: emp.firstName,
+    lastName: emp.lastName,
   });
 
   const enabledFeatures: Record<string, boolean> = {};

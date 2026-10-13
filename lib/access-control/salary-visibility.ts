@@ -15,6 +15,8 @@ type EmpMeta = {
   id: string;
   role: string | null;
   department_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
 };
 
 async function loadEmpMeta(ids: string[]): Promise<Map<string, EmpMeta>> {
@@ -23,18 +25,26 @@ async function loadEmpMeta(ids: string[]): Promise<Map<string, EmpMeta>> {
   if (!uniq.length) return map;
   const placeholders = uniq.map(() => "?").join(",");
   const [rows] = await pool.execute(
-    `SELECT e.id, e.role, d.name AS department_name
+    `SELECT e.id, e.role, e.first_name, e.last_name, d.name AS department_name
      FROM hrm_employees e
      LEFT JOIN employee_jobs j ON e.id = j.employee_id
      LEFT JOIN departments d ON j.department_id = d.id
      WHERE e.id IN (${placeholders})`,
     uniq.map((id) => (/^\d+$/.test(id) ? Number(id) : id)),
   );
-  for (const r of rows as { id: number; role?: string; department_name?: string }[]) {
+  for (const r of rows as {
+    id: number;
+    role?: string;
+    department_name?: string;
+    first_name?: string;
+    last_name?: string;
+  }[]) {
     map.set(String(r.id), {
       id: String(r.id),
       role: r.role != null ? String(r.role) : null,
       department_name: r.department_name ? String(r.department_name) : null,
+      first_name: r.first_name != null ? String(r.first_name) : null,
+      last_name: r.last_name != null ? String(r.last_name) : null,
     });
   }
   return map;
@@ -57,6 +67,8 @@ async function loadViewerPermissionKeys(employeeId: string): Promise<string[]> {
     departmentName: m?.department_name,
     orgRole: m?.role ?? emp.legacyRole,
     accessRoleSlugs: emp.roleSlugs,
+    firstName: m?.first_name ?? emp.firstName,
+    lastName: m?.last_name ?? emp.lastName,
   });
 }
 

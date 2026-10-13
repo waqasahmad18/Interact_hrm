@@ -2,9 +2,10 @@ import { pool } from "@/lib/db";
 import { getAllOrgChartPhotos } from "@/lib/org-chart-photos-table";
 import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
 
-/** Max → HIT/HR/Finance | Mubeen → IT/CEst | Joe → DM */
+/** Max → HIT/HR/Finance | Mubeen → IT/Marketing/CEst | Joe → DM (not HR) */
 const DEPT_HEAD_NAME_HINT: Record<string, string> = {
   IT: "mubeen",
+  Marketing: "mubeen",
   "CEst.": "mubeen",
   HIT: "max",
   HR: "max",

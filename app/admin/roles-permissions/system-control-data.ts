@@ -727,7 +727,7 @@ export const ORG_CEO_NAME_HINTS = ["Joe", "Max", "Mubeen"] as const;
 /**
  * Department manager map (display keys).
  * Marketing is folded under IT (not a separate manager chip bucket).
- * Mubeen → CEst. + IT | Max → HIT + HR + Finance | Joe → DM
+ * Mubeen → IT + Marketing + CEst. | Max → HIT + HR + Finance | Joe → DM
  */
 export const ORG_DEPT_MANAGER_NAME: Record<string, string> = {
   IT: "Mubeen",

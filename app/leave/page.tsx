@@ -13,12 +13,7 @@ import tableStyles from "../break-summary/break-summary.module.css";
 import styles from "./leave.module.css";
 import { EmployeeTableNameCell } from "../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../components/use-employee-detail-popup";
-import {
-  canApproveStep1,
-  canApproveStep2,
-  leaveStatusLabel,
-  normStep,
-} from "@/lib/leave-approval";
+import { leaveStatusLabel, overallLeaveStatus } from "@/lib/leave-approval";
 import { rowAllowedByScope, useViewerDataScope } from "@/lib/access-control/use-viewer-scope";
 import { toastError } from "@/lib/app-toast";
 import {
@@ -36,8 +31,6 @@ type LeaveSortKey =
   | "start_date"
   | "total_days"
   | "status"
-  | "step1_status"
-  | "step2_status"
   | "requested_at";
 
 type SortDirection = "asc" | "desc";
@@ -74,13 +67,6 @@ function statusBadgeClass(status: string) {
   const s = status.toLowerCase();
   if (s === "approved" || s.startsWith("approved")) return styles.badgeApproved;
   if (s === "rejected" || s.includes("rejected")) return styles.badgeRejected;
-  return styles.badgePending;
-}
-
-function stepBadgeClass(step: string) {
-  const s = normStep(step);
-  if (s === "approved") return styles.badgeApproved;
-  if (s === "rejected") return styles.badgeRejected;
   return styles.badgePending;
 }
 
@@ -376,9 +362,7 @@ export default function LeavePage() {
           cmp = getText(a[key]).localeCompare(getText(b[key]), undefined, { sensitivity: "base" });
           break;
         case "status":
-        case "step1_status":
-        case "step2_status":
-          cmp = getText(a[key] || a.status).localeCompare(getText(b[key] || b.status), undefined, {
+          cmp = getText(a.status).localeCompare(getText(b.status), undefined, {
             sensitivity: "base",
           });
           break;
@@ -437,15 +421,10 @@ export default function LeavePage() {
   };
 
   const selectedStatus = leaveStatusLabel(selectedLeave || {});
-  const selectedCanStep1 =
+  const selectedPending =
     Boolean(selectedLeave) &&
     canActOnLeave(selectedLeave) &&
-    canApproveStep1(selectedLeave);
-  const selectedCanStep2 =
-    Boolean(selectedLeave) &&
-    canActOnLeave(selectedLeave) &&
-    canApproveStep2(selectedLeave);
-  const selectedPending = selectedCanStep1 || selectedCanStep2;
+    overallLeaveStatus(selectedLeave || {}) === "pending";
 
   return (
     <OptionalAdminShell>
@@ -453,8 +432,8 @@ export default function LeavePage() {
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
           <p className={styles.subtitle}>
-            Two-step approval: 1st step, then 2nd (final). Manager / Team Lead
-            approve here on Leaves — not Ticket Inbox.
+            Single-step approve / reject. Team Lead / Manager approve department
+            leave here — CEOs (Joe / Max / Mubeen) use Ticket Inbox instead.
           </p>
 
           <div className={styles.statRow}>
@@ -490,8 +469,6 @@ export default function LeavePage() {
                       <th>{renderSortableHeader("Dates", "start_date")}</th>
                       <th>{renderSortableHeader("Days", "total_days")}</th>
                       <th>Balance</th>
-                      <th>{renderSortableHeader("1st step", "step1_status")}</th>
-                      <th>{renderSortableHeader("2nd step", "step2_status")}</th>
                       <th>{renderSortableHeader("Status", "status")}</th>
                       <th>{renderSortableHeader("Requested", "requested_at")}</th>
                       <th>Actions</th>
@@ -500,18 +477,15 @@ export default function LeavePage() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={13} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={11} className={tableStyles.breakSummaryNoRecords}>
                           No leave requests yet.
                         </td>
                       </tr>
                     ) : (
                       sortedLeaves.map((l, idx) => {
                         const statusLabel = leaveStatusLabel(l);
-                        const s1 = normStep(l.step1_status);
-                        const s2 = normStep(l.step2_status);
-                        const showStep1 = canActOnLeave(l) && canApproveStep1(l);
-                        const showStep2 = canActOnLeave(l) && canApproveStep2(l);
-                        const pending = showStep1 || showStep2;
+                        const pending =
+                          canActOnLeave(l) && overallLeaveStatus(l) === "pending";
                         const bal = balanceByEmp[String(l.employee_id)];
                         const isBereavement =
                           String(l.leave_category || "").toLowerCase() === "bereavement";
@@ -568,12 +542,6 @@ export default function LeavePage() {
                               )}
                             </td>
                             <td>
-                              <span className={`${styles.badge} ${stepBadgeClass(s1)}`}>{s1}</span>
-                            </td>
-                            <td>
-                              <span className={`${styles.badge} ${stepBadgeClass(s2)}`}>{s2}</span>
-                            </td>
-                            <td>
                               <span className={`${styles.badge} ${statusBadgeClass(statusLabel)}`}>
                                 {statusLabel}
                               </span>
@@ -584,22 +552,13 @@ export default function LeavePage() {
                                 <button type="button" className={styles.btnView} onClick={() => openModal(l)}>
                                   View
                                 </button>
-                                {showStep1 && (
+                                {pending && (
                                   <button
                                     type="button"
                                     className={styles.btnApprove}
-                                    onClick={() => handleAction(l.id, "approve_step1")}
+                                    onClick={() => handleAction(l.id, "approve")}
                                   >
-                                    Approve 1st
-                                  </button>
-                                )}
-                                {showStep2 && (
-                                  <button
-                                    type="button"
-                                    className={styles.btnApprove}
-                                    onClick={() => handleAction(l.id, "approve_step2")}
-                                  >
-                                    Approve 2nd
+                                    Approve
                                   </button>
                                 )}
                                 {pending && (
@@ -645,18 +604,6 @@ export default function LeavePage() {
                 <div className={styles.modalRow}>
                   <b>Dates:</b> {formatDate(selectedLeave.start_date)} –{" "}
                   {formatDate(selectedLeave.end_date)} ({selectedLeave.total_days} days)
-                </div>
-                <div className={styles.modalRow}>
-                  <b>1st step:</b>{" "}
-                  <span className={`${styles.badge} ${stepBadgeClass(selectedLeave.step1_status)}`}>
-                    {normStep(selectedLeave.step1_status)}
-                  </span>
-                </div>
-                <div className={styles.modalRow}>
-                  <b>2nd step:</b>{" "}
-                  <span className={`${styles.badge} ${stepBadgeClass(selectedLeave.step2_status)}`}>
-                    {normStep(selectedLeave.step2_status)}
-                  </span>
                 </div>
                 <div className={styles.modalRow}>
                   <b>Status:</b>{" "}
@@ -725,24 +672,13 @@ export default function LeavePage() {
                       />
                     </label>
                     <div className={styles.modalActions}>
-                      {selectedCanStep1 ? (
-                        <button
-                          type="button"
-                          className={styles.btnApprove}
-                          onClick={() => handleAction(selectedLeave.id, "approve_step1")}
-                        >
-                          Approve 1st step
-                        </button>
-                      ) : null}
-                      {selectedCanStep2 ? (
-                        <button
-                          type="button"
-                          className={styles.btnApprove}
-                          onClick={() => handleAction(selectedLeave.id, "approve_step2")}
-                        >
-                          Approve 2nd (final)
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        className={styles.btnApprove}
+                        onClick={() => handleAction(selectedLeave.id, "approve")}
+                      >
+                        Approve
+                      </button>
                       <button
                         type="button"
                         className={styles.btnReject}

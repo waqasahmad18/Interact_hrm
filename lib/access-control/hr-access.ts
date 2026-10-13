@@ -12,6 +12,7 @@ import {
   ORG_ROLE_DB,
 } from "@/lib/org-role";
 import { permissionSetHas } from "@/lib/access-control/permission-scope";
+import { detectDeptHeadHint } from "@/lib/dept-heads";
 
 /** Tabs / ops every HR employee gets automatically (no System Control). */
 export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
@@ -90,15 +91,30 @@ export function mergeHrAccessPermissions(opts: {
   departmentName: string | null | undefined;
   orgRole: string | null | undefined;
   accessRoleSlugs?: string[] | null;
+  /** Optional — used to detect Joe / Max / Mubeen even if role is not BOD/CEO. */
+  firstName?: string | null;
+  lastName?: string | null;
 }): string[] {
   const set = new Set(opts.permissions.filter(Boolean));
   const hr = isHrDepartment(opts.departmentName);
   const manager = isManagerOrgRole(opts.orgRole);
   const teamLead = isTeamLeadOrgRole(opts.orgRole);
+  const ceo = isCeoOrgRole(opts.orgRole);
+  const headHint = detectDeptHeadHint(opts.firstName, opts.lastName);
+  const deptHeadCeo = ceo || Boolean(headHint);
   const slugs = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase()
   );
-  if (hr) {
+
+  // Joe / Max / Mubeen (and BOD/CEO): leave tickets in Ticket Inbox — not Leaves page.
+  if (deptHeadCeo) {
+    for (const k of HR_TICKET_VIEW_PERMISSIONS) set.add(k);
+    for (const k of HR_TICKET_MODERATOR_PERMISSIONS) set.add(k);
+    for (const k of DEPT_LEAVE_PAGE_PERMISSIONS) set.delete(k);
+    set.delete("leave.list.view");
+    set.delete("leave.approve.manager");
+    set.delete("department.leaves.view");
+  } else if (hr) {
     for (const k of HR_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
     // All HR staff see Ticket Inbox. Manager / Team Lead may approve leave.
     for (const k of HR_TICKET_VIEW_PERMISSIONS) set.add(k);
@@ -119,11 +135,12 @@ export function mergeHrAccessPermissions(opts: {
     }
   } else if (manager || teamLead) {
     // Other departments: leave approve/reject on Leaves page only — never Ticket Inbox.
+    // Single-step only (two-step disabled globally).
     for (const k of DEPT_LEAVE_PAGE_PERMISSIONS) set.add(k);
     set.delete("ops.tickets.view");
   }
 
-  if (manager) {
+  if (manager || deptHeadCeo) {
     for (const k of MANAGER_SYSTEM_CONTROL_PERMISSIONS) set.add(k);
   } else {
     for (const k of [...set]) {

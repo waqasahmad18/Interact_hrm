@@ -25,17 +25,19 @@ import {
 } from "@/lib/ticket-catalog";
 import {
   canModerateTicketStatus,
+  canModerateTicketStatusAsync,
   filterTicketsForInbox,
+  getEmployeeDeptChipMap,
   getHrEmployeeIdSet,
   isHrDepartmentSubmitter,
   loadHrTicketViewer,
 } from "@/lib/hr-department-tickets";
 import { syncLeaveRecordFromTicket } from "@/lib/leave-ticket-sync";
-import { isManagerOrgRole, isTeamLeadOrgRole, isCeoOrgRole } from "@/lib/org-role";
 import {
   assertLeaveBalanceAllowsRequest,
   getEmployeeLeaveBalance,
 } from "@/lib/leave-balance";
+import { resolveEmployeeDisplayName } from "@/lib/dept-heads";
 
 function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
   const q =
@@ -47,6 +49,10 @@ function viewerIdFromReq(req: NextRequest, searchParams?: URLSearchParams) {
     req.headers.get("x-hrm-employee-id") ||
     "";
   return String(q || h || "").trim();
+}
+
+function isLeaveTicketType(ticketType?: string | null) {
+  return String(ticketType || "").toLowerCase() === "leave";
 }
 
 const VALID_CATEGORIES = new Set(["ESS", "IT", "HR", "ADMIN", "OPERATIONS"]);
@@ -125,29 +131,47 @@ export async function GET(req: NextRequest) {
     }
 
     const hrIds = await getHrEmployeeIdSet();
+    const empChips = await getEmployeeDeptChipMap();
     const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
 
     // Single-ticket fetch: owner or HR inbox viewer (for HR tickets) or admin (non-HR).
     if (ticketId) {
       tickets = tickets.filter((t) => {
+        if (isLeaveTicketType(t.ticket_type)) {
+          // Leave visible in HR inbox / admin / owner / dept-head owned chips.
+          if (viewer && String(t.employee_id) === viewer.employeeId) return true;
+          if (viewer?.canViewHrInbox) return true;
+          if (viewer?.deptHead?.headHint) {
+            const chip = empChips.get(String(t.employee_id));
+            return Boolean(
+              chip &&
+                viewer.deptHead.ownedChips.some(
+                  (c) => c.toLowerCase() === chip.toLowerCase()
+                )
+            );
+          }
+          return !isHrDepartmentSubmitter(t.employee_id, hrIds);
+        }
         const hrTicket = isHrDepartmentSubmitter(t.employee_id, hrIds);
         if (!hrTicket) return true;
         if (viewer && String(t.employee_id) === viewer.employeeId) return true;
         return Boolean(viewer?.canViewHrInbox);
       });
       const sample = tickets[0];
+      const canMod = sample
+        ? await canModerateTicketStatusAsync({
+            ticketEmployeeId: sample.employee_id,
+            viewer,
+            hrIds,
+            ticketType: sample.ticket_type,
+            submitterChip: empChips.get(String(sample.employee_id)) || null,
+          })
+        : false;
       return NextResponse.json({
         success: true,
         tickets,
         count: tickets.length,
-        canModerate: sample
-          ? canModerateTicketStatus({
-              ticketEmployeeId: sample.employee_id,
-              viewer,
-              hrIds,
-              ticketType: sample.ticket_type,
-            })
-          : Boolean(viewer?.canModerateHrTickets),
+        canModerate: canMod,
       });
     }
 
@@ -161,28 +185,34 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Inbox lists — HR dept tickets never appear in admin inbox.
+    // Inbox lists — HR sees all leave; admin hides HR non-leave; dept heads get owned leave.
     const filtered = filterTicketsForInbox(tickets, {
       inbox,
       viewer,
       hrIds,
+      empChips,
     });
+
+    // Per-ticket moderation flags (HR Manager may view all leave but approve only in-scope).
+    const ticketsOut = [];
+    let anyModerate = false;
+    for (const t of filtered) {
+      const canMod = await canModerateTicketStatusAsync({
+        ticketEmployeeId: t.employee_id,
+        viewer,
+        hrIds,
+        ticketType: t.ticket_type,
+        submitterChip: empChips.get(String(t.employee_id)) || null,
+      });
+      if (canMod) anyModerate = true;
+      ticketsOut.push({ ...t, can_moderate: canMod });
+    }
 
     return NextResponse.json({
       success: true,
-      tickets: filtered,
-      count: filtered.length,
-      // Approve/reject: Manager only (HR inbox + any Team Lead is view-only).
-      canModerate:
-        inbox === "hr"
-          ? Boolean(viewer?.canModerateHrTickets)
-          : inbox === "admin"
-            ? !viewer ||
-              isCeoOrgRole(viewer.orgRole) ||
-              isManagerOrgRole(viewer.orgRole) ||
-              isTeamLeadOrgRole(viewer.orgRole) ||
-              Boolean(viewer.canModerateHrTickets)
-            : false,
+      tickets: ticketsOut,
+      count: ticketsOut.length,
+      canModerate: anyModerate,
     });
   } catch (error) {
     return NextResponse.json(
@@ -389,30 +419,45 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Status change: Manager only — Team Lead / HR officers cannot approve or reject
-    // (especially leave). Nobody may approve their own ticket.
+    // Status change: scoped approvers only. Nobody may approve their own ticket.
+    let actorViewerId = "";
+    let actorDisplayName: string | null = null;
     if (hasStatus && !isEmployeeReply) {
-      const viewerId =
+      actorViewerId =
         String(body.viewerId || body.viewer_id || employee_id || "").trim() ||
         viewerIdFromReq(req);
-      const viewer = viewerId ? await loadHrTicketViewer(viewerId) : null;
+      const viewer = actorViewerId ? await loadHrTicketViewer(actorViewerId) : null;
       const hrIds = await getHrEmployeeIdSet();
-      if (
-        !canModerateTicketStatus({
-          ticketEmployeeId: current.employee_id,
-          viewer,
-          hrIds,
-          ticketType: current.ticket_type,
-        })
-      ) {
+      const empChips = await getEmployeeDeptChipMap();
+      const allowed = await canModerateTicketStatusAsync({
+        ticketEmployeeId: current.employee_id,
+        viewer,
+        hrIds,
+        ticketType: current.ticket_type,
+        submitterChip: empChips.get(String(current.employee_id)) || null,
+      });
+      if (!allowed) {
         return NextResponse.json(
           {
             success: false,
             error:
-              "Not allowed to approve or reject this ticket. Leave: Manager / Team Lead only. Other HR staff are view-only.",
+              "Not allowed to approve or reject this ticket. View only if outside your department hierarchy.",
           },
           { status: 403 }
         );
+      }
+      actorDisplayName =
+        String(author_name || "").trim() ||
+        (await resolveEmployeeDisplayName(actorViewerId)) ||
+        null;
+      // Prefer real employee name over generic "HR"/"Admin" labels for Approved by.
+      if (
+        actorDisplayName &&
+        /^(hr|admin)$/i.test(actorDisplayName) &&
+        actorViewerId
+      ) {
+        actorDisplayName =
+          (await resolveEmployeeDisplayName(actorViewerId)) || actorDisplayName;
       }
     }
 
@@ -449,12 +494,32 @@ export async function PATCH(req: NextRequest) {
           ? null
           : current.resolved_at;
 
-    await query(
-      `UPDATE ${EMPLOYEE_TICKETS_TABLE}
-       SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [newStatus, latestAdminRemark(messages), JSON.stringify(messages), resolvedAt, id]
-    );
+    const closing =
+      newStatus === "resolved" || newStatus === "rejected" || newStatus === "closed";
+    try {
+      await query(
+        `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+         SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW(),
+             approved_by = ?, approved_by_name = ?
+         WHERE id = ?`,
+        [
+          newStatus,
+          latestAdminRemark(messages),
+          JSON.stringify(messages),
+          resolvedAt,
+          closing && actorViewerId ? actorViewerId : null,
+          closing && actorDisplayName ? actorDisplayName : null,
+          id,
+        ]
+      );
+    } catch {
+      await query(
+        `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+         SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [newStatus, latestAdminRemark(messages), JSON.stringify(messages), resolvedAt, id]
+      );
+    }
 
     const [rows]: any = await query(
       `SELECT * FROM ${EMPLOYEE_TICKETS_TABLE} WHERE id = ? LIMIT 1`,

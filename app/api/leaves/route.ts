@@ -17,11 +17,15 @@ import {
   isManagerOrgRole,
   isTeamLeadOrgRole,
 } from "@/lib/org-role";
-import { backfillLeavesFromTickets } from "@/lib/leave-ticket-sync";
+import {
+  backfillLeavesFromTickets,
+  syncTicketFromLeaveDecision,
+} from "@/lib/leave-ticket-sync";
 import {
   assertLeaveBalanceAllowsRequest,
   getEmployeeLeaveBalance,
 } from "@/lib/leave-balance";
+import { resolveEmployeeDisplayName } from "@/lib/dept-heads";
 
 async function assertLeaveApprover(
   actorId: string | null,
@@ -85,19 +89,9 @@ async function assertLeaveApprover(
   return { ok: true };
 }
 
+/** Two-step leave is disabled — single Approve / Reject only (Leave page + non-HR TLs). */
 async function isTwoStepEnabled(): Promise<boolean> {
-  try {
-    const [rows] = (await query(
-      `SELECT is_enabled FROM hrm_global_features WHERE feature_key = ? LIMIT 1`,
-      ["two_step_leave"],
-    )) as any;
-    const list = Array.isArray(rows) ? rows : [];
-    if (!list.length) return true; // default on when feature row missing
-    const v = list[0]?.is_enabled;
-    return v === 1 || v === true || v === "1";
-  } catch {
-    return true;
-  }
+  return false;
 }
 
 // POST: Submit a new leave request
@@ -278,6 +272,20 @@ export async function PATCH(req: NextRequest) {
 
     const twoStep = await isTwoStepEnabled();
     const actorId = actor != null ? String(actor) : null;
+    const actorName = actorId ? await resolveEmployeeDisplayName(actorId) : null;
+
+    async function mirrorTicket(status: "approved" | "rejected") {
+      try {
+        await syncTicketFromLeaveDecision({
+          leaveReason: leave.reason,
+          status,
+          actorId,
+          actorName,
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
 
     if (action === "reject" || action.startsWith("approve")) {
       const gate = await assertLeaveApprover(actorId, leave.employee_id);
@@ -295,8 +303,8 @@ export async function PATCH(req: NextRequest) {
       try {
         await query(
           `UPDATE employee_leaves SET status = 'rejected', step1_status = ?, step2_status = 'rejected',
-            admin_remark = ?, updated_at = NOW() WHERE id = ?`,
-          [nextStep1, admin_remark || "", id],
+            step2_by = COALESCE(step2_by, ?), admin_remark = ?, updated_at = NOW() WHERE id = ?`,
+          [nextStep1, actorId, admin_remark || "", id],
         );
       } catch {
         await query(
@@ -304,6 +312,7 @@ export async function PATCH(req: NextRequest) {
           [admin_remark || "", id],
         );
       }
+      await mirrorTicket("rejected");
       broadcastWsEvent({ type: "leave_update" });
       // Rejected: balance unchanged (only approved leaves deduct).
       const bal = await getEmployeeLeaveBalance(leave.employee_id);
@@ -341,10 +350,13 @@ export async function PATCH(req: NextRequest) {
             updated_at = NOW() WHERE id = ?`,
           [actorId, actorId, id],
         );
+        await mirrorTicket("approved");
         broadcastWsEvent({ type: "leave_update" });
         return NextResponse.json({
           success: true,
           status: "approved",
+          approved_by: actorId,
+          approved_by_name: actorName,
           balance: await balanceAfterApprove(),
         });
       }
@@ -370,11 +382,14 @@ export async function PATCH(req: NextRequest) {
             updated_at = NOW() WHERE id = ?`,
           [actorId, actorId, id],
         );
+        await mirrorTicket("approved");
         broadcastWsEvent({ type: "leave_update" });
         return NextResponse.json({
           success: true,
           status: "approved",
           step: 1,
+          approved_by: actorId,
+          approved_by_name: actorName,
           balance: await balanceAfterApprove(),
         });
       }
@@ -405,12 +420,15 @@ export async function PATCH(req: NextRequest) {
           status = 'approved', updated_at = NOW() WHERE id = ?`,
         [actorId, id],
       );
+      await mirrorTicket("approved");
       broadcastWsEvent({ type: "leave_update" });
       return NextResponse.json({
         success: true,
         status: "approved",
         step: 2,
         status_label: "approved",
+        approved_by: actorId,
+        approved_by_name: actorName,
         balance: await balanceAfterApprove(),
       });
     }

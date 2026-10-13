@@ -26,6 +26,10 @@ type Ticket = {
   admin_remark: string | null;
   messages?: TicketThreadMessage[];
   requested_at: string;
+  approved_by?: string | null;
+  approved_by_name?: string | null;
+  /** Per-ticket: viewer may approve/reject (HR Manager may view all leave but only moderate in-scope). */
+  can_moderate?: boolean;
 };
 
 type TicketsPageProps = {
@@ -42,6 +46,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
   const [processing, setProcessing] = React.useState(false);
   const [canModerate, setCanModerate] = React.useState(inboxMode === "admin");
   const [viewerId, setViewerId] = React.useState("");
+  const [viewerName, setViewerName] = React.useState("");
   const [leaveBalanceInfo, setLeaveBalanceInfo] = React.useState<{
     annualBalance: number;
     annualAllowance: number;
@@ -55,7 +60,9 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
       viewerId &&
       String(selected.employee_id) === String(viewerId),
   );
-  const canModerateSelected = canModerate && !isOwnSelectedTicket;
+  const selectedCanModerate =
+    selected?.can_moderate !== undefined ? Boolean(selected.can_moderate) : canModerate;
+  const canModerateSelected = selectedCanModerate && !isOwnSelectedTicket;
 
   React.useEffect(() => {
     try {
@@ -64,8 +71,15 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
         localStorage.getItem("loginId") ||
         "";
       setViewerId(String(id).trim());
+      const name =
+        localStorage.getItem("employeeName") ||
+        localStorage.getItem("fullName") ||
+        localStorage.getItem("name") ||
+        "";
+      setViewerName(String(name).trim());
     } catch {
       setViewerId("");
+      setViewerName("");
     }
   }, []);
 
@@ -186,7 +200,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
           id,
           status,
           reply: reply.trim() || undefined,
-          author_name: inboxMode === "hr" ? "HR" : "Admin",
+          author_name: viewerName || (inboxMode === "hr" ? "HR" : "Admin"),
           viewerId: viewerId || undefined,
         }),
       });
@@ -248,11 +262,30 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
   const openTicket = async (t: Ticket) => {
     setReply("");
     try {
-      const res = await fetch(`/api/employee-tickets?id=${t.id}&ts=${Date.now()}`, {
+      const params = new URLSearchParams({
+        id: String(t.id),
+        ts: String(Date.now()),
+        inbox: inboxMode,
+      });
+      if (viewerId) params.set("viewerId", viewerId);
+      const res = await fetch(`/api/employee-tickets?${params}`, {
         cache: "no-store",
+        headers: viewerId
+          ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+          : undefined,
       });
       const data = await res.json();
-      setSelected(data.success && data.tickets?.[0] ? data.tickets[0] : t);
+      const fresh =
+        data.success && data.tickets?.[0]
+          ? {
+              ...data.tickets[0],
+              can_moderate:
+                typeof data.canModerate === "boolean"
+                  ? data.canModerate
+                  : data.tickets[0].can_moderate,
+            }
+          : t;
+      setSelected(fresh);
     } catch {
       setSelected(t);
     }
@@ -474,6 +507,18 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
                       {t.employee_name} · {categoryLabel(t.category)} ·{" "}
                       {ticketTypeLabel(t.category, t.ticket_type)}
                     </div>
+                    {t.approved_by_name &&
+                    (t.status === "resolved" ||
+                      t.status === "rejected" ||
+                      t.status === "closed") ? (
+                      <div
+                        className={adminStyles.muted}
+                        style={{ marginTop: 6, fontSize: 13, color: "#0f766e", fontWeight: 600 }}
+                      >
+                        {t.status === "rejected" ? "Rejected by" : "Approved by"}{" "}
+                        {t.approved_by_name}
+                      </div>
+                    ) : null}
                     {t.description ? (
                       <div className={adminStyles.muted} style={{ marginTop: 8, color: "#475569" }}>
                         {t.description}
@@ -543,6 +588,18 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
               <span className={`${adminStyles.badge} ${statusBadge(selected.status)}`}>
                 {formatTicketStatusLabel(selected.status, selected.ticket_type)}
               </span>
+              {selected.approved_by_name &&
+              (selected.status === "resolved" ||
+                selected.status === "rejected" ||
+                selected.status === "closed") ? (
+                <span
+                  className={`${adminStyles.badge} ${adminStyles.badgeType}`}
+                  style={{ background: "#ecfdf5", color: "#0f766e" }}
+                >
+                  {selected.status === "rejected" ? "Rejected by" : "Approved by"}{" "}
+                  {selected.approved_by_name}
+                </span>
+              ) : null}
             </div>
             <p style={{ fontWeight: 600, margin: "0 0 12px" }}>{selected.subject}</p>
             {renderTicketDetails(selected)}
@@ -682,9 +739,10 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
                 Mubeen, DM → Joe White).
               </p>
             ) : null}
-            {!ticketClosed && !canModerate && !isOwnSelectedTicket ? (
+            {!ticketClosed && !canModerateSelected && !isOwnSelectedTicket ? (
               <p className={adminStyles.muted} style={{ marginTop: 8 }}>
-                View only — leave approve is for Manager / Team Lead; other HR staff cannot approve.
+                View only — you can see this leave, but approve is limited to the
+                department hierarchy (Team Lead / Manager / dept head CEO).
               </p>
             ) : null}
           </div>

@@ -103,6 +103,26 @@ export async function syncLeaveRecordFromTicket(
 
   try {
     if (existingId) {
+      // Never downgrade an already-decided leave when the linked ticket is still pending.
+      // (George / TL approve on Leaves page was getting wiped by ticket backfill.)
+      try {
+        const [curRows] = await query(
+          `SELECT status FROM employee_leaves WHERE id = ? LIMIT 1`,
+          [existingId]
+        );
+        const curStatus = String(
+          (Array.isArray(curRows) ? (curRows[0] as { status?: string })?.status : "") || ""
+        ).toLowerCase();
+        if (
+          leaveStatus === "pending" &&
+          (curStatus === "approved" || curStatus === "rejected")
+        ) {
+          return existingId;
+        }
+      } catch {
+        /* continue with update */
+      }
+
       try {
         const sets = [
           "employee_name = ?",
@@ -129,6 +149,21 @@ export async function syncLeaveRecordFromTicket(
         if (leaveStatus === "approved") {
           sets.push("step1_at = ?", "step2_at = ?");
           vals.push(nowIso, nowIso);
+        }
+        // Carry ticket approver onto the leave row when present.
+        const approvedBy = String(
+          (ticket as EmployeeTicketRow & { approved_by?: string | null }).approved_by || ""
+        ).trim();
+        const approvedByName = String(
+          (ticket as EmployeeTicketRow & { approved_by_name?: string | null })
+            .approved_by_name || ""
+        ).trim();
+        if (leaveStatus === "approved" && approvedBy) {
+          sets.push("step1_by = ?", "step2_by = ?");
+          vals.push(approvedBy, approvedBy);
+        } else if (leaveStatus === "approved" && approvedByName) {
+          sets.push("step1_by = ?", "step2_by = ?");
+          vals.push(approvedByName, approvedByName);
         }
         vals.push(existingId);
         await query(
@@ -225,6 +260,53 @@ export async function syncLeaveRecordFromTicket(
   } catch (err) {
     console.warn("[leave-ticket-sync] failed", err);
     return null;
+  }
+}
+
+/** Parse `[ticket:123]` marker from leave reason. */
+export function ticketIdFromLeaveReason(reason: unknown): number | null {
+  const m = /\[ticket:(\d+)\]/i.exec(String(reason || ""));
+  if (!m) return null;
+  const id = Number(m[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/**
+ * When leave is approved/rejected on Leaves page, mirror status onto the linked ticket
+ * so Ticket Inbox stays in sync and shows Approved by.
+ */
+export async function syncTicketFromLeaveDecision(opts: {
+  leaveReason: unknown;
+  status: "approved" | "rejected";
+  actorId?: string | null;
+  actorName?: string | null;
+}): Promise<void> {
+  const ticketId = ticketIdFromLeaveReason(opts.leaveReason);
+  if (!ticketId) return;
+  const ticketStatus = opts.status === "approved" ? "resolved" : "rejected";
+  const nowIso = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const actorId = String(opts.actorId || "").trim() || null;
+  const actorName = String(opts.actorName || "").trim() || null;
+  try {
+    try {
+      await query(
+        `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+         SET status = ?, resolved_at = ?, updated_at = ?,
+             approved_by = ?, approved_by_name = ?
+         WHERE id = ? AND status IN ('pending', 'in_progress')`,
+        [ticketStatus, nowIso, nowIso, actorId, actorName, ticketId]
+      );
+    } catch {
+      await query(
+        `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+         SET status = ?, resolved_at = ?, updated_at = ?
+         WHERE id = ? AND status IN ('pending', 'in_progress')`,
+        [ticketStatus, nowIso, nowIso, ticketId]
+      );
+    }
+    broadcastWsEvent({ type: "ticket_update" });
+  } catch (err) {
+    console.warn("[leave-ticket-sync] ticket mirror failed", err);
   }
 }
 

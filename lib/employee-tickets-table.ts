@@ -26,6 +26,10 @@ export type EmployeeTicketRow = {
   resolved_at: string | null;
   requested_at: string;
   updated_at: string;
+  /** Employee id who approved/rejected (leave etc.). */
+  approved_by?: string | null;
+  /** Display name for Approved by … */
+  approved_by_name?: string | null;
 };
 
 export async function ensureEmployeeTicketsTable() {
@@ -62,6 +66,20 @@ export async function ensureEmployeeTicketsTable() {
     try {
       await conn.execute(
         `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN messages JSON NULL AFTER admin_remark`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      await conn.execute(
+        `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN approved_by VARCHAR(64) NULL`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      await conn.execute(
+        `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN approved_by_name VARCHAR(255) NULL`
       );
     } catch {
       /* column already exists */
