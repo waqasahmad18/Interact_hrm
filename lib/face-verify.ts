@@ -1,5 +1,6 @@
 import { getEmployeeMatchKeys } from "@/lib/biometric-employee";
 import {
+  assertClaimedIsGalleryWinner,
   assertUniqueIdentity,
   getMaxMatchDistance,
   getMinMatchingPhotos,
@@ -9,6 +10,7 @@ import {
   isFaceVerificationEnabled,
   isValidDescriptor,
   matchProbeToDescriptors,
+  rankGalleryByProbe,
 } from "@/lib/face-matching";
 import {
   RECOMMENDED_ENROLLMENT_MIN,
@@ -137,6 +139,36 @@ export async function verifyDescriptorForEmployee(
   }
 
   const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
+
+  // 1:N identify across ALL enrolled employees — who is actually in the camera?
+  const gallery = [
+    { employeeId: id, descriptors: enrollment.descriptors },
+    ...rivals,
+  ];
+  const ranked = rankGalleryByProbe(
+    descriptor,
+    gallery,
+    maxDistance,
+    minPhotos
+  );
+  const winnerCheck = assertClaimedIsGalleryWinner(
+    idAliases,
+    ranked,
+    maxDistance,
+    purpose
+  );
+  if (!winnerCheck.ok) {
+    return {
+      verified: false,
+      reason: winnerCheck.reason,
+      code: winnerCheck.code,
+      similarity: winnerCheck.similarity ?? self.similarity,
+      subject,
+      expectedSubject: subject,
+    };
+  }
+
+  // Extra look-alike / centroid gates (centroid + median clarity)
   const unique = assertUniqueIdentity(
     descriptor,
     self.bestDistance,

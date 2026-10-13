@@ -122,10 +122,156 @@ export function matchProbeToDescriptors(
   };
 }
 
-/** How much closer self must be than any OTHER enrolled person (clock/break). */
-const RIVAL_SAFETY_MARGIN = 0.18;
+/** How much closer claimed person must be than any OTHER enrolled person (clock/break). */
+const RIVAL_SAFETY_MARGIN = 0.15;
 /** Idle presence — still blocks clear look-alikes, admits genuine at desk. */
-const RIVAL_SAFETY_MARGIN_PRESENCE = 0.12;
+const RIVAL_SAFETY_MARGIN_PRESENCE = 0.10;
+
+export type UniqueIdentityMode = "action" | "presence";
+
+export type GalleryCandidate = {
+  employeeId: string;
+  descriptors: number[][];
+};
+
+export type GalleryRankHit = {
+  employeeId: string;
+  bestDistance: number;
+  avgDistance: number;
+  matchCount: number;
+  similarity: number;
+  pass: boolean;
+};
+
+/**
+ * Score every enrolled identity against the probe (1:N identification).
+ * Sorted closest-first — used to decide WHO is in front of the camera.
+ */
+export function rankGalleryByProbe(
+  probe: number[],
+  candidates: GalleryCandidate[],
+  maxDistance: number,
+  minMatchingPhotos: number
+): GalleryRankHit[] {
+  const hits: GalleryRankHit[] = [];
+  for (const c of candidates) {
+    if (!c.descriptors.length) continue;
+    const m = matchProbeToDescriptors(
+      probe,
+      c.descriptors,
+      maxDistance,
+      Math.min(minMatchingPhotos, c.descriptors.length)
+    );
+    hits.push({
+      employeeId: String(c.employeeId),
+      bestDistance: m.bestDistance,
+      avgDistance: m.avgDistance,
+      matchCount: m.matchCount,
+      similarity: m.similarity,
+      pass: m.pass,
+    });
+  }
+  hits.sort(
+    (a, b) =>
+      a.bestDistance - b.bestDistance ||
+      a.avgDistance - b.avgDistance ||
+      b.matchCount - a.matchCount
+  );
+  return hits;
+}
+
+function idAliasSet(ids: string[]): Set<string> {
+  const set = new Set<string>();
+  for (const raw of ids) {
+    const id = String(raw || "").trim();
+    if (!id) continue;
+    set.add(id);
+    if (/^\d+$/.test(id)) set.add(String(Number(id)));
+  }
+  return set;
+}
+
+/**
+ * After self-match, require claimed employee to be the clear gallery winner.
+ * Blocks accepting the wrong person when many employees are enrolled.
+ */
+export function assertClaimedIsGalleryWinner(
+  claimedAliases: string[],
+  ranked: GalleryRankHit[],
+  maxDistance: number,
+  mode: UniqueIdentityMode = "action"
+):
+  | { ok: true; winner: GalleryRankHit }
+  | {
+      ok: false;
+      reason: string;
+      code: "wrong_person" | "low_similarity";
+      winnerId?: string;
+      similarity?: number;
+    } {
+  const aliases = idAliasSet(claimedAliases);
+  const margin =
+    mode === "presence" ? RIVAL_SAFETY_MARGIN_PRESENCE : RIVAL_SAFETY_MARGIN;
+
+  if (!ranked.length) {
+    return {
+      ok: false,
+      code: "low_similarity",
+      reason: "No enrolled faces available to compare.",
+    };
+  }
+
+  const claimed = ranked.find((h) => aliases.has(h.employeeId));
+  if (!claimed || !claimed.pass || claimed.bestDistance > maxDistance) {
+    const simPct = claimed ? Math.round(claimed.similarity * 100) : 0;
+    const needPct = Math.round((1 - maxDistance / 0.65) * 100);
+    return {
+      ok: false,
+      code: "low_similarity",
+      similarity: claimed?.similarity,
+      reason: `Face does not match the logged-in employee closely enough (${simPct}% — need ~${needPct}%+).`,
+    };
+  }
+
+  const winner = ranked[0];
+  if (!aliases.has(winner.employeeId)) {
+    const winPct = Math.round(winner.similarity * 100);
+    const claimPct = Math.round(claimed.similarity * 100);
+    return {
+      ok: false,
+      code: "wrong_person",
+      winnerId: winner.employeeId,
+      similarity: claimed.similarity,
+      reason: `Camera face matches employee ID ${winner.employeeId} (${winPct}%) better than you (${claimPct}%). Wrong person blocked.`,
+    };
+  }
+
+  const runnerUp = ranked.find((h) => !aliases.has(h.employeeId));
+  if (runnerUp) {
+    const gap = runnerUp.bestDistance - winner.bestDistance;
+    if (gap < margin) {
+      return {
+        ok: false,
+        code: "wrong_person",
+        winnerId: runnerUp.employeeId,
+        similarity: winner.similarity,
+        reason: `Face is too close to employee ID ${runnerUp.employeeId} as well — cannot uniquely identify who you are.`,
+      };
+    }
+    // Runner-up also inside accept band → ambiguous identity
+    if (runnerUp.bestDistance <= maxDistance) {
+      return {
+        ok: false,
+        code: "wrong_person",
+        winnerId: runnerUp.employeeId,
+        similarity: winner.similarity,
+        reason: `Face also matches employee ID ${runnerUp.employeeId}. Only a unique identity can proceed.`,
+      };
+    }
+  }
+
+  return { ok: true, winner };
+}
 
 /**
  * Hard clarity cap — clock/break.
@@ -135,8 +281,6 @@ const RIVAL_SAFETY_MARGIN_PRESENCE = 0.12;
 const ABSOLUTE_BEST_CAP = 0.38;
 /** Idle presence cap — desk lighting / angle need a little more room. */
 const ABSOLUTE_BEST_CAP_PRESENCE = 0.42;
-
-export type UniqueIdentityMode = "action" | "presence";
 
 /**
  * Average of L2-normalized enrollment vectors. Look-alikes may luck one photo
