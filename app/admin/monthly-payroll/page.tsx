@@ -109,16 +109,13 @@ export default function MonthlyAttendancePage() {
     return shiftSeconds;
   }
 
-  /** Paid hours for OT rate: ~5h shift → 5; normal shift → 9. */
-  function getPaidHoursPerDayFromShift(
-    shiftStart: string | null | undefined,
-    shiftEnd: string | null | undefined
-  ): number {
-    const secs = getAssignedShiftSeconds(shiftStart, shiftEnd);
-    if (secs == null || secs <= 0) return 9;
-    const hours = secs / 3600;
-    // Short shifts (e.g. developer) are ~5h
-    if (hours <= 5.5) return 5;
+  /**
+   * Paid hours/day for per-hour rate (Basic ÷ W.Days ÷ hours).
+   * From employee profile Working Hours; default 9 when missing/invalid.
+   */
+  function getPaidHoursPerDayFromProfile(workingHours: unknown): number {
+    const n = Number(workingHours);
+    if (Number.isFinite(n) && n > 0) return n;
     return 9;
   }
 
@@ -172,9 +169,9 @@ export default function MonthlyAttendancePage() {
     // After attendanceByEmployee is defined (around line 660):
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allowOvertimeMap, setAllowOvertimeMap] = useState<Record<string, boolean>>({});
-  /** employee_id → paid hours/day for OT (5 or 8) from shift assignment */
+  /** employee_id → paid hours/day from profile Working Hours (default 9) */
   const [paidHoursPerDayMap, setPaidHoursPerDayMap] = useState<Record<string, number>>({});
-  
+ 
   // Set default dates - start of current month to today
   const today = new Date();
   const todayStr = getDateStringInTimeZone(today, SERVER_TIMEZONE);
@@ -466,7 +463,7 @@ export default function MonthlyAttendancePage() {
     }
   };
 
-  // Fetch shift assignment allow_overtime + paid hours/day from shift timings
+  // Fetch shift assignment allow_overtime (paid hours/day come from profile Working Hours)
   const fetchOverTimeSettings = async () => {
     try {
       const response = await fetch("/api/hrm-shifts-assignments", { cache: "no-store" });
@@ -474,17 +471,14 @@ export default function MonthlyAttendancePage() {
 
       if (data.success && data.employees) {
         const otMap: Record<string, boolean> = {};
-        const hoursMap: Record<string, number> = {};
         data.employees.forEach((emp: any) => {
           const empId = String(emp.id);
           // Latest assignment (returned by API) determines OT allowance
           if (emp.allow_overtime !== undefined && emp.allow_overtime !== null) {
             otMap[empId] = emp.allow_overtime === 1 || emp.allow_overtime === true;
           }
-          hoursMap[empId] = getPaidHoursPerDayFromShift(emp.start_time, emp.end_time);
         });
         setAllowOvertimeMap(otMap);
-        setPaidHoursPerDayMap(hoursMap);
       }
     } catch (err) {
       console.error("Error fetching overtime settings:", err);
@@ -990,11 +984,22 @@ export default function MonthlyAttendancePage() {
       .then(data => {
         if (data.success && Array.isArray(data.employees)) {
           setAllEmployees(data.employees);
+          const hoursMap: Record<string, number> = {};
+          data.employees.forEach((emp: any) => {
+            const empId = String(emp.id ?? emp.employee_id ?? "").trim();
+            if (!empId) return;
+            hoursMap[empId] = getPaidHoursPerDayFromProfile(emp.working_hours);
+          });
+          setPaidHoursPerDayMap(hoursMap);
         } else {
           setAllEmployees([]);
+          setPaidHoursPerDayMap({});
         }
       })
-      .catch(() => setAllEmployees([]));
+      .catch(() => {
+        setAllEmployees([]);
+        setPaidHoursPerDayMap({});
+      });
     // Fetch all salaries (all components, show amount) — viewerId enforces HR privacy
     const viewerId =
       (typeof window !== "undefined" &&
@@ -1099,7 +1104,9 @@ export default function MonthlyAttendancePage() {
       // Always show salary from salaryMap (amount, any component)
       const basicSalary = salaryMap[empId];
       const allowOT = allowOvertimeMap[empId] === true;
-      const paidHoursPerDay = paidHoursPerDayMap[empId] ?? 9;
+      const paidHoursPerDay =
+        paidHoursPerDayMap[empId] ??
+        getPaidHoursPerDayFromProfile(emp.working_hours);
       return {
         employeeId: empId,
         employeeName: (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.employee_name || "-"),
@@ -1108,6 +1115,8 @@ export default function MonthlyAttendancePage() {
         basicSalary,
         allowOvertime: allowOT,
         paidHoursPerDay,
+        workingHours: emp.working_hours ?? null,
+        employmentType: emp.employment_type || "",
         byDate: att ? att.byDate : {},
         dateMeta: att ? att.dateMeta : {},
       };

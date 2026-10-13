@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     const selectCols = `
         SELECT e.id, e.first_name, e.last_name, e.employee_code, e.gender, e.nationality, e.status, e.pseudonym,
           e.father_name, e.dob, e.cnic_number, e.cnic_issuance_date, e.cnic_expiry_date, e.blood_group,
+          e.employment_type, e.working_hours,
           d.name AS department_name, j.job_title,
           ec.phone_mobile, ec.email_other, ec.email_work,
           ec.street1, ec.street2, ec.city, ec.state, ec.zip, ec.country,
