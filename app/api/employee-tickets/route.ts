@@ -10,6 +10,7 @@ import {
   type EmployeeTicketRow,
   type TicketStatus,
 } from "@/lib/employee-tickets-table";
+import { sortTicketsNewestFirst } from "@/lib/ticket-sort";
 import { isTicketClosed } from "@/lib/ticket-status";
 import {
   appendAdminMessage,
@@ -117,14 +118,16 @@ export async function GET(req: NextRequest) {
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
 
-    // Newest first by numeric id (Mongo Date/string mix breaks requested_at ORDER BY).
+    // Fetch a wide window; final newest-first sort uses updated/resolved/requested.
     sql += ` ORDER BY id DESC LIMIT ${limit}`;
 
     const [rows]: unknown[] = await query(sql, params);
     const POLICY_TYPES = new Set(["guard_policy_alert", "guard_keyword_alert"]);
-    let tickets = (Array.isArray(rows) ? rows : [])
-      .map((r) => rowToTicket(r as Record<string, unknown>))
-      .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+    let tickets = sortTicketsNewestFirst(
+      (Array.isArray(rows) ? rows : []).map((r) =>
+        rowToTicket(r as Record<string, unknown>)
+      )
+    );
     // Keep Guard Policy alerts out of the normal Ticket Inbox unless asked for.
     if (!ticketType && !includePolicy && !ticketId) {
       tickets = tickets.filter((t) => !POLICY_TYPES.has(String(t.ticket_type || "")));
@@ -210,7 +213,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      tickets: ticketsOut,
+      tickets: sortTicketsNewestFirst(ticketsOut),
       count: ticketsOut.length,
       canModerate: anyModerate,
     });

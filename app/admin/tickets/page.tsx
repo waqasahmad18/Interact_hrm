@@ -10,6 +10,7 @@ import { previewTicketToastOnPage } from "../../../lib/ticket-toast-demo";
 import type { TicketThreadMessage } from "../../../lib/ticket-thread";
 import { toastError, toastInfo } from "@/lib/app-toast";
 import { formatDateTimeInServerTz } from "@/lib/timezone";
+import { sortTicketsNewestFirst } from "@/lib/ticket-sort";
 
 type Ticket = {
   id: number;
@@ -101,7 +102,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
       });
       const data = await res.json();
       if (data.success) {
-        setTickets(data.tickets || []);
+        setTickets(sortTicketsNewestFirst(data.tickets || []));
         if (typeof data.canModerate === "boolean") setCanModerate(data.canModerate);
         else setCanModerate(inboxMode === "admin");
       }

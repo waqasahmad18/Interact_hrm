@@ -220,15 +220,30 @@ export async function GET(req: NextRequest) {
       params.push(toDate);
     }
 
-    sql += " ORDER BY requested_at DESC";
+    sql += " ORDER BY id DESC";
     const [rows] = (await query(sql, params)) as any;
-    const leaves = (Array.isArray(rows) ? rows : []).map((l: any) => ({
-      ...l,
-      step1_status: normStep(l.step1_status ?? (l.status === "approved" ? "approved" : "pending")),
-      step2_status: normStep(l.step2_status ?? (l.status === "approved" ? "approved" : "pending")),
-      status_label: leaveStatusLabel(l),
-      overall_status: overallLeaveStatus(l),
-    }));
+    const leaveRecency = (l: any) => {
+      let best = 0;
+      for (const c of [l?.updated_at, l?.step2_at, l?.step1_at, l?.requested_at]) {
+        const raw = String(c || "").trim();
+        if (!raw) continue;
+        const ms = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
+        if (Number.isFinite(ms) && ms > best) best = ms;
+      }
+      return best || Number(l?.id) || 0;
+    };
+    const leaves = (Array.isArray(rows) ? rows : [])
+      .map((l: any) => ({
+        ...l,
+        step1_status: normStep(l.step1_status ?? (l.status === "approved" ? "approved" : "pending")),
+        step2_status: normStep(l.step2_status ?? (l.status === "approved" ? "approved" : "pending")),
+        status_label: leaveStatusLabel(l),
+        overall_status: overallLeaveStatus(l),
+      }))
+      .sort((a: any, b: any) => {
+        const diff = leaveRecency(b) - leaveRecency(a);
+        return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
     return NextResponse.json({ success: true, leaves });
   } catch (error) {
     return NextResponse.json({

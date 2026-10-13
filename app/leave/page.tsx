@@ -343,8 +343,25 @@ export default function LeavePage() {
     return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
   };
 
+  const leaveRecencyMs = (l: any) => {
+    let best = 0;
+    for (const c of [l?.updated_at, l?.step2_at, l?.step1_at, l?.requested_at]) {
+      const raw = String(c || "").trim();
+      if (!raw) continue;
+      const ms = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
+      if (Number.isFinite(ms) && ms > best) best = ms;
+    }
+    return best || Number(l?.id) || 0;
+  };
+
   const sortedLeaves = useMemo(() => {
-    if (!sortConfig) return leaves;
+    // Default: most recent activity / approval on top.
+    if (!sortConfig) {
+      return [...leaves].sort((a, b) => {
+        const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
+        return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
+    }
     const { key, direction } = sortConfig;
     const getText = (v: unknown) => String(v || "").toLowerCase();
 
@@ -370,7 +387,7 @@ export default function LeavePage() {
           cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
           break;
         case "requested_at":
-          cmp = new Date(a.requested_at || 0).getTime() - new Date(b.requested_at || 0).getTime();
+          cmp = leaveRecencyMs(a) - leaveRecencyMs(b);
           break;
         default:
           cmp = 0;

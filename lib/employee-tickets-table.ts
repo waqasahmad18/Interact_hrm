@@ -94,6 +94,8 @@ export function buildTicketNumber(id: number) {
   return `TKT-${year}-${String(id).padStart(5, "0")}`;
 }
 
+export { sortTicketsNewestFirst, ticketRecencyMs } from "@/lib/ticket-sort";
+
 export function rowToTicket(row: Record<string, unknown>): EmployeeTicketRow {
   const base = {
     ...(row as unknown as EmployeeTicketRow),
