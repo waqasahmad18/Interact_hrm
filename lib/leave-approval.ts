@@ -37,6 +37,14 @@ export function leaveStatusLabel(row: LeaveApprovalRow): string {
   return "pending";
 }
 
+/** Actor id stored on the leave row (prefer final step2, else step1). */
+export function leaveDecidedById(row: LeaveApprovalRow): string | null {
+  const s2 = String(row.step2_by || "").trim();
+  if (s2) return s2;
+  const s1 = String(row.step1_by || "").trim();
+  return s1 || null;
+}
+
 export function canApproveStep1(row: LeaveApprovalRow): boolean {
   if (overallLeaveStatus(row) !== "pending") return false;
   return normStep(row.step1_status) === "pending";

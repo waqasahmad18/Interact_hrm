@@ -32,11 +32,25 @@ type TicketWidgetRow = {
   employee_id?: string | null;
   messages?: TicketThreadMessage[];
   updated_at: string;
+  approved_by?: string | null;
+  approved_by_name?: string | null;
 };
 
 function ticketStatusLabel(status: string, ticketType?: string) {
   if (ticketType === "leave" && status === "resolved") return "approved";
   return status.replace("_", " ");
+}
+
+function ticketDecidedByLabel(ticket: TicketWidgetRow): string | null {
+  const name = String(ticket.approved_by_name || "").trim();
+  if (!name) return null;
+  if (ticket.status === "rejected") return `Rejected by ${name}`;
+  if (ticket.status === "resolved" || ticket.status === "closed") {
+    return ticket.ticket_type === "leave"
+      ? `Approved by ${name}`
+      : `Resolved by ${name}`;
+  }
+  return null;
 }
 
 const ProgressRing = React.memo(function ProgressRing({
@@ -546,6 +560,18 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                           </span>
                         </div>
                         <div className={styles.ticketSub}>{ticket.subject}</div>
+                        {ticketDecidedByLabel(ticket) ? (
+                          <div
+                            className={styles.ticketPreview}
+                            style={{
+                              fontWeight: 600,
+                              color:
+                                ticket.status === "rejected" ? "#b91c1c" : "#0f766e",
+                            }}
+                          >
+                            {ticketDecidedByLabel(ticket)}
+                          </div>
+                        ) : null}
                         {lastAdmin ? (
                           <div className={styles.ticketPreview}>Admin: {lastAdmin.body}</div>
                         ) : null}

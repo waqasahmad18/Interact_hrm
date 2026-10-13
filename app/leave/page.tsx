@@ -487,6 +487,7 @@ export default function LeavePage() {
                       <th>{renderSortableHeader("Days", "total_days")}</th>
                       <th>Balance</th>
                       <th>{renderSortableHeader("Status", "status")}</th>
+                      <th>Decided by</th>
                       <th>{renderSortableHeader("Requested", "requested_at")}</th>
                       <th>Actions</th>
                     </tr>
@@ -494,7 +495,7 @@ export default function LeavePage() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
                           No leave requests yet.
                         </td>
                       </tr>
@@ -562,6 +563,27 @@ export default function LeavePage() {
                               <span className={`${styles.badge} ${statusBadgeClass(statusLabel)}`}>
                                 {statusLabel}
                               </span>
+                              {l.decided_by_label ? (
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color:
+                                      String(statusLabel).toLowerCase() === "rejected"
+                                        ? "#b91c1c"
+                                        : "#0f766e",
+                                  }}
+                                >
+                                  {l.decided_by_label}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td style={{ whiteSpace: "nowrap" }}>
+                              {l.approved_by_name &&
+                              (statusLabel === "approved" || statusLabel === "rejected")
+                                ? l.approved_by_name
+                                : "—"}
                             </td>
                             <td>{l.requested_at ? formatDateTime(l.requested_at) : "—"}</td>
                             <td>
@@ -628,6 +650,16 @@ export default function LeavePage() {
                     {selectedStatus}
                   </span>
                 </div>
+                {selectedLeave.decided_by_label || selectedLeave.approved_by_name ? (
+                  <div className={styles.modalRow}>
+                    <b>
+                      {String(selectedStatus).toLowerCase() === "rejected"
+                        ? "Rejected by:"
+                        : "Approved by:"}
+                    </b>{" "}
+                    {selectedLeave.approved_by_name || selectedLeave.decided_by_label}
+                  </div>
+                ) : null}
                 <div className={styles.modalRow}>
                   <b>Reason:</b> {selectedLeave.reason}
                 </div>

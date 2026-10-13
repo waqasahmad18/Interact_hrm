@@ -22,6 +22,8 @@ interface Leave {
   requested_at: string;
   document_paths?: string | string[];
   admin_remark?: string;
+  approved_by_name?: string | null;
+  decided_by_label?: string | null;
 }
 
 const LEAVE_CATEGORIES = [
@@ -452,6 +454,12 @@ export default function LeavePage() {
               ) : (
                 leaves.map((l) => {
                   const docs = parseDocs(l.document_paths);
+                  const decided =
+                    l.decided_by_label ||
+                    (l.approved_by_name &&
+                    (l.status === "approved" || l.status === "rejected")
+                      ? `${l.status === "rejected" ? "Rejected by" : "Approved by"} ${l.approved_by_name}`
+                      : null);
                   return (
                     <tr key={l.id}>
                       <td style={{ fontWeight: 600 }}>
@@ -488,6 +496,18 @@ export default function LeavePage() {
                         <span className={`${styles.badge} ${statusBadgeClass(l.status)}`}>
                           {l.status}
                         </span>
+                        {decided ? (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: l.status === "rejected" ? "#b91c1c" : "#0f766e",
+                            }}
+                          >
+                            {decided}
+                          </div>
+                        ) : null}
                       </td>
                       <td>{l.requested_at ? formatDateTime(l.requested_at) : "—"}</td>
                     </tr>
@@ -523,6 +543,14 @@ export default function LeavePage() {
                     {selectedLeave.status}
                   </span>
                 </div>
+                {selectedLeave.approved_by_name || selectedLeave.decided_by_label ? (
+                  <div className={styles.modalRow}>
+                    <b>
+                      {selectedLeave.status === "rejected" ? "Rejected by:" : "Approved by:"}
+                    </b>{" "}
+                    {selectedLeave.approved_by_name || selectedLeave.decided_by_label}
+                  </div>
+                ) : null}
                 <div className={styles.modalRow}>
                   <b>Reason:</b> {selectedLeave.reason}
                 </div>

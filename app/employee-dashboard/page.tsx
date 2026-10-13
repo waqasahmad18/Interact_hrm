@@ -72,6 +72,8 @@ type TicketWidgetRow = {
   messages?: TicketThreadMessage[];
   requested_at?: string;
   updated_at: string;
+  approved_by?: string | null;
+  approved_by_name?: string | null;
 };
 
 function addDaysToDateKey(dateKey: string, daysToAdd: number) {

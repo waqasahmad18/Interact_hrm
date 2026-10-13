@@ -32,7 +32,19 @@ type TicketRow = {
   status: string;
   requested_at: string;
   updated_at: string;
+  approved_by?: string | null;
+  approved_by_name?: string | null;
 };
+
+function ticketDecidedByLabel(t: TicketRow): string | null {
+  const name = String(t.approved_by_name || "").trim();
+  if (!name) return null;
+  if (t.status === "rejected") return `Rejected by ${name}`;
+  if (t.status === "resolved" || t.status === "closed") {
+    return t.ticket_type === "leave" ? `Approved by ${name}` : `Resolved by ${name}`;
+  }
+  return null;
+}
 
 const LEAVE_CATEGORIES = [
   { value: "annual", label: "Annual" },
@@ -848,11 +860,21 @@ function GenerateTicketPageInner() {
                     {categoryLabel(t.category)} · {ticketTypeLabel(t.category, t.ticket_type)} ·{" "}
                     {new Date(t.requested_at).toLocaleString()}
                   </div>
+                  {ticketDecidedByLabel(t) ? (
+                    <div
+                      className={styles.historyMeta}
+                      style={{
+                        marginTop: 4,
+                        fontWeight: 600,
+                        color: t.status === "rejected" ? "#b91c1c" : "#0f766e",
+                      }}
+                    >
+                      {ticketDecidedByLabel(t)}
+                    </div>
+                  ) : null}
                   <div className={styles.historyHint}>
                     {t.ticket_type === "leave"
-                      ? isTicketClosed(t.status)
-                        ? "Leave request · Click to view status"
-                        : "Leave request · Click to view status"
+                      ? "Leave request · Click to view status"
                       : isTicketClosed(t.status)
                         ? "Closed · Click to read conversation"
                         : "Click to view conversation"}
@@ -876,6 +898,14 @@ function GenerateTicketPageInner() {
                 {categoryLabel(selectedTicket.category)} ·{" "}
                 {ticketTypeLabel(selectedTicket.category, selectedTicket.ticket_type)}
               </span>
+              {ticketDecidedByLabel(selectedTicket) ? (
+                <span
+                  className={`${styles.badge} ${statusBadgeClass(selectedTicket.status)}`}
+                  style={{ background: "#ecfdf5", color: "#0f766e" }}
+                >
+                  {ticketDecidedByLabel(selectedTicket)}
+                </span>
+              ) : null}
             </div>
             <p className={styles.historySubject}>{selectedTicket.subject}</p>
             {selectedTicket.ticket_type === "leave" ? (
@@ -885,6 +915,19 @@ function GenerateTicketPageInner() {
                   You can track this leave ticket status here. Chat is not available on leave
                   tickets.
                 </p>
+                {ticketDecidedByLabel(selectedTicket) ? (
+                  <p
+                    className={styles.historyBodyText}
+                    style={{
+                      marginTop: 10,
+                      fontWeight: 700,
+                      color:
+                        selectedTicket.status === "rejected" ? "#b91c1c" : "#0f766e",
+                    }}
+                  >
+                    {ticketDecidedByLabel(selectedTicket)}
+                  </p>
+                ) : null}
                 {selectedTicket.description ? (
                   <p className={styles.historyBodyText} style={{ marginTop: 10 }}>
                     {selectedTicket.description}

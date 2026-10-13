@@ -4,10 +4,12 @@ import { broadcastWsEvent } from "@/lib/ws-broadcast";
 import {
   canApproveStep1,
   canApproveStep2,
+  leaveDecidedById,
   leaveStatusLabel,
   normStep,
   overallLeaveStatus,
 } from "@/lib/leave-approval";
+import { pool } from "@/lib/db";
 import {
   resolveViewerDataScope,
   rowInViewerScope,
@@ -232,14 +234,66 @@ export async function GET(req: NextRequest) {
       }
       return best || Number(l?.id) || 0;
     };
-    const leaves = (Array.isArray(rows) ? rows : [])
-      .map((l: any) => ({
-        ...l,
-        step1_status: normStep(l.step1_status ?? (l.status === "approved" ? "approved" : "pending")),
-        step2_status: normStep(l.step2_status ?? (l.status === "approved" ? "approved" : "pending")),
-        status_label: leaveStatusLabel(l),
-        overall_status: overallLeaveStatus(l),
-      }))
+
+    const rawLeaves = Array.isArray(rows) ? rows : [];
+    const actorIds = [
+      ...new Set(
+        rawLeaves
+          .map((l: any) => leaveDecidedById(l))
+          .filter((id): id is string => Boolean(id && /^\d+$/.test(id))),
+      ),
+    ];
+    const nameById = new Map<string, string>();
+    if (actorIds.length) {
+      try {
+        const placeholders = actorIds.map(() => "?").join(",");
+        const [nameRows] = await pool.execute(
+          `SELECT id, first_name, last_name, pseudonym FROM hrm_employees
+           WHERE id IN (${placeholders})`,
+          actorIds.map((id) => Number(id)),
+        );
+        for (const r of nameRows as {
+          id: number;
+          first_name?: string | null;
+          last_name?: string | null;
+          pseudonym?: string | null;
+        }[]) {
+          const full = `${r.first_name || ""} ${r.last_name || ""}`.trim();
+          nameById.set(
+            String(r.id),
+            full || (r.pseudonym ? String(r.pseudonym).trim() : "") || String(r.id),
+          );
+        }
+      } catch {
+        /* names optional */
+      }
+    }
+
+    const leaves = rawLeaves
+      .map((l: any) => {
+        const decidedBy = leaveDecidedById(l);
+        const decidedName =
+          (decidedBy && nameById.get(decidedBy)) ||
+          (decidedBy && !/^\d+$/.test(decidedBy) ? decidedBy : null);
+        const overall = overallLeaveStatus(l);
+        return {
+          ...l,
+          step1_status: normStep(
+            l.step1_status ?? (l.status === "approved" ? "approved" : "pending"),
+          ),
+          step2_status: normStep(
+            l.step2_status ?? (l.status === "approved" ? "approved" : "pending"),
+          ),
+          status_label: leaveStatusLabel(l),
+          overall_status: overall,
+          approved_by: decidedBy,
+          approved_by_name: decidedName,
+          decided_by_label:
+            decidedName && (overall === "approved" || overall === "rejected")
+              ? `${overall === "rejected" ? "Rejected by" : "Approved by"} ${decidedName}`
+              : null,
+        };
+      })
       .sort((a: any, b: any) => {
         const diff = leaveRecency(b) - leaveRecency(a);
         return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
