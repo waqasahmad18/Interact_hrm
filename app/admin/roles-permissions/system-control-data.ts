@@ -78,6 +78,8 @@ const PERM_HINTS: Record<string, string> = {
   "leave.monthly_summary.view": "Open monthly leave summary reports.",
   "payroll.monthly.view": "View monthly payroll sheets and totals.",
   "payroll.monthly.edit": "Edit payroll lines, allowances, and deductions.",
+  "payroll.daily.view": "View daily salary calculator and per-day records.",
+  "payroll.daily.edit": "Generate and edit daily salary day records.",
   "payroll.commissions": "Access commission calculation and payout screens.",
   "payroll.advance": "Process salary advance requests.",
   "payroll.loan": "Manage employee loan schedules and deductions.",
@@ -304,6 +306,8 @@ export const FEATURE_MODULES = withPermissionHints([
     permissions: [
       { key: "payroll.monthly.view", label: "View monthly payroll" },
       { key: "payroll.monthly.edit", label: "Edit monthly payroll" },
+      { key: "payroll.daily.view", label: "View daily salary calculator" },
+      { key: "payroll.daily.edit", label: "Edit daily salary records" },
       { key: "payroll.commissions", label: "Commissions" },
       { key: "payroll.advance", label: "Advance" },
       { key: "payroll.loan", label: "Loan" },
@@ -428,6 +432,7 @@ function permissionsForTier(tier: RoleTier): string[] {
         "team.leaves.view",
         "team.management.assign",
         "payroll.monthly.view",
+        "payroll.daily.view",
       ];
     case "manager":
       return [
@@ -483,6 +488,8 @@ const HR_ROLE_OPS = [
   "leave.approval_status.view",
   "leave.monthly_summary.view",
   "payroll.monthly.view",
+  "payroll.daily.view",
+  "payroll.daily.edit",
   "payroll.advance",
   "payroll.loan",
   "ops.tickets.view",
