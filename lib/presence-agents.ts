@@ -293,6 +293,10 @@ export type HeartbeatResult = {
   adminEnabled: boolean;
   idleSeconds: number;
   recheckWhileIdleSeconds: number;
+  /** Periodic face scan interval (clocked in, no break). Idle ignored. */
+  faceScanIntervalSeconds: number;
+  faceVerifyMaxAttempts: number;
+  faceVerifyRetryGapSeconds: number;
   exitPassword: string;
   presenceEnabled: boolean;
   cameraVerificationEnabled: boolean;
@@ -485,8 +489,20 @@ export async function upsertAgentHeartbeat(
   }
   const recheckWhileIdleSeconds =
     settings.recheckWhileIdleSeconds > 0 ? settings.recheckWhileIdleSeconds : 180;
+  const faceScanIntervalSeconds =
+    settings.faceScanIntervalSeconds > 0
+      ? settings.faceScanIntervalSeconds
+      : settings.idleWarningSeconds > 0
+        ? settings.idleWarningSeconds
+        : 600;
+  const faceVerifyMaxAttempts =
+    settings.faceVerifyMaxAttempts > 0 ? settings.faceVerifyMaxAttempts : 3;
+  const faceVerifyRetryGapSeconds =
+    settings.faceVerifyRetryGapSeconds > 0
+      ? settings.faceVerifyRetryGapSeconds
+      : 10;
 
-  // Idle / face scan only while clocked in (no open session → no "Are you there?")
+  // Face scan only while clocked in (no open session → skip)
   let clockedIn = true;
   if (assignedEmployeeId) {
     const { employeeHasOpenClockIn } = await import("./attendance-presence");
@@ -521,6 +537,9 @@ export async function upsertAgentHeartbeat(
     adminEnabled,
     idleSeconds,
     recheckWhileIdleSeconds,
+    faceScanIntervalSeconds,
+    faceVerifyMaxAttempts,
+    faceVerifyRetryGapSeconds,
     exitPassword: settings.agentExitPassword || "InteractAdmin",
     // Existing Guard agents gate on presence_enabled — disarm while not clocked in
     presenceEnabled: monitoringOn && clockedIn,

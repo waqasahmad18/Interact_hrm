@@ -64,6 +64,24 @@ export async function PUT(req: NextRequest) {
           : typeof body.recheckWhileIdleSeconds === "string"
             ? parseInt(body.recheckWhileIdleSeconds, 10)
             : undefined,
+      faceScanIntervalSeconds:
+        typeof body.faceScanIntervalSeconds === "number"
+          ? body.faceScanIntervalSeconds
+          : typeof body.faceScanIntervalSeconds === "string"
+            ? parseInt(body.faceScanIntervalSeconds, 10)
+            : undefined,
+      faceVerifyMaxAttempts:
+        typeof body.faceVerifyMaxAttempts === "number"
+          ? body.faceVerifyMaxAttempts
+          : typeof body.faceVerifyMaxAttempts === "string"
+            ? parseInt(body.faceVerifyMaxAttempts, 10)
+            : undefined,
+      faceVerifyRetryGapSeconds:
+        typeof body.faceVerifyRetryGapSeconds === "number"
+          ? body.faceVerifyRetryGapSeconds
+          : typeof body.faceVerifyRetryGapSeconds === "string"
+            ? parseInt(body.faceVerifyRetryGapSeconds, 10)
+            : undefined,
       agentExitPassword:
         typeof body.agentExitPassword === "string"
           ? body.agentExitPassword.trim()

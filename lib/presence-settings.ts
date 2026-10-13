@@ -11,17 +11,26 @@ export type PresenceSettings = {
   agentsRetired: boolean;
   /** Master switch — desktop agent idle monitoring on/off */
   presenceEnabled: boolean;
-  /** Seconds of no mouse/keyboard before action (popup and/or camera check) */
+  /** Seconds of no mouse/keyboard before action (legacy; face scan uses faceScanIntervalSeconds) */
   idleWarningSeconds: number;
-  /** Countdown on "Are you there?" before auto-log */
+  /** Countdown on "Are you there?" before auto-log (legacy prompt; Guard may skip) */
   popupCountdownSeconds: number;
   /**
    * true = idle then camera/face enrollment check (same as clock/break)
    * false = idle mouse/keyboard only → popup (no camera)
    */
   cameraVerificationEnabled: boolean;
-  /** After seated match, wait this long before another check while still idle */
+  /** After seated match, wait this long before another check while still idle (legacy) */
   recheckWhileIdleSeconds: number;
+  /**
+   * Guard: while clocked in and NOT on break, run face verify this often (seconds).
+   * Idle state is ignored — timer only.
+   */
+  faceScanIntervalSeconds: number;
+  /** Guard: max face-verify attempts before seat-absent ticket (default 3). */
+  faceVerifyMaxAttempts: number;
+  /** Guard: seconds between failed face-verify attempts (default 10). */
+  faceVerifyRetryGapSeconds: number;
   /**
    * Password required to Exit the desktop agent from the tray.
    * Synced to agents; only admins should know this value.
@@ -54,6 +63,9 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   popupCountdownSeconds: 60,
   cameraVerificationEnabled: true,
   recheckWhileIdleSeconds: 120,
+  faceScanIntervalSeconds: 600,
+  faceVerifyMaxAttempts: 3,
+  faceVerifyRetryGapSeconds: 10,
   agentExitPassword: "InteractAdmin",
   enabledEmployeeIds: [],
   screenshotCaptureEnabled: false,
@@ -70,6 +82,9 @@ const KEYS = {
   popupCountdownSeconds: "presence_popup_countdown_seconds",
   cameraVerificationEnabled: "presence_camera_verification_enabled",
   recheckWhileIdleSeconds: "presence_recheck_while_idle_seconds",
+  faceScanIntervalSeconds: "presence_face_scan_interval_seconds",
+  faceVerifyMaxAttempts: "presence_face_verify_max_attempts",
+  faceVerifyRetryGapSeconds: "presence_face_verify_retry_gap_seconds",
   agentExitPassword: "presence_agent_exit_password",
   enabledEmployeeIds: "presence_enabled_employee_ids",
   screenshotCaptureEnabled: "presence_screenshot_capture_enabled",
@@ -156,6 +171,9 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     popupCountdownSeconds,
     cameraVerificationEnabled,
     recheckWhileIdleSeconds,
+    faceScanIntervalSeconds,
+    faceVerifyMaxAttempts,
+    faceVerifyRetryGapSeconds,
     agentExitPassword,
     enabledEmployeeIds,
     screenshotCaptureEnabled,
@@ -170,6 +188,9 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     getRaw(KEYS.popupCountdownSeconds),
     getRaw(KEYS.cameraVerificationEnabled),
     getRaw(KEYS.recheckWhileIdleSeconds),
+    getRaw(KEYS.faceScanIntervalSeconds),
+    getRaw(KEYS.faceVerifyMaxAttempts),
+    getRaw(KEYS.faceVerifyRetryGapSeconds),
     getRaw(KEYS.agentExitPassword),
     getRaw(KEYS.enabledEmployeeIds),
     getRaw(KEYS.screenshotCaptureEnabled),
@@ -198,6 +219,25 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
       d.recheckWhileIdleSeconds,
       30,
       7200
+    ),
+    faceScanIntervalSeconds: parseIntClamped(
+      faceScanIntervalSeconds,
+      // Fall back to former idle timeout so existing installs keep a sensible cadence
+      parseIntClamped(idleWarningSeconds, d.faceScanIntervalSeconds, 30, 86400),
+      30,
+      86400
+    ),
+    faceVerifyMaxAttempts: parseIntClamped(
+      faceVerifyMaxAttempts,
+      d.faceVerifyMaxAttempts,
+      1,
+      10
+    ),
+    faceVerifyRetryGapSeconds: parseIntClamped(
+      faceVerifyRetryGapSeconds,
+      d.faceVerifyRetryGapSeconds,
+      5,
+      120
     ),
     agentExitPassword: sanitizeExitPassword(agentExitPassword, d.agentExitPassword),
     enabledEmployeeIds: parseIdList(enabledEmployeeIds),
@@ -278,6 +318,24 @@ export async function savePresenceSettings(
       30,
       7200
     ),
+    faceScanIntervalSeconds: parseIntClamped(
+      String(input.faceScanIntervalSeconds ?? current.faceScanIntervalSeconds),
+      current.faceScanIntervalSeconds,
+      30,
+      86400
+    ),
+    faceVerifyMaxAttempts: parseIntClamped(
+      String(input.faceVerifyMaxAttempts ?? current.faceVerifyMaxAttempts),
+      current.faceVerifyMaxAttempts,
+      1,
+      10
+    ),
+    faceVerifyRetryGapSeconds: parseIntClamped(
+      String(input.faceVerifyRetryGapSeconds ?? current.faceVerifyRetryGapSeconds),
+      current.faceVerifyRetryGapSeconds,
+      5,
+      120
+    ),
     agentExitPassword: sanitizeExitPassword(
       typeof input.agentExitPassword === "string"
         ? input.agentExitPassword
@@ -325,6 +383,9 @@ export async function savePresenceSettings(
       next.cameraVerificationEnabled ? "true" : "false"
     ),
     setRaw(KEYS.recheckWhileIdleSeconds, String(next.recheckWhileIdleSeconds)),
+    setRaw(KEYS.faceScanIntervalSeconds, String(next.faceScanIntervalSeconds)),
+    setRaw(KEYS.faceVerifyMaxAttempts, String(next.faceVerifyMaxAttempts)),
+    setRaw(KEYS.faceVerifyRetryGapSeconds, String(next.faceVerifyRetryGapSeconds)),
     setRaw(KEYS.agentExitPassword, next.agentExitPassword),
     setRaw(KEYS.enabledEmployeeIds, JSON.stringify(next.enabledEmployeeIds)),
     setRaw(

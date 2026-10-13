@@ -16,6 +16,9 @@ type PresenceSettings = {
   popupCountdownSeconds: number;
   cameraVerificationEnabled: boolean;
   recheckWhileIdleSeconds: number;
+  faceScanIntervalSeconds: number;
+  faceVerifyMaxAttempts: number;
+  faceVerifyRetryGapSeconds: number;
   agentExitPassword: string;
   enabledEmployeeIds: string[];
   agentHrmBaseUrl: string;
@@ -133,12 +136,10 @@ export default function PresenceIdleSettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
-  const [idleMinutes, setIdleMinutes] = React.useState(0);
-  const [idleSeconds, setIdleSeconds] = React.useState(10);
-  const [countdownMinutes, setCountdownMinutes] = React.useState(1);
-  const [countdownSeconds, setCountdownSeconds] = React.useState(0);
-  const [recheckMinutes, setRecheckMinutes] = React.useState(2);
-  const [recheckSeconds, setRecheckSeconds] = React.useState(0);
+  const [scanMinutes, setScanMinutes] = React.useState(10);
+  const [scanSeconds, setScanSeconds] = React.useState(0);
+  const [maxAttempts, setMaxAttempts] = React.useState(3);
+  const [retryGapSeconds, setRetryGapSeconds] = React.useState(10);
   const [showExitPassword, setShowExitPassword] = React.useState(false);
   const [agentVersion, setAgentVersion] = React.useState("0.4.0");
   const [agentHasBinary, setAgentHasBinary] = React.useState(false);
@@ -171,9 +172,7 @@ export default function PresenceIdleSettingsPage() {
     }, 900);
   }
 
-  const idleTotal = combineSeconds(idleMinutes, idleSeconds);
-  const countdownTotal = combineSeconds(countdownMinutes, countdownSeconds);
-  const recheckTotal = combineSeconds(recheckMinutes, recheckSeconds);
+  const scanTotal = combineSeconds(scanMinutes, scanSeconds);
 
   const applySettings = React.useCallback((s: PresenceSettings) => {
     setSettings({
@@ -184,15 +183,23 @@ export default function PresenceIdleSettingsPage() {
         : [],
       agentHrmBaseUrl: (s.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
     });
-    const idle = splitSeconds(s.idleWarningSeconds);
-    setIdleMinutes(idle.minutes);
-    setIdleSeconds(idle.seconds);
-    const countdown = splitSeconds(s.popupCountdownSeconds);
-    setCountdownMinutes(countdown.minutes);
-    setCountdownSeconds(countdown.seconds);
-    const recheck = splitSeconds(s.recheckWhileIdleSeconds);
-    setRecheckMinutes(recheck.minutes);
-    setRecheckSeconds(recheck.seconds);
+    const scanSec =
+      Number(s.faceScanIntervalSeconds) > 0
+        ? Number(s.faceScanIntervalSeconds)
+        : Number(s.idleWarningSeconds) > 0
+          ? Number(s.idleWarningSeconds)
+          : 600;
+    const scan = splitSeconds(scanSec);
+    setScanMinutes(scan.minutes);
+    setScanSeconds(scan.seconds);
+    setMaxAttempts(
+      Number(s.faceVerifyMaxAttempts) > 0 ? Number(s.faceVerifyMaxAttempts) : 3
+    );
+    setRetryGapSeconds(
+      Number(s.faceVerifyRetryGapSeconds) > 0
+        ? Number(s.faceVerifyRetryGapSeconds)
+        : 10
+    );
   }, []);
 
   const loadEmployeesAndDepts = React.useCallback(async () => {
@@ -259,16 +266,10 @@ export default function PresenceIdleSettingsPage() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  function setIdleTotal(totalSeconds: number) {
+  function setScanTotal(totalSeconds: number) {
     const parts = splitSeconds(totalSeconds);
-    setIdleMinutes(parts.minutes);
-    setIdleSeconds(parts.seconds);
-  }
-
-  function setCountdownTotal(totalSeconds: number) {
-    const parts = splitSeconds(totalSeconds);
-    setCountdownMinutes(parts.minutes);
-    setCountdownSeconds(parts.seconds);
+    setScanMinutes(parts.minutes);
+    setScanSeconds(parts.seconds);
   }
 
   async function save() {
@@ -279,9 +280,15 @@ export default function PresenceIdleSettingsPage() {
         agentsRetired: settings.agentsRetired,
         presenceEnabled: settings.presenceEnabled,
         cameraVerificationEnabled: settings.cameraVerificationEnabled,
-        idleWarningSeconds: Math.max(5, idleTotal),
-        popupCountdownSeconds: Math.max(5, countdownTotal),
-        recheckWhileIdleSeconds: Math.max(5, recheckTotal),
+        faceScanIntervalSeconds: Math.max(30, scanTotal),
+        // Keep legacy fields in sync so older agents still get a cadence
+        idleWarningSeconds: Math.max(30, scanTotal),
+        recheckWhileIdleSeconds: Math.max(30, scanTotal),
+        faceVerifyMaxAttempts: Math.min(10, Math.max(1, Math.floor(maxAttempts) || 3)),
+        faceVerifyRetryGapSeconds: Math.min(
+          120,
+          Math.max(5, Math.floor(retryGapSeconds) || 10)
+        ),
         agentHrmBaseUrl: (settings.agentHrmBaseUrl || STAGING_HRM_URL).trim(),
         agentExitPassword: (settings.agentExitPassword ?? "").trim(),
         enabledEmployeeIds: settings.enabledEmployeeIds ?? [],
@@ -665,40 +672,62 @@ export default function PresenceIdleSettingsPage() {
                   </div>
 
                   <DurationEditor
-                    title='Idle timeout before "Are you there?" popup'
-                    minutes={idleMinutes}
-                    seconds={idleSeconds}
-                    total={idleTotal}
+                    title="Face verify interval (clocked in, no break)"
+                    minutes={scanMinutes}
+                    seconds={scanSeconds}
+                    total={scanTotal}
                     disabled={disabled}
-                    presets={[5, 10, 30, 60, 300, 1800]}
-                    onMinutes={setIdleMinutes}
-                    onSeconds={setIdleSeconds}
-                    onPreset={setIdleTotal}
+                    presets={[60, 120, 300, 600, 900, 1800]}
+                    onMinutes={setScanMinutes}
+                    onSeconds={setScanSeconds}
+                    onPreset={setScanTotal}
                   />
+                  <p className={styles.tip} style={{ marginTop: -8, marginBottom: 16 }}>
+                    Idle is ignored. Guard scans on this timer while the employee is clocked
+                    in. If any break is marked, verification is skipped.
+                  </p>
 
-                  <DurationEditor
-                    title="Popup countdown"
-                    minutes={countdownMinutes}
-                    seconds={countdownSeconds}
-                    total={countdownTotal}
-                    disabled={disabled}
-                    maxMinutes={30}
-                    presets={[5, 10, 30, 60]}
-                    onMinutes={setCountdownMinutes}
-                    onSeconds={setCountdownSeconds}
-                    onPreset={setCountdownTotal}
-                  />
-
-                  <DurationEditor
-                    title="Recheck while still idle (after a check finishes)"
-                    minutes={recheckMinutes}
-                    seconds={recheckSeconds}
-                    total={recheckTotal}
-                    disabled={disabled}
-                    maxMinutes={120}
-                    onMinutes={setRecheckMinutes}
-                    onSeconds={setRecheckSeconds}
-                  />
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>Face verify fail → ticket</h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      On fail, Guard retries this many times with a gap, then opens a
+                      seat-absent ticket.
+                    </p>
+                    <div className={styles.durationRow}>
+                      <div className={styles.field}>
+                        <label htmlFor="face-max-attempts">Max attempts</label>
+                        <input
+                          id="face-max-attempts"
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={maxAttempts}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setMaxAttempts(
+                              Math.min(10, Math.max(1, Number(e.target.value) || 3))
+                            )
+                          }
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label htmlFor="face-retry-gap">Gap between fails (sec)</label>
+                        <input
+                          id="face-retry-gap"
+                          type="number"
+                          min={5}
+                          max={120}
+                          value={retryGapSeconds}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            setRetryGapSeconds(
+                              Math.min(120, Math.max(5, Number(e.target.value) || 10))
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
 
                   <div className={styles.block}>
                     <h3 className={styles.blockTitle}>Agent HRM server URL</h3>
