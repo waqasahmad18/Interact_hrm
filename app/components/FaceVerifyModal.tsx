@@ -92,10 +92,14 @@ export function FaceVerifyModal({
   onClose,
   presenceCheck = false,
   onPresenceResult,
+  /** Presence: stop after this many identity fails. Break/clock uses max(this, 5). */
   maxIdentityFails = 2,
   noFaceTimeoutSec = 0,
   clearBackdrop = false,
 }: Props) {
+  const identityFailLimit = presenceCheck
+    ? Math.max(1, maxIdentityFails)
+    : Math.max(5, maxIdentityFails);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const rafRef = React.useRef<number | null>(null);
@@ -316,31 +320,52 @@ export function FaceVerifyModal({
           failCode === "wrong_person" ||
           failCode === "low_similarity" ||
           failCode === "mismatch" ||
-          failCode === "no_enrollment";
+          failCode === "no_enrollment" ||
+          failCode === "not_enrolled";
 
-        if (presenceCheck && identityFail) {
+        // Enrollment missing — do not spin forever
+        if (failCode === "not_enrolled" || failCode === "no_enrollment") {
+          verifySuccessRef.current = true;
+          setError(failErr);
+          setStatus("Not enrolled");
+          setGuidance("Ask HR to enroll your face photos, then try again.");
+          busyRef.current = false;
+          setVerifying(false);
+          return;
+        }
+
+        if (identityFail) {
           identityFailsRef.current += 1;
-          if (identityFailsRef.current >= Math.max(1, maxIdentityFails)) {
+          if (identityFailsRef.current >= identityFailLimit) {
             verifySuccessRef.current = true; // stop scan loop
             setError(failErr);
             setStatus("Verification failed");
-            window.setTimeout(() => {
-              stopCamera();
-              onPresenceResultRef.current?.({
-                verified: false,
-                code: failCode,
-                error: failErr,
-                similarity: typeof data.similarity === "number" ? data.similarity : null,
-              });
-              onClose();
-            }, 600);
+            setGuidance("Hold still in good light, then use Retry — or Cancel.");
+            if (presenceCheck) {
+              window.setTimeout(() => {
+                stopCamera();
+                onPresenceResultRef.current?.({
+                  verified: false,
+                  code: failCode,
+                  error: failErr,
+                  similarity:
+                    typeof data.similarity === "number" ? data.similarity : null,
+                });
+                onClose();
+              }, 600);
+            }
+            busyRef.current = false;
+            setVerifying(false);
             return;
           }
         }
 
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
-        setError(failErr || "Face not verified. Hold still — retrying…");
+        setError(
+          failErr ||
+            `Face not verified (${identityFailsRef.current}/${identityFailLimit}). Hold still — retrying…`
+        );
         setStatus("Scanning again…");
         lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
       } catch {
@@ -362,7 +387,7 @@ export function FaceVerifyModal({
     cameraReady,
     employeeId,
     employeeName,
-    maxIdentityFails,
+    identityFailLimit,
     modelsReady,
     multipleFaces,
     onClose,
@@ -370,6 +395,22 @@ export function FaceVerifyModal({
     presenceCheck,
     stopCamera,
   ]);
+
+  const retryAfterFail = React.useCallback(() => {
+    identityFailsRef.current = 0;
+    verifySuccessRef.current = false;
+    setVerifySuccess(false);
+    setError(null);
+    setGuidance(null);
+    setMultipleFaces(false);
+    probeBufferRef.current = [];
+    singleFaceStreakRef.current = 0;
+    multiFaceStreakRef.current = 0;
+    busyRef.current = false;
+    scanInFlightRef.current = false;
+    setStatus("Look at the camera — scanning automatically…");
+    lastScanAtRef.current = performance.now() - 1000;
+  }, []);
 
   React.useEffect(() => {
     if (!open) {
@@ -684,6 +725,18 @@ export function FaceVerifyModal({
         {error && !multipleFaces && <div className={modalStyles.error}>{error}</div>}
 
         <div className={modalStyles.actions}>
+          {!presenceCheck &&
+          !verifySuccess &&
+          status === "Verification failed" ? (
+            <button
+              type="button"
+              onClick={retryAfterFail}
+              className={modalStyles.cancelBtn}
+              style={{ borderColor: "#86efac", color: "#166534", background: "#f0fdf4" }}
+            >
+              Retry
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

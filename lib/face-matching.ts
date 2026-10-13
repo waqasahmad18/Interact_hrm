@@ -127,8 +127,12 @@ const RIVAL_SAFETY_MARGIN = 0.18;
 /** Idle presence — still blocks clear look-alikes, admits genuine at desk. */
 const RIVAL_SAFETY_MARGIN_PRESENCE = 0.12;
 
-/** Hard clarity cap — clock/break. */
-const ABSOLUTE_BEST_CAP = 0.36;
+/**
+ * Hard clarity cap — clock/break.
+ * Must not be stricter than getMaxMatchDistance() (0.38) or genuine matches
+ * pass the first gate then get rejected here and FaceVerifyModal retries forever.
+ */
+const ABSOLUTE_BEST_CAP = 0.38;
 /** Idle presence cap — desk lighting / angle need a little more room. */
 const ABSOLUTE_BEST_CAP_PRESENCE = 0.42;
 
