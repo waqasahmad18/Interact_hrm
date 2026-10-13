@@ -36,6 +36,8 @@ type DayRow = {
   hours_credited?: number;
   deducted_amount: number;
   earned_amount: number;
+  running_earned?: number;
+  running_deducted?: number;
   clock_in: string | null;
   clock_out: string | null;
   is_manual: boolean;
@@ -280,9 +282,9 @@ export default function DailySalaryPage() {
         <div style={{ marginBottom: 20 }}>
           <h1 className={styles.pageTitle}>Daily Salary Calculator</h1>
           <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
-            Per hour = Basic ÷ Working days ÷ Hours/day. Each present day adds{" "}
-            <strong>hourly × hours credited</strong> by status (full / half / absent / tardy).
-            Edit any day — daily record + month totals update.
+            Per hour = Basic ÷ Working days ÷ Hours/day. Har din ka pay alag add hota hai
+            (present = full/half, absent = +0). <strong>Till date</strong> = pehle dinon + aaj ka
+            running total — edit pe add/deduct turant update.
           </p>
         </div>
 
@@ -537,7 +539,7 @@ export default function DailySalaryPage() {
               <div style={{ padding: 16, color: "#64748b" }}>Loading days…</div>
             ) : detail?.days?.length ? (
               <div className={styles.breakSummaryTableWrapper}>
-                <table className={styles.breakSummaryTable} style={{ minWidth: 1200 }}>
+                <table className={styles.breakSummaryTable} style={{ minWidth: 1320 }}>
                   <thead>
                     <tr>
                       <th>Date</th>
@@ -546,9 +548,10 @@ export default function DailySalaryPage() {
                       <th>Deduction %</th>
                       <th>Per Hour</th>
                       <th>Hours</th>
-                      <th>Daily Rate</th>
-                      <th>Earned</th>
-                      <th>Deducted</th>
+                      <th>Day rate</th>
+                      <th title="Is din salary mein kitna add hua (absent = 0)">Day pay (+)</th>
+                      <th title="Is din kitna cut hua">Day cut (−)</th>
+                      <th title="Pehle dinon + aaj — running salary till this date">Till date</th>
                       <th>Clock In</th>
                       <th>Clock Out</th>
                       <th>Notes</th>
@@ -708,7 +711,13 @@ function DayEditRow({
             setDirty(true);
           }}
           className={styles.breakSummaryInput}
-          style={{ width: 96, padding: "4px 8px" }}
+          style={{
+            width: 96,
+            padding: "4px 8px",
+            color: Number(earned) > 0 ? "#047857" : "#64748b",
+            fontWeight: 600,
+          }}
+          title="Is din kitne paisay add hue"
         />
       </td>
       <td>
@@ -724,8 +733,28 @@ function DayEditRow({
             setDirty(true);
           }}
           className={styles.breakSummaryInput}
-          style={{ width: 96, padding: "4px 8px" }}
+          style={{
+            width: 96,
+            padding: "4px 8px",
+            color: Number(deducted) > 0 ? "#dc2626" : "#64748b",
+          }}
+          title="Is din kitna cut"
         />
+      </td>
+      <td
+        style={{
+          fontWeight: 700,
+          color: "#0f766e",
+          whiteSpace: "nowrap",
+        }}
+        title="Running salary till this date (pehle + aaj)"
+      >
+        {money(day.running_earned ?? 0)}
+        {(day.running_deducted ?? 0) > 0 ? (
+          <div style={{ fontSize: 11, color: "#dc2626", fontWeight: 500 }}>
+            cut {money(day.running_deducted ?? 0)}
+          </div>
+        ) : null}
       </td>
       <td style={{ fontSize: 12, color: "#64748b" }}>
         {day.clock_in ? String(day.clock_in).slice(11, 19) || day.clock_in : "—"}

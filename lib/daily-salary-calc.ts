@@ -28,7 +28,12 @@ export type DailySalaryDayRow = {
   /** Hours credited for this day after status deduction (e.g. full 9, half 4.5, absent 0). */
   hours_credited: number;
   deducted_amount: number;
+  /** Paisay is din salary mein add hue (absent = 0). */
   earned_amount: number;
+  /** Is din tak cumulative earned (kal + pehle + aaj). */
+  running_earned: number;
+  /** Is din tak cumulative deducted. */
+  running_deducted: number;
   clock_in: string | null;
   clock_out: string | null;
   is_manual: boolean;
@@ -225,6 +230,8 @@ export function buildEmployeeDailySalary(params: {
         hours_credited: amts.hours_credited,
         deducted_amount: amts.deducted_amount,
         earned_amount: amts.earned_amount,
+        running_earned: 0,
+        running_deducted: 0,
         is_manual: true,
       });
       if (
@@ -303,6 +310,8 @@ export function buildEmployeeDailySalary(params: {
       hours_credited: amts.hours_credited,
       deducted_amount: amts.deducted_amount,
       earned_amount: amts.earned_amount,
+      running_earned: 0,
+      running_deducted: 0,
       clock_in: clockIn,
       clock_out: clockOut,
       is_manual: false,
@@ -325,6 +334,28 @@ export function buildEmployeeDailySalary(params: {
   });
 }
 
+/**
+ * Chronological running totals: each day adds its earned (0 if absent/off),
+ * so "till this date" salary is accurate day-by-day.
+ */
+export function attachRunningTotals(days: DailySalaryDayRow[]): DailySalaryDayRow[] {
+  const sorted = [...days].sort((a, b) => a.work_date.localeCompare(b.work_date));
+  let runningEarned = 0;
+  let runningDeducted = 0;
+  return sorted.map((day) => {
+    // Off / leave: no pay change. Working day: add earned (may be 0 if absent).
+    if (day.is_working_day) {
+      runningEarned = roundMoney(runningEarned + (Number(day.earned_amount) || 0));
+      runningDeducted = roundMoney(runningDeducted + (Number(day.deducted_amount) || 0));
+    }
+    return {
+      ...day,
+      running_earned: runningEarned,
+      running_deducted: runningDeducted,
+    };
+  });
+}
+
 export function summarizeEmployeeDays(input: {
   employee_id: string;
   employee_name: string;
@@ -338,11 +369,12 @@ export function summarizeEmployeeDays(input: {
   daily_rate: number;
   days: DailySalaryDayRow[];
 }): DailySalarySummary {
+  const days = attachRunningTotals(input.days);
   let totalEarned = 0;
   let totalDeducted = 0;
   let unpaidUnits = 0;
   let totalHours = 0;
-  for (const day of input.days) {
+  for (const day of days) {
     if (!day.is_working_day) continue;
     totalEarned += day.earned_amount;
     totalDeducted += day.deducted_amount;
@@ -351,6 +383,7 @@ export function summarizeEmployeeDays(input: {
   }
   return {
     ...input,
+    days,
     total_earned: roundMoney(totalEarned),
     total_deducted: roundMoney(totalDeducted),
     unpaid_days: roundMoney(unpaidUnits),
@@ -430,6 +463,8 @@ export function applyDayEdit(
       hours_credited: amts.hours_credited,
       deducted_amount: amts.deducted_amount,
       earned_amount: amts.earned_amount,
+      running_earned: d.running_earned ?? 0,
+      running_deducted: d.running_deducted ?? 0,
       is_manual: true,
       notes: patch.notes !== undefined ? patch.notes : d.notes,
     };

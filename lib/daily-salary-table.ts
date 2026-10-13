@@ -1,6 +1,6 @@
 import type { PoolConnection } from "mysql2/promise";
 import type { DailySalaryDayRow, DailySalarySummary } from "./daily-salary-calc";
-import { ratesFromBasic, roundHours, roundMoney } from "./daily-salary-calc";
+import { attachRunningTotals, ratesFromBasic, roundHours, roundMoney } from "./daily-salary-calc";
 
 async function tryAddColumn(
   conn: { execute: (sql: string, params?: unknown[]) => Promise<unknown> },
@@ -160,7 +160,7 @@ export async function loadSavedDays(
   const hintHours = Number(summaryHint?.paid_hours_per_day) > 0 ? Number(summaryHint?.paid_hours_per_day) : 9;
   const hintDaily = Number(summaryHint?.daily_rate) || 0;
 
-  return (rows || []).map((r: any) => {
+  const mapped: DailySalaryDayRow[] = (rows || []).map((r: any) => {
     const isWorking = Boolean(r.is_working_day);
     const daily = Number(r.daily_rate) || (isWorking ? hintDaily : 0);
     const hourly =
@@ -184,12 +184,15 @@ export async function loadSavedDays(
       hours_credited: hoursCredited || 0,
       deducted_amount: Number(r.deducted_amount) || 0,
       earned_amount: Number(r.earned_amount) || 0,
+      running_earned: 0,
+      running_deducted: 0,
       clock_in: r.clock_in ? String(r.clock_in) : null,
       clock_out: r.clock_out ? String(r.clock_out) : null,
       is_manual: Boolean(r.is_manual),
       notes: r.notes != null ? String(r.notes) : null,
     };
   });
+  return attachRunningTotals(mapped);
 }
 
 export async function loadManualDaysMap(
