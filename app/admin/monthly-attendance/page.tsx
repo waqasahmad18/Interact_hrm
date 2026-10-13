@@ -77,8 +77,8 @@ function isAdminStaffDepartment(departmentName: string | null | undefined): bool
 }
 
 /**
- * T.Punch visibility:
- * - Non-Admin: always show (pairing = punch before recent Clock In / after Clock Out).
+ * T.Punch column visibility:
+ * - Non-Admin: show (values only exist when paired with Clock In — no ZK-only invent).
  * - Admin staff: only when opened via department filter or name search.
  */
 function shouldRevealTPunches(
@@ -136,6 +136,16 @@ import {
   punchOnlyDisplayName,
   punchOnlyPinForId,
 } from "../../../lib/punch-only-employees";
+
+/** Admin dept / punch-only roster may show T.Punch without HRM clock-in. */
+function allowsPunchWithoutClockIn(
+  employeeId: string | number | null | undefined,
+  departmentName: string | null | undefined,
+): boolean {
+  const id = String(employeeId || "").trim();
+  if (id && PUNCH_ONLY_EMPLOYEE_IDS.has(id)) return true;
+  return isAdminStaffDepartment(departmentName);
+}
 
 /** Billable late is already after 1h relaxation — show/sum any minutes > 0. */
 const EXCESS_LATE_SHOW_AFTER_MINUTES = 0;
@@ -1223,6 +1233,7 @@ export default function MonthlyAttendancePage() {
       employeeId: string;
       employeeName: string;
       employeeCode?: string;
+      departmentName?: string;
       isImported?: boolean;
     },
     ctx: TungstenPunchContext | null,
@@ -1254,6 +1265,7 @@ export default function MonthlyAttendancePage() {
       zkFrom,
       zkTo,
       shiftResolverForEmployee(empId),
+      allowsPunchWithoutClockIn(empId, employee.departmentName),
     );
   }
 
@@ -1369,12 +1381,20 @@ export default function MonthlyAttendancePage() {
 
     const employeeSessions =
       pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
+    const allowNoClock = allowsPunchWithoutClockIn(
+      employee.employeeId,
+      employee.departmentName,
+    );
 
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
       const meta = employee.dateMeta[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
-      const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
+      const daySessions = employeeSessions.filter((s) => {
+        if (s.sessionDate !== day.dateKey) return false;
+        if (allowNoClock) return true;
+        return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
+      });
 
       if (daySessions.length === 0 && dayRecords.length === 0) {
         const onLeave = Boolean(
@@ -1674,13 +1694,21 @@ export default function MonthlyAttendancePage() {
     } else {
       const employeeSessions =
         pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
+      const allowNoClock = allowsPunchWithoutClockIn(
+        employee.employeeId,
+        employee.departmentName,
+      );
 
       monthInfo.days.forEach((day) => {
         if (!isWorkingDay(day.dateKey)) return;
 
         const dayRecords = employee.byDate[day.dateKey] || [];
         const meta = employee.dateMeta[day.dateKey];
-        const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
+        const daySessions = employeeSessions.filter((s) => {
+          if (s.sessionDate !== day.dateKey) return false;
+          if (allowNoClock) return true;
+          return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
+        });
 
         if (dayRecords.length === 0 && daySessions.length === 0) {
           const onLeave = Boolean(
@@ -1930,34 +1958,30 @@ export default function MonthlyAttendancePage() {
           Object.keys(approvedLeavesMap[String(hrm.employeeId)] || {}).length > 0,
       );
 
+      // Punch-without-clock-in cards are Admin / punch-only only.
+      // Normal employees appear from HRM clock-in attendance rows, not ZK punches alone.
+      const canPunchOnlyCard = allowsPunchWithoutClockIn(
+        hrm.employeeId,
+        hrm.departmentName,
+      );
       const hasPunches =
+        canPunchOnlyCard &&
         Boolean(tungstenCtx) &&
         Boolean(fromDate) &&
         Boolean(toDate) &&
-        (PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId))
-          ? Boolean(hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId))) &&
-            employeeHasZkPunchesInRange(
-              tungstenCtx as TungstenPunchContext,
-              {
-                employeeName: hrm.employeeName,
-                employeeCode: hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId)) || "",
-                employeeId: hrm.employeeId,
-                pseudonym: hrm.pseudonym,
-              },
-              fromDate,
-              toDate,
-            )
-          : employeeHasZkPunchesInRange(
-              tungstenCtx as TungstenPunchContext,
-              {
-                employeeName: hrm.employeeName,
-                employeeCode: hrm.employeeCode,
-                employeeId: hrm.employeeId,
-                pseudonym: hrm.pseudonym,
-              },
-              fromDate,
-              toDate,
-            ));
+        Boolean(hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId))) &&
+        employeeHasZkPunchesInRange(
+          tungstenCtx as TungstenPunchContext,
+          {
+            employeeName: hrm.employeeName,
+            employeeCode:
+              hrm.employeeCode || punchOnlyPinForId(String(hrm.employeeId)) || "",
+            employeeId: hrm.employeeId,
+            pseudonym: hrm.pseudonym,
+          },
+          fromDate,
+          toDate,
+        );
 
       const forcePunchOnlyCard = PUNCH_ONLY_EMPLOYEE_IDS.has(String(hrm.employeeId));
       if (!hasPunches && !matchesSearch && !forcePunchOnlyCard && !hasApprovedLeave) continue;
@@ -2067,6 +2091,7 @@ export default function MonthlyAttendancePage() {
           zkFrom,
           zkTo,
           shiftResolverForEmployee(empId),
+          allowsPunchWithoutClockIn(empId, emp.departmentName),
         ),
       );
     });
@@ -2388,9 +2413,16 @@ export default function MonthlyAttendancePage() {
                           const meta = rowCtx.meta;
                           const workingDay = isWorkingDay(day.dateKey);
                           const employeeSessions = sessionsByEmployeeId.get(String(employee.employeeId)) || [];
-                          const daySessions = employeeSessions.filter(
-                            (s) => s.sessionDate === day.dateKey,
+                          const allowNoClock = allowsPunchWithoutClockIn(
+                            employee.employeeId,
+                            employee.departmentName,
                           );
+                          // Non-Admin: ignore ZK-only sessions (no Clock In) — those days are Absent.
+                          const daySessions = employeeSessions.filter((s) => {
+                            if (s.sessionDate !== day.dateKey) return false;
+                            if (allowNoClock) return true;
+                            return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
+                          });
 
                           if (daySessions.length === 0 && dayRecords.length === 0) {
                             const onLeave = Boolean(
