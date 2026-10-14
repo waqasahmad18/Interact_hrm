@@ -667,9 +667,20 @@ function formatDateTimeSql(v: any): string | null {
 
 function getByPath(row: Document, expr: string): any {
   const clean = expr.replace(/`/g, "").trim();
-  const df = clean.match(/^DATE_FORMAT\s*\(\s*([\w.`]+)\s*,/i);
+  const df = clean.match(/^DATE_FORMAT\s*\(\s*([\w.`]+)\s*,\s*'([^']*)'\s*\)/i);
   if (df) {
-    return formatDateTimeSql(getByPath(row, df[1]));
+    const raw = getByPath(row, df[1]);
+    const fmt = df[2] || "";
+    // Date-only formats must stay YYYY-MM-DD (Monthly Attendance overrides keys).
+    if (/^%Y-%m-%d$/.test(fmt) || fmt === "%Y-%m-%d") {
+      return toDateKey(raw) || (typeof raw === "string" ? raw.slice(0, 10) : null);
+    }
+    return formatDateTimeSql(raw);
+  }
+  const dfLoose = clean.match(/^DATE_FORMAT\s*\(\s*([\w.`]+)\s*,/i);
+  if (dfLoose) {
+    const raw = getByPath(row, dfLoose[1]);
+    return toDateKey(raw) || formatDateTimeSql(raw);
   }
   const dateOnly = clean.match(/^DATE\s*\(\s*(.+)\s*\)$/i);
   if (dateOnly) {
@@ -723,6 +734,7 @@ const UPSERT_KEYS: Record<string, string[]> = {
   hrm_saved_logins: ["device_key", "login_id"],
   hrm_tardy_notes: ["attendance_id"],
   monthly_payroll_adjustments: ["employee_id", "month"],
+  monthly_attendance_status_overrides: ["employee_id", "attendance_date"],
   employee_leave_allowances: ["employee_id"],
   company_calendar_days: ["date"],
   loan_records: ["employee_id", "month"],

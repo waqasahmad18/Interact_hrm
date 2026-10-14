@@ -62,6 +62,16 @@ export async function listMonthlyStatusOverridesInRange(
   const to = normalizeDateKey(toDate);
   if (!from || !to) return [];
 
+  const normalizeRows = (rows: unknown): MonthlyStatusOverrideRow[] =>
+    ((rows as MonthlyStatusOverrideRow[]) || []).map((r) => ({
+      ...r,
+      employee_id: String(r.employee_id ?? "").trim(),
+      attendance_date: normalizeDateKey(String(r.attendance_date ?? "")),
+      status_label: String(r.status_label ?? ""),
+      reason: r.reason ?? null,
+      updated_by: r.updated_by ?? null,
+    }));
+
   if (employeeId) {
     const [rows] = await pool.execute(
       `SELECT employee_id,
@@ -73,7 +83,7 @@ export async function listMonthlyStatusOverridesInRange(
        ORDER BY attendance_date ASC`,
       [from, to, String(employeeId).trim()],
     );
-    return rows as MonthlyStatusOverrideRow[];
+    return normalizeRows(rows);
   }
 
   const [rows] = await pool.execute(
@@ -85,7 +95,7 @@ export async function listMonthlyStatusOverridesInRange(
      ORDER BY attendance_date ASC`,
     [from, to],
   );
-  return rows as MonthlyStatusOverrideRow[];
+  return normalizeRows(rows);
 }
 
 export async function upsertMonthlyStatusOverride(opts: {

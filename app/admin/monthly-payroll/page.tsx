@@ -717,14 +717,19 @@ export default function MonthlyAttendancePage() {
     if (dateOnlyMatch) return dateValue;
     const parsed = new Date(dateValue);
     if (Number.isNaN(parsed.getTime())) return dateValue.split("T")[0] || "";
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, "0");
-    const day = String(parsed.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    // Asia/Karachi — matches Monthly Attendance / Mongo BSON midnight dates
+    return getDateStringInTimeZone(parsed, SERVER_TIMEZONE);
   }
 
   function getRecordDateKey(record: any) {
-    return getDateKey(record.clock_in || record.clock_out || record.date || "");
+    // Prefer stored attendance date (calendar day) over clock_in (UTC shift risk)
+    const rawDate = record?.date != null ? String(record.date) : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+    if (rawDate) {
+      const fromDate = getDateKey(rawDate);
+      if (fromDate) return fromDate;
+    }
+    return getDateKey(record.clock_in || record.clock_out || "");
   }
 
   /** Same rule as Monthly Attendance: future days (after today PKT) are not Absent yet. */
@@ -1045,11 +1050,17 @@ export default function MonthlyAttendancePage() {
         setAllEmployees([]);
         setPaidHoursPerDayMap({});
       });
-    // Fetch all salaries (all components, show amount) — viewerId enforces HR privacy
-    const viewerId =
+    // Fetch all salaries — only pass numeric employee id (never email/loginId).
+    // A bad viewerId would redact EVERY salary and make rates show 0/0.
+    const rawViewer =
       (typeof window !== "undefined" &&
-        (localStorage.getItem("employeeId") || localStorage.getItem("loginId"))) ||
+        (localStorage.getItem("employeeId") ||
+          localStorage.getItem("hrmEmployeeId") ||
+          "")) ||
       "";
+    const viewerId = /^\d+$/.test(String(rawViewer).trim())
+      ? String(Number(String(rawViewer).trim()))
+      : "";
     const salaryUrl = viewerId
       ? `/api/employee_salaries/all?viewerId=${encodeURIComponent(viewerId)}`
       : "/api/employee_salaries/all";
@@ -1251,11 +1262,15 @@ export default function MonthlyAttendancePage() {
     const paidHoursPerDay =
       Number(employee.paidHoursPerDay) > 0 ? Number(employee.paidHoursPerDay) : 9;
 
-    const workingDays = hasAttendance
-      ? getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)
-      : 0;
+    // Always use calendar working days for rates (Basic÷W.Days÷hours).
+    // Gating on punches made Per Hour / day pay show 0/0 for most of the roster.
+    const workingDays = getTotalWorkingDays(
+      employee,
+      monthInfo,
+      approvedLeavesMap,
+    );
 
-    const systemUnpaidDays = hasAttendance ? calculateTotalDeduction(employee) / 100 : 0;
+    const systemUnpaidDays = calculateTotalDeduction(employee) / 100;
     const unpaidDays =
       opts.unpaidDays !== undefined
         ? parseUnpaidDaysValue(opts.unpaidDays)

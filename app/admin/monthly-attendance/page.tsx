@@ -1171,7 +1171,14 @@ export default function MonthlyAttendancePage() {
   }
 
   function getRecordDateKey(record: any) {
-    return getDateKey(record.clock_in || record.clock_out || record.date || "");
+    // Prefer calendar `date` so BSON/UTC clock_in does not shift the day key.
+    const rawDate = record?.date != null ? String(record.date) : "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+    if (rawDate) {
+      const fromDate = getDateKey(rawDate);
+      if (fromDate) return fromDate;
+    }
+    return getDateKey(record.clock_in || record.clock_out || "");
   }
 
   function calculateTotalDeduction(employee: any) {
