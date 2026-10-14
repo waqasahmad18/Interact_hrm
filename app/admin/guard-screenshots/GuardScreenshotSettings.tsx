@@ -36,23 +36,23 @@ const QUALITY_PRESETS: QualityPreset[] = [
   {
     id: "high",
     label: "High",
-    hint: "Best clarity · larger files",
-    quality: 80,
-    scale: 100,
+    hint: "Best clarity · larger uploads (avoid with 100+ PCs)",
+    quality: 70,
+    scale: 80,
   },
   {
     id: "medium",
     label: "Medium",
-    hint: "Balanced · recommended",
-    quality: 55,
-    scale: 70,
+    hint: "Recommended for many agents · server disk only",
+    quality: 45,
+    scale: 50,
   },
   {
     id: "low",
     label: "Low",
-    hint: "Smallest files · less detail",
-    quality: 40,
-    scale: 50,
+    hint: "Smallest files · safest under heavy load",
+    quality: 35,
+    scale: 40,
   },
 ];
 
@@ -146,7 +146,7 @@ export default function GuardScreenshotSettings() {
     }
   }
 
-  const presets = [5, 10, 15, 30, 60, 120, 300];
+  const presets = [60, 120, 180, 300, 600];
   const disabled = loading || saving;
 
   return (
@@ -165,8 +165,9 @@ export default function GuardScreenshotSettings() {
         <span className={styles.toggleText}>
           <span className={styles.toggleTitle}>Auto screenshots (Interact Guard)</span>
           <span className={styles.toggleHint}>
-            When on, Guard agents upload screen captures on the interval below.
-            Save, then agents pick it up within a few seconds.
+            When on, Guard captures in memory and saves only on the HRM server
+            (gallery). Nothing queues on the PC. Prefer Medium/Low + ≥2 min
+            interval when many PCs are online.
           </span>
         </span>
       </label>
@@ -220,8 +221,8 @@ export default function GuardScreenshotSettings() {
       <div className={styles.block}>
         <h3 className={styles.blockTitle}>Image quality</h3>
         <p className={styles.tip} style={{ marginBottom: 8 }}>
-          Low uses less disk space. Medium is recommended. High keeps more detail.
-          Needs Guard agent <strong>1.2.47+</strong>.
+          Files stay on the server only. Medium/Low keeps HRM stable with many
+          agents. Needs Guard <strong>1.2.59+</strong>.
         </p>
         <div className={styles.chips}>
           {QUALITY_PRESETS.map((p) => (

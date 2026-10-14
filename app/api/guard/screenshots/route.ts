@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveGuardScreenshot } from "@/lib/guard-screenshots";
-import { enforcePolicyAfterOcr } from "@/lib/guard-keyword-watch";
+import {
+  endScreenshotUpload,
+  enqueueScreenshotPolicyScan,
+  tryBeginScreenshotUpload,
+} from "@/lib/guard-screenshot-ingest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_BYTES = 12 * 1024 * 1024; // 12MB
+/** Keep uploads small — gallery quality does not need 12MB frames. */
+const MAX_BYTES = 3 * 1024 * 1024; // 3MB
 
 function isPng(buf: Buffer): boolean {
   return (
@@ -86,6 +91,20 @@ async function readImageFromRequest(req: NextRequest): Promise<{
 }
 
 export async function POST(req: NextRequest) {
+  if (!tryBeginScreenshotUpload()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "server busy — retry later",
+        retry_after_seconds: 15,
+      },
+      {
+        status: 503,
+        headers: { "Retry-After": "15" },
+      }
+    );
+  }
+
   try {
     const { bytes, ext, employeeId, employeeName, pseudonym, capturedAtRaw } =
       await readImageFromRequest(req);
@@ -98,7 +117,7 @@ export async function POST(req: NextRequest) {
     }
     if (bytes.length <= 0 || bytes.length > MAX_BYTES) {
       return NextResponse.json(
-        { success: false, error: "image size invalid" },
+        { success: false, error: "image size invalid (max 3MB)" },
         { status: 400 }
       );
     }
@@ -115,6 +134,7 @@ export async function POST(req: NextRequest) {
       if (!Number.isNaN(d.getTime())) capturedAt = d;
     }
 
+    // Fast path: disk only. Gallery reads from uploads/guard-screenshots/.
     const saved = await saveGuardScreenshot({
       png: bytes,
       employeeId,
@@ -124,31 +144,20 @@ export async function POST(req: NextRequest) {
       ext: isJpeg(bytes) ? "jpg" : ext,
     });
 
-    // RULE: every screenshot upload must OCR + check Policy (words/sites/docs/apps).
-    void enforcePolicyAfterOcr({
+    // Policy OCR is queued with a hard concurrency cap — never blocks save/response.
+    enqueueScreenshotPolicyScan({
       absolutePath: saved.absolutePath,
       relativePath: saved.relativePath,
       employeeId,
       employeeName,
       pseudonym,
-    }).then((result) => {
-      if (!result.ok) {
-        console.warn("[guard/screenshots] policy check failed:", result.error);
-        return;
-      }
-      if (!result.skipped) {
-        console.log(
-          "[guard/screenshots] policy ticket",
-          result.ticketNumber,
-          result.matched
-        );
-      }
     });
 
     return NextResponse.json({
       success: true,
       path: saved.relativePath,
       fileName: saved.fileName,
+      stored: "server",
     });
   } catch (err) {
     console.error("[guard/screenshots] upload failed", err);
@@ -159,5 +168,7 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    endScreenshotUpload();
   }
 }
