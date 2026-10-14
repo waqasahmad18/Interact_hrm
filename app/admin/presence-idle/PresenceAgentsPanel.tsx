@@ -417,7 +417,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
           <p className={styles.tip} style={{ marginTop: 4 }}>
             Pick employee + HRM URL (e.g. <strong>https://hrm.ig.com/auth</strong>), then{" "}
             <strong>Save</strong> to lock all details. Use <strong>Edit</strong> only if you
-            need changes. Interact Guard page is unchanged.
+            need changes.
           </p>
         </div>
         <div className={styles.agentsHeaderActions}>
