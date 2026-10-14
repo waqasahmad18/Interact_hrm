@@ -179,23 +179,25 @@ export function canViewEmployeeSalary(input: SalaryVisibilityInput): boolean {
   if (isCeoOrgRole(input.viewerOrgRole)) return true;
 
   const perms = input.viewerPermissions;
+  // Monthly Payroll menu itself requires this — sheet needs every basic amount.
+  if (
+    permissionSetHas(perms, "payroll.monthly.view") ||
+    permissionSetHas(perms, "payroll.monthly.edit")
+  ) {
+    return true;
+  }
+
   const hasDeptSalary = permissionSetHas(perms, DEPT_SALARY_VIEW_PERMISSION);
   const viewerHr = isHrDepartment(input.viewerDepartmentName);
   const targetHr = isHrDepartment(input.targetDepartmentName);
   const senior = isOrgSeniorOf(input.targetOrgRole, input.viewerOrgRole);
 
-  // Never show someone above you in the hierarchy
+  // Never show someone above you in the hierarchy (non-payroll contexts)
   if (senior) return false;
 
   if (viewerHr) {
-    // Other departments → payroll work (need payroll view)
-    if (!targetHr) {
-      return (
-        permissionSetHas(perms, "payroll.monthly.view") ||
-        permissionSetHas(perms, "payroll.monthly.edit")
-      );
-    }
-    // Same HR department → only if manager enabled dept salary view
+    // HR without payroll perm: still need dept salary toggle for same-HR peers
+    if (!targetHr) return false;
     return hasDeptSalary;
   }
 

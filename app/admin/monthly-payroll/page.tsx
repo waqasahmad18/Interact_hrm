@@ -1050,23 +1050,10 @@ export default function MonthlyAttendancePage() {
         setAllEmployees([]);
         setPaidHoursPerDayMap({});
       });
-    // Fetch all salaries — only pass numeric employee id (never email/loginId).
-    // A bad viewerId would redact EVERY salary and make rates show 0/0.
-    const rawViewer =
-      (typeof window !== "undefined" &&
-        (localStorage.getItem("employeeId") ||
-          localStorage.getItem("hrmEmployeeId") ||
-          "")) ||
-      "";
-    const viewerId = /^\d+$/.test(String(rawViewer).trim())
-      ? String(Number(String(rawViewer).trim()))
-      : "";
-    const salaryUrl = viewerId
-      ? `/api/employee_salaries/all?viewerId=${encodeURIComponent(viewerId)}`
-      : "/api/employee_salaries/all";
-    fetch(salaryUrl, {
-      headers: viewerId ? { "x-hrm-employee-id": viewerId } : {},
-    })
+    // Monthly Payroll is a full-sheet view (page already permission-gated).
+    // Do NOT pass viewerId here — per-row salary privacy was redacting almost
+    // every amount and making calculated rates show 0/0.
+    fetch("/api/employee_salaries/all")
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.salaries)) {
