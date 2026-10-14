@@ -15,6 +15,17 @@ import {
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
 import { resolveBillableOvertimeSeconds, isOvertimeAllowed } from "../../../lib/attendance-overtime";
+import {
+  deductionForAttendanceStatus,
+  normalizeAttendanceStatus,
+} from "../../../lib/attendance-status";
+import {
+  aggregateDayPunches,
+  classifyDayAttendance,
+  STATUS_FIRST_HALF_DAY,
+  STATUS_SECOND_HALF_DAY,
+} from "../../../lib/monthly-attendance-status";
+import { compareAttendanceRows } from "../../../lib/attendance-sort";
 
 // ...existing code...
 
@@ -204,10 +215,12 @@ export default function MonthlyAttendancePage() {
   /** CTD + Fuel + Unpaid days — persisted in monthly_payroll_adjustments */
   const [ctdByEmployee, setCtdByEmployee] = useState<Record<string, number>>({});
   const [fuelByEmployee, setFuelByEmployee] = useState<Record<string, number>>({});
-  /** Override map; missing key = use system-calculated unpaid days */
+  /** Session-only unpaid override (after HR edits). Default = live Monthly Attendance calc. */
   const [unpaidDaysByEmployee, setUnpaidDaysByEmployee] = useState<Record<string, number>>({});
   /** Only persist unpaid override after the user edits the field (avoid locking system value on blur). */
   const unpaidEditedRef = React.useRef<Set<string>>(new Set());
+  /** Same manual status map as Monthly Attendance (drives live T.Unpaid Days). */
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, Record<string, string>>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   function setManualAmount(
@@ -250,17 +263,22 @@ export default function MonthlyAttendancePage() {
     return defaultCtdByEmployee[empId] ?? 0;
   }
 
-  /** System unpaid days from attendance deduction % (e.g. 400% → 4 days). */
+  /** Live unpaid days from Monthly Attendance deduction % (e.g. 400% → 4 days). */
   function getSystemUnpaidDays(employee: any): number {
-    const hasAttendance = Object.keys(employee.byDate || {}).length > 0;
-    if (!hasAttendance) return 0;
     return calculateTotalDeduction(employee) / 100;
   }
 
-  /** HR override if saved; otherwise system-calculated value. */
+  /**
+   * Default: live from attendance (+ status overrides).
+   * Saved DB unpaid_days are ignored so Payroll stays in sync with Monthly Attendance.
+   * Only a same-session edit (unpaidEditedRef) can temporarily override.
+   */
   function getUnpaidDaysForEmployee(employee: any): number {
     const empId = String(employee.employeeId ?? "");
-    if (Object.prototype.hasOwnProperty.call(unpaidDaysByEmployee, empId)) {
+    if (
+      unpaidEditedRef.current.has(empId) &&
+      Object.prototype.hasOwnProperty.call(unpaidDaysByEmployee, empId)
+    ) {
       return unpaidDaysByEmployee[empId] ?? 0;
     }
     return getSystemUnpaidDays(employee);
@@ -608,14 +626,12 @@ export default function MonthlyAttendancePage() {
         if (cancelled) return;
         const ctdMap: Record<string, number> = {};
         const fuelMap: Record<string, number> = {};
-        const unpaidMap: Record<string, number> = {};
         if (data.success && Array.isArray(data.adjustments)) {
           data.adjustments.forEach(
             (row: {
               employee_id?: string | number;
               ctd?: number | null;
               fuel_allowance?: number | null;
-              unpaid_days?: number | null;
             }) => {
               const id = String(row.employee_id ?? "").trim();
               if (!id) return;
@@ -625,16 +641,14 @@ export default function MonthlyAttendancePage() {
               if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
                 fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
               }
-              // Only treat as override when HR saved a value (null = use attendance system calc).
-              if (row.unpaid_days !== null && row.unpaid_days !== undefined) {
-                unpaidMap[id] = parseUnpaidDaysValue(row.unpaid_days);
-              }
+              // unpaid_days from DB intentionally ignored — T.Unpaid Days is live from attendance.
             }
           );
         }
         setCtdByEmployee(ctdMap);
         setFuelByEmployee(fuelMap);
-        setUnpaidDaysByEmployee(unpaidMap);
+        setUnpaidDaysByEmployee({});
+        unpaidEditedRef.current = new Set();
       })
       .catch((err) => {
         console.error("Payroll adjustments fetch failed", err);
@@ -648,6 +662,42 @@ export default function MonthlyAttendancePage() {
       cancelled = true;
     };
   }, [selectedMonth]);
+
+  // Live status overrides from Monthly Attendance (manual On Time / Absent / Half Day, …)
+  useEffect(() => {
+    if (!fromDate || !toDate) {
+      setStatusOverrides({});
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/monthly-attendance-status-overrides?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`,
+      { cache: "no-store" },
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const map: Record<string, Record<string, string>> = {};
+        if (data.success && Array.isArray(data.overrides)) {
+          data.overrides.forEach(
+            (o: { employee_id?: string; attendance_date?: string; status_label?: string }) => {
+              const eid = String(o.employee_id ?? "").trim();
+              const dk = String(o.attendance_date ?? "").trim().slice(0, 10);
+              if (!eid || !dk) return;
+              if (!map[eid]) map[eid] = {};
+              map[eid][dk] = normalizeAttendanceStatus(String(o.status_label || ""));
+            },
+          );
+        }
+        setStatusOverrides(map);
+      })
+      .catch(() => {
+        if (!cancelled) setStatusOverrides({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     if (!selectedMonth) return;
@@ -741,23 +791,29 @@ export default function MonthlyAttendancePage() {
 
   /**
    * Sum day deduction % for T.Unpaid Days (= total / 100).
-   * Matches Monthly Attendance: leave=0, future empty=0, past empty working=100%, punched days use meta %.
+   * Same rules as Monthly Attendance Total Deduction (incl. status overrides).
    */
   function calculateTotalDeduction(employee: any) {
     let totalDeduction = 0;
+    const empId = String(employee.employeeId ?? "");
     monthInfo.days.forEach((day) => {
-      const dayRecords = employee.byDate[day.dateKey] || [];
-      const meta = employee.dateMeta[day.dateKey];
+      const dayRecords = employee.byDate?.[day.dateKey] || [];
+      const meta = employee.dateMeta?.[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
-      const onLeave = Boolean(
-        approvedLeavesMap[employee.employeeId]?.[day.dateKey],
-      );
+      const onLeave = Boolean(approvedLeavesMap[empId]?.[day.dateKey]);
+      const override = statusOverrides[empId]?.[day.dateKey];
 
       let dayDeduction = 0;
-      if (onLeave) {
+      if (onLeave || override === "Leave") {
         dayDeduction = 0;
       } else if (dayRecords.length === 0) {
-        if (workingDay && !isFutureAttendanceDay(day.dateKey)) {
+        if (override) {
+          dayDeduction =
+            parseInt(
+              String(deductionForAttendanceStatus(override, 0)).replace(/%/g, ""),
+              10,
+            ) || 0;
+        } else if (workingDay && !isFutureAttendanceDay(day.dateKey)) {
           dayDeduction = 100;
         }
       } else if (meta?.deduction) {
@@ -1093,58 +1149,97 @@ export default function MonthlyAttendancePage() {
   }, []);
 
   const attendanceByEmployee = React.useMemo(() => {
-    // Build attendance map as before
-    const attMap: Record<string, {
-      byDate: Record<string, any[]>;
-      dateMeta: Record<string, { runningLate: number; statusLabel: string; statusColor: string; deduction: string }>;
-      attendanceRecord: any;
-    }> = {};
+    // Same day-status + deduction rules as Monthly Attendance (live T.Unpaid Days).
+    const attMap: Record<
+      string,
+      {
+        byDate: Record<string, any[]>;
+        dateMeta: Record<
+          string,
+          { runningLate: number | string; statusLabel: string; statusColor: string; deduction: string }
+        >;
+        gender: string;
+        attendanceRecord: any;
+      }
+    > = {};
     attendance.forEach((record: any) => {
       if (!record.employee_id) return;
-      const empId = record.employee_id;
+      const empId = String(record.employee_id);
       if (!attMap[empId]) {
-        attMap[empId] = { byDate: {}, dateMeta: {}, attendanceRecord: record };
+        attMap[empId] = {
+          byDate: {},
+          dateMeta: {},
+          gender: record.gender || "",
+          attendanceRecord: record,
+        };
+      }
+      if (!attMap[empId].gender && record.gender) {
+        attMap[empId].gender = record.gender;
       }
       const dateKey = getRecordDateKey(record);
       if (!dateKey) return;
       if (!attMap[empId].byDate[dateKey]) attMap[empId].byDate[dateKey] = [];
       attMap[empId].byDate[dateKey].push(record);
     });
-    // Calculate dateMeta as before
+
     Object.entries(attMap).forEach(([empId, employee]) => {
-      const allRecords = Object.values(employee.byDate).flat();
-      const sorted = [...allRecords].sort((a: any, b: any) => {
-        const aKey = getRecordDateKey(a);
-        const bKey = getRecordDateKey(b);
-        return aKey.localeCompare(bKey);
+      Object.keys(employee.byDate).forEach((dateKey) => {
+        employee.byDate[dateKey].sort(compareAttendanceRows);
       });
+
       let runningLate = 0;
-      const seenDates = new Set<string>();
-      sorted.forEach((record: any) => {
-        const dateKey = getRecordDateKey(record);
-        if (!dateKey || seenDates.has(dateKey)) return;
-        seenDates.add(dateKey);
-        let statusLabel = "On Time";
-        let statusColor = "#276749";
+      const dateKeys = Object.keys(employee.byDate).sort();
+      dateKeys.forEach((dateKey) => {
+        const dayRecords = employee.byDate[dateKey];
+        const { clockIn, clockOut, record } = aggregateDayPunches(dayRecords);
+        const dayStatus = classifyDayAttendance({
+          dateKey,
+          clockIn,
+          clockOut,
+          shiftStart: record?.shift_start_time ?? null,
+          shiftEnd: record?.shift_end_time ?? null,
+          gender: employee.gender,
+        });
+
+        const autoStatusLabel = normalizeAttendanceStatus(dayStatus.statusLabel);
+        const override = statusOverrides[empId]?.[dateKey];
+        const isManual = Boolean(override);
+        const statusLabel = override || autoStatusLabel;
         let deduction = "";
-        if (record.is_late) {
-          runningLate += 1;
-          statusLabel = "Tardy";
-          statusColor = "#E53E3E";
-          if (runningLate === 4) statusLabel = "Half Day";
-          else if (runningLate >= 5) statusLabel = "Full Day";
+        let tardyDisplay: number | string = "";
+
+        const inSelectedMonth =
+          (!fromDate || dateKey >= fromDate) && (!toDate || dateKey <= toDate);
+
+        if (statusLabel === "Tardy" && (dayStatus.isLate || isManual)) {
+          if (inSelectedMonth) {
+            runningLate += 1;
+            tardyDisplay = runningLate;
+            deduction = deductionForAttendanceStatus(statusLabel, runningLate);
+          }
+        } else if (statusLabel === "Absent") {
+          deduction = "100%";
+        } else if (
+          statusLabel === STATUS_FIRST_HALF_DAY ||
+          statusLabel === STATUS_SECOND_HALF_DAY
+        ) {
+          deduction = "50%";
+        } else {
+          deduction = deductionForAttendanceStatus(statusLabel, tardyDisplay);
         }
-        if (statusLabel === "Tardy") deduction = "0%";
-        else if (statusLabel === "Half Day") deduction = "50%";
-        else if (statusLabel === "Full Day") deduction = "100%";
-        employee.dateMeta[dateKey] = { runningLate, statusLabel, statusColor, deduction };
+
+        employee.dateMeta[dateKey] = {
+          runningLate: tardyDisplay,
+          statusLabel,
+          statusColor: "#4A5568",
+          deduction,
+        };
       });
     });
-    // Merge all employees with attendance
-    return allEmployees.map(emp => {
+
+    return allEmployees.map((emp) => {
       const empId = String(emp.id || emp.employee_id);
       const att = attMap[empId];
-      // Always show salary from salaryMap (amount, any component)
       const basicSalary = salaryMap[empId];
       const allowOT = allowOvertimeMap[empId] === true;
       const paidHoursPerDay =
@@ -1152,9 +1247,13 @@ export default function MonthlyAttendancePage() {
         getPaidHoursPerDayFromProfile(emp.working_hours);
       return {
         employeeId: empId,
-        employeeName: (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.employee_name || "-"),
+        employeeName:
+          emp.first_name && emp.last_name
+            ? `${emp.first_name} ${emp.last_name}`
+            : emp.employee_name || "-",
         pseudonym: emp.pseudonym || "-",
         departmentName: emp.department_name || "-",
+        gender: att?.gender || emp.gender || "",
         basicSalary,
         allowOvertime: allowOT,
         paidHoursPerDay,
@@ -1164,7 +1263,16 @@ export default function MonthlyAttendancePage() {
         dateMeta: att ? att.dateMeta : {},
       };
     });
-  }, [attendance, allEmployees, salaryMap, allowOvertimeMap, paidHoursPerDayMap]);
+  }, [
+    attendance,
+    allEmployees,
+    salaryMap,
+    allowOvertimeMap,
+    paidHoursPerDayMap,
+    statusOverrides,
+    fromDate,
+    toDate,
+  ]);
 
   // Calculate total overtime (extra hours) for the SELECTED MONTH — same rules as Monthly Attendance
   function getEmployeeTotalOvertime(emp: any) {
@@ -1550,7 +1658,7 @@ export default function MonthlyAttendancePage() {
                           onChange={(e) => setUnpaidDaysAmount(empId, e.target.value)}
                           onBlur={(e) => saveUnpaidDaysAmount(empId, e.target.value)}
                           style={manualInputStyle}
-                          title={`System unpaid days: ${getSystemUnpaidDays(employee)} — editable override`}
+                          title={`Live from Monthly Attendance: ${getSystemUnpaidDays(employee)} unpaid days — edit only to override this session`}
                         />
                       </td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{row.otHoursLabel}</td>
