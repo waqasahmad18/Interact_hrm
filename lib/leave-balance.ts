@@ -149,9 +149,14 @@ export function assertLeaveBalanceAllowsRequest(
   opts: { leaveCategory?: string; totalDays?: number }
 ): { ok: true } | { ok: false; error: string } {
   const cat = String(opts.leaveCategory || "annual").toLowerCase();
-  const days = Math.max(1, Number(opts.totalDays) || 1);
+  const raw = Number(opts.totalDays);
+  // Allow half-day (0.5); reject zero / NaN / negative.
+  const days = Number.isFinite(raw) && raw > 0 ? raw : 0;
   const remaining = remainingForCategory(balance, cat);
 
+  if (days <= 0) {
+    return { ok: false, error: "Please select type of leave." };
+  }
   if (remaining <= 0) {
     return {
       ok: false,

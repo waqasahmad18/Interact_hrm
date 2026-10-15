@@ -17,6 +17,12 @@ import {
 } from "../../../lib/ticket-thread";
 import { formatTicketStatusLabel, isTicketClosed } from "../../../lib/ticket-status";
 import TicketThread from "../../components/TicketThread";
+import {
+  LEAVE_DURATION_OPTIONS,
+  leaveDaysForDuration,
+  leaveDurationLabel,
+  type LeaveDuration,
+} from "../../../lib/leave-duration";
 import styles from "./generate-ticket.module.css";
 
 type TicketRow = {
@@ -54,13 +60,6 @@ const LEAVE_CATEGORIES = [
   { value: "other", label: "Other" },
 ];
 
-function calcDays(start: string, end: string) {
-  if (!start || !end) return 0;
-  const s = new Date(start);
-  const e = new Date(end);
-  return Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-}
-
 function statusBadgeClass(status: string) {
   if (status === "in_progress") return styles.badgeProgress;
   if (status === "resolved" || status === "closed") {
@@ -91,6 +90,8 @@ function GenerateTicketPageInner() {
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [leaveCategory, setLeaveCategory] = useState("annual");
+  /** Empty until user picks — submit requires Full / 1st / 2nd half. */
+  const [leaveDuration, setLeaveDuration] = useState<LeaveDuration | "">("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -293,6 +294,7 @@ function GenerateTicketPageInner() {
     setEndDate("");
     setAmount("");
     setLeaveCategory("annual");
+    setLeaveDuration("");
     setDocuments([]);
     setIssueImages([]);
   }, [category, ticketType]);
@@ -301,10 +303,25 @@ function GenerateTicketPageInner() {
     if (employeeId && formKind === "leave") void fetchLeaveBalance();
   }, [employeeId, formKind, fetchLeaveBalance]);
 
-  const leaveDays = useMemo(
-    () => (startDate && endDate ? calcDays(startDate, endDate) : 0),
-    [startDate, endDate]
-  );
+  // Half-day leave is always a single date.
+  useEffect(() => {
+    if (
+      (leaveDuration === "first_half" || leaveDuration === "second_half") &&
+      startDate
+    ) {
+      setEndDate(startDate);
+    }
+  }, [leaveDuration, startDate]);
+
+  const isHalfDayLeave =
+    leaveDuration === "first_half" || leaveDuration === "second_half";
+
+  const leaveDays = useMemo(() => {
+    if (!leaveDuration || !startDate) return 0;
+    const end = isHalfDayLeave ? startDate : endDate;
+    if (!end) return 0;
+    return leaveDaysForDuration(leaveDuration, startDate, end);
+  }, [leaveDuration, startDate, endDate, isHalfDayLeave]);
 
   const detailsLabel = useMemo(() => {
     if (formKind === "custom") return "Your query";
@@ -351,9 +368,14 @@ function GenerateTicketPageInner() {
   const buildPayload = async () => {
     const base: Record<string, unknown> = {};
     if (formKind === "leave") {
-      const days = calcDays(startDate, endDate);
-      if (!startDate || !endDate) throw new Error("Please select leave start and end dates.");
+      if (!leaveDuration) {
+        throw new Error("Please select type of leave.");
+      }
+      if (!startDate) throw new Error("Please select leave start date.");
+      const effectiveEnd = isHalfDayLeave ? startDate : endDate;
+      if (!effectiveEnd) throw new Error("Please select leave end date.");
       if (!description.trim()) throw new Error("Please enter a reason for leave.");
+      const days = leaveDaysForDuration(leaveDuration, startDate, effectiveEnd);
       const rem =
         leaveCategory === "bereavement" ? bereavementBalance : leaveBalance;
       if (rem <= 0) {
@@ -379,8 +401,15 @@ function GenerateTicketPageInner() {
       }
 
       base.leave_category = leaveCategory;
+      base.leave_duration = leaveDuration;
+      base.half_day_part =
+        leaveDuration === "first_half"
+          ? "first"
+          : leaveDuration === "second_half"
+            ? "second"
+            : null;
       base.start_date = startDate;
-      base.end_date = endDate;
+      base.end_date = effectiveEnd;
       base.total_days = days;
       base.reason = description;
       base.document_paths = uploadedFilePaths;
@@ -641,32 +670,86 @@ function GenerateTicketPageInner() {
                   ))}
                 </select>
               </div>
+              <div className={styles.field}>
+                <span className={styles.label}>
+                  Type of leave <span className={styles.requiredMark}>*</span>
+                </span>
+                <div
+                  className={styles.leaveDurationGroup}
+                  role="radiogroup"
+                  aria-label="Type of leave"
+                >
+                  {LEAVE_DURATION_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`${styles.leaveDurationOption} ${
+                        leaveDuration === opt.value ? styles.leaveDurationSelected : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="leave-duration"
+                        value={opt.value}
+                        checked={leaveDuration === opt.value}
+                        onChange={() => setLeaveDuration(opt.value)}
+                        disabled={leaveBalanceExhausted}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {!leaveDuration ? (
+                  <p className={styles.leaveDurationHint}>
+                    Please select type of leave.
+                  </p>
+                ) : null}
+              </div>
               <div className={styles.grid2}>
                 <div className={styles.field}>
-                  <label className={styles.label}>Start date</label>
+                  <label className={styles.label}>
+                    {isHalfDayLeave ? "Date" : "Start date"}
+                  </label>
                   <input
                     type="date"
                     className={styles.input}
                     value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      if (isHalfDayLeave) setEndDate(e.target.value);
+                    }}
                     required
                     disabled={leaveBalanceExhausted}
                   />
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>End date</label>
-                  <input
-                    type="date"
-                    className={styles.input}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    required
-                    disabled={leaveBalanceExhausted}
-                  />
-                </div>
+                {!isHalfDayLeave ? (
+                  <div className={styles.field}>
+                    <label className={styles.label}>End date</label>
+                    <input
+                      type="date"
+                      className={styles.input}
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      required
+                      disabled={leaveBalanceExhausted}
+                    />
+                  </div>
+                ) : (
+                  <div className={styles.field}>
+                    <label className={styles.label}>Duration</label>
+                    <input
+                      className={styles.input}
+                      value={leaveDurationLabel(leaveDuration)}
+                      readOnly
+                      disabled
+                    />
+                  </div>
+                )}
               </div>
               {leaveDays > 0 ? (
-                <p className={styles.daysHint}>Total days: {leaveDays}</p>
+                <p className={styles.daysHint}>
+                  Total days: {leaveDays}
+                  {isHalfDayLeave ? " (0.5 from leave balance when approved)" : ""}
+                </p>
               ) : null}
             </>
           ) : null}
@@ -829,7 +912,8 @@ function GenerateTicketPageInner() {
               !employeeId ||
               !showFormSection ||
               leaveBalanceExhausted ||
-              leaveDaysExceedBalance
+              leaveDaysExceedBalance ||
+              (formKind === "leave" && !leaveDuration)
             }
           >
             {submitting ? "Submitting…" : "Submit ticket"}

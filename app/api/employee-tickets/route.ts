@@ -286,16 +286,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const formJson = form_data ? JSON.stringify(form_data) : null;
-
-    // Leave tickets: block when balance is 0 or requested days exceed remaining.
+    // Leave tickets: require duration (full / 1st / 2nd half), then balance gate.
     if (typeKey === "leave") {
       const fd =
         form_data && typeof form_data === "object"
           ? (form_data as Record<string, unknown>)
           : {};
+      const { parseLeaveDuration, leaveDaysForDuration } = await import(
+        "@/lib/leave-duration"
+      );
+      const duration = parseLeaveDuration(fd.leave_duration);
+      if (!duration) {
+        return NextResponse.json(
+          { success: false, error: "Please select type of leave." },
+          { status: 400 }
+        );
+      }
+      const startDate = String(fd.start_date || "").trim();
+      let endDate = String(fd.end_date || "").trim() || startDate;
+      if (duration === "first_half" || duration === "second_half") {
+        endDate = startDate;
+        fd.end_date = startDate;
+        fd.total_days = 0.5;
+        fd.half_day_part = duration === "first_half" ? "first" : "second";
+      } else {
+        const days = leaveDaysForDuration("full", startDate, endDate);
+        fd.total_days = days;
+        fd.half_day_part = null;
+      }
+      fd.leave_duration = duration;
       const leaveCategory = String(fd.leave_category || "annual");
-      const totalDays = Math.max(1, Number(fd.total_days) || 1);
+      const totalDays = Number(fd.total_days) || 0;
       const bal = await getEmployeeLeaveBalance(employee_id);
       if (!bal.success) {
         return NextResponse.json(
@@ -319,6 +340,8 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+
+    const formJson = form_data ? JSON.stringify(form_data) : null;
 
     const [result]: any = await pool.query(
       `INSERT INTO ${EMPLOYEE_TICKETS_TABLE}

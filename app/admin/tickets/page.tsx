@@ -331,6 +331,22 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
               </span>
             </div>
             <div className={adminStyles.detailItem}>
+              <span className={adminStyles.detailLabel}>Type of leave</span>
+              <span className={adminStyles.detailValue}>
+                {String(fd.leave_duration || "").toLowerCase() === "first_half"
+                  ? "1st half day"
+                  : String(fd.leave_duration || "").toLowerCase() === "second_half"
+                    ? "2nd half day"
+                    : String(fd.leave_duration || "").toLowerCase() === "full"
+                      ? "Full day"
+                      : String(fd.half_day_part || "").toLowerCase() === "first"
+                        ? "1st half day"
+                        : String(fd.half_day_part || "").toLowerCase() === "second"
+                          ? "2nd half day"
+                          : "Full day"}
+              </span>
+            </div>
+            <div className={adminStyles.detailItem}>
               <span className={adminStyles.detailLabel}>Total days</span>
               <span className={adminStyles.detailValue}>{String(fd.total_days ?? "—")}</span>
             </div>

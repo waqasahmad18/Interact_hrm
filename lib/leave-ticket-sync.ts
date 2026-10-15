@@ -78,7 +78,25 @@ export async function syncLeaveRecordFromTicket(
   if (!employeeId || !startDate) return null;
 
   const leaveCategory = String(fd.leave_category || "annual").trim() || "annual";
-  const totalDays = Math.max(1, Number(fd.total_days) || 1);
+  const {
+    parseLeaveDuration,
+    leaveDaysForDuration,
+    halfDayPartFromDuration,
+  } = await import("@/lib/leave-duration");
+  const duration =
+    parseLeaveDuration(fd.leave_duration) ||
+    parseLeaveDuration(
+      fd.half_day_part === "first"
+        ? "first_half"
+        : fd.half_day_part === "second"
+          ? "second_half"
+          : ""
+    ) ||
+    "full";
+  const effectiveEnd =
+    duration === "first_half" || duration === "second_half" ? startDate : endDate;
+  const totalDays = leaveDaysForDuration(duration, startDate, effectiveEnd);
+  const halfDayPart = halfDayPartFromDuration(duration);
   const reasonBody = String(fd.reason || ticket.description || "").trim();
   const marker = `[ticket:${ticket.id}]`;
   const reason = reasonBody.includes(marker)
@@ -91,7 +109,7 @@ export async function syncLeaveRecordFromTicket(
   const existingId = await findLeaveIdForTicket(
     employeeId,
     startDate,
-    endDate,
+    effectiveEnd,
     Number(ticket.id)
   );
 
@@ -127,7 +145,10 @@ export async function syncLeaveRecordFromTicket(
         const sets = [
           "employee_name = ?",
           "leave_category = ?",
+          "start_date = ?",
+          "end_date = ?",
           "total_days = ?",
+          "half_day_part = ?",
           "reason = ?",
           "status = ?",
           "step1_status = ?",
@@ -138,7 +159,10 @@ export async function syncLeaveRecordFromTicket(
         const vals: unknown[] = [
           employeeName,
           leaveCategory,
+          startDate,
+          effectiveEnd,
           totalDays,
+          halfDayPart,
           reason,
           leaveStatus,
           step1,
@@ -173,12 +197,14 @@ export async function syncLeaveRecordFromTicket(
       } catch {
         await query(
           `UPDATE employee_leaves
-           SET employee_name = ?, leave_category = ?, total_days = ?, reason = ?,
-               status = ?, document_paths = ?, updated_at = ?
+           SET employee_name = ?, leave_category = ?, start_date = ?, end_date = ?,
+               total_days = ?, reason = ?, status = ?, document_paths = ?, updated_at = ?
            WHERE id = ?`,
           [
             employeeName,
             leaveCategory,
+            startDate,
+            effectiveEnd,
             totalDays,
             reason,
             leaveStatus,
@@ -200,6 +226,7 @@ export async function syncLeaveRecordFromTicket(
         "start_date",
         "end_date",
         "total_days",
+        "half_day_part",
         "reason",
         "status",
         "step1_status",
@@ -213,8 +240,9 @@ export async function syncLeaveRecordFromTicket(
         employeeName,
         leaveCategory,
         startDate,
-        endDate,
+        effectiveEnd,
         totalDays,
+        halfDayPart,
         reason,
         leaveStatus,
         step1,
@@ -245,7 +273,7 @@ export async function syncLeaveRecordFromTicket(
           employeeName,
           leaveCategory,
           startDate,
-          endDate,
+          effectiveEnd,
           totalDays,
           reason,
           leaveStatus,

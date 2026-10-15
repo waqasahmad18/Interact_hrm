@@ -29,6 +29,12 @@ import {
   uiStatusTextColor,
 } from "../../../lib/attendance-status";
 import {
+  approvedLeaveOnDay,
+  attendanceFromApprovedLeaveDay,
+  buildApprovedLeavesMap,
+  type ApprovedLeavesMap,
+} from "../../../lib/leave-duration";
+import {
   aggregateDayPunches,
   classifyDayAttendance,
   excessLateMinutesFromRaw,
@@ -200,21 +206,12 @@ function isFutureAttendanceDay(dateKey: string) {
 function emptyWorkingDayStatus(
   dateKey: string,
   workingDay: boolean,
-  onLeave: boolean,
+  leaveKind: ReturnType<typeof approvedLeaveOnDay>,
 ): { statusLabel: string; deduction: string } {
   if (!workingDay) return { statusLabel: "Off", deduction: "" };
-  if (onLeave) return { statusLabel: "Leave", deduction: "0%" };
+  if (leaveKind) return attendanceFromApprovedLeaveDay(leaveKind);
   if (isFutureAttendanceDay(dateKey)) return { statusLabel: "---", deduction: "0%" };
   return { statusLabel: "Absent", deduction: "100%" };
-}
-
-/** Final-approved leave zeroes deduction even if punches exist that day. */
-function isApprovedLeaveDay(
-  map: Record<string, Record<string, boolean>>,
-  employeeId: string,
-  dateKey: string,
-): boolean {
-  return Boolean(map[String(employeeId)]?.[dateKey]);
 }
 
 /** Extra work beyond assigned shift before OT is shown/counted (1 hour). */
@@ -229,8 +226,13 @@ export default function MonthlyAttendancePage() {
         const workingDay = isWorkingDay(day.dateKey);
         // Exclude off days and approved leaves
         if (workingDay) {
-          const isLeave = approvedLeavesMap[employee.employeeId]?.[day.dateKey];
-          if (!isLeave) count++;
+          // Only full-day leave removes the day from working-days count.
+          const kind = approvedLeaveOnDay(
+            approvedLeavesMap,
+            employee.employeeId,
+            day.dateKey,
+          );
+          if (kind !== "full") count++;
         }
       });
       return count;
@@ -370,7 +372,7 @@ export default function MonthlyAttendancePage() {
     todayStr.slice(0, 7)
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
-  const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
+  const [approvedLeavesMap, setApprovedLeavesMap] = useState<ApprovedLeavesMap>({});
   const [importedSnapshot, setImportedSnapshot] = useState<ImportedMonthlySnapshot | null>(null);
   const [tungstenCtx, setTungstenCtx] = useState<TungstenPunchContext | null>(null);
   const [hrmEmployeesList, setHrmEmployeesList] = useState<HrmEmployeeRef[]>([]);
@@ -749,27 +751,12 @@ export default function MonthlyAttendancePage() {
       const data = await response.json();
 
       if (data.success && data.leaves) {
-        const leavesMap: Record<string, Record<string, boolean>> = {};
-
-        data.leaves.forEach((leave: any) => {
-          if (String(leave.status || "").toLowerCase() !== "approved") return;
-          const empId = String(leave.employee_id);
-          if (!leavesMap[empId]) {
-            leavesMap[empId] = {};
-          }
-
-          const startDateKey = normalizeToDateKey(String(leave.start_date || ""));
-          const endDateKey = normalizeToDateKey(String(leave.end_date || ""));
-          if (!startDateKey || !endDateKey) return;
-
-          let currentDateKey = startDateKey;
-          while (currentDateKey <= endDateKey) {
-            leavesMap[empId][currentDateKey] = true;
-            currentDateKey = addDaysToDateKey(currentDateKey, 1);
-          }
-        });
-
-        setApprovedLeavesMap(leavesMap);
+        setApprovedLeavesMap(
+          buildApprovedLeavesMap(data.leaves as Array<Record<string, unknown>>, {
+            normalizeDateKey: normalizeToDateKey,
+            addDays: addDaysToDateKey,
+          }),
+        );
       }
     } catch (err) {
       console.error("Error fetching approved leaves:", err);
@@ -1210,11 +1197,19 @@ export default function MonthlyAttendancePage() {
       const workingDay = isWorkingDay(day.dateKey);
       
       let dayDeduction = 0;
-      if (isApprovedLeaveDay(approvedLeavesMap, employee.employeeId, day.dateKey)) {
-        dayDeduction = 0;
+      const leaveKind = approvedLeaveOnDay(
+        approvedLeavesMap,
+        employee.employeeId,
+        day.dateKey,
+      );
+      if (leaveKind) {
+        dayDeduction =
+          parseInt(
+            String(attendanceFromApprovedLeaveDay(leaveKind).deduction).replace(/%/g, ""),
+            10,
+          ) || 0;
       } else if (dayRecords.length === 0) {
-        const onLeave = false;
-        const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, onLeave);
+        const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, null);
         dayDeduction = parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
       } else {
         // Has records, use meta deduction
@@ -1478,13 +1473,15 @@ export default function MonthlyAttendancePage() {
       });
 
       if (daySessions.length === 0 && dayRecords.length === 0) {
-        const onLeave = Boolean(
-          approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+        const leaveKind = approvedLeaveOnDay(
+          approvedLeavesMap,
+          employee.employeeId,
+          day.dateKey,
         );
         const { statusLabel, deduction } = emptyWorkingDayStatus(
           day.dateKey,
           workingDay,
-          onLeave,
+          leaveKind,
         );
         dataRows.push({
           cells: [
@@ -1792,13 +1789,15 @@ export default function MonthlyAttendancePage() {
         });
 
         if (dayRecords.length === 0 && daySessions.length === 0) {
-          const onLeave = Boolean(
-            approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+          const leaveKind = approvedLeaveOnDay(
+            approvedLeavesMap,
+            employee.employeeId,
+            day.dateKey,
           );
           const { statusLabel, deduction } = emptyWorkingDayStatus(
             day.dateKey,
             true,
-            onLeave,
+            leaveKind,
           );
           if (!shouldIncludeInDeductionSummary(statusLabel)) return;
           pushDeductionSummaryRow(
@@ -1812,10 +1811,15 @@ export default function MonthlyAttendancePage() {
           return;
         }
 
-        const onLeave = isApprovedLeaveDay(approvedLeavesMap, employee.employeeId, day.dateKey);
-        const exportStatus = onLeave ? "Leave" : meta?.statusLabel || "On Time";
+        const leaveKind = approvedLeaveOnDay(
+          approvedLeavesMap,
+          employee.employeeId,
+          day.dateKey,
+        );
+        const leaveAtt = leaveKind ? attendanceFromApprovedLeaveDay(leaveKind) : null;
+        const exportStatus = leaveAtt?.statusLabel || meta?.statusLabel || "On Time";
         if (!shouldIncludeInDeductionSummary(exportStatus)) return;
-        const deduction = onLeave ? "0%" : meta?.deduction || "";
+        const deduction = leaveAtt?.deduction || meta?.deduction || "";
         const tardyCount = meta?.runningLate ?? "";
         const sessionsToExport = getDaySessionRows(day.dateKey, dayRecords, daySessions);
 
@@ -2506,13 +2510,15 @@ export default function MonthlyAttendancePage() {
                           });
 
                           if (daySessions.length === 0 && dayRecords.length === 0) {
-                            const onLeave = Boolean(
-                              approvedLeavesMap[employee.employeeId]?.[day.dateKey],
+                            const leaveKind = approvedLeaveOnDay(
+                              approvedLeavesMap,
+                              employee.employeeId,
+                              day.dateKey,
                             );
                             const emptyAuto = emptyWorkingDayStatus(
                               day.dateKey,
                               workingDay,
-                              onLeave,
+                              leaveKind,
                             );
                             const emptyOverride = overrideStatusFor(
                               employee.employeeId,
@@ -2550,24 +2556,27 @@ export default function MonthlyAttendancePage() {
                             );
                           }
 
-                          const onLeaveDay = isApprovedLeaveDay(
+                          const leaveKindDay = approvedLeaveOnDay(
                             approvedLeavesMap,
                             employee.employeeId,
                             day.dateKey,
                           );
+                          const leaveAttDay = leaveKindDay
+                            ? attendanceFromApprovedLeaveDay(leaveKindDay)
+                            : null;
                           const manualOverride = overrideStatusFor(
                             employee.employeeId,
                             day.dateKey,
                           );
                           const recordStatus = manualOverride
                             ? manualOverride
-                            : onLeaveDay
-                              ? "Leave"
+                            : leaveAttDay
+                              ? leaveAttDay.statusLabel
                               : normalizeAttendanceStatus(meta?.statusLabel || "-");
                           const dayDeductionDisplay = manualOverride
                             ? deductionForAttendanceStatus(manualOverride, meta?.runningLate)
-                            : onLeaveDay
-                              ? "0%"
+                            : leaveAttDay
+                              ? leaveAttDay.deduction
                               : meta?.deduction || "";
                           const statusIsManual =
                             Boolean(manualOverride) || Boolean(meta?.isManual);

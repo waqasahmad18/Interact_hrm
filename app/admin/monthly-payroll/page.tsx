@@ -20,6 +20,12 @@ import {
   normalizeAttendanceStatus,
 } from "../../../lib/attendance-status";
 import {
+  approvedLeaveOnDay,
+  attendanceFromApprovedLeaveDay,
+  buildApprovedLeavesMap,
+  type ApprovedLeavesMap,
+} from "../../../lib/leave-duration";
+import {
   aggregateDayPunches,
   classifyDayAttendance,
   STATUS_FIRST_HALF_DAY,
@@ -84,8 +90,12 @@ export default function MonthlyAttendancePage() {
         const workingDay = isWorkingDay(day.dateKey);
         // Exclude off days and approved leaves
         if (workingDay) {
-          const isLeave = approvedLeavesMap[employee.employeeId]?.[day.dateKey];
-          if (!isLeave) count++;
+          const kind = approvedLeaveOnDay(
+            approvedLeavesMap,
+            employee.employeeId,
+            day.dateKey,
+          );
+          if (kind !== "full") count++;
         }
       });
       return count;
@@ -205,7 +215,7 @@ export default function MonthlyAttendancePage() {
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
   );
   const [calendarOverrides, setCalendarOverrides] = useState<Record<string, CalendarDayOverride>>({});
-  const [approvedLeavesMap, setApprovedLeavesMap] = useState<Record<string, Record<string, boolean>>>({});
+  const [approvedLeavesMap, setApprovedLeavesMap] = useState<ApprovedLeavesMap>({});
   const [commissionsMap, setCommissionsMap] = useState<Record<string, EmployeeCommissionRow>>({});
   /** Editable tax + manual deductions per employee — Final updates live when changed */
   const [taxByEmployee, setTaxByEmployee] = useState<Record<string, number>>({});
@@ -494,32 +504,19 @@ export default function MonthlyAttendancePage() {
       const data = await response.json();
 
       if (data.success && data.leaves) {
-        const leavesMap: Record<string, Record<string, boolean>> = {};
-
-        data.leaves.forEach((leave: any) => {
-          if (String(leave.status || "").toLowerCase() !== "approved") return;
-          const empId = String(leave.employee_id);
-          if (!leavesMap[empId]) {
-            leavesMap[empId] = {};
-          }
-
-          const startRaw = String(leave.start_date || "");
-          const endRaw = String(leave.end_date || "");
-          const startMatch = /^(\d{4}-\d{2}-\d{2})/.exec(startRaw);
-          const endMatch = /^(\d{4}-\d{2}-\d{2})/.exec(endRaw);
-          let currentDateKey = startMatch ? startMatch[1] : "";
-          const endDateKey = endMatch ? endMatch[1] : currentDateKey;
-          if (!currentDateKey || !endDateKey) return;
-
-          while (currentDateKey <= endDateKey) {
-            leavesMap[empId][currentDateKey] = true;
-            const [y, m, d] = currentDateKey.split("-").map(Number);
-            const next = new Date(Date.UTC(y, m - 1, d + 1));
-            currentDateKey = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
-          }
-        });
-
-        setApprovedLeavesMap(leavesMap);
+        setApprovedLeavesMap(
+          buildApprovedLeavesMap(data.leaves as Array<Record<string, unknown>>, {
+            normalizeDateKey: (raw: string) => {
+              const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(raw || ""));
+              return m ? m[1] : "";
+            },
+            addDays: (dateKey: string, days: number) => {
+              const [y, m, d] = dateKey.split("-").map(Number);
+              const next = new Date(Date.UTC(y, m - 1, d + days));
+              return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+            },
+          }),
+        );
       }
     } catch (err) {
       console.error("Error fetching approved leaves:", err);
@@ -800,12 +797,17 @@ export default function MonthlyAttendancePage() {
       const dayRecords = employee.byDate?.[day.dateKey] || [];
       const meta = employee.dateMeta?.[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
-      const onLeave = Boolean(approvedLeavesMap[empId]?.[day.dateKey]);
+      const leaveKind = approvedLeaveOnDay(approvedLeavesMap, empId, day.dateKey);
       const override = statusOverrides[empId]?.[day.dateKey];
 
       let dayDeduction = 0;
-      if (onLeave || override === "Leave") {
-        dayDeduction = 0;
+      if (leaveKind || override === "Leave") {
+        dayDeduction = leaveKind
+          ? parseInt(
+              String(attendanceFromApprovedLeaveDay(leaveKind).deduction).replace(/%/g, ""),
+              10,
+            ) || 0
+          : 0;
       } else if (dayRecords.length === 0) {
         if (override) {
           dayDeduction =
@@ -923,13 +925,15 @@ export default function MonthlyAttendancePage() {
         // Check for approved leave
         let statusLabel = workingDay ? "Absent" : "Off";
         let deduction = workingDay ? "100%" : "";
-        if (
-          workingDay &&
-          approvedLeavesMap[employee.employeeId] &&
-          approvedLeavesMap[employee.employeeId][day.dateKey]
-        ) {
-          statusLabel = "Leave";
-          deduction = "0%";
+        const leaveKind = approvedLeaveOnDay(
+          approvedLeavesMap,
+          employee.employeeId,
+          day.dateKey,
+        );
+        if (workingDay && leaveKind) {
+          const att = attendanceFromApprovedLeaveDay(leaveKind);
+          statusLabel = att.statusLabel;
+          deduction = att.deduction;
         }
         rows.push({
           Day: day.weekday,
