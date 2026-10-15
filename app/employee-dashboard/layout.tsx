@@ -85,6 +85,9 @@ function HeroSearch() {
 }
 
 type NavTab = { name: string; path: string; icon: React.ReactNode };
+type MenuItem = { name?: string; path?: string };
+
+const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache";
 
 const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
@@ -92,6 +95,67 @@ const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
 ];
+
+function buildAccessTabsFromPayload(
+  menu: MenuItem[],
+  permissions: string[],
+): NavTab[] {
+  const basePaths = new Set(BASE_EMPLOYEE_TABS.map((t) => t.path));
+  const tabs: NavTab[] = [];
+  if (permissions.includes("ops.tickets.view")) {
+    tabs.push({
+      name: "Ticket Inbox",
+      path: "/employee-dashboard/tickets",
+      icon: iconForPath("/employee-dashboard/tickets", "Ticket Inbox"),
+    });
+  }
+  for (const item of menu) {
+    const path = String(item.path || "");
+    const name = String(item.name || "");
+    if (!path || !name || basePaths.has(path)) continue;
+    if (tabs.some((t) => t.path === path)) continue;
+    tabs.push({ name, path, icon: iconForPath(path, name) });
+  }
+  return tabs;
+}
+
+function readCachedAccessTabs(employeeId: string): NavTab[] {
+  if (typeof window === "undefined" || !employeeId) return [];
+  try {
+    const raw = localStorage.getItem(ACCESS_MENU_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as {
+      employeeId?: string;
+      menu?: MenuItem[];
+      permissions?: string[];
+    };
+    if (String(parsed.employeeId || "") !== String(employeeId)) return [];
+    return buildAccessTabsFromPayload(
+      Array.isArray(parsed.menu) ? parsed.menu : [],
+      Array.isArray(parsed.permissions) ? parsed.permissions : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeAccessMenuCache(
+  employeeId: string,
+  menu: MenuItem[],
+  permissions: string[],
+  roleSlug: string,
+) {
+  try {
+    localStorage.setItem(
+      ACCESS_MENU_CACHE_KEY,
+      JSON.stringify({ employeeId, menu, permissions, roleSlug }),
+    );
+    localStorage.setItem("accessPermissions", JSON.stringify(permissions));
+    localStorage.setItem("accessRoleSlug", roleSlug);
+  } catch {
+    /* ignore */
+  }
+}
 
 function iconForPath(path: string, name: string): React.ReactNode {
   if (path.includes("my-team") || name.includes("Team")) return <FaUsers />;
@@ -268,6 +332,16 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     return () => window.clearInterval(id);
   }, [employeeId, employeeName, employeePseudonym]);
 
+  // Paint cached permission links immediately (no empty sidebar flash), then refresh.
+  React.useLayoutEffect(() => {
+    if (!employeeId || !/^\d+$/.test(employeeId)) {
+      setAccessTabs([]);
+      return;
+    }
+    const cached = readCachedAccessTabs(employeeId);
+    if (cached.length) setAccessTabs(cached);
+  }, [employeeId]);
+
   // System Control permissions → extra sidebar links for this employee.
   React.useEffect(() => {
     if (!employeeId || !/^\d+$/.test(employeeId)) {
@@ -283,41 +357,27 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         if (cancelled || !data?.success) return;
         const menu = Array.isArray(data.menu) ? data.menu : [];
         const perms = Array.isArray(data.permissions) ? data.permissions : [];
-        const basePaths = new Set(BASE_EMPLOYEE_TABS.map((t) => t.path));
-        const tabs: NavTab[] = [];
-        // HR: Ticket Inbox right after Generate Ticket in the sidebar
-        if (perms.includes("ops.tickets.view")) {
-          tabs.push({
-            name: "Ticket Inbox",
-            path: "/employee-dashboard/tickets",
-            icon: iconForPath("/employee-dashboard/tickets", "Ticket Inbox"),
-          });
-        }
-        for (const item of menu) {
-          const path = String(item.path || "");
-          const name = String(item.name || "");
-          if (!path || !name || basePaths.has(path)) continue;
-          if (tabs.some((t) => t.path === path)) continue;
-          tabs.push({ name, path, icon: iconForPath(path, name) });
+        const tabs = buildAccessTabsFromPayload(menu, perms);
+        setAccessTabs(tabs);
+        writeAccessMenuCache(
+          employeeId,
+          menu,
+          perms,
+          String(data.role?.slug || ""),
+        );
+        for (const t of tabs) {
           try {
-            router.prefetch(path);
+            router.prefetch(t.path);
           } catch {
             /* ignore */
           }
         }
-        setAccessTabs(tabs);
-        try {
-          localStorage.setItem(
-            "accessPermissions",
-            JSON.stringify(perms),
-          );
-          localStorage.setItem("accessRoleSlug", String(data.role?.slug || ""));
-        } catch {
-          /* ignore */
-        }
       })
       .catch(() => {
-        if (!cancelled) setAccessTabs([]);
+        // Keep cached tabs on network error — don't wipe sidebar.
+        if (!cancelled && readCachedAccessTabs(employeeId).length === 0) {
+          setAccessTabs([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -431,26 +491,20 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
               tab.path === "/employee-dashboard"
                 ? pathname === tab.path
                 : pathname === tab.path || (pathname?.startsWith(tab.path + "/") ?? false);
-            const isPermissionTab = accessTabs.some((t) => t.path === tab.path);
             return (
               <Link
                 key={tab.path || idx}
                 href={tab.path}
-                prefetch={!isPermissionTab}
+                prefetch
                 className={
                   isActive
                     ? `${styles.navItem} ${styles.navItemActive} ${empStyles.navItemPdf} ${empStyles.navItemPdfActive}`
                     : `${styles.navItem} ${empStyles.navItemPdf}`
                 }
                 onClick={(e) => {
+                  // Soft client nav — layout stays mounted so sidebar does not reload.
                   if (isActive) {
                     e.preventDefault();
-                    return;
-                  }
-                  // Full load keeps employee layout; soft-nav was swapping to admin chrome.
-                  if (isPermissionTab) {
-                    e.preventDefault();
-                    window.location.assign(tab.path);
                   }
                 }}
               >

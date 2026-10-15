@@ -14,6 +14,7 @@ export function clearPortalSessionKeys() {
     localStorage.removeItem("userRole");
     localStorage.removeItem("accessPermissions");
     localStorage.removeItem("accessRoleSlug");
+    localStorage.removeItem("employeeAccessMenuCache");
     localStorage.removeItem("hrmPortal");
     sessionStorage.removeItem("hrmPortal");
   } catch {
@@ -30,6 +31,7 @@ export function markAdminPortal() {
     localStorage.removeItem("employeeName");
     localStorage.removeItem("accessPermissions");
     localStorage.removeItem("accessRoleSlug");
+    localStorage.removeItem("employeeAccessMenuCache");
   } catch {
     /* ignore */
   }
