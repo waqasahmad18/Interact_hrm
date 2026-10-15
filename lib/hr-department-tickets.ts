@@ -220,9 +220,12 @@ export function filterTicketsForInbox<
     viewer: HrTicketViewer | null;
     hrIds: Set<string>;
     empChips?: Map<string, string | null>;
+    /** Employee ids that report directly to the viewer (Reporting Manager). */
+    directReportIds?: Set<string>;
   }
 ): T[] {
-  const { inbox, viewer, hrIds, empChips } = opts;
+  const { inbox, viewer, hrIds, empChips, directReportIds } = opts;
+  const reportsToMe = directReportIds || new Set<string>();
 
   if (inbox === "own") {
     if (!viewer) return [];
@@ -234,12 +237,14 @@ export function filterTicketsForInbox<
     const head = viewer.deptHead;
     const owned = new Set((head?.ownedChips || []).map((c) => c.toLowerCase()));
 
-    // Pure dept head (Joe/Max/Mubeen) opening HR-mode inbox → only their owned leave.
+    // Pure dept head (Joe/Max/Mubeen) opening HR-mode inbox → owned leave + direct reports.
     if (head?.headHint && !viewer.isHrStaff) {
       return tickets.filter((t) => {
         if (!isLeaveTicket(t.ticket_type)) return false;
+        const empId = String(t.employee_id || "").trim();
+        if (reportsToMe.has(empId)) return true;
         if (!empChips || owned.size === 0) return false;
-        const chip = empChips.get(String(t.employee_id || "").trim());
+        const chip = empChips.get(empId);
         return Boolean(chip && owned.has(chip.toLowerCase()));
       });
     }
@@ -258,6 +263,9 @@ export function filterTicketsForInbox<
   return tickets.filter((t) => {
     const empId = String(t.employee_id || "").trim();
     const isLeave = isLeaveTicket(t.ticket_type);
+
+    // Direct reports' leave always visible to their Reporting Manager / CEO.
+    if (isLeave && reportsToMe.has(empId)) return true;
 
     // Dept head (Joe/Max/Mubeen): always include leave from owned chips.
     if (isLeave && owned.size > 0 && empChips) {
@@ -327,15 +335,14 @@ export function canModerateTicketStatus(opts: {
       return false;
     }
 
-    // Dept head: only their owned department leave.
+    // Dept head: owned department leave, or anyone who reports to them.
     if (viewer.deptHead?.headHint) {
+      if (typeof inScope === "boolean") return inScope;
       if (submitterChip) {
         return viewer.deptHead.ownedChips.some(
           (c) => c.toLowerCase() === submitterChip.toLowerCase()
         );
       }
-      // Chip unknown — allow if scope says yes (async path sets inScope).
-      if (typeof inScope === "boolean") return inScope;
       return true;
     }
 
@@ -378,7 +385,13 @@ export async function canModerateTicketStatusAsync(opts: {
   let inScope: boolean | undefined;
   if (isLeave && viewer) {
     if (viewer.deptHead?.headHint) {
-      if (submitterChip) {
+      const { listDirectReportIds } = await import(
+        "@/lib/employee-hierarchy-table"
+      );
+      const directIds = await listDirectReportIds(viewer.employeeId);
+      if (directIds.includes(String(ticketEmployeeId))) {
+        inScope = true;
+      } else if (submitterChip) {
         inScope = viewer.deptHead.ownedChips.some(
           (c) => c.toLowerCase() === submitterChip.toLowerCase()
         );

@@ -1,17 +1,7 @@
 import { pool } from "@/lib/db";
 import { getAllOrgChartPhotos } from "@/lib/org-chart-photos-table";
 import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
-
-/** Max → HIT/HR/Finance | Mubeen → IT/Marketing/CEst | Joe → DM (not HR) */
-const DEPT_HEAD_NAME_HINT: Record<string, string> = {
-  IT: "mubeen",
-  Marketing: "mubeen",
-  "CEst.": "mubeen",
-  HIT: "max",
-  HR: "max",
-  Finance: "max",
-  DM: "joe",
-};
+import { DEPT_HEAD_NAME_HINT } from "@/lib/dept-heads";
 
 export const HIERARCHY_TABLE = "hrm_employee_hierarchy";
 export const TEAM_MEMBERS_TABLE = "hrm_team_members";
@@ -223,7 +213,7 @@ function orgFamilyEmployees(emp: EmpRow, all: EmpRow[]): EmpRow[] {
 
 /**
  * Dept head / CEO by org map:
- * Max → HIT + HR + Finance | Mubeen → IT + CEst. (+ Marketing) | Joe → DM
+ * Max → HIT + HR + Medical Billing + Finance | Mubeen → IT + CEst. (+ Marketing) | Joe → DM
  */
 function findDeptHeadCeo(all: EmpRow[], chip: string | null): EmpRow | null {
   if (!chip) return null;
@@ -264,6 +254,57 @@ async function upsertReportsTo(
   }
 }
 
+/** Persist Reporting Manager (used by Add Employee for Manager / Team Lead → CEO). */
+export async function setEmployeeReportsTo(
+  employeeId: string | number,
+  reportsToEmployeeId: string | number | null,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const eid = Number(employeeId);
+  if (!Number.isFinite(eid) || eid <= 0) {
+    return { success: false, error: "Invalid employee id" };
+  }
+  const ridRaw = reportsToEmployeeId == null ? null : Number(reportsToEmployeeId);
+  const rid =
+    ridRaw != null && Number.isFinite(ridRaw) && ridRaw > 0 ? ridRaw : null;
+  if (rid != null && rid === eid) {
+    return { success: false, error: "Employee cannot report to themselves" };
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureHierarchyTables(conn);
+    await upsertReportsTo(conn, eid, rid);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    conn.release();
+  }
+}
+
+/** Employee ids that report directly to this manager/CEO. */
+export async function listDirectReportIds(
+  managerEmployeeId: string | number,
+): Promise<string[]> {
+  const mid = Number(managerEmployeeId);
+  if (!Number.isFinite(mid) || mid <= 0) return [];
+  const conn = await pool.getConnection();
+  try {
+    await ensureHierarchyTables(conn);
+    const [rows] = await conn.execute(
+      `SELECT employee_id FROM ${HIERARCHY_TABLE} WHERE reports_to_employee_id = ?`,
+      [mid],
+    );
+    return (rows as { employee_id: number }[]).map((r) => String(r.employee_id));
+  } catch {
+    return [];
+  } finally {
+    conn.release();
+  }
+}
+
 export async function getEmployeeHierarchy(
   employeeId: string | number,
 ): Promise<EmployeeHierarchyResult | null> {
@@ -288,28 +329,25 @@ export async function getEmployeeHierarchy(
     const explicitManagerId = await fetchExplicitReportsTo(conn, targetId);
 
     if (explicitManagerId) {
+      // Explicit Reporting Manager (e.g. Add Employee → any of 3 CEOs) wins.
       reportsToRow = all.find((e) => e.id === explicitManagerId) ?? null;
     } else {
       reportsToRow = inferReportsTo(emp, deptEmployees);
       if (!reportsToRow) {
         reportsToRow = inferReportsTo(emp, all);
       }
-    }
 
-    // Management / Leaders in a dept report to that dept's head CEO
-    // (Max for HR/HIT, Mubeen for IT/CEst, Joe for DM) — never a wrong board member.
-    if (deptHead && roleRank(emp.role) > 1 && emp.id !== deptHead.id) {
-      const explicitIsWrongCeo =
-        Boolean(reportsToRow) &&
-        roleRank(reportsToRow?.role) <= 1 &&
-        reportsToRow!.id !== deptHead.id;
-      const missingBoss = !reportsToRow;
-      const managerNeedsCeo =
-        roleRank(emp.role) <= 2 && (!reportsToRow || roleRank(reportsToRow.role) > 1);
-      if (explicitIsWrongCeo || missingBoss || managerNeedsCeo) {
-        reportsToRow = deptHead;
-        if (explicitIsWrongCeo || missingBoss) {
-          void upsertReportsTo(conn, targetId, deptHead.id);
+      // No explicit boss yet: Managers / TLs default to that dept's head CEO.
+      if (deptHead && roleRank(emp.role) > 1 && emp.id !== deptHead.id) {
+        const missingBoss = !reportsToRow;
+        const managerNeedsCeo =
+          roleRank(emp.role) <= 2 &&
+          (!reportsToRow || roleRank(reportsToRow.role) > 1);
+        if (missingBoss || managerNeedsCeo) {
+          reportsToRow = deptHead;
+          if (missingBoss) {
+            void upsertReportsTo(conn, targetId, deptHead.id);
+          }
         }
       }
     }

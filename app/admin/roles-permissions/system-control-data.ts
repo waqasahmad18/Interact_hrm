@@ -746,13 +746,14 @@ export const ORG_CEO_NAME_HINTS = ["Joe", "Max", "Mubeen"] as const;
 /**
  * Department manager map (display keys).
  * Marketing is folded under IT (not a separate manager chip bucket).
- * Mubeen → IT + Marketing + CEst. | Max → HIT + HR + Finance | Joe → DM
+ * Mubeen → IT + Marketing + CEst. | Max → HIT + HR + Medical Billing + Finance | Joe → DM
  */
 export const ORG_DEPT_MANAGER_NAME: Record<string, string> = {
   IT: "Mubeen",
   "CEst.": "Mubeen",
   HIT: "Max",
   HR: "Max",
+  "Medical Billing": "Max",
   Finance: "Max",
   DM: "Joe",
 };
@@ -788,6 +789,14 @@ export function orgDeptChipLabel(departmentName: string | undefined | null): str
   if (t === "cest" || t === "c est") return "CEst.";
   if (t === "hit") return "HIT";
   if (t === "hr" || t === "human resources") return "HR";
+  if (
+    t === "medical billing" ||
+    t.includes("medical billing") ||
+    t === "billing" ||
+    (t.includes("billing") && t.includes("medical"))
+  ) {
+    return "Medical Billing";
+  }
   if (t === "finance" || t === "accounts") return "Finance";
   return String(departmentName || "").trim() || null;
 }
@@ -819,7 +828,7 @@ export function listOrgDeptChips(employees: DemoEmployee[]): string[] {
     if (!seen.has(key)) seen.set(key, label);
   }
   // Prefer known order, then the rest A–Z
-  const preferred = ["IT", "CEst.", "HIT", "HR", "Finance", "DM"];
+  const preferred = ["IT", "CEst.", "HIT", "HR", "Medical Billing", "Finance", "DM"];
   const rest = [...seen.values()]
     .filter((l) => !preferred.some((p) => p.toLowerCase() === l.toLowerCase()))
     .sort((a, b) => a.localeCompare(b));

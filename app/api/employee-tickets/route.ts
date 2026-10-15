@@ -139,10 +139,20 @@ export async function GET(req: NextRequest) {
 
     // Single-ticket fetch: owner or HR inbox viewer (for HR tickets) or admin (non-HR).
     if (ticketId) {
+      let viewerDirectReports: Set<string> | undefined;
+      if (viewer?.employeeId) {
+        const { listDirectReportIds } = await import(
+          "@/lib/employee-hierarchy-table"
+        );
+        viewerDirectReports = new Set(
+          await listDirectReportIds(viewer.employeeId),
+        );
+      }
       tickets = tickets.filter((t) => {
         if (isLeaveTicketType(t.ticket_type)) {
-          // Leave visible in HR inbox / admin / owner / dept-head owned chips.
+          // Leave visible in HR inbox / admin / owner / dept-head owned chips / direct reports.
           if (viewer && String(t.employee_id) === viewer.employeeId) return true;
+          if (viewerDirectReports?.has(String(t.employee_id))) return true;
           if (viewer?.canViewHrInbox) return true;
           if (viewer?.deptHead?.headHint) {
             const chip = empChips.get(String(t.employee_id));
@@ -189,11 +199,19 @@ export async function GET(req: NextRequest) {
     }
 
     // Inbox lists — HR sees all leave; admin hides HR non-leave; dept heads get owned leave.
+    let directReportIds: Set<string> | undefined;
+    if (viewer?.employeeId) {
+      const { listDirectReportIds } = await import(
+        "@/lib/employee-hierarchy-table"
+      );
+      directReportIds = new Set(await listDirectReportIds(viewer.employeeId));
+    }
     const filtered = filterTicketsForInbox(tickets, {
       inbox,
       viewer,
       hrIds,
       empChips,
+      directReportIds,
     });
 
     // Per-ticket moderation flags (HR Manager may view all leave but approve only in-scope).

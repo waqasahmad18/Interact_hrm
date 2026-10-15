@@ -35,9 +35,22 @@ export default function AddEmployeeForm({
 }) {
   // Departments state for dropdown
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+  /** Joe / Max / Mubeen — Reporting Manager for Manager / Team Lead */
+  const [ceoOptions, setCeoOptions] = useState<
+    { id: string; name: string; hint: string }[]
+  >([]);
+  const [reportingManagerId, setReportingManagerId] = useState("");
 
   // Fetch departments on mount
   useEffect(() => {
+    fetch("/api/org-ceos")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.ceos)) {
+          setCeoOptions(data.ceos);
+        }
+      })
+      .catch(() => {});
     fetch('/api/departments')
       .then(res => res.json())
       .then(data => {
@@ -182,6 +195,10 @@ export default function AddEmployeeForm({
       );
       return;
     }
+    if (orgRoleNeedsDepartmentConfirm(role) && !reportingManagerId) {
+      toastError("Please select Reporting Manager (CEO) on Personal Details.");
+      return;
+    }
     try {
       const res = await fetch('/api/employee_jobs', {
         method: isEdit ? 'PUT' : 'POST',
@@ -207,6 +224,10 @@ export default function AddEmployeeForm({
       });
       const data = await res.json();
       if (data.success) {
+        if (employeeId) {
+          const ok = await saveReportingManager(employeeId);
+          if (!ok) return;
+        }
         toastSuccess('Job details saved!');
         setActiveTab('Assign Shift');
       } else {
@@ -419,6 +440,33 @@ export default function AddEmployeeForm({
   // Overall org role (Add Employee). Feature permissions → System Control.
   const [role, setRole] = useState<OrgRoleDbValue>("Officer");
   const [departmentScopeConfirmed, setDepartmentScopeConfirmed] = useState(false);
+
+  const saveReportingManager = async (empId: string) => {
+    if (!orgRoleNeedsDepartmentConfirm(role)) return true;
+    if (!reportingManagerId) {
+      toastError("Please select Reporting Manager (CEO).");
+      return false;
+    }
+    try {
+      const res = await fetch("/api/employee-hierarchy", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: empId,
+          reportsToEmployeeId: reportingManagerId,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Failed to save reporting manager");
+        return false;
+      }
+      return true;
+    } catch (err) {
+      toastError("Failed to save reporting manager: " + String(err));
+      return false;
+    }
+  };
   const [createLogin, setCreateLogin] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState("");
@@ -594,6 +642,17 @@ export default function AddEmployeeForm({
                 setPassword(data.employee.password);
                 setConfirmPassword(data.employee.password);
               }
+            const eid = String(data.employee.id || editEmployeeId || "");
+            if (eid) {
+              fetch(`/api/employee-hierarchy?employeeId=${encodeURIComponent(eid)}`)
+                .then((r) => r.json())
+                .then((h) => {
+                  if (h?.success && h.reportsTo?.id) {
+                    setReportingManagerId(String(h.reportsTo.id));
+                  }
+                })
+                .catch(() => {});
+            }
           }
         })
         .catch(err => console.error('Error fetching personal details:', err));
@@ -769,6 +828,10 @@ export default function AddEmployeeForm({
         return;
       }
     }
+    if (orgRoleNeedsDepartmentConfirm(role) && !reportingManagerId) {
+      toastError("Please select Reporting Manager (CEO).");
+      return;
+    }
     // Do not require employeeId before save; it will be set after backend returns it
     const hrmPayload: any = {
       first_name: firstName || '',
@@ -819,8 +882,15 @@ export default function AddEmployeeForm({
       }
       return;
     }
+    const savedId = String(
+      (!isEdit && hrmData.id ? hrmData.id : employeeId || editEmployeeId) || "",
+    );
     if (!isEdit && hrmData.id) {
       setEmployeeId(hrmData.id.toString());
+    }
+    if (savedId && orgRoleNeedsDepartmentConfirm(role)) {
+      const ok = await saveReportingManager(savedId);
+      if (!ok) return;
     }
     toastSuccess(isEdit ? 'Employee updated.' : 'Employee saved.');
     setActiveTab('Contact Details');
@@ -1067,6 +1137,9 @@ export default function AddEmployeeForm({
                     const next = normalizeOrgRole(e.target.value);
                     setRole(next);
                     setDepartmentScopeConfirmed(false);
+                    if (!orgRoleNeedsDepartmentConfirm(next)) {
+                      setReportingManagerId("");
+                    }
                   }}
                   required
                   title="Overall role. Feature permissions are assigned in System Control."
@@ -1081,10 +1154,33 @@ export default function AddEmployeeForm({
                   {role === "BOD/CEO"
                     ? "CEO can see all departments. Feature access still comes from System Control."
                     : orgRoleNeedsDepartmentConfirm(role)
-                      ? "Manager / Team Lead: confirm their department on Job Details — that becomes their scope."
+                      ? "Manager / Team Lead: select Reporting Manager (CEO) below — their leave goes to that CEO’s inbox."
                       : "Officer: if System Control grants attendance/leave access, scope stays their own department only."}
                 </div>
               </div>
+              {orgRoleNeedsDepartmentConfirm(role) ? (
+                <div>
+                  <label className={styles.fieldLabel}>Reporting Manager (CEO)*</label>
+                  <select
+                    className={styles.select}
+                    value={reportingManagerId}
+                    onChange={(e) => setReportingManagerId(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Select CEO --</option>
+                    {ceoOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className={styles.note} style={{ marginTop: 6 }}>
+                    Choose Joe, Max, or Mubeen — leave approval for this{" "}
+                    {role === "Management" ? "Manager" : "Team Lead"} appears in that
+                    CEO’s ticket inbox.
+                  </div>
+                </div>
+              ) : null}
               <div className={styles.toggleRow}>
                 <span className={styles.toggleLabel}>Create Login Details</span>
                 <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>

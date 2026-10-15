@@ -1,6 +1,6 @@
 /**
  * Org dept heads / CEOs:
- * Max Miles → HIT + HR + Finance
+ * Max Miles → HIT + HR + Medical Billing + Finance
  * Mubeen → IT + Marketing + CEst.
  * Joe White → DM
  */
@@ -15,16 +15,55 @@ export const DEPT_HEAD_NAME_HINT: Record<string, string> = {
   "CEst.": "mubeen",
   HIT: "max",
   HR: "max",
+  "Medical Billing": "max",
   Finance: "max",
   DM: "joe",
 };
 
 /** Chips owned by each head hint. */
 export const HEAD_OWNED_CHIPS: Record<string, string[]> = {
-  max: ["HIT", "HR", "Finance"],
+  max: ["HIT", "HR", "Medical Billing", "Finance"],
   mubeen: ["IT", "CEst."],
   joe: ["DM"],
 };
+
+export type OrgCeoOption = {
+  id: string;
+  name: string;
+  hint: "joe" | "max" | "mubeen";
+};
+
+/** Live Joe / Max / Mubeen employees for Reporting Manager dropdown. */
+export async function listOrgCeoEmployees(): Promise<OrgCeoOption[]> {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, first_name, last_name, role
+       FROM hrm_employees
+       WHERE status IS NULL OR status IN ('enabled', 'active', 'Enabled', 'Active')
+       ORDER BY id ASC`,
+    );
+    const list = rows as {
+      id: number;
+      first_name?: string | null;
+      last_name?: string | null;
+      role?: string | null;
+    }[];
+    const out: OrgCeoOption[] = [];
+    for (const hint of ["joe", "max", "mubeen"] as const) {
+      const match = list.find((e) =>
+        nameLooksLikeDeptHead(e.first_name, e.last_name, hint),
+      );
+      if (!match) continue;
+      const name =
+        `${String(match.first_name || "").trim()} ${String(match.last_name || "").trim()}`.trim() ||
+        `Employee ${match.id}`;
+      out.push({ id: String(match.id), name, hint });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
 
 export function nameLooksLikeDeptHead(
   firstName: string | null | undefined,
