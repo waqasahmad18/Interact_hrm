@@ -150,9 +150,11 @@ export function FaceVerifyModal({
     setMultipleFaces(true);
     setError(null);
     setGuidance("Only one person should be in the frame — others please step out of camera view.");
+    // Cap display — detector ghost stacks (e.g. 409) are not real people.
+    const n = Number.isFinite(count) ? Math.floor(count) : 0;
     setStatus(
-      count >= 2
-        ? `${count} faces in frame — clock action blocked.`
+      n >= 2 && n <= 8
+        ? `${n} faces in frame — clock action blocked.`
         : "Multiple faces in the frame — clock action blocked."
     );
   }, []);

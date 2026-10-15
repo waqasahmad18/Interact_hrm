@@ -89,10 +89,14 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // "multiple faces".
 // Genuine second person near the edge often projects smaller — keep this low
 // enough that edge faces still count (not centre-only), but above tiny ghosts.
-const COUNT_MIN_FACE_AREA_RATIO = 0.018;
-const COUNT_MIN_SCORE = 0.42;
+const COUNT_MIN_FACE_AREA_RATIO = 0.03;
+const COUNT_MIN_SCORE = 0.5;
 /** Live verify: only accept confident, well-framed faces for the descriptor. */
 const VERIFY_MIN_SCORE = 0.48;
+/** Collapse overlapping boxes on the same face (prevents absurd counts like 409). */
+const COUNT_NMS_IOU = 0.35;
+/** Second person must be at least this fraction of the largest face area. */
+const COUNT_RELATIVE_MIN_AREA = 0.28;
 
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
@@ -121,16 +125,14 @@ async function initFaceRuntime(): Promise<void> {
     inputSize: 416,
     scoreThreshold: 0.36,
   });
-  // Counting detectors run at a HIGH score threshold so background "ghost"
-  // detections (lights, walls, reflections) are never mistaken for a person.
-  // Only confident, real-face detections are counted.
+  // Counting detectors — high score so ceiling lights / walls are not faces.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 512,
-    scoreThreshold: 0.4,
+    inputSize: 416,
+    scoreThreshold: 0.5,
   });
   FACE_COUNT_DETECTORS = [
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.42 }),
-    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.38 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 }),
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.48 }),
   ];
   ENROLL_DETECTORS = [
     new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.32 }),
@@ -228,21 +230,62 @@ function minArea(canvas: HTMLCanvasElement, ratio: number): number {
   return canvas.width * canvas.height * ratio;
 }
 
+function detectionArea(d: FaceDetection): number {
+  return Math.max(0, d.box.width) * Math.max(0, d.box.height);
+}
+
+function detectionIoU(a: FaceDetection, b: FaceDetection): number {
+  const ax1 = a.box.x;
+  const ay1 = a.box.y;
+  const ax2 = ax1 + a.box.width;
+  const ay2 = ay1 + a.box.height;
+  const bx1 = b.box.x;
+  const by1 = b.box.y;
+  const bx2 = bx1 + b.box.width;
+  const by2 = by1 + b.box.height;
+  const ix1 = Math.max(ax1, bx1);
+  const iy1 = Math.max(ay1, by1);
+  const ix2 = Math.min(ax2, bx2);
+  const iy2 = Math.min(ay2, by2);
+  const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
+  const union = detectionArea(a) + detectionArea(b) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+/** Keep highest-score box when many detector windows overlap one face. */
+function nonMaxSuppressFaces(
+  detections: FaceDetection[],
+  iouThresh = COUNT_NMS_IOU
+): FaceDetection[] {
+  const sorted = [...detections].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const kept: FaceDetection[] = [];
+  for (const d of sorted) {
+    if (kept.every((k) => detectionIoU(d, k) < iouThresh)) kept.push(d);
+  }
+  return kept;
+}
+
 /**
- * Count only GENUINE faces: each detection must be both large enough (a real
- * person, not a tiny background artefact) and confident enough (high score, not
- * a low-confidence hallucination on wall/light/glass texture). This is what
- * stops a single person being reported as "multiple faces".
+ * Count only GENUINE faces: size + score, then NMS (one box per person), then
+ * drop tiny ghosts relative to the largest face. Without NMS, TinyFaceDetector
+ * can report hundreds of overlapping boxes on a single person (e.g. "409 faces").
  */
 function filterRealFaces(
   canvas: HTMLCanvasElement,
   detections: FaceDetection[],
   ratio: number
 ): FaceDetection[] {
+  if (!Array.isArray(detections) || detections.length === 0) return [];
   const area = minArea(canvas, ratio);
-  return detections.filter(
-    (d) => d.box.width * d.box.height >= area && d.score >= COUNT_MIN_SCORE
-  );
+  const scored = detections.filter((d) => {
+    if (!d?.box) return false;
+    const a = detectionArea(d);
+    return a >= area && (d.score || 0) >= COUNT_MIN_SCORE;
+  });
+  const nms = nonMaxSuppressFaces(scored);
+  if (nms.length <= 1) return nms;
+  const maxA = Math.max(...nms.map(detectionArea));
+  return nms.filter((d) => detectionArea(d) >= maxA * COUNT_RELATIVE_MIN_AREA);
 }
 
 type WithDescriptor = {
