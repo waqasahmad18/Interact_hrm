@@ -146,7 +146,7 @@ export default function GuardScreenshotSettings() {
     }
   }
 
-  const presets = [120, 180, 300, 600];
+  const presets = [180, 300, 600];
   const disabled = loading || saving;
 
   return (
@@ -165,9 +165,9 @@ export default function GuardScreenshotSettings() {
         <span className={styles.toggleText}>
           <span className={styles.toggleTitle}>Auto screenshots (Interact Guard)</span>
           <span className={styles.toggleHint}>
-            When on, Guard captures in memory and saves only on the HRM server
-            (gallery). Prefer Low + ≥3 min interval when many PCs are online
-            (avoids 502 Bad Gateway under load).
+            When on, each PC uploads in its own time-slot (not all at once).
+            Images stay in memory only — never kept on the PC after upload.
+            Prefer Low + 5 min when many agents are online.
           </span>
         </span>
       </label>

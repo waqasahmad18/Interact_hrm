@@ -81,8 +81,8 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   agentExitPassword: "InteractAdmin",
   enabledEmployeeIds: [],
   screenshotCaptureEnabled: false,
-  /** 180s default — safer for many agents (502/busy under load). */
-  screenshotIntervalSeconds: 180,
+  /** 300s default — agents stagger across the window (no stampede). */
+  screenshotIntervalSeconds: 300,
   /** Low preset defaults — smaller uploads keep staging stable. */
   screenshotJpegQuality: 35,
   screenshotScalePercent: 40,
@@ -342,7 +342,7 @@ export async function getPresenceSettings(): Promise<PresenceSettings> {
     screenshotIntervalSeconds: parseIntClamped(
       screenshotIntervalSeconds,
       d.screenshotIntervalSeconds,
-      5,
+      120,
       3600
     ),
     screenshotJpegQuality: parseIntClamped(
@@ -452,7 +452,7 @@ export async function savePresenceSettings(
     screenshotIntervalSeconds: parseIntClamped(
       String(input.screenshotIntervalSeconds ?? current.screenshotIntervalSeconds),
       current.screenshotIntervalSeconds,
-      5,
+      120,
       3600
     ),
     screenshotJpegQuality: parseIntClamped(
