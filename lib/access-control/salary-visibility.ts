@@ -1,5 +1,6 @@
 import { pool } from "@/lib/db";
 import {
+  accessFeatureFlagsFrom,
   canViewEmployeeSalary,
   mergeHrAccessPermissions,
   redactSalaryRow,
@@ -7,6 +8,7 @@ import {
 } from "@/lib/access-control/hr-access";
 import {
   loadEmployeePermissionOverrides,
+  loadGlobalFeatures,
   loadPermissionsForRole,
   resolveEmployeeAccessRoleSlug,
 } from "@/lib/access-control/store";
@@ -52,7 +54,11 @@ async function loadEmpMeta(ids: string[]): Promise<Map<string, EmpMeta>> {
 
 async function loadViewerPermissionKeys(employeeId: string): Promise<string[]> {
   const emp = await resolveEmployeeAccessRoleSlug(employeeId);
-  const override = await loadEmployeePermissionOverrides(emp.employeeId);
+  const [override, features, meta] = await Promise.all([
+    loadEmployeePermissionOverrides(emp.employeeId),
+    loadGlobalFeatures(),
+    loadEmpMeta([employeeId]),
+  ]);
   const rolePermSets = await Promise.all(
     emp.roleSlugs.map((slug) => loadPermissionsForRole(slug)),
   );
@@ -60,8 +66,8 @@ async function loadViewerPermissionKeys(employeeId: string): Promise<string[]> {
     override != null
       ? override.filter((k) => k !== "__custom__")
       : [...new Set(rolePermSets.flat())];
-  const meta = await loadEmpMeta([employeeId]);
   const m = meta.get(String(employeeId));
+  const flags = accessFeatureFlagsFrom(features);
   return mergeHrAccessPermissions({
     permissions: base,
     departmentName: m?.department_name,
@@ -69,6 +75,8 @@ async function loadViewerPermissionKeys(employeeId: string): Promise<string[]> {
     accessRoleSlugs: emp.roleSlugs,
     firstName: m?.first_name ?? emp.firstName,
     lastName: m?.last_name ?? emp.lastName,
+    hrDepartmentDefaultsEnabled: flags.hrDepartmentDefaultsEnabled,
+    allEmployeeDashboardEnabled: flags.allEmployeeDashboardEnabled,
   });
 }
 

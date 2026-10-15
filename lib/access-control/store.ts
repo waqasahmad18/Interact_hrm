@@ -1407,8 +1407,12 @@ export async function getEmployeeAccessPayload(employeeId: string) {
       ? empOverride.filter((k) => k !== "__custom__")
       : rolePermissions;
 
-  const { mergeHrAccessPermissions } = await import("@/lib/access-control/hr-access");
+  const {
+    mergeHrAccessPermissions,
+    accessFeatureFlagsFrom,
+  } = await import("@/lib/access-control/hr-access");
   const { isManagerOrgRole } = await import("@/lib/org-role");
+  const accessFlags = accessFeatureFlagsFrom(features);
   const permissions = mergeHrAccessPermissions({
     permissions: basePermissions,
     departmentName: deptName,
@@ -1416,6 +1420,8 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     accessRoleSlugs: emp.roleSlugs,
     firstName: emp.firstName,
     lastName: emp.lastName,
+    hrDepartmentDefaultsEnabled: accessFlags.hrDepartmentDefaultsEnabled,
+    allEmployeeDashboardEnabled: accessFlags.allEmployeeDashboardEnabled,
   });
 
   const enabledFeatures: Record<string, boolean> = {};
@@ -1428,6 +1434,9 @@ export async function getEmployeeAccessPayload(employeeId: string) {
     BASE_ROLES.find((r) => r.id === emp.roleSlug);
 
   const manager = isManagerOrgRole(emp.legacyRole);
+  const portalType = accessFlags.allEmployeeDashboardEnabled
+    ? "employee-dashboard"
+    : roleMetaRow?.portal || "employee-dashboard";
 
   return {
     employeeId: emp.employeeId,
@@ -1438,7 +1447,7 @@ export async function getEmployeeAccessPayload(employeeId: string) {
       slug: emp.roleSlug,
       slugs: emp.roleSlugs,
       display_name: roleMetaRow?.name || emp.roleSlug,
-      portal_type: roleMetaRow?.portal || "employee-dashboard",
+      portal_type: portalType,
       data_scope: roleMetaRow?.scope || "SELF",
     },
     permissions,

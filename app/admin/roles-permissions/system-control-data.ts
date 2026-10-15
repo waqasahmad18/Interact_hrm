@@ -520,6 +520,18 @@ export function defaultPermissionKeysForRole(
 }
 
 export const GLOBAL_FEATURES: GlobalFeature[] = [
+  {
+    key: "hr_department_defaults",
+    name: "HR department auto permissions",
+    desc: "ON = HR staff automatically get the default HR pack (attendance, leave, payroll, tickets). OFF = only permissions assigned in System Control.",
+    on: false,
+  },
+  {
+    key: "all_employee_dashboard",
+    name: "All profiles → employee dashboard",
+    desc: "ON = every role (CEO, Team Lead, HR Manager, etc.) only sees the default employee dashboard. OFF = each role keeps its own menus from permissions.",
+    on: true,
+  },
   { key: "biometric", name: "Biometric face clock-in", desc: "Require face verify on clock in/out", on: true },
   { key: "tungsten", name: "Tungsten IN/OUT sync", desc: "Punch reconciliation page", on: true },
   { key: "prayer", name: "Prayer break tracking", desc: "Prayer module on employee time page", on: true },

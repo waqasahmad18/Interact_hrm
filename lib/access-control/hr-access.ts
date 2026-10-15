@@ -14,6 +14,10 @@ import {
 import { permissionSetHas } from "@/lib/access-control/permission-scope";
 import { detectDeptHeadHint } from "@/lib/dept-heads";
 
+/** System Control → Features keys that gate access merges. */
+export const FEATURE_HR_DEPARTMENT_DEFAULTS = "hr_department_defaults";
+export const FEATURE_ALL_EMPLOYEE_DASHBOARD = "all_employee_dashboard";
+
 /** Tabs / ops every HR employee gets automatically (no System Control). */
 export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "attendance.summary.view",
@@ -94,14 +98,43 @@ export function mergeHrAccessPermissions(opts: {
   /** Optional — used to detect Joe / Max / Mubeen even if role is not BOD/CEO. */
   firstName?: string | null;
   lastName?: string | null;
+  /**
+   * System Control → Features: "HR department auto permissions".
+   * When false, skip auto-merging HR_DEPARTMENT_DEFAULT_PERMISSIONS / HR ticket pack.
+   */
+  hrDepartmentDefaultsEnabled?: boolean;
+  /**
+   * System Control → Features: "All profiles → employee dashboard".
+   * When true, strip role menus so everyone keeps the base employee shell.
+   * Managers/CEO still keep system.* so Features can be turned OFF again.
+   */
+  allEmployeeDashboardEnabled?: boolean;
 }): string[] {
-  const set = new Set(opts.permissions.filter(Boolean));
-  const hr = isHrDepartment(opts.departmentName);
   const manager = isManagerOrgRole(opts.orgRole);
   const teamLead = isTeamLeadOrgRole(opts.orgRole);
   const ceo = isCeoOrgRole(opts.orgRole);
   const headHint = detectDeptHeadHint(opts.firstName, opts.lastName);
   const deptHeadCeo = ceo || Boolean(headHint);
+
+  // Master switch: everyone → default employee dashboard (no role menus).
+  if (opts.allEmployeeDashboardEnabled) {
+    const set = new Set<string>();
+    for (const k of opts.permissions.filter(Boolean)) {
+      if (k.startsWith("system.")) set.add(k);
+    }
+    if (manager || deptHeadCeo) {
+      for (const k of MANAGER_SYSTEM_CONTROL_PERMISSIONS) set.add(k);
+    } else {
+      for (const k of [...set]) {
+        if (k.startsWith("system.")) set.delete(k);
+      }
+    }
+    return [...set];
+  }
+
+  const set = new Set(opts.permissions.filter(Boolean));
+  const hr = isHrDepartment(opts.departmentName);
+  const hrDefaultsOn = opts.hrDepartmentDefaultsEnabled !== false;
   const slugs = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase()
   );
@@ -114,7 +147,7 @@ export function mergeHrAccessPermissions(opts: {
     set.delete("leave.list.view");
     set.delete("leave.approve.manager");
     set.delete("department.leaves.view");
-  } else if (hr) {
+  } else if (hr && hrDefaultsOn) {
     for (const k of HR_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
     // All HR staff see Ticket Inbox. Manager / Team Lead may approve leave.
     for (const k of HR_TICKET_VIEW_PERMISSIONS) set.add(k);
@@ -149,6 +182,26 @@ export function mergeHrAccessPermissions(opts: {
   }
 
   return [...set];
+}
+
+/** Read ON/OFF for the two access master switches from loaded global features. */
+export function accessFeatureFlagsFrom(
+  features: { key: string; on?: boolean }[] | null | undefined,
+): {
+  hrDepartmentDefaultsEnabled: boolean;
+  allEmployeeDashboardEnabled: boolean;
+} {
+  const byKey = new Map(
+    (features || []).map((f) => [String(f.key || "").trim(), Boolean(f.on)]),
+  );
+  return {
+    // Missing row → OFF (gradual rollout default).
+    hrDepartmentDefaultsEnabled: byKey.get(FEATURE_HR_DEPARTMENT_DEFAULTS) === true,
+    // Missing row → ON (everyone starts on employee dashboard until turned off).
+    allEmployeeDashboardEnabled: byKey.has(FEATURE_ALL_EMPLOYEE_DASHBOARD)
+      ? byKey.get(FEATURE_ALL_EMPLOYEE_DASHBOARD) === true
+      : true,
+  };
 }
 
 export type SalaryVisibilityInput = {
