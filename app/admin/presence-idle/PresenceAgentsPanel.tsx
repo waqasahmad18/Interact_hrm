@@ -20,6 +20,9 @@ type AgentRow = {
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   health: AgentHealth;
+  serviceLastSeenAt?: string | null;
+  serviceHealth?: AgentHealth;
+  serviceVersion?: string | null;
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
   assignmentLocked?: boolean;
@@ -79,6 +82,12 @@ function healthLabel(h: AgentHealth) {
   if (h === "healthy") return "Active";
   if (h === "stale") return "Stale";
   return "Offline";
+}
+
+function serviceLabel(h: AgentHealth | undefined) {
+  if (h === "healthy") return "Svc ON";
+  if (h === "stale") return "Svc stale";
+  return "Svc OFF";
 }
 
 function empLabel(e: EmpRow) {
@@ -224,7 +233,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       }
       toastSuccess(
         command === "start"
-          ? "Started — monitoring armed."
+          ? "Start queued — service will launch the app if the PC is on (user logged in)."
           : command === "pause"
             ? "Stopped — face checks paused."
             : data.message || "Command queued",
@@ -271,7 +280,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
       }
       toastSuccess(
         enabled
-          ? "Started — idle face checks armed"
+          ? "Start queued — if agent is dead, Windows service relaunches it (~12s when user is logged in)."
           : "Stopped — idle face checks paused",
       );
     } catch {
@@ -532,8 +541,19 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                     <td>
                       <span
                         className={`${styles.healthBadge} ${styles[`health_${a.health}`]}`}
+                        title="Tray agent heartbeat"
                       >
                         {healthLabel(a.health)}
+                      </span>{" "}
+                      <span
+                        className={`${styles.healthBadge} ${styles[`health_${a.serviceHealth || "offline"}`]}`}
+                        title={
+                          a.serviceHealth === "healthy"
+                            ? "Windows service online — Admin can remote-start the app"
+                            : "Windows service offline — need Guard 1.2.60+; Admin Start needs the service"
+                        }
+                      >
+                        {serviceLabel(a.serviceHealth)}
                       </span>
                       {locked ? (
                         <span

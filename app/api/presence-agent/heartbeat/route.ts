@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
       local_employee_id?: string;
       agent_version?: string;
       agent_product?: string;
+      component?: string;
+      completed_command?: string;
+      agent_running?: boolean;
     };
 
     const result = await upsertAgentHeartbeat({
@@ -32,6 +35,9 @@ export async function POST(req: NextRequest) {
       agentVersion: body.agent_version,
       agentProduct: body.agent_product,
       clientIp: clientIp(req) || undefined,
+      component: body.component,
+      completedCommand: body.completed_command,
+      agentRunning: body.agent_running,
     });
 
     return NextResponse.json(

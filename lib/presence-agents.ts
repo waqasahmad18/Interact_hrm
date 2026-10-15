@@ -30,6 +30,10 @@ export type PresenceAgentRow = {
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   health: AgentHealth;
+  /** Windows service heartbeat — Admin remote Start needs this online. */
+  serviceLastSeenAt: string | null;
+  serviceHealth: AgentHealth;
+  serviceVersion: string | null;
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
   assignedPseudonym: string | null;
@@ -51,6 +55,8 @@ type DbRow = {
   last_ip: string | null;
   first_seen_at: Date | string | null;
   last_seen_at: Date | string | null;
+  service_last_seen_at?: Date | string | null;
+  service_version?: string | null;
   assigned_first_name?: string | null;
   assigned_last_name?: string | null;
   assigned_employee_code?: string | null;
@@ -82,6 +88,8 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
       last_ip varchar(45) DEFAULT NULL,
       first_seen_at datetime DEFAULT NULL,
       last_seen_at datetime DEFAULT NULL,
+      service_last_seen_at datetime DEFAULT NULL,
+      service_version varchar(32) DEFAULT NULL,
       pending_command varchar(32) DEFAULT NULL,
       command_issued_at datetime DEFAULT NULL,
       pc_key varchar(64) DEFAULT NULL,
@@ -113,6 +121,12 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
   );
   await addColumn(
     `ALTER TABLE ${TABLE} ADD COLUMN assignment_locked tinyint(1) NOT NULL DEFAULT 0`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN service_last_seen_at datetime DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN service_version varchar(32) DEFAULT NULL`,
   );
 
   if (!pcKeyReady) {
@@ -270,6 +284,9 @@ function mapRow(r: DbRow): PresenceAgentRow {
     firstSeenAt: toIso(r.first_seen_at),
     lastSeenAt: toIso(r.last_seen_at),
     health: agentHealthFromLastSeen(r.last_seen_at),
+    serviceLastSeenAt: toIso(r.service_last_seen_at ?? null),
+    serviceHealth: agentHealthFromLastSeen(r.service_last_seen_at ?? null),
+    serviceVersion: r.service_version?.trim() || null,
     assignedEmployeeName,
     assignedEmployeeCode: r.assigned_employee_code ?? null,
     assignedPseudonym: r.assigned_pseudonym?.trim() || null,
@@ -285,9 +302,23 @@ export type HeartbeatInput = {
   agentVersion?: string | null;
   agentProduct?: string | null;
   clientIp?: string | null;
+  /** "service" = Windows service (does not mark tray agent Online). */
+  component?: string | null;
+  /** Service acks launch after CreateProcessAsUser succeeds. */
+  completedCommand?: string | null;
+  agentRunning?: boolean | null;
 };
 
 export type AgentCommand = "restart" | "exit" | "start" | "pause" | "resume" | "on";
+
+const LAUNCH_COMMANDS: AgentCommand[] = ["start", "on", "resume", "restart"];
+
+function isServiceComponent(input: HeartbeatInput): boolean {
+  const c = String(input.component ?? "").trim().toLowerCase();
+  if (c === "service") return true;
+  const p = String(input.agentProduct ?? "").trim().toLowerCase();
+  return p.includes("service");
+}
 
 export type HeartbeatResult = {
   assignedEmployeeId: string | null;
@@ -335,10 +366,41 @@ export async function upsertAgentHeartbeat(
   const agentProduct = trimOrNull(input.agentProduct, 64);
   const lastIp = trimOrNull(input.clientIp, 45);
   const now = new Date();
-  const pcKey = computePcKey(hostname, windowsUser);
+  const asService = isServiceComponent(input);
+  const pcKey = asService ? null : computePcKey(hostname, windowsUser);
+
+  // Windows service: touch service_* only (shared machine_id with tray agent).
+  // Do not rematch by pc_key (SYSTEM user) and do not flip agent Online.
+  if (asService) {
+    await pool.execute(
+      `INSERT INTO ${TABLE}
+        (machine_id, hostname, hrm_base_url, service_version, last_ip, first_seen_at, last_seen_at, service_last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+       ON DUPLICATE KEY UPDATE
+         hostname = COALESCE(VALUES(hostname), hostname),
+         hrm_base_url = COALESCE(VALUES(hrm_base_url), hrm_base_url),
+         service_version = VALUES(service_version),
+         last_ip = COALESCE(VALUES(last_ip), last_ip),
+         service_last_seen_at = VALUES(service_last_seen_at)`,
+      [machineId, hostname, hrmBaseUrl, agentVersion, lastIp, now, now],
+    );
+
+    const completed = String(input.completedCommand ?? "")
+      .trim()
+      .toLowerCase();
+    if (LAUNCH_COMMANDS.includes(completed as AgentCommand)) {
+      await pool.execute(
+        `UPDATE ${TABLE}
+         SET pending_command = NULL, command_issued_at = NULL, admin_enabled = 1
+         WHERE machine_id = ?
+           AND LOWER(TRIM(COALESCE(pending_command, ''))) IN ('start','on','resume','restart')`,
+        [machineId],
+      );
+    }
+  }
 
   // Reinstalls used to send a new random machine_id — reuse the existing PC row.
-  if (pcKey) {
+  if (!asService && pcKey) {
     const [byKey] = await pool.execute(
       `SELECT machine_id FROM ${TABLE} WHERE pc_key = ? LIMIT 1`,
       [pcKey],
@@ -362,67 +424,70 @@ export async function upsertAgentHeartbeat(
     }
   }
 
-  // If admin locked this profile, only refresh last_seen / version — never overwrite ID/name/IP
-  const [lockRows] = await pool.execute(
-    `SELECT assignment_locked FROM ${TABLE} WHERE machine_id = ? LIMIT 1`,
-    [machineId],
-  );
-  const isLocked = asBool(
-    (lockRows as { assignment_locked?: number | boolean | null }[])[0]
-      ?.assignment_locked,
-  );
-
-  if (isLocked) {
-    await pool.execute(
-      `UPDATE ${TABLE}
-       SET agent_version = COALESCE(?, agent_version),
-           agent_product = COALESCE(?, agent_product),
-           last_seen_at = ?
-       WHERE machine_id = ?`,
-      [agentVersion, agentProduct, now, machineId],
+  // Tray agent path only (service already wrote service_* above)
+  if (!asService) {
+    // If admin locked this profile, only refresh last_seen / version — never overwrite ID/name/IP
+    const [lockRows] = await pool.execute(
+      `SELECT assignment_locked FROM ${TABLE} WHERE machine_id = ? LIMIT 1`,
+      [machineId],
     );
-  } else {
-    await pool.execute(
-      `INSERT INTO ${TABLE}
-        (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         hostname = VALUES(hostname),
-         windows_user = VALUES(windows_user),
-         hrm_base_url = VALUES(hrm_base_url),
-         local_employee_id = VALUES(local_employee_id),
-         agent_version = VALUES(agent_version),
-         agent_product = COALESCE(VALUES(agent_product), agent_product),
-         last_ip = VALUES(last_ip),
-         last_seen_at = VALUES(last_seen_at),
-         pc_key = VALUES(pc_key)`,
-      [
-        machineId,
-        hostname,
-        windowsUser,
-        hrmBaseUrl,
-        localEmployeeId,
-        agentVersion,
-        agentProduct,
-        lastIp,
-        now,
-        now,
-        pcKey,
-      ],
+    const isLocked = asBool(
+      (lockRows as { assignment_locked?: number | boolean | null }[])[0]
+        ?.assignment_locked,
     );
 
-    // Safety net for any race that slipped past pc_key
-    await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
-
-    // Auto-bind only when unlocked
-    if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
+    if (isLocked) {
       await pool.execute(
         `UPDATE ${TABLE}
-         SET assigned_employee_id = ?
-         WHERE machine_id = ?
-           AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = local_employee_id)`,
-        [localEmployeeId, machineId],
+         SET agent_version = COALESCE(?, agent_version),
+             agent_product = COALESCE(?, agent_product),
+             last_seen_at = ?
+         WHERE machine_id = ?`,
+        [agentVersion, agentProduct, now, machineId],
       );
+    } else {
+      await pool.execute(
+        `INSERT INTO ${TABLE}
+          (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           hostname = VALUES(hostname),
+           windows_user = VALUES(windows_user),
+           hrm_base_url = VALUES(hrm_base_url),
+           local_employee_id = VALUES(local_employee_id),
+           agent_version = VALUES(agent_version),
+           agent_product = COALESCE(VALUES(agent_product), agent_product),
+           last_ip = VALUES(last_ip),
+           last_seen_at = VALUES(last_seen_at),
+           pc_key = VALUES(pc_key)`,
+        [
+          machineId,
+          hostname,
+          windowsUser,
+          hrmBaseUrl,
+          localEmployeeId,
+          agentVersion,
+          agentProduct,
+          lastIp,
+          now,
+          now,
+          pcKey,
+        ],
+      );
+
+      // Safety net for any race that slipped past pc_key
+      await mergeDuplicateAgentsForPc(hostname, windowsUser, machineId);
+
+      // Auto-bind only when unlocked
+      if (localEmployeeId && /^\d+$/.test(localEmployeeId)) {
+        await pool.execute(
+          `UPDATE ${TABLE}
+           SET assigned_employee_id = ?
+           WHERE machine_id = ?
+             AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = local_employee_id)`,
+          [localEmployeeId, machineId],
+        );
+      }
     }
   }
 
@@ -464,22 +529,42 @@ export async function upsertAgentHeartbeat(
   const allowed: AgentCommand[] = ["restart", "exit", "start", "pause", "resume", "on"];
   if (allowed.includes(rawCmd as AgentCommand)) {
     command = rawCmd as AgentCommand;
-    if (command === "pause") {
-      adminEnabled = false;
-      await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 0 WHERE machine_id = ?`, [
-        machineId,
-      ]);
+    if (asService) {
+      // Launch cmds stay pending until service sends completed_command (retry if no user session).
+      if (command === "pause") {
+        adminEnabled = false;
+        await pool.execute(
+          `UPDATE ${TABLE}
+           SET pending_command = NULL, command_issued_at = NULL, admin_enabled = 0
+           WHERE machine_id = ?`,
+          [machineId],
+        );
+      } else if (command === "exit") {
+        await pool.execute(
+          `UPDATE ${TABLE} SET pending_command = NULL, command_issued_at = NULL WHERE machine_id = ?`,
+          [machineId],
+        );
+      } else if (LAUNCH_COMMANDS.includes(command)) {
+        adminEnabled = true;
+      }
+    } else {
+      if (command === "pause") {
+        adminEnabled = false;
+        await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 0 WHERE machine_id = ?`, [
+          machineId,
+        ]);
+      }
+      if (command === "resume" || command === "on" || command === "start") {
+        adminEnabled = true;
+        await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 1 WHERE machine_id = ?`, [
+          machineId,
+        ]);
+      }
+      await pool.execute(
+        `UPDATE ${TABLE} SET pending_command = NULL, command_issued_at = NULL WHERE machine_id = ?`,
+        [machineId],
+      );
     }
-    if (command === "resume" || command === "on" || command === "start") {
-      adminEnabled = true;
-      await pool.execute(`UPDATE ${TABLE} SET admin_enabled = 1 WHERE machine_id = ?`, [
-        machineId,
-      ]);
-    }
-    await pool.execute(
-      `UPDATE ${TABLE} SET pending_command = NULL, command_issued_at = NULL WHERE machine_id = ?`,
-      [machineId],
-    );
   }
 
   const settings = await getPresenceSettings();
