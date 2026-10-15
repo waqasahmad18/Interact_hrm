@@ -98,6 +98,36 @@ function empLabel(e: EmpRow) {
   return `${name} (ID ${e.id})${code}`;
 }
 
+function empDisplayName(e: EmpRow) {
+  return (
+    `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`
+  );
+}
+
+/** Prefer API name; fall back to employees list so Save always shows a real name. */
+function resolveAssignedName(
+  a: AgentRow,
+  employees: EmpRow[],
+): string | null {
+  const fromApi = (a.assignedEmployeeName || "").trim();
+  if (fromApi && !/^employee\s+\d+$/i.test(fromApi)) return fromApi;
+  const id = String(a.assignedEmployeeId ?? "").trim();
+  if (!id) return fromApi || null;
+  const e = employees.find((x) => String(x.id) === id);
+  if (e) return empDisplayName(e);
+  return fromApi || `Employee ${id}`;
+}
+
+function displayWindowsUser(raw: string | null | undefined): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "—";
+  // Hide polluted SQL / SYSTEM leftovers from bad service repair
+  if (s.toUpperCase().startsWith("CASE WHEN")) return "—";
+  if (s.toUpperCase() === "SYSTEM") return "—";
+  if (s.toUpperCase() === "NT AUTHORITY\\SYSTEM") return "—";
+  return s;
+}
+
 function normalizeUrlDraft(url: string | null | undefined) {
   return String(url ?? "").trim().replace(/\/+$/, "");
 }
@@ -529,9 +559,7 @@ export default function PresenceAgentsPanel({ employees }: Props) {
             <tbody>
               {agents.map((a) => {
                 const locked = !!a.assignmentLocked;
-                const lockedEmp =
-                  a.assignedEmployeeName ||
-                  (a.assignedEmployeeId ? `Employee ${a.assignedEmployeeId}` : null);
+                const lockedEmp = resolveAssignedName(a, employees);
                 const urlValue = urlDrafts[a.machineId] ?? "";
                 const urlInPresets = HRM_URL_PRESETS.some((p) => p.value === urlValue);
                 return (
@@ -568,7 +596,9 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                     <td>
                       <div className={styles.pcCell}>
                         <strong>{a.hostname || "Unknown PC"}</strong>
-                        <span className={styles.empMeta}>{a.windowsUser || "—"}</span>
+                        <span className={styles.empMeta}>
+                          {displayWindowsUser(a.windowsUser)}
+                        </span>
                       </div>
                     </td>
                     <td className={styles.urlCell}>

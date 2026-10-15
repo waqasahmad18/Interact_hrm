@@ -389,23 +389,50 @@ export async function upsertAgentHeartbeat(
       [machineId, hostname, hrmBaseUrl, agentVersion, lastIp, now, now],
     );
 
-    // Repair rows polluted when service HB was treated as tray agent (version 1.1.0 / SYSTEM).
-    await pool.execute(
-      `UPDATE ${TABLE}
-       SET agent_version = CASE
-             WHEN UPPER(TRIM(COALESCE(windows_user, ''))) IN ('SYSTEM', 'NT AUTHORITY\\SYSTEM')
-               OR LOWER(COALESCE(agent_product, '')) LIKE '%service%'
-               OR (? IS NOT NULL AND agent_version = ?)
-             THEN NULL ELSE agent_version END,
-           agent_product = CASE
-             WHEN LOWER(COALESCE(agent_product, '')) LIKE '%service%'
-             THEN 'InteractGuard' ELSE agent_product END,
-           windows_user = CASE
-             WHEN UPPER(TRIM(COALESCE(windows_user, ''))) IN ('SYSTEM', 'NT AUTHORITY\\SYSTEM')
-             THEN NULL ELSE windows_user END
-       WHERE machine_id = ?`,
-      [agentVersion, agentVersion, machineId],
-    );
+    // Repair rows polluted when service HB was treated as tray agent (no SQL CASE — mongo-safe).
+    try {
+      const [polluteRows] = await pool.execute(
+        `SELECT windows_user, agent_version, agent_product FROM ${TABLE} WHERE machine_id = ? LIMIT 1`,
+        [machineId],
+      );
+      const pr = (polluteRows as {
+        windows_user?: string | null;
+        agent_version?: string | null;
+        agent_product?: string | null;
+      }[])[0];
+      if (pr) {
+        const wu = String(pr.windows_user ?? "").trim();
+        const av = String(pr.agent_version ?? "").trim();
+        const ap = String(pr.agent_product ?? "").trim().toLowerCase();
+        const wuBad =
+          !wu ||
+          wu.toUpperCase() === "SYSTEM" ||
+          wu.toUpperCase() === "NT AUTHORITY\\SYSTEM" ||
+          wu.toUpperCase().startsWith("CASE WHEN");
+        const avBad =
+          !av ||
+          (agentVersion != null && av === agentVersion) ||
+          ap.includes("service");
+        const apBad = ap.includes("service");
+        if (wuBad || avBad || apBad) {
+          await pool.execute(
+            `UPDATE ${TABLE}
+             SET windows_user = ?,
+                 agent_version = ?,
+                 agent_product = ?
+             WHERE machine_id = ?`,
+            [
+              wuBad ? null : wu,
+              avBad ? null : av || null,
+              apBad ? "InteractGuard" : pr.agent_product ?? "InteractGuard",
+              machineId,
+            ],
+          );
+        }
+      }
+    } catch {
+      /* non-fatal */
+    }
 
     const completed = String(input.completedCommand ?? "")
       .trim()
@@ -679,7 +706,7 @@ export async function listPresenceAgents(): Promise<PresenceAgentRow[]> {
      LEFT JOIN hrm_employees e ON e.id = pa.assigned_employee_id
      ORDER BY pa.last_seen_at IS NULL, pa.last_seen_at DESC, pa.id DESC`,
   );
-  const mapped = (rows as DbRow[]).map(mapRow);
+  const mapped = await enrichAssignedNames((rows as DbRow[]).map(mapRow));
 
   // Collapse clones (same machine_id or same PC) that mongo upsert used to spawn
   const byMachine = new Map<string, PresenceAgentRow>();
@@ -818,7 +845,76 @@ async function getAgentByMachineId(mid: string): Promise<PresenceAgentRow | null
     [mid],
   );
   const list = rows as DbRow[];
-  return list[0] ? mapRow(list[0]) : null;
+  if (!list[0]) return null;
+  const mapped = mapRow(list[0]);
+  const [enriched] = await enrichAssignedNames([mapped]);
+  return enriched;
+}
+
+/** Fill assignedEmployeeName when JOIN misses (mongo id type / adapter gaps). */
+async function enrichAssignedNames(
+  rows: PresenceAgentRow[],
+): Promise<PresenceAgentRow[]> {
+  const need = rows.filter(
+    (r) => r.assignedEmployeeId && !r.assignedEmployeeName?.trim(),
+  );
+  if (!need.length) return rows;
+
+  const ids = [
+    ...new Set(
+      need
+        .map((r) => String(r.assignedEmployeeId ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!ids.length) return rows;
+
+  const byId = new Map<
+    string,
+    {
+      first_name: string | null;
+      last_name: string | null;
+      employee_code: string | null;
+      pseudonym: string | null;
+    }
+  >();
+
+  for (const id of ids) {
+    try {
+      const n = Number(id);
+      const [emps] = await pool.execute(
+        `SELECT id, first_name, last_name, employee_code, pseudonym
+         FROM hrm_employees WHERE id = ? LIMIT 1`,
+        [Number.isFinite(n) && String(n) === id ? n : id],
+      );
+      const e = (
+        emps as {
+          id: number | string;
+          first_name: string | null;
+          last_name: string | null;
+          employee_code: string | null;
+          pseudonym: string | null;
+        }[]
+      )[0];
+      if (e) byId.set(String(e.id), e);
+    } catch {
+      /* next */
+    }
+  }
+
+  return rows.map((r) => {
+    if (r.assignedEmployeeName?.trim() || !r.assignedEmployeeId) return r;
+    const e = byId.get(String(r.assignedEmployeeId).trim());
+    if (!e) return r;
+    const name =
+      [e.first_name, e.last_name].filter(Boolean).join(" ").trim() || null;
+    return {
+      ...r,
+      assignedEmployeeName: name,
+      assignedEmployeeCode: e.employee_code ?? r.assignedEmployeeCode,
+      assignedPseudonym: e.pseudonym?.trim() || r.assignedPseudonym,
+    };
+  });
 }
 
 function trimOrNull(v: string | null | undefined, max: number): string | null {
