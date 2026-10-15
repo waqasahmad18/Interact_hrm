@@ -43,14 +43,14 @@ const QUALITY_PRESETS: QualityPreset[] = [
   {
     id: "medium",
     label: "Medium",
-    hint: "Recommended for many agents · server disk only",
+    hint: "Balanced · use if few PCs online",
     quality: 45,
     scale: 50,
   },
   {
     id: "low",
     label: "Low",
-    hint: "Smallest files · safest under heavy load",
+    hint: "Recommended · smallest files · avoids 502 under load",
     quality: 35,
     scale: 40,
   },
@@ -146,7 +146,7 @@ export default function GuardScreenshotSettings() {
     }
   }
 
-  const presets = [60, 120, 180, 300, 600];
+  const presets = [120, 180, 300, 600];
   const disabled = loading || saving;
 
   return (
@@ -166,8 +166,8 @@ export default function GuardScreenshotSettings() {
           <span className={styles.toggleTitle}>Auto screenshots (Interact Guard)</span>
           <span className={styles.toggleHint}>
             When on, Guard captures in memory and saves only on the HRM server
-            (gallery). Nothing queues on the PC. Prefer Medium/Low + ≥2 min
-            interval when many PCs are online.
+            (gallery). Prefer Low + ≥3 min interval when many PCs are online
+            (avoids 502 Bad Gateway under load).
           </span>
         </span>
       </label>

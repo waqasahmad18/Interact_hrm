@@ -81,11 +81,11 @@ export const DEFAULT_PRESENCE_SETTINGS: PresenceSettings = {
   agentExitPassword: "InteractAdmin",
   enabledEmployeeIds: [],
   screenshotCaptureEnabled: false,
-  /** 120s default — safer for 100+ agents than every 60s. */
-  screenshotIntervalSeconds: 120,
-  /** Lower quality/scale = smaller uploads; gallery still readable. */
-  screenshotJpegQuality: 45,
-  screenshotScalePercent: 50,
+  /** 180s default — safer for many agents (502/busy under load). */
+  screenshotIntervalSeconds: 180,
+  /** Low preset defaults — smaller uploads keep staging stable. */
+  screenshotJpegQuality: 35,
+  screenshotScalePercent: 40,
   agentHrmBaseUrl: "https://192.168.10.6:8443",
 };
 

@@ -12,7 +12,7 @@ import {
 
 /** Simultaneous raw image body receives into Node (disk write). */
 const MAX_UPLOAD_INFLIGHT = Number(
-  process.env.GUARD_SS_MAX_UPLOAD_INFLIGHT || 10
+  process.env.GUARD_SS_MAX_UPLOAD_INFLIGHT || 16
 );
 
 /** Parallel OCR child processes (keep low — each is heavy). */
@@ -26,7 +26,7 @@ let ocrInflight = 0;
 const ocrQueue: KeywordAlertInput[] = [];
 
 export function tryBeginScreenshotUpload(): boolean {
-  const cap = Math.max(2, Math.min(32, MAX_UPLOAD_INFLIGHT || 10));
+  const cap = Math.max(2, Math.min(40, MAX_UPLOAD_INFLIGHT || 16));
   if (uploadInflight >= cap) return false;
   uploadInflight += 1;
   return true;
