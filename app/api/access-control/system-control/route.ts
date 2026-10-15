@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   assignEmployeeRole,
   assignEmployeesToRole,
+  deleteHrmEmployeeCascade,
   ensureAccessControlStore,
   getEmployeeAccessPayload,
   loadAccessEmployees,
@@ -13,6 +14,7 @@ import {
   saveGlobalFeatures,
   saveOrgRoles,
   saveRolePermissions,
+  setEmployeeOrgRole,
   syncAccessControlCatalog,
   backfillMissingOrgAccessRoles,
   unassignEmployeeRole,
@@ -140,7 +142,7 @@ export async function GET(req: NextRequest) {
 
 /**
  * Body types: permissions | features | assign | assign-many | unassign |
- * unassign-many | org-roles | employee-permissions
+ * unassign-many | org-roles | employee-permissions | employee-org-role | delete-employee
  */
 export async function PUT(req: NextRequest) {
   try {
@@ -283,6 +285,37 @@ export async function PUT(req: NextRequest) {
       await saveOrgRoles(roles);
       const saved = await loadOrgRoles();
       return NextResponse.json({ success: true, roles: saved });
+    }
+
+    if (type === "employee-org-role") {
+      if (!caller.caps.systemUsersAssign && !caller.caps.systemOrgChartEdit) {
+        return deny("Missing permission: system.users.assign");
+      }
+      const employeeId = String(body.employeeId || "").trim();
+      const orgRole = body.orgRole ?? body.role;
+      if (!employeeId || orgRole == null || String(orgRole).trim() === "") {
+        return NextResponse.json(
+          { success: false, error: "employeeId and orgRole required" },
+          { status: 400 },
+        );
+      }
+      const slug = await setEmployeeOrgRole(employeeId, orgRole);
+      return NextResponse.json({ success: true, accessRoleSlug: slug });
+    }
+
+    if (type === "delete-employee") {
+      if (!caller.caps.systemUsersAssign && !caller.caps.systemOrgChartEdit) {
+        return deny("Missing permission: system.users.assign");
+      }
+      const employeeId = String(body.employeeId || "").trim();
+      if (!employeeId) {
+        return NextResponse.json(
+          { success: false, error: "employeeId required" },
+          { status: 400 },
+        );
+      }
+      await deleteHrmEmployeeCascade(employeeId);
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ success: false, error: "Unknown type" }, { status: 400 });

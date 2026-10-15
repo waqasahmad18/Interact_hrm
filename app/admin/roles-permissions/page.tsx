@@ -568,25 +568,39 @@ export default function SystemControlPage() {
     showToast(`Role renamed to "${name}"`);
   }
 
-  function requestDeleteRole(roleId: string) {
+  async function requestDeleteRole(roleId: string) {
     if (isRoleLocked(roleId)) {
       showToast("Core system role cannot be deleted");
       return;
     }
     const name = roleMeta(roleId, allRoles).name;
-    if (
-      employees.some((e) => {
-        const slugs =
-          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
-            ? e.accessRoleSlugs
-            : e.accessRoleSlug
-              ? [String(e.accessRoleSlug)]
-              : [];
-        return slugs.includes(roleId);
-      })
-    ) {
-      showToast(`Unassign employees first — "${name}" still has users`);
-      return;
+    const assignees = employees.filter((e) =>
+      effectiveAccessSlugs(e).includes(roleId),
+    );
+    if (assignees.length) {
+      setAccessSaving(true);
+      try {
+        const res = await fetch("/api/access-control/system-control", {
+          method: "PUT",
+          headers: accessApiHeaders(),
+          body: JSON.stringify({
+            type: "unassign-many",
+            employeeIds: assignees.map((e) => e.id),
+            roleId,
+          }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || "Unassign failed");
+        await refreshEmployeesFromApi();
+        showToast(
+          `Unassigned ${assignees.length} user(s) from "${name}" — confirm delete`,
+        );
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to unassign");
+        return;
+      } finally {
+        setAccessSaving(false);
+      }
     }
     setDeleteTargetId(roleId);
   }
@@ -594,18 +608,7 @@ export default function SystemControlPage() {
   function confirmDeleteRole() {
     const roleId = deleteTargetId;
     if (!roleId) return;
-    if (
-      isRoleLocked(roleId) ||
-      employees.some((e) => {
-        const slugs =
-          Array.isArray(e.accessRoleSlugs) && e.accessRoleSlugs.length
-            ? e.accessRoleSlugs
-            : e.accessRoleSlug
-              ? [String(e.accessRoleSlug)]
-              : [];
-        return slugs.includes(roleId);
-      })
-    ) {
+    if (isRoleLocked(roleId)) {
       setDeleteTargetId(null);
       return;
     }
@@ -632,6 +635,66 @@ export default function SystemControlPage() {
         ? `Role "${name}" deleted — ${kids.length} report(s) moved up`
         : `Role "${name}" deleted`,
     );
+  }
+
+  async function changeEmployeeOrgRole(employeeId: string, orgRole: string) {
+    const emp = employees.find((e) => e.id === employeeId);
+    if (!emp || !orgRole) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({
+          type: "employee-org-role",
+          employeeId,
+          orgRole,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Role update failed");
+      await refreshEmployeesFromApi();
+      const slug = data.accessRoleSlug
+        ? roleMeta(String(data.accessRoleSlug), allRoles).name
+        : orgRole;
+      showToast(
+        `${emp.name} → ${orgRole} (${slug}). Default permissions applied — refine in Permissions.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to change role");
+    } finally {
+      setAccessSaving(false);
+    }
+  }
+
+  async function deleteEmployeeFromOrg(employeeId: string) {
+    const emp = employees.find((e) => e.id === employeeId);
+    if (!emp) return;
+    const ok = window.confirm(
+      `Delete employee "${emp.name}" (ID ${emp.id})?\n\nThis removes them from HR and unassigns all System Control roles. Cannot be undone.`,
+    );
+    if (!ok) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({ type: "delete-employee", employeeId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Delete failed");
+      setEmployees((prev) => prev.filter((e) => e.id !== employeeId));
+      setEmployeePermissions((prev) => {
+        const next = { ...prev };
+        delete next[employeeId];
+        return next;
+      });
+      showToast(`${emp.name} deleted and roles unassigned`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete employee");
+    } finally {
+      setAccessSaving(false);
+    }
   }
 
   const deleteTargetMeta = deleteTargetId
@@ -1081,7 +1144,11 @@ export default function SystemControlPage() {
               onAddChild={openAddChildRole}
               onAddAbove={openAddRoleAbove}
               onRename={renameRole}
-              onDelete={requestDeleteRole}
+              onDelete={(roleId) => void requestDeleteRole(roleId)}
+              onDeleteEmployee={(id) => void deleteEmployeeFromOrg(id)}
+              onChangeEmployeeOrgRole={(id, orgRole) =>
+                void changeEmployeeOrgRole(id, orgRole)
+              }
               onManage={manageRolePermissions}
               onUpdateLevel={updateRoleLevel}
               onUpdateProfilePhoto={updateEmployeePhoto}

@@ -17,7 +17,7 @@ import {
   type DemoEmployee,
   type RoleDef,
 } from "./system-control-data";
-import { orgRoleLabel } from "@/lib/org-role";
+import { ORG_ROLE_OPTIONS, normalizeOrgRole, orgRoleLabel } from "@/lib/org-role";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 
 type Props = {
@@ -36,6 +36,10 @@ type Props = {
   onAddAbove: (roleId: string) => void;
   onRename: (roleId: string, name: string) => void;
   onDelete: (roleId: string) => void;
+  /** Delete the HR employee (and unassign System Control roles). */
+  onDeleteEmployee: (employeeId: string) => void;
+  /** Change Add Employee org role → default dept-scoped permissions. */
+  onChangeEmployeeOrgRole: (employeeId: string, orgRole: string) => void;
   onManage: (roleId: string) => void;
   onUpdateLevel: (roleId: string, level: number) => void;
   onUpdateProfilePhoto: (employeeId: string, photo: string) => void;
@@ -206,6 +210,8 @@ export default function OrgChartTab({
   onAddAbove,
   onRename,
   onDelete,
+  onDeleteEmployee,
+  onChangeEmployeeOrgRole,
   onManage,
   onUpdateLevel,
   onUpdateProfilePhoto,
@@ -234,11 +240,28 @@ export default function OrgChartTab({
   const addAbove = guard(onAddAbove);
   const rename = guard(onRename);
   const deleteRole = guard(onDelete);
+  const deleteEmployee = guard(onDeleteEmployee);
+  const changeEmployeeOrgRole = guard(onChangeEmployeeOrgRole);
   const updateLevel = guard(onUpdateLevel);
   const updateProfilePhoto = guard(onUpdateProfilePhoto);
   const removeProfilePhoto = guard(onRemoveProfilePhoto);
   const updateRolePhoto = guard(onUpdateRolePhoto);
   const removeRolePhoto = guard(onRemoveRolePhoto);
+
+  const [empEditId, setEmpEditId] = useState<string | null>(null);
+  const [empOrgRoleDraft, setEmpOrgRoleDraft] = useState<string>(
+    ORG_ROLE_OPTIONS[0].value,
+  );
+
+  const empEditing = empEditId
+    ? employees.find((e) => e.id === empEditId) ?? null
+    : null;
+
+  function openEmployeeEdit(emp: DemoEmployee) {
+    if (readOnly) return;
+    setEmpEditId(emp.id);
+    setEmpOrgRoleDraft(normalizeOrgRole(emp.legacyRole || "Officer"));
+  }
 
   function primaryEmployee(roleId: string) {
     const matches = employeesForRole(roleId);
@@ -537,8 +560,7 @@ export default function OrgChartTab({
   ): React.ReactNode {
     const roleId = roleIdForEmployee(emp);
     const role = roleId ? allRoles.find((r) => r.id === roleId) ?? null : null;
-    const locked = roleId ? isRoleLocked(roleId) : true;
-    const canAct = Boolean(roleId) && !readOnly;
+    const canAct = !readOnly;
 
     return (
       <div
@@ -556,44 +578,17 @@ export default function OrgChartTab({
           <span className={styles.orgPersonBadge}>Manager</span>
         ) : null}
 
-        {canAct && roleId ? (
+        {canAct ? (
           <div className={styles.orgCardActions}>
             <button
               type="button"
               className={styles.orgCardBtn}
-              title="Add role above"
-              aria-label={`Add role above ${emp.name}`}
-              disabled={locked}
+              title="Change employee role"
+              aria-label={`Change role for ${emp.name}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                addAbove(roleId);
-              }}
-            >
-              <IconArrowUp />
-            </button>
-            <button
-              type="button"
-              className={styles.orgCardBtn}
-              title="Add role under"
-              aria-label={`Add role under ${emp.name}`}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                addChild(roleId);
-              }}
-            >
-              <IconPlus />
-            </button>
-            <button
-              type="button"
-              className={styles.orgCardBtn}
-              title="Edit role"
-              aria-label={`Edit role for ${emp.name}`}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditId(roleId);
+                openEmployeeEdit(emp);
               }}
             >
               <IconEdit />
@@ -601,29 +596,15 @@ export default function OrgChartTab({
             <button
               type="button"
               className={styles.orgCardBtn}
-              title={locked ? "This role cannot be deleted" : "Delete role"}
-              aria-label={`Delete role for ${emp.name}`}
-              disabled={locked}
+              title="Delete employee"
+              aria-label={`Delete employee ${emp.name}`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                deleteRole(roleId);
+                deleteEmployee(emp.id);
               }}
             >
               <IconTrash />
-            </button>
-            <button
-              type="button"
-              className={styles.orgCardBtn}
-              title="Hide this card"
-              aria-label={`Hide ${emp.name}`}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleCollapse(roleId);
-              }}
-            >
-              <IconEye off={false} />
             </button>
           </div>
         ) : null}
@@ -649,9 +630,15 @@ export default function OrgChartTab({
           </span>
           <span className={styles.orgPersonName}>{emp.name}</span>
           <span className={styles.orgPersonMeta}>
-            {role?.name && opts.meta !== role.name
-              ? opts.meta
-              : opts.meta || role?.name || "Staff"}
+            {orgRoleLabel(emp.legacyRole) !== "Officer"
+              ? `${orgRoleLabel(emp.legacyRole)}${
+                  role?.name && role.name !== orgRoleLabel(emp.legacyRole)
+                    ? ` · ${role.name}`
+                    : ""
+                }`
+              : role?.name && opts.meta !== role.name
+                ? opts.meta
+                : opts.meta || role?.name || "Staff"}
           </span>
         </button>
       </div>
@@ -1533,6 +1520,10 @@ export default function OrgChartTab({
                     </dd>
                   </div>
                   <div className={styles.orgDrawerRow}>
+                    <dt>Org role</dt>
+                    <dd>{orgRoleLabel(panelEmployee.legacyRole)}</dd>
+                  </div>
+                  <div className={styles.orgDrawerRow}>
                     <dt>Reports to (person)</dt>
                     <dd>
                       {panelEmployee.reportsTo
@@ -1592,6 +1583,32 @@ export default function OrgChartTab({
               >
                 Upload profile photo
               </button>
+              {panelEmployee && !readOnly && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.btnSolidPurple}
+                    onClick={() => {
+                      openEmployeeEdit(panelEmployee);
+                      setPanelRoleId(null);
+                      setPanelEmployeeId(null);
+                    }}
+                  >
+                    Change employee role
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnDangerSoft}
+                    onClick={() => {
+                      deleteEmployee(panelEmployee.id);
+                      setPanelRoleId(null);
+                      setPanelEmployeeId(null);
+                    }}
+                  >
+                    Delete employee
+                  </button>
+                </>
+              )}
               {panelRole && (
                 <>
                   <button
@@ -1603,7 +1620,7 @@ export default function OrgChartTab({
                       setPanelEmployeeId(null);
                     }}
                   >
-                    Edit role
+                    Edit role template
                   </button>
                   <button
                     type="button"
@@ -1621,6 +1638,101 @@ export default function OrgChartTab({
             </div>
           </aside>
         </>
+      )}
+
+      {empEditing && (
+        <ModalPortal>
+          <div
+            className={styles.modalOverlay}
+            data-hrm-modal-overlay
+            role="presentation"
+            onClick={() => setEmpEditId(null)}
+          >
+            <div
+              className={styles.orgEditModal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="org-emp-edit-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.orgEditHead}>
+                <span className={styles.orgCardAvatar}>
+                  {empEditing.initials || initials(empEditing.name)}
+                </span>
+                <div className={styles.orgEditHeadText}>
+                  <div id="org-emp-edit-title" className={styles.orgPanelTitle}>
+                    {empEditing.name}
+                  </div>
+                  <div className={styles.orgCardSlug}>
+                    ID {empEditing.id}
+                    {empEditing.departmentName
+                      ? ` · ${empEditing.departmentName}`
+                      : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.orgEditClose}
+                  aria-label="Close"
+                  onClick={() => setEmpEditId(null)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className={styles.orgEditBody}>
+                <label className={styles.orgPanelLabel} htmlFor="org-emp-role">
+                  Org role (same as Add Employee)
+                </label>
+                <select
+                  id="org-emp-role"
+                  className={styles.orgPanelInput}
+                  value={empOrgRoleDraft}
+                  onChange={(e) => setEmpOrgRoleDraft(e.target.value)}
+                >
+                  {ORG_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className={styles.modalSub} style={{ marginTop: 8 }}>
+                  Team Lead / Manager / CEO get that role&apos;s default
+                  permissions for their department. Refine later in Permissions.
+                </p>
+                <div className={styles.orgEditActions}>
+                  <button
+                    type="button"
+                    className={styles.btnSolidPurple}
+                    onClick={() => {
+                      changeEmployeeOrgRole(empEditing.id, empOrgRoleDraft);
+                      setEmpEditId(null);
+                    }}
+                  >
+                    Save role
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnDangerSoft}
+                    onClick={() => {
+                      deleteEmployee(empEditing.id);
+                      setEmpEditId(null);
+                    }}
+                  >
+                    Delete employee
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => setEmpEditId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );

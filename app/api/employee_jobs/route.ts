@@ -87,7 +87,7 @@ export async function PUT(req: NextRequest) {
 		}
 
 		try {
-			await syncEmployeeAccessRoleFromOrg(employee_id);
+			await syncEmployeeAccessRoleFromOrg(employee_id, { clearOverrides: true });
 		} catch (syncErr) {
 			console.warn('PUT employee_jobs - access role sync:', syncErr);
 		}
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
 		}
 
 		try {
-			await syncEmployeeAccessRoleFromOrg(employee_id);
+			await syncEmployeeAccessRoleFromOrg(employee_id, { clearOverrides: true });
 		} catch (syncErr) {
 			console.warn('POST employee_jobs - access role sync:', syncErr);
 		}

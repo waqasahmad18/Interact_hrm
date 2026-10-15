@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     const insertedId = result.insertId;
     console.log('Insert successful, ID:', insertedId);
     try {
-      await syncEmployeeAccessRoleFromOrg(insertedId);
+      await syncEmployeeAccessRoleFromOrg(insertedId, { clearOverrides: true });
     } catch (syncErr) {
       console.warn("access role sync after create:", syncErr);
     }
@@ -221,7 +221,7 @@ export async function PUT(req: NextRequest) {
 
     try {
       const syncId = /^\d+$/.test(String(whereValue)) ? whereValue : id;
-      if (syncId) await syncEmployeeAccessRoleFromOrg(syncId);
+      if (syncId) await syncEmployeeAccessRoleFromOrg(syncId, { clearOverrides: true });
     } catch (syncErr) {
       console.warn("access role sync after update:", syncErr);
     }

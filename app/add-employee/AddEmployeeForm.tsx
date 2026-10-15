@@ -1142,7 +1142,7 @@ export default function AddEmployeeForm({
                     }
                   }}
                   required
-                  title="Overall role. Feature permissions are assigned in System Control."
+                  title="Overall role. Team Lead / Manager / CEO get default System Control permissions for their department; refine in System Control."
                 >
                   {ORG_ROLE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -1152,10 +1152,10 @@ export default function AddEmployeeForm({
                 </select>
                 <div className={styles.note} style={{ marginTop: 6 }}>
                   {role === "BOD/CEO"
-                    ? "CEO can see all departments. Feature access still comes from System Control."
+                    ? "CEO gets full default permissions. Refine anytime in System Control → Permissions."
                     : orgRoleNeedsDepartmentConfirm(role)
-                      ? "Manager / Team Lead: select Reporting Manager (CEO) below — their leave goes to that CEO’s inbox."
-                      : "Officer: if System Control grants attendance/leave access, scope stays their own department only."}
+                      ? "Manager / Team Lead: default department permissions apply on save. Pick Reporting Manager (CEO) below for leave routing. Refine in System Control."
+                      : "Officer: department-scoped staff defaults. Extra menus via System Control if needed."}
                 </div>
               </div>
               {orgRoleNeedsDepartmentConfirm(role) ? (

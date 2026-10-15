@@ -456,8 +456,13 @@ async function ensureMissingBaseRoles() {
 /**
  * After Add Employee / Edit sets overall org role (+ department), write
  * access_role_slug so Org Chart + Permissions Assigned list stay in sync.
+ * Pass `clearOverrides: true` on explicit role set so TL/Manager/CEO inherit
+ * role defaults (refine later in System Control → Permissions).
  */
-export async function syncEmployeeAccessRoleFromOrg(employeeId: string | number): Promise<string | null> {
+export async function syncEmployeeAccessRoleFromOrg(
+  employeeId: string | number,
+  opts?: { clearOverrides?: boolean },
+): Promise<string | null> {
   await ensureAccessControlStore();
   const eid = String(employeeId || "").trim();
   if (!eid || !/^\d+$/.test(eid)) return null;
@@ -490,14 +495,98 @@ export async function syncEmployeeAccessRoleFromOrg(employeeId: string | number)
         },
       },
     );
-    return slug;
+  } else {
+    await pool.execute(
+      `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
+      [slug, JSON.stringify([slug]), Number(eid)],
+    );
   }
 
-  await pool.execute(
-    `UPDATE hrm_employees SET access_role_slug = ?, access_role_slugs = ? WHERE id = ?`,
-    [slug, JSON.stringify([slug]), Number(eid)],
-  );
+  if (opts?.clearOverrides) {
+    try {
+      await saveEmployeePermissions(eid, null, { clear: true });
+    } catch (err) {
+      console.warn("clear employee overrides after org role sync:", err);
+    }
+  }
   return slug;
+}
+
+/**
+ * Set Add Employee org role (Officer / Team Lead / Manager / CEO), map to
+ * department-scoped System Control slug, and apply role default permissions.
+ */
+export async function setEmployeeOrgRole(
+  employeeId: string | number,
+  orgRole: unknown,
+): Promise<string | null> {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  if (!eid || !/^\d+$/.test(eid)) throw new Error("employeeId required");
+  const role = normalizeOrgRole(orgRole);
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    const numeric = Number(eid);
+    const res = await db.collection("hrm_employees").updateOne(
+      { $or: [{ id: numeric }, { id: eid }, { id: String(numeric) }] },
+      { $set: { role, updated_at: new Date() } },
+    );
+    if (!res.matchedCount) throw new Error(`Employee ${eid} not found`);
+  } else {
+    const [result]: any = await pool.execute(
+      `UPDATE hrm_employees SET role = ? WHERE id = ?`,
+      [role, Number(eid)],
+    );
+    if (!result?.affectedRows) throw new Error(`Employee ${eid} not found`);
+  }
+
+  return syncEmployeeAccessRoleFromOrg(eid, { clearOverrides: true });
+}
+
+/** Unassign access roles + delete employee and related HR rows. */
+export async function deleteHrmEmployeeCascade(employeeId: string | number): Promise<void> {
+  await ensureAccessControlStore();
+  const eid = String(employeeId || "").trim();
+  if (!eid || !/^\d+$/.test(eid)) throw new Error("employeeId required");
+  const idParam = Number(eid);
+
+  try {
+    await saveEmployeePermissions(eid, null, { clear: true });
+  } catch {
+    /* ignore */
+  }
+
+  const tables = [
+    "employee_contacts",
+    "employee_emergency_contacts",
+    "employee_jobs",
+    "employee_salaries",
+    "employee_attachments",
+    "employee_attendance",
+    "employee_breaks",
+    "employee_leaves",
+    "hrm_shifts_assignments",
+    "prayer_breaks",
+    EMPLOYEE_PERMS_COLLECTION,
+  ];
+  for (const table of tables) {
+    try {
+      await pool.execute(`DELETE FROM ${table} WHERE employee_id = ?`, [idParam]);
+    } catch {
+      /* table may not exist */
+    }
+  }
+
+  if (getDbDriver() === "mongo") {
+    const db = await getMongoDb();
+    await db.collection("hrm_employees").deleteOne({
+      $or: [{ id: idParam }, { id: eid }, { id: String(idParam) }],
+    });
+    return;
+  }
+
+  await pool.execute(`DELETE FROM hrm_employees WHERE id = ?`, [idParam]);
 }
 
 /** Fill / correct access_role_slug from Add Employee org role + department.
