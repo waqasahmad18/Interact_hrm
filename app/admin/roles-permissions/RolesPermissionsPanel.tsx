@@ -53,6 +53,8 @@ type Props = {
   onClearEmployeeOverrides: (employeeId: string) => void;
   onAssignEmployees: (employeeIds: string[], roleId: string) => void;
   onUnassignEmployees: (employeeIds: string[], roleId: string) => void;
+  /** Open create-role wizard from the Select role dropdown. */
+  onCreateRole?: () => void;
   isRoleLocked: (roleId: string) => boolean;
   isCustomRole: (id: string) => boolean;
   employeeCountByRole: (roleId: string) => number;
@@ -134,6 +136,7 @@ export default function RolesPermissionsPanel({
   onClearEmployeeOverrides,
   onAssignEmployees,
   onUnassignEmployees,
+  onCreateRole,
   isRoleLocked,
   isCustomRole,
   employeeCountByRole,
@@ -528,6 +531,11 @@ export default function RolesPermissionsPanel({
           searchPlaceholder="Search by role name…"
           emptyText="No roles match your search"
           filterOption={roleFilter}
+          footerAction={
+            onCreateRole && caps.systemOrgChartEdit
+              ? { label: "+ Add new role", onClick: onCreateRole }
+              : undefined
+          }
         />
         <SearchableSelect
           id="perm-employee"

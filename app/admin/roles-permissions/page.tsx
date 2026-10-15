@@ -230,6 +230,8 @@ export default function SystemControlPage() {
   const [newRoleCloneFrom, setNewRoleCloneFrom] = useState("it_manager");
   const [newRolePortal, setNewRolePortal] = useState("admin-dashboard");
   const [newRoleScope, setNewRoleScope] = useState("DEPARTMENT");
+  const [newRoleEmployeeIds, setNewRoleEmployeeIds] = useState<string[]>([]);
+  const [newRoleCreating, setNewRoleCreating] = useState(false);
 
   const allRoles = useMemo(
     () => [...orgRoles].sort((a, b) => a.hierarchyLevel - b.hierarchyLevel),
@@ -329,7 +331,16 @@ export default function SystemControlPage() {
     setNewRoleCloneFrom(isRoleLocked(base) ? "it_manager" : base);
     setNewRolePortal(clone.portal);
     setNewRoleScope(clone.scope);
+    setNewRoleEmployeeIds([]);
     setShowNewRoleModal(true);
+  }
+
+  function toggleNewRoleEmployee(employeeId: string) {
+    setNewRoleEmployeeIds((prev) =>
+      prev.includes(employeeId)
+        ? prev.filter((id) => id !== employeeId)
+        : [...prev, employeeId],
+    );
   }
 
   function applyCloneDefaults(cloneId: string) {
@@ -339,7 +350,7 @@ export default function SystemControlPage() {
     setNewRoleScope(clone.scope);
   }
 
-  function handleCreateRole() {
+  async function handleCreateRole() {
     const name = newRoleName.trim();
     if (!name) {
       showToast("Enter a role name");
@@ -369,28 +380,93 @@ export default function SystemControlPage() {
       accent: clone.accent,
     };
     const aboveTarget = newRoleInsertAboveTargetId;
-    commitOrgRoles((prev) => {
-      const next = [...prev, newRole];
-      if (aboveTarget && aboveTarget !== slug) {
-        return next.map((r) =>
-          r.id === aboveTarget ? { ...r, parentId: slug } : r,
-        );
+    const clonedKeys = [...(permissions[newRoleCloneFrom] || [])];
+    const assignIds = [...newRoleEmployeeIds];
+
+    setNewRoleCreating(true);
+    try {
+      let nextRoles: RoleDef[] = [];
+      commitOrgRoles((prev) => {
+        nextRoles = [...prev, newRole];
+        if (aboveTarget && aboveTarget !== slug) {
+          nextRoles = nextRoles.map((r) =>
+            r.id === aboveTarget ? { ...r, parentId: slug } : r,
+          );
+        }
+        return nextRoles;
+      });
+
+      // Persist org chart immediately so assign/permissions hit the new slug.
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
       }
-      return next;
-    });
-    setPermissions((prev) => ({
-      ...prev,
-      [slug]: new Set(prev[newRoleCloneFrom] || []),
-    }));
-    setShowNewRoleModal(false);
-    setNewRoleParentId(null);
-    setNewRoleInsertAboveTargetId(null);
-    setSelectedRoleId(slug);
-    if (aboveTarget) {
-      showToast(`Role "${name}" added above ${roleMeta(aboveTarget, allRoles).name}`);
-    } else {
-      const parentName = parentId ? roleMeta(parentId, allRoles).name : "top level";
-      showToast(`Role "${name}" added under ${parentName}`);
+      const persistRes = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({ type: "org-roles", roles: nextRoles }),
+      });
+      const persistData = await persistRes.json();
+      if (!persistData.success) {
+        throw new Error(persistData.error || "Failed to save new role");
+      }
+      if (Array.isArray(persistData.roles) && persistData.roles.length) {
+        setOrgRoles(persistData.roles as RoleDef[]);
+      }
+
+      setPermissions((prev) => ({
+        ...prev,
+        [slug]: new Set(clonedKeys),
+      }));
+
+      const permRes = await fetch("/api/access-control/system-control", {
+        method: "PUT",
+        headers: accessApiHeaders(),
+        body: JSON.stringify({
+          type: "permissions",
+          roleId: slug,
+          keys: clonedKeys,
+        }),
+      });
+      const permData = await permRes.json();
+      if (!permData.success) {
+        throw new Error(permData.error || "Failed to save role permissions");
+      }
+
+      if (assignIds.length) {
+        const assignRes = await fetch("/api/access-control/system-control", {
+          method: "PUT",
+          headers: accessApiHeaders(),
+          body: JSON.stringify({
+            type: "assign-many",
+            employeeIds: assignIds,
+            roleId: slug,
+          }),
+        });
+        const assignData = await assignRes.json();
+        if (!assignData.success) {
+          throw new Error(assignData.error || "Role created but assign failed");
+        }
+        await refreshEmployeesFromApi();
+      }
+
+      setShowNewRoleModal(false);
+      setNewRoleParentId(null);
+      setNewRoleInsertAboveTargetId(null);
+      setNewRoleEmployeeIds([]);
+      setSelectedRoleId(slug);
+      setActiveTab("permissions");
+
+      const assignNote = assignIds.length
+        ? ` · ${assignIds.length} employee(s) assigned`
+        : "";
+      showToast(
+        `Role "${name}" created${assignNote}. Fine-tune permissions below, then Save role.`,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to create role");
+    } finally {
+      setNewRoleCreating(false);
     }
   }
 
@@ -1189,6 +1265,11 @@ export default function SystemControlPage() {
               onClearEmployeeOverrides={(empId) => void clearEmployeeOverrides(empId)}
               onAssignEmployees={(ids, roleId) => void assignEmployeesToRole(ids, roleId)}
               onUnassignEmployees={(ids, roleId) => void unassignEmployeesFromRole(ids, roleId)}
+              onCreateRole={() => {
+                setNewRoleInsertAboveTargetId(null);
+                setNewRoleParentId(null);
+                openNewRoleModal(selectedRoleId);
+              }}
               isRoleLocked={isRoleLocked}
               isCustomRole={(id) => isCustomRole(id)}
               employeeCountByRole={employeeCountByRole}
@@ -1222,11 +1303,14 @@ export default function SystemControlPage() {
         <NewRoleModal
           open={showNewRoleModal}
           onClose={() => {
+            if (newRoleCreating) return;
             setShowNewRoleModal(false);
             setNewRoleInsertAboveTargetId(null);
             setNewRoleParentId(null);
+            setNewRoleEmployeeIds([]);
           }}
           allRoles={allRoles}
+          employees={employees}
           name={newRoleName}
           onNameChange={setNewRoleName}
           cloneFrom={newRoleCloneFrom}
@@ -1235,7 +1319,10 @@ export default function SystemControlPage() {
           onPortalChange={setNewRolePortal}
           scope={newRoleScope}
           onScopeChange={setNewRoleScope}
-          onCreate={handleCreateRole}
+          selectedEmployeeIds={newRoleEmployeeIds}
+          onToggleEmployee={toggleNewRoleEmployee}
+          onCreate={() => void handleCreateRole()}
+          creating={newRoleCreating}
         />
 
         {deleteTargetMeta && (
