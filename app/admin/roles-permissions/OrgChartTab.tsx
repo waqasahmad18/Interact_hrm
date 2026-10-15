@@ -32,6 +32,8 @@ type Props = {
   onMakeSibling: (draggedId: string, targetId: string) => void;
   onResetChart: () => void;
   onAddChild: (parentId: string) => void;
+  /** Create a new role that becomes the manager of this role. */
+  onAddAbove: (roleId: string) => void;
   onRename: (roleId: string, name: string) => void;
   onDelete: (roleId: string) => void;
   onManage: (roleId: string) => void;
@@ -157,6 +159,22 @@ function ProfilePhoto({
     </span>
   );
 }
+function IconPlus() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+function IconArrowUp() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 19V5" />
+      <path d="M5 12l7-7 7 7" />
+    </svg>
+  );
+}
 function IconEye({ off }: { off: boolean }) {
   return off ? (
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -185,6 +203,7 @@ export default function OrgChartTab({
   onMakeSibling,
   onResetChart,
   onAddChild,
+  onAddAbove,
   onRename,
   onDelete,
   onManage,
@@ -212,6 +231,7 @@ export default function OrgChartTab({
   const makeSibling = guard(onMakeSibling);
   const resetChart = guard(onResetChart);
   const addChild = guard(onAddChild);
+  const addAbove = guard(onAddAbove);
   const rename = guard(onRename);
   const deleteRole = guard(onDelete);
   const updateLevel = guard(onUpdateLevel);
@@ -499,6 +519,145 @@ export default function OrgChartTab({
     setEditId(null);
   }
 
+  /** Prefer assigned access role slug for dept-view card actions. */
+  function roleIdForEmployee(emp: DemoEmployee): string | null {
+    const slugs = effectiveAccessSlugs(emp);
+    const leadSlug = slugs.find((s) => s.startsWith("team_lead_"));
+    if (leadSlug && allRoles.some((r) => r.id === leadSlug)) return leadSlug;
+    if (emp.roleId && allRoles.some((r) => r.id === emp.roleId)) return emp.roleId;
+    for (const s of slugs) {
+      if (allRoles.some((r) => r.id === s)) return s;
+    }
+    return emp.roleId || null;
+  }
+
+  function renderDeptPersonCard(
+    emp: DemoEmployee,
+    opts: { manager?: boolean; meta: string },
+  ): React.ReactNode {
+    const roleId = roleIdForEmployee(emp);
+    const role = roleId ? allRoles.find((r) => r.id === roleId) ?? null : null;
+    const locked = roleId ? isRoleLocked(roleId) : true;
+    const canAct = Boolean(roleId) && !readOnly;
+
+    return (
+      <div
+        key={emp.id}
+        data-orgcard=""
+        className={[
+          styles.orgPersonCard,
+          opts.manager ? styles.orgPersonCardManager : "",
+          panelEmployeeId === emp.id ? styles.orgPersonCardSelected : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {opts.manager ? (
+          <span className={styles.orgPersonBadge}>Manager</span>
+        ) : null}
+
+        {canAct && roleId ? (
+          <div className={styles.orgCardActions}>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Add role above"
+              aria-label={`Add role above ${emp.name}`}
+              disabled={locked}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                addAbove(roleId);
+              }}
+            >
+              <IconArrowUp />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Add role under"
+              aria-label={`Add role under ${emp.name}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                addChild(roleId);
+              }}
+            >
+              <IconPlus />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Edit role"
+              aria-label={`Edit role for ${emp.name}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditId(roleId);
+              }}
+            >
+              <IconEdit />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title={locked ? "This role cannot be deleted" : "Delete role"}
+              aria-label={`Delete role for ${emp.name}`}
+              disabled={locked}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteRole(roleId);
+              }}
+            >
+              <IconTrash />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Hide this card"
+              aria-label={`Hide ${emp.name}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(roleId);
+              }}
+            >
+              <IconEye off={false} />
+            </button>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className={styles.orgPersonCardMain}
+          onClick={() => {
+            setPanelEmployeeId(emp.id);
+            setPanelRoleId(roleId);
+          }}
+        >
+          <span className={styles.orgPersonAvatar}>
+            {emp.profilePhoto ? (
+              <img
+                src={emp.profilePhoto}
+                alt=""
+                className={styles.orgPersonPhoto}
+              />
+            ) : (
+              <span>{emp.initials || initials(emp.name)}</span>
+            )}
+          </span>
+          <span className={styles.orgPersonName}>{emp.name}</span>
+          <span className={styles.orgPersonMeta}>
+            {role?.name && opts.meta !== role.name
+              ? opts.meta
+              : opts.meta || role?.name || "Staff"}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   function renderNode(role: RoleDef): React.ReactNode {
     if (collapsed.has(role.id)) return null;
 
@@ -695,6 +854,33 @@ export default function OrgChartTab({
           </div>
 
           <div className={styles.orgCardActions}>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Add role above"
+              aria-label={`Add role above ${role.name}`}
+              disabled={locked}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                addAbove(role.id);
+              }}
+            >
+              <IconArrowUp />
+            </button>
+            <button
+              type="button"
+              className={styles.orgCardBtn}
+              title="Add role under"
+              aria-label={`Add role under ${role.name}`}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                addChild(role.id);
+              }}
+            >
+              <IconPlus />
+            </button>
             <button
               type="button"
               className={styles.orgCardBtn}
@@ -968,35 +1154,25 @@ export default function OrgChartTab({
                     <h3 className={styles.orgSectionTitle}>Department manager</h3>
                     <span className={styles.orgSectionRule} />
                   </div>
-                  {deptManager ? (
+                  {deptManager &&
+                  roleIdForEmployee(deptManager) &&
+                  collapsed.has(roleIdForEmployee(deptManager)!) ? (
                     <button
                       type="button"
-                      data-orgcard
-                      className={`${styles.orgPersonCard} ${styles.orgPersonCardManager}`}
+                      className={styles.orgShowHiddenBtn}
                       onClick={() => {
-                        setPanelEmployeeId(deptManager.id);
-                        setPanelRoleId(deptManager.roleId || null);
+                        const rid = roleIdForEmployee(deptManager);
+                        if (rid) toggleCollapse(rid);
                       }}
                     >
-                      <span className={styles.orgPersonBadge}>Manager</span>
-                      <span className={styles.orgPersonAvatar}>
-                        {deptManager.profilePhoto ? (
-                          <img
-                            src={deptManager.profilePhoto}
-                            alt=""
-                            className={styles.orgPersonPhoto}
-                          />
-                        ) : (
-                          <span>
-                            {deptManager.initials || initials(deptManager.name)}
-                          </span>
-                        )}
-                      </span>
-                      <span className={styles.orgPersonName}>{deptManager.name}</span>
-                      <span className={styles.orgPersonMeta}>
-                        {managerHint ? `${deptView} · ${managerHint}` : deptView}
-                      </span>
+                      Show hidden manager
                     </button>
+                  ) : deptManager ? (
+                    renderDeptPersonCard(deptManager, {
+                      manager: true,
+                      meta:
+                        managerHint ? `${deptView} · ${managerHint}` : String(deptView),
+                    })
                   ) : (
                     <div
                       className={`${styles.orgPersonCard} ${styles.orgPersonCardManager} ${styles.orgPersonCardEmpty}`}
@@ -1018,7 +1194,13 @@ export default function OrgChartTab({
                     <h3 className={styles.orgSectionTitle}>
                       Team
                       {deptView === "IT" ? " · includes Marketing" : ""}
-                      <span className={styles.orgSectionCount}>{deptStaff.length}</span>
+                      <span className={styles.orgSectionCount}>
+                        {
+                          deptStaff.filter(
+                            (e) => !e.roleId || !collapsed.has(e.roleId),
+                          ).length
+                        }
+                      </span>
                     </h3>
                     <span className={styles.orgSectionRule} />
                   </div>
@@ -1026,33 +1208,16 @@ export default function OrgChartTab({
                     <p className={styles.orgEmpty}>No employees in this department.</p>
                   ) : (
                     <div className={styles.orgDeptStaffGrid}>
-                      {deptStaff.map((emp) => (
-                        <button
-                          key={emp.id}
-                          type="button"
-                          data-orgcard
-                          className={styles.orgPersonCard}
-                          onClick={() => {
-                            setPanelEmployeeId(emp.id);
-                            setPanelRoleId(emp.roleId || null);
-                          }}
-                        >
-                          <span className={styles.orgPersonAvatar}>
-                            {emp.profilePhoto ? (
-                              <img
-                                src={emp.profilePhoto}
-                                alt=""
-                                className={styles.orgPersonPhoto}
-                              />
-                            ) : (
-                              <span>{emp.initials || initials(emp.name)}</span>
-                            )}
-                          </span>
-                          <span className={styles.orgPersonName}>{emp.name}</span>
-                          <span className={styles.orgPersonMeta}>
-                            {(() => {
+                      {deptStaff
+                        .filter((emp) => !emp.roleId || !collapsed.has(emp.roleId))
+                        .map((emp) =>
+                          renderDeptPersonCard(emp, {
+                            manager: false,
+                            meta: (() => {
                               const slugs = effectiveAccessSlugs(emp);
-                              const leadSlug = slugs.find((s) => s.startsWith("team_lead_"));
+                              const leadSlug = slugs.find((s) =>
+                                s.startsWith("team_lead_"),
+                              );
                               if (leadSlug) {
                                 return (
                                   allRoles.find((r) => r.id === leadSlug)?.name ||
@@ -1061,7 +1226,6 @@ export default function OrgChartTab({
                               }
                               if (emp.legacyRole) {
                                 const label = orgRoleLabel(emp.legacyRole);
-                                // Don't label Officers/others as Team Lead unless assigned
                                 if (label !== "Team Lead") return label;
                               }
                               return (
@@ -1070,12 +1234,28 @@ export default function OrgChartTab({
                                 emp.pseudonym ||
                                 "Staff"
                               );
-                            })()}
-                          </span>
-                        </button>
-                      ))}
+                            })(),
+                          }),
+                        )}
                     </div>
                   )}
+                  {deptStaff.some((e) => e.roleId && collapsed.has(e.roleId)) ? (
+                    <button
+                      type="button"
+                      className={styles.orgShowHiddenBtn}
+                      onClick={() => {
+                        setCollapsed((prev) => {
+                          const next = new Set(prev);
+                          for (const e of deptStaff) {
+                            if (e.roleId) next.delete(e.roleId);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      Show hidden cards
+                    </button>
+                  ) : null}
                 </div>
               </div>
             )}

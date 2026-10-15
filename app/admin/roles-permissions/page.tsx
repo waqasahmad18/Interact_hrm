@@ -222,6 +222,10 @@ export default function SystemControlPage() {
   }, []);
 
   const [showNewRoleModal, setShowNewRoleModal] = useState(false);
+  /** After create, make this role report to the newly created role (Add above). */
+  const [newRoleInsertAboveTargetId, setNewRoleInsertAboveTargetId] = useState<
+    string | null
+  >(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleCloneFrom, setNewRoleCloneFrom] = useState("it_manager");
   const [newRolePortal, setNewRolePortal] = useState("admin-dashboard");
@@ -364,21 +368,48 @@ export default function SystemControlPage() {
       tier: clone.tier,
       accent: clone.accent,
     };
-    commitOrgRoles((prev) => [...prev, newRole]);
+    const aboveTarget = newRoleInsertAboveTargetId;
+    commitOrgRoles((prev) => {
+      const next = [...prev, newRole];
+      if (aboveTarget && aboveTarget !== slug) {
+        return next.map((r) =>
+          r.id === aboveTarget ? { ...r, parentId: slug } : r,
+        );
+      }
+      return next;
+    });
     setPermissions((prev) => ({
       ...prev,
       [slug]: new Set(prev[newRoleCloneFrom] || []),
     }));
     setShowNewRoleModal(false);
     setNewRoleParentId(null);
+    setNewRoleInsertAboveTargetId(null);
     setSelectedRoleId(slug);
-    const parentName = parentId ? roleMeta(parentId, allRoles).name : "top level";
-    showToast(`Role "${name}" added under ${parentName}`);
+    if (aboveTarget) {
+      showToast(`Role "${name}" added above ${roleMeta(aboveTarget, allRoles).name}`);
+    } else {
+      const parentName = parentId ? roleMeta(parentId, allRoles).name : "top level";
+      showToast(`Role "${name}" added under ${parentName}`);
+    }
   }
 
   function openAddChildRole(parentId: string) {
+    setNewRoleInsertAboveTargetId(null);
     setNewRoleParentId(parentId);
     openNewRoleModal(isRoleLocked(parentId) ? "it_manager" : parentId);
+  }
+
+  /** Insert a new role as the manager of `targetId` (same parent as target had). */
+  function openAddRoleAbove(targetId: string) {
+    if (isRoleLocked(targetId)) {
+      showToast("Can't add a role above a locked top role");
+      return;
+    }
+    const parentId = effectiveParentOf(targetId);
+    setNewRoleInsertAboveTargetId(targetId);
+    setNewRoleParentId(parentId);
+    openNewRoleModal(isRoleLocked(targetId) ? "it_manager" : targetId);
   }
 
   /** Target id plus every role beneath it in the current tree. */
@@ -1048,6 +1079,7 @@ export default function SystemControlPage() {
               onMakeSibling={makeRoleSibling}
               onResetChart={resetOrgChart}
               onAddChild={openAddChildRole}
+              onAddAbove={openAddRoleAbove}
               onRename={renameRole}
               onDelete={requestDeleteRole}
               onManage={manageRolePermissions}
@@ -1122,7 +1154,11 @@ export default function SystemControlPage() {
 
         <NewRoleModal
           open={showNewRoleModal}
-          onClose={() => setShowNewRoleModal(false)}
+          onClose={() => {
+            setShowNewRoleModal(false);
+            setNewRoleInsertAboveTargetId(null);
+            setNewRoleParentId(null);
+          }}
           allRoles={allRoles}
           name={newRoleName}
           onNameChange={setNewRoleName}
