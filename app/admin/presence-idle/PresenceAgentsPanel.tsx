@@ -91,13 +91,6 @@ function serviceLabel(h: AgentHealth | undefined) {
   return "Svc OFF";
 }
 
-function empLabel(e: EmpRow) {
-  const name =
-    `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`;
-  const code = e.employee_code ? ` · ${e.employee_code}` : "";
-  return `${name} (ID ${e.id})${code}`;
-}
-
 function empDisplayName(e: EmpRow) {
   return (
     `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`
@@ -135,6 +128,117 @@ function normalizeUrlDraft(url: string | null | undefined) {
 type Props = {
   employees: EmpRow[];
 };
+
+function filterEmployees(list: EmpRow[], query: string): EmpRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((e) => {
+    const name = `${e.first_name || ""} ${e.last_name || ""}`.trim().toLowerCase();
+    const code = String(e.employee_code || "").toLowerCase();
+    const id = String(e.id);
+    return name.includes(q) || code.includes(q) || id.includes(q);
+  });
+}
+
+function EmployeeAssignPicker({
+  machineId,
+  employees,
+  value,
+  onChange,
+}: {
+  machineId: string;
+  employees: EmpRow[];
+  value: string;
+  onChange: (employeeId: string) => void;
+}) {
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+
+  const selected = employees.find((e) => String(e.id) === String(value));
+  const filtered = React.useMemo(
+    () => filterEmployees(employees, query).slice(0, 80),
+    [employees, query],
+  );
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (ev: MouseEvent) => {
+      const t = ev.target as Node | null;
+      if (!wrapRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div className={styles.empAssignPick} ref={wrapRef}>
+      <input
+        type="text"
+        className={styles.select}
+        autoComplete="off"
+        placeholder="Search by name…"
+        value={open ? query : selected ? empDisplayName(selected) : query}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onClick={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        aria-label={`Search employee for ${machineId}`}
+      />
+      {open ? (
+        <div className={styles.empDropdown} role="listbox">
+          <button
+            type="button"
+            className={styles.empDropdownItem}
+            onClick={() => {
+              onChange("");
+              setQuery("");
+              setOpen(false);
+            }}
+          >
+            <strong>— Not assigned —</strong>
+          </button>
+          {filtered.length === 0 ? (
+            <div className={styles.empDropdownEmpty}>No match</div>
+          ) : (
+            filtered.map((e) => {
+              const id = String(e.id);
+              const isSel = id === String(value);
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`${styles.empDropdownItem}${
+                    isSel ? ` ${styles.empDropdownItemSelected}` : ""
+                  }`}
+                  onClick={() => {
+                    onChange(id);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                >
+                  <strong>{empDisplayName(e)}</strong>
+                  <span className={styles.empMeta}>
+                    ID {e.id}
+                    {e.employee_code ? ` · ${e.employee_code}` : ""}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function PresenceAgentsPanel({ employees }: Props) {
   const [agents, setAgents] = React.useState<AgentRow[]>([]);
@@ -637,23 +741,17 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                           ) : null}
                         </div>
                       ) : (
-                        <select
-                          className={styles.select}
+                        <EmployeeAssignPicker
+                          machineId={a.machineId}
+                          employees={employees}
                           value={drafts[a.machineId] ?? ""}
-                          onChange={(e) =>
+                          onChange={(employeeId) =>
                             setDrafts((d) => ({
                               ...d,
-                              [a.machineId]: e.target.value,
+                              [a.machineId]: employeeId,
                             }))
                           }
-                        >
-                          <option value="">— Not assigned —</option>
-                          {employees.map((e) => (
-                            <option key={e.id} value={String(e.id)}>
-                              {empLabel(e)}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       )}
                     </td>
                     <td>

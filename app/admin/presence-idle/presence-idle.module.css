@@ -230,6 +230,21 @@
   background: #fff;
 }
 
+.empAssignPick {
+  position: relative;
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.empAssignPick .select {
+  min-width: 220px;
+}
+
+.empAssignPick .empDropdown {
+  z-index: 40;
+  max-height: 260px;
+}
+
 .lockedBadge {
   display: inline-block;
   margin-top: 6px;
