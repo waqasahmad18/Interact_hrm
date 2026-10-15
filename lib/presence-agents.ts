@@ -317,7 +317,11 @@ function isServiceComponent(input: HeartbeatInput): boolean {
   const c = String(input.component ?? "").trim().toLowerCase();
   if (c === "service") return true;
   const p = String(input.agentProduct ?? "").trim().toLowerCase();
-  return p.includes("service");
+  if (p.includes("service")) return true;
+  // Legacy / mis-routed service heartbeats (never treat as tray agent)
+  const user = String(input.windowsUser ?? "").trim().toUpperCase();
+  if (user === "SYSTEM" || user === "NT AUTHORITY\\SYSTEM") return true;
+  return false;
 }
 
 export type HeartbeatResult = {
@@ -383,6 +387,24 @@ export async function upsertAgentHeartbeat(
          last_ip = COALESCE(VALUES(last_ip), last_ip),
          service_last_seen_at = VALUES(service_last_seen_at)`,
       [machineId, hostname, hrmBaseUrl, agentVersion, lastIp, now, now],
+    );
+
+    // Repair rows polluted when service HB was treated as tray agent (version 1.1.0 / SYSTEM).
+    await pool.execute(
+      `UPDATE ${TABLE}
+       SET agent_version = CASE
+             WHEN UPPER(TRIM(COALESCE(windows_user, ''))) IN ('SYSTEM', 'NT AUTHORITY\\SYSTEM')
+               OR LOWER(COALESCE(agent_product, '')) LIKE '%service%'
+               OR (? IS NOT NULL AND agent_version = ?)
+             THEN NULL ELSE agent_version END,
+           agent_product = CASE
+             WHEN LOWER(COALESCE(agent_product, '')) LIKE '%service%'
+             THEN 'InteractGuard' ELSE agent_product END,
+           windows_user = CASE
+             WHEN UPPER(TRIM(COALESCE(windows_user, ''))) IN ('SYSTEM', 'NT AUTHORITY\\SYSTEM')
+             THEN NULL ELSE windows_user END
+       WHERE machine_id = ?`,
+      [agentVersion, agentVersion, machineId],
     );
 
     const completed = String(input.completedCommand ?? "")

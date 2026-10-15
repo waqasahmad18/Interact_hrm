@@ -16,6 +16,7 @@ type AgentRow = {
   localEmployeeId: string | null;
   assignedEmployeeId: string | null;
   agentVersion: string | null;
+  agentProduct?: string | null;
   lastIp: string | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
@@ -625,7 +626,23 @@ export default function PresenceAgentsPanel({ employees }: Props) {
                         </select>
                       )}
                     </td>
-                    <td>{a.agentVersion || "—"}</td>
+                    <td>
+                      <div className={styles.pcCell}>
+                        <strong>
+                          {a.agentVersion &&
+                          !(a.agentProduct || "")
+                            .toLowerCase()
+                            .includes("service")
+                            ? a.agentVersion
+                            : "—"}
+                        </strong>
+                        {a.serviceVersion ? (
+                          <span className={styles.empMeta}>
+                            svc {a.serviceVersion}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td>{formatWhen(a.lastSeenAt)}</td>
                     <td>{a.lastIp || "—"}</td>
                     <td>
