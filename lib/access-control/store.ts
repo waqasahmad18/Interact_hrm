@@ -64,11 +64,13 @@ export function mapLegacyEmployeeRole(
   }
 
   if (org === ORG_ROLE_DB.TEAM_LEAD) {
-    if (chip === "it" || chip === "cest.") return "team_lead_it";
+    if (chip === "it") return "team_lead_it";
+    if (chip === "cest.") return "team_lead_cest";
     if (chip === "finance") return "team_lead_finance";
     if (chip === "hr") return "team_lead_hr";
-    if (chip === "hit") return "team_lead_billing";
+    if (chip === "hit") return "team_lead_hit";
     if (chip === "dm") return "team_lead_dm";
+    if (chip === "medical billing") return "team_lead_billing";
     return "team_lead_billing";
   }
 
