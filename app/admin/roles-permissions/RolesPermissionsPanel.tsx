@@ -146,6 +146,30 @@ export default function RolesPermissionsPanel({
   /** When set, matrix edits that employee's custom permissions. */
   const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
   const [hoverEmployeeId, setHoverEmployeeId] = useState<string | null>(null);
+  /** Delay close so cursor can cross chip→card gap without the popup vanishing. */
+  const hoverCloseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openHoverCard = React.useCallback((empId: string) => {
+    if (hoverCloseTimerRef.current) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    setHoverEmployeeId(empId);
+  }, []);
+
+  const scheduleCloseHoverCard = React.useCallback((empId: string) => {
+    if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = setTimeout(() => {
+      setHoverEmployeeId((prev) => (prev === empId ? null : prev));
+      hoverCloseTimerRef.current = null;
+    }, 220);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+    };
+  }, []);
 
   const canEditPerms = caps.systemPermissionsEdit;
   const canAssign = caps.systemUsersAssign;
@@ -612,10 +636,8 @@ export default function RolesPermissionsPanel({
                 <div
                   key={emp.id}
                   className={styles.permUserChipWrap}
-                  onMouseEnter={() => setHoverEmployeeId(emp.id)}
-                  onMouseLeave={() =>
-                    setHoverEmployeeId((prev) => (prev === emp.id ? null : prev))
-                  }
+                  onMouseEnter={() => openHoverCard(emp.id)}
+                  onMouseLeave={() => scheduleCloseHoverCard(emp.id)}
                 >
                   <label
                     className={`${styles.permUserChip} ${selected ? styles.permUserChipOn : ""} ${focused ? styles.permUserChipFocus : ""}`}
