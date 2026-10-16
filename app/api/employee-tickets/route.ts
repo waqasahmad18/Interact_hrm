@@ -18,7 +18,10 @@ import {
   latestAdminRemark,
   seedEmployeeMessage,
 } from "@/lib/ticket-thread";
-import { getEmployeePseudonym } from "@/lib/ticket-employee-meta";
+import {
+  getEmployeePseudonym,
+  getEmployeeTicketMetaMap,
+} from "@/lib/ticket-employee-meta";
 import {
   findTicketType,
   ticketTypeLabel,
@@ -215,6 +218,9 @@ export async function GET(req: NextRequest) {
     });
 
     // Per-ticket moderation flags (HR Manager may view all leave but approve only in-scope).
+    const metaMap = await getEmployeeTicketMetaMap(
+      filtered.map((t) => t.employee_id),
+    );
     const ticketsOut = [];
     let anyModerate = false;
     for (const t of filtered) {
@@ -226,7 +232,13 @@ export async function GET(req: NextRequest) {
         submitterChip: empChips.get(String(t.employee_id)) || null,
       });
       if (canMod) anyModerate = true;
-      ticketsOut.push({ ...t, can_moderate: canMod });
+      const meta = metaMap.get(String(t.employee_id)) || null;
+      ticketsOut.push({
+        ...t,
+        can_moderate: canMod,
+        employee_pseudonym: meta?.pseudonym ?? null,
+        department_name: meta?.department_name ?? null,
+      });
     }
 
     return NextResponse.json({
