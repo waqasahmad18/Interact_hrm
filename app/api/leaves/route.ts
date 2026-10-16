@@ -184,6 +184,13 @@ export async function GET(req: NextRequest) {
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
     const status = searchParams.get("status");
+    const viewerId = String(
+      searchParams.get("viewerId") ||
+        searchParams.get("viewer_id") ||
+        req.headers.get("x-hrm-employee-id") ||
+        req.headers.get("x-employee-id") ||
+        "",
+    ).trim();
 
     // Sync leave tickets → employee_leaves (fixes approved tickets missing Leave status).
     try {
@@ -200,14 +207,35 @@ export async function GET(req: NextRequest) {
       params.push(status);
     }
 
+    // Prefer explicit employees list; else TL/Manager department scope via viewerId.
+    let scopedEmployees: string[] | null = null;
     if (employeesParam) {
-      const employees = employeesParam
+      scopedEmployees = employeesParam
         .split(",")
         .map((e) => e.trim())
         .filter(Boolean);
-      if (employees.length > 0) {
-        sql += ` AND employee_id IN (${employees.map(() => "?").join(",")})`;
-        params.push(...employees);
+    } else if (viewerId && /^\d+$/.test(viewerId)) {
+      try {
+        const scope = await resolveViewerDataScope(viewerId);
+        if (scope.mode !== "all" && scope.employeeIds.length > 0) {
+          scopedEmployees = scope.employeeIds.map(String);
+        }
+      } catch {
+        /* keep unscoped if scope fails */
+      }
+    }
+    if (scopedEmployees && scopedEmployees.length > 0) {
+      sql += ` AND employee_id IN (${scopedEmployees.map(() => "?").join(",")})`;
+      params.push(...scopedEmployees);
+    } else if (viewerId && /^\d+$/.test(viewerId) && !employeesParam) {
+      // Scoped viewer with empty team → return nothing (do not leak company-wide).
+      try {
+        const scope = await resolveViewerDataScope(viewerId);
+        if (scope.mode !== "all") {
+          return NextResponse.json({ success: true, leaves: [] });
+        }
+      } catch {
+        /* ignore */
       }
     }
 

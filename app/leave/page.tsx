@@ -111,6 +111,7 @@ export default function LeavePage() {
   const [sortConfig, setSortConfig] = useState<{ key: LeaveSortKey; direction: SortDirection } | null>(
     null
   );
+  const [searchText, setSearchText] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const loadBalancesForLeaves = async (list: any[]) => {
@@ -158,11 +159,22 @@ export default function LeavePage() {
     setLoading(true);
     setError("");
     try {
-      const leaveUrl =
-        scope.mode !== "all" && scope.employeeIds.length
-          ? `/api/leaves?employees=${encodeURIComponent(scope.employeeIds.join(","))}`
-          : "/api/leaves";
-      const res = await fetch(leaveUrl, { cache: "no-store" });
+      const params = new URLSearchParams();
+      params.set("ts", String(Date.now()));
+      if (viewerEmployeeId) params.set("viewerId", viewerEmployeeId);
+      // TL / Manager: own department / team only (never company-wide dump).
+      if (scope.mode !== "all" && scope.employeeIds.length) {
+        params.set("employees", scope.employeeIds.join(","));
+      }
+      const res = await fetch(`/api/leaves?${params.toString()}`, {
+        cache: "no-store",
+        headers: viewerEmployeeId
+          ? {
+              "x-employee-id": viewerEmployeeId,
+              "x-hrm-employee-id": viewerEmployeeId,
+            }
+          : undefined,
+      });
       const data = await res.json();
       if (data.success) {
         const empRes = await fetch("/api/employee-list", { cache: "no-store" });
@@ -355,9 +367,18 @@ export default function LeavePage() {
   };
 
   const sortedLeaves = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    const scoped = q
+      ? leaves.filter((l) => {
+          const name = String(l.employee_name || "").toLowerCase();
+          const pseudo = String(l.pseudonym || "").toLowerCase();
+          return name.includes(q) || pseudo.includes(q);
+        })
+      : leaves;
+
     // Default: most recent activity / approval on top.
     if (!sortConfig) {
-      return [...leaves].sort((a, b) => {
+      return [...scoped].sort((a, b) => {
         const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
         return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
       });
@@ -365,7 +386,7 @@ export default function LeavePage() {
     const { key, direction } = sortConfig;
     const getText = (v: unknown) => String(v || "").toLowerCase();
 
-    return [...leaves].sort((a, b) => {
+    return [...scoped].sort((a, b) => {
       let cmp = 0;
       switch (key) {
         case "employee_id":
@@ -394,7 +415,7 @@ export default function LeavePage() {
       }
       return direction === "asc" ? cmp : -cmp;
     });
-  }, [leaves, sortConfig]);
+  }, [leaves, sortConfig, searchText]);
 
   const sortButtonStyle: React.CSSProperties = {
     border: "none",
@@ -453,6 +474,25 @@ export default function LeavePage() {
             leave here — CEOs (Joe / Max / Mubeen) use Ticket Inbox instead.
           </p>
 
+          <div className={styles.searchBar}>
+            <label htmlFor="leave-search-name">Search</label>
+            <input
+              id="leave-search-name"
+              type="search"
+              className={styles.searchInput}
+              placeholder="Search by name or pseudo name…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          {!loading && leaves.length > 0 && searchText.trim() ? (
+            <p className={styles.searchMeta}>
+              Showing {sortedLeaves.length} of {leaves.length} leave
+              {sortedLeaves.length === 1 ? "" : "s"}
+            </p>
+          ) : null}
+
           <div className={styles.statRow}>
             <div className={`${styles.statCard} ${styles.statCardGold}`}>
               <p className={styles.statLabel}>Pending</p>
@@ -496,7 +536,9 @@ export default function LeavePage() {
                     {sortedLeaves.length === 0 ? (
                       <tr>
                         <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
-                          No leave requests yet.
+                          {searchText.trim()
+                            ? "No leave requests match your search."
+                            : "No leave requests yet."}
                         </td>
                       </tr>
                     ) : (
