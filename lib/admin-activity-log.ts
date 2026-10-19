@@ -137,6 +137,11 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       employeeId: employeeIdHint,
       loginId,
     });
+    const nameHint = String(
+      event.employee_name_hint || event.employeeName || event.employee_name || "",
+    ).trim();
+    const employeeName =
+      actor.employee_name || (nameHint ? nameHint.slice(0, 150) : null);
 
     const type = String(event.type || "event");
     const page = String(event.page || event.page_path || "").slice(0, 512) || null;
@@ -184,7 +189,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       ...event,
       loginId,
       employee_id: actor.employee_id,
-      employee_name: actor.employee_name,
+      employee_name: employeeName,
       pseudonym: actor.pseudonym,
       employee_code: actor.employee_code,
       hostname,
@@ -209,7 +214,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       day_key: day,
       event_type: type.slice(0, 64),
       employee_id: actor.employee_id,
-      employee_name: actor.employee_name,
+      employee_name: employeeName,
       pseudonym: actor.pseudonym,
       employee_code: actor.employee_code,
       hostname,
@@ -356,4 +361,62 @@ export async function getActivityBacklogById(id: number) {
     [id],
   );
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+type RequestLike = {
+  headers: { get(name: string): string | null };
+  cookies?: { get(name: string): { value: string } | undefined };
+};
+
+/**
+ * Server-side backlog row for attendance / break mutations.
+ * Client probe can miss events (old tabs, WebView, sendBeacon drops) — this is authoritative.
+ */
+export async function logServerEmployeeActivity(
+  req: RequestLike | null | undefined,
+  opts: {
+    type: string;
+    employeeId?: string | number | null;
+    employeeName?: string | null;
+    loginId?: string | null;
+    detail: string;
+    page?: string | null;
+    method?: string | null;
+    url?: string | null;
+  },
+) {
+  try {
+    const ip =
+      req?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req?.headers.get("x-real-ip") ||
+      null;
+    const ua = req?.headers.get("user-agent") || null;
+    const cookieLogin =
+      req?.cookies?.get?.(ADMIN_ACTOR_COOKIE)?.value?.trim() || "";
+    const headerLogin = req?.headers.get("x-login-id")?.trim() || "";
+    const headerEmp =
+      req?.headers.get("x-hrm-employee-id")?.trim() ||
+      req?.headers.get("x-employee-id")?.trim() ||
+      "";
+
+    await appendAdminActivity({
+      type: opts.type,
+      employeeId: String(opts.employeeId ?? headerEmp ?? "").trim(),
+      loginId: String(
+        opts.loginId || cookieLogin || headerLogin || "",
+      ).trim(),
+      detail: opts.detail,
+      label: opts.detail,
+      page: opts.page || undefined,
+      method: opts.method || "POST",
+      url: opts.url || undefined,
+      ip,
+      ua,
+      source: "server",
+      // Prefer explicit name when actor resolve fails (email/login lookups).
+      employee_name_hint: opts.employeeName || undefined,
+    });
+  } catch {
+    /* never break the mutation */
+  }
 }

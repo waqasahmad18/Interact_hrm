@@ -13,6 +13,7 @@ import {
 } from "../../../lib/timezone";
 import { computeClockInLateStatus } from "../../../lib/monthly-attendance-status";
 import { breakTypeLabel } from "@/lib/session-break-config";
+import { logServerEmployeeActivity } from "@/lib/admin-activity-log";
 
 // GET: Fetch all attendance records or by employeeId, now with department name
 export async function GET(req: NextRequest) {
@@ -311,6 +312,7 @@ export async function POST(req: NextRequest) {
 
     conn = await pool.getConnection();
     await ensureAttendanceTable(conn);
+    let loggedAction: "clock_in" | "clock_out" | "auto_clock_out" | null = null;
 
     if (clock_in !== undefined && clock_in !== null) {
       const bioBlock = await enforceBiometricOrRespond(
@@ -397,6 +399,7 @@ export async function POST(req: NextRequest) {
         ],
       );
       console.log("Clock-in record inserted successfully");
+      loggedAction = "clock_in";
     } else if (clock_out !== undefined && clock_out !== null) {
       let isAutoClockOut = Boolean(auto_clock_out);
 
@@ -452,6 +455,7 @@ export async function POST(req: NextRequest) {
             String(employee_id),
           );
           console.log("Auto clock-out record updated from T.Punch Out");
+          loggedAction = "auto_clock_out";
         } else {
           const formattedClockOut = new Date(clock_out).toISOString().slice(0, 19).replace('T', ' ');
           await conn.execute(
@@ -465,10 +469,29 @@ export async function POST(req: NextRequest) {
             [formattedClockOut, formattedClockOut, employee_name || null, pending.id]
           );
           console.log("Clock-out record updated successfully");
+          loggedAction = "clock_out";
         }
       } else {
         console.warn("No pending clock-in found for clock-out");
       }
+    }
+
+    if (loggedAction) {
+      const detail =
+        loggedAction === "clock_in"
+          ? "Clocked In"
+          : loggedAction === "auto_clock_out"
+            ? "Auto Clocked Out"
+            : "Clocked Out";
+      void logServerEmployeeActivity(req, {
+        type: loggedAction,
+        employeeId: String(employee_id),
+        employeeName: employee_name,
+        detail,
+        page: "/employee-dashboard",
+        method: "POST",
+        url: "/api/attendance",
+      });
     }
 
     return NextResponse.json({ success: true, message: clock_in ? 'inserted' : 'updated' });

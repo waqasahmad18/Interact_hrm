@@ -318,10 +318,18 @@ export function AdminActivityProbe() {
           } else if (!(init?.body instanceof FormData)) {
             const isDelete =
               method === "DELETE" || /\b(delete|remove|destroy)\b/i.test(path);
-            const detail = `${isDelete ? "API delete" : "API"} ${method} ${path} while on "${pageTitle}" [${ctx.page}]`;
+            const actionHint = describeApiBody(path, method, init?.body);
+            const detail = actionHint
+              ? `${actionHint} · ${method} ${path} on "${pageTitle}" [${ctx.page}]`
+              : `${isDelete ? "API delete" : "API"} ${method} ${path} while on "${pageTitle}" [${ctx.page}]`;
             void send([
               {
-                type: isDelete ? "api_delete" : "api_call",
+                type: actionHint
+                  ? actionHintType(path, method, init?.body) ||
+                    (isDelete ? "api_delete" : "api_call")
+                  : isDelete
+                    ? "api_delete"
+                    : "api_call",
                 page: ctx.page,
                 page_title: pageTitle,
                 full_url: ctx.full_url,
@@ -767,25 +775,129 @@ async function refreshPcHostname() {
   }
 }
 
+function parseJsonBody(body: BodyInit | null | undefined): Record<string, unknown> | null {
+  if (typeof body !== "string" || !body) return null;
+  try {
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Human label for attendance / break API posts (client-side enrichment). */
+function describeApiBody(
+  path: string,
+  method: string,
+  body: BodyInit | null | undefined,
+): string {
+  if (method !== "POST" && method !== "PUT" && method !== "PATCH") return "";
+  const p = path.split("?")[0] || "";
+  const data = parseJsonBody(body);
+  if (!data) {
+    if (p.includes("/api/breaks")) return "Break API call";
+    if (p.includes("/api/prayer_breaks")) return "Prayer Break API call";
+    if (p.includes("/api/refreshment_breaks")) return "Refreshment API call";
+    if (p.includes("/api/meeting_breaks")) return "Meeting API call";
+    if (p.includes("/api/attendance")) return "Attendance API call";
+    return "";
+  }
+  if (p.includes("/api/breaks")) {
+    if (data.break_start) return "Started Break";
+    if (data.break_end) return "Ended Break";
+  }
+  if (p.includes("/api/prayer_breaks")) {
+    if (data.prayer_break_start) return "Started Prayer Break";
+    if (data.prayer_break_end) return "Ended Prayer Break";
+  }
+  if (p.includes("/api/refreshment_breaks")) {
+    if (data.refreshment_start || data.refreshment_break_start)
+      return "Started Refreshment";
+    if (data.refreshment_end || data.refreshment_break_end)
+      return "Ended Refreshment";
+  }
+  if (p.includes("/api/meeting_breaks")) {
+    if (data.meeting_start || data.meeting_break_start) return "Started Meeting";
+    if (data.meeting_end || data.meeting_break_end) return "Ended Meeting";
+  }
+  if (p.includes("/api/attendance")) {
+    if (data.clock_in) return "Clocked In";
+    if (data.clock_out)
+      return data.auto_clock_out ? "Auto Clocked Out" : "Clocked Out";
+  }
+  if (p.includes("/api/biometric/verify") && data.action) {
+    return `Face verify (${String(data.action)})`;
+  }
+  return "";
+}
+
+function actionHintType(
+  path: string,
+  method: string,
+  body: BodyInit | null | undefined,
+): string {
+  const p = path.split("?")[0] || "";
+  const data = parseJsonBody(body);
+  if (!data) return "";
+  if (p.includes("/api/breaks")) {
+    if (data.break_start) return "break_start";
+    if (data.break_end) return "break_end";
+  }
+  if (p.includes("/api/prayer_breaks")) {
+    if (data.prayer_break_start) return "prayer_start";
+    if (data.prayer_break_end) return "prayer_end";
+  }
+  if (p.includes("/api/refreshment_breaks")) {
+    if (data.refreshment_start || data.refreshment_break_start)
+      return "refreshment_start";
+    if (data.refreshment_end || data.refreshment_break_end)
+      return "refreshment_end";
+  }
+  if (p.includes("/api/meeting_breaks")) {
+    if (data.meeting_start || data.meeting_break_start) return "meeting_start";
+    if (data.meeting_end || data.meeting_break_end) return "meeting_end";
+  }
+  if (p.includes("/api/attendance")) {
+    if (data.clock_in) return "clock_in";
+    if (data.clock_out)
+      return data.auto_clock_out ? "auto_clock_out" : "clock_out";
+  }
+  if (method === "DELETE") return "api_delete";
+  return "";
+}
+
 function send(events: Record<string, unknown>[]) {
   try {
     const host = pcHostname();
-    const enriched = events.map((e) =>
-      host && !e.hostname ? { ...e, hostname: host } : e,
-    );
+    const ids = actorIds();
+    const enriched = events.map((e) => ({
+      ...e,
+      hostname: e.hostname || host || undefined,
+      loginId: e.loginId || ids.loginId || undefined,
+      employeeId: e.employeeId || ids.employeeId || undefined,
+    }));
     const body = JSON.stringify({ events: enriched });
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      const blob = new Blob([body], { type: "application/json" });
-      navigator.sendBeacon("/api/internal/admin-activity", blob);
-      return;
-    }
+    // Prefer fetch+keepalive — sendBeacon alone was dropping some employee actions.
     void fetch("/api/internal/admin-activity", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       credentials: "same-origin",
       keepalive: true,
-    }).catch(() => {});
+    }).catch(() => {
+      try {
+        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+          navigator.sendBeacon(
+            "/api/internal/admin-activity",
+            new Blob([body], { type: "application/json" }),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    });
   } catch {
     // ignore
   }

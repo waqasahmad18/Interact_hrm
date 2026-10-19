@@ -212,6 +212,8 @@ export function SessionBreakButton({
         </div>
       )}
       <button
+        type="button"
+        data-action={isOn ? `end-${config.kind}` : `start-${config.kind}`}
         onClick={
           isOn
             ? () =>

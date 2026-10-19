@@ -901,6 +901,8 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
             <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#e67e22", marginBottom: 10 }}>Break</div>
           )}
           <button
+            type="button"
+            data-action={isOnBreak ? "end-break" : "start-break"}
             onClick={
               isOnBreak
                 ? () => runWithVerify("break_end", (token) => handleBreakEnd(token))
