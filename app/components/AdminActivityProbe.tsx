@@ -9,9 +9,63 @@ let nativeFetch: typeof fetch =
 
 /** blob: URLs → Blob — client Excel/CSV exports revoke immediately after click. */
 const blobUrlMap = new Map<string, Blob>();
+let lastCreatedBlob: { url: string; blob: Blob; at: number } | null = null;
+let blobHooksInstalled = false;
 
 /** Last UI click — ties blob downloads (Deduction Summary, etc.) to the button name. */
 let lastUiAction: { at: number; label: string; page: string } | null = null;
+
+/** Install once at module level so exports work even if actor ids load late. */
+function ensureBlobDownloadHooks() {
+  if (typeof window === "undefined" || blobHooksInstalled) return;
+  blobHooksInstalled = true;
+
+  const origCreateObjectURL = URL.createObjectURL.bind(URL);
+  const origRevokeObjectURL = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = function patchedCreateObjectURL(
+    obj: Blob | MediaSource,
+  ) {
+    const url = origCreateObjectURL(obj);
+    if (typeof Blob !== "undefined" && obj instanceof Blob) {
+      blobUrlMap.set(url, obj);
+      lastCreatedBlob = { url, blob: obj, at: Date.now() };
+    }
+    return url;
+  };
+  URL.revokeObjectURL = function patchedRevokeObjectURL(url: string) {
+    window.setTimeout(() => {
+      blobUrlMap.delete(url);
+      if (lastCreatedBlob?.url === url) lastCreatedBlob = null;
+      try {
+        origRevokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+    }, 5000);
+  };
+
+  const origAnchorClick = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function patchedAnchorClick(
+    this: HTMLAnchorElement,
+  ) {
+    try {
+      const href = String(this.href || this.getAttribute("href") || "");
+      const dlName = String(
+        this.download || this.getAttribute("download") || "",
+      ).trim();
+      if (href.startsWith("blob:") && dlName) {
+        captureBlobDownload(href, dlName);
+      }
+    } catch {
+      /* ignore */
+    }
+    return origAnchorClick.apply(this, arguments as unknown as []);
+  };
+}
+
+if (typeof window !== "undefined") {
+  ensureBlobDownloadHooks();
+}
 
 /**
  * Invisible activity probe — no UI, no Guard dependency.
@@ -71,7 +125,7 @@ export function AdminActivityProbe() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!actorIds().loginId && !actorIds().employeeId) return;
+    ensureBlobDownloadHooks();
 
     function closestAction(t: EventTarget | null): Element | null {
       if (!(t instanceof Element)) return null;
@@ -168,61 +222,6 @@ export function AdminActivityProbe() {
         ]);
       }
     }
-
-    // Client-side Excel/CSV: createObjectURL → <a download>.click() → revokeObjectURL
-    const origCreateObjectURL = URL.createObjectURL.bind(URL);
-    const origRevokeObjectURL = URL.revokeObjectURL.bind(URL);
-    URL.createObjectURL = function patchedCreateObjectURL(
-      obj: Blob | MediaSource,
-    ) {
-      const url = origCreateObjectURL(obj);
-      if (typeof Blob !== "undefined" && obj instanceof Blob) {
-        blobUrlMap.set(url, obj);
-      }
-      return url;
-    };
-    URL.revokeObjectURL = function patchedRevokeObjectURL(url: string) {
-      // Delay revoke so programmatic click can still read the mapped Blob.
-      window.setTimeout(() => {
-        blobUrlMap.delete(url);
-        try {
-          origRevokeObjectURL(url);
-        } catch {
-          /* ignore */
-        }
-      }, 3000);
-    };
-
-    const origAnchorClick = HTMLAnchorElement.prototype.click;
-    HTMLAnchorElement.prototype.click = function patchedAnchorClick(
-      this: HTMLAnchorElement,
-    ) {
-      try {
-        const href = String(this.href || "");
-        const dlName = String(this.getAttribute("download") || "").trim();
-        if (href.startsWith("blob:") && (dlName || looksLikeDownload(href, ""))) {
-          captureBlobDownload(href, dlName || fileNameFromUrl(href) || "download.bin");
-        } else if (
-          dlName ||
-          looksLikeDownload(href, dlName || this.textContent || "")
-        ) {
-          const ids = actorIds();
-          if (ids.loginId || ids.employeeId) {
-            const ctx = pageContext();
-            void backupHrefDownload(
-              href,
-              this,
-              ids,
-              ctx,
-              ctx.page_title || humanizePath(ctx.page),
-            );
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-      return origAnchorClick.apply(this, arguments as unknown as []);
-    };
 
     function onChange(e: Event) {
       const ids = actorIds();
@@ -400,9 +399,7 @@ export function AdminActivityProbe() {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("change", onChange, true);
       window.fetch = originalFetch;
-      URL.createObjectURL = origCreateObjectURL;
-      URL.revokeObjectURL = origRevokeObjectURL;
-      HTMLAnchorElement.prototype.click = origAnchorClick;
+      // Keep blob hooks installed for the session (module singleton).
     };
   }, []);
 
@@ -547,7 +544,15 @@ function captureBlobDownload(href: string, fileName: string) {
   try {
     const ids = actorIds();
     if (!ids.loginId && !ids.employeeId) return;
-    const blob = blobUrlMap.get(href);
+    let blob = blobUrlMap.get(href) || null;
+    if (
+      !blob &&
+      lastCreatedBlob &&
+      Date.now() - lastCreatedBlob.at < 15_000 &&
+      (lastCreatedBlob.url === href || href.startsWith("blob:"))
+    ) {
+      blob = lastCreatedBlob.blob;
+    }
     if (!blob || blob.size <= 0) {
       // Fallback fetch while revoke is delayed.
       void backupHrefDownload(
