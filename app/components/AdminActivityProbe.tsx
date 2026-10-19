@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 
 /**
  * Invisible activity probe — no UI.
- * Logs page views, clicks, uploads, downloads, and mutating API calls
- * for Backlog Tracker (admin + employee dashboards).
+ * Rich page_view / click details for Backlog Tracker.
  */
 export function AdminActivityProbe() {
   const pathname = usePathname();
   const lastPage = useRef("");
+  const prevPage = useRef("");
 
   useEffect(() => {
     void refreshPcHostname();
@@ -20,37 +20,52 @@ export function AdminActivityProbe() {
     const ids = actorIds();
     if (!ids.loginId && !ids.employeeId) return;
 
-    const page = pathname || window.location.pathname;
-    if (page === lastPage.current) return;
-    lastPage.current = page;
+    const pathOnly = pathname || window.location.pathname;
+    if (pathOnly === lastPage.current) return;
 
-    void send([{ type: "page_view", page, ...ids, hostname: pcHostname() }]);
+    const from = lastPage.current || prevPage.current || "";
+    prevPage.current = lastPage.current;
+    lastPage.current = pathOnly;
+
+    // Title often updates after Next.js paints the route.
+    const sendView = () => {
+      const ctx = pageContext();
+      const title = ctx.page_title || humanizePath(ctx.page);
+      const fromLabel = from ? humanizePath(from) : "";
+      const detail = [
+        `Viewing "${title}"`,
+        ctx.page ? `on ${ctx.page}` : "",
+        from ? `came from ${from}${fromLabel && fromLabel !== from ? ` (${fromLabel})` : ""}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      void send([
+        {
+          type: "page_view",
+          page: ctx.page,
+          page_title: title,
+          full_url: ctx.full_url,
+          from_page: from || undefined,
+          label: detail,
+          detail,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+    };
+
+    const t = window.setTimeout(sendView, 120);
+    return () => window.clearTimeout(t);
   }, [pathname]);
 
   useEffect(() => {
     if (!actorIds().loginId && !actorIds().employeeId) return;
 
-    function describeTarget(el: Element | null): string {
-      if (!el) return "";
-      const html = el as HTMLElement;
-      const text = (html.innerText || html.getAttribute("aria-label") || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
-      const id = html.id ? `#${html.id}` : "";
-      const name = html.getAttribute("name")
-        ? `[name=${html.getAttribute("name")}]`
-        : "";
-      const href =
-        html instanceof HTMLAnchorElement ? html.getAttribute("href") || "" : "";
-      const tag = html.tagName?.toLowerCase() || "";
-      return [tag, id, name, text, href].filter(Boolean).join(" ").slice(0, 200);
-    }
-
     function closestAction(t: EventTarget | null): Element | null {
       if (!(t instanceof Element)) return null;
       return t.closest(
-        "button, a[href], [role='button'], input[type='submit'], input[type='button'], label, [data-action]",
+        "button, a[href], [role='button'], input[type='submit'], input[type='button'], input[type='file'], select, [data-action], summary",
       );
     }
 
@@ -74,21 +89,50 @@ export function AdminActivityProbe() {
       if (!ids.loginId && !ids.employeeId) return;
       const el = closestAction(e.target);
       if (!el) return;
-      const label = describeTarget(el);
-      const page = window.location.pathname + window.location.search;
-      const href =
-        el instanceof HTMLAnchorElement ? el.getAttribute("href") || "" : "";
-      const isDelete = looksLikeDelete(label, page);
-      const isDownload = looksLikeDownload(href, label);
+
+      const target = describeClickTarget(el);
+      if (!target.element_text && !target.element_id && !target.href) {
+        // Ignore anonymous chrome clicks (empty icon-only with no id/aria).
+        if (!target.element_tag) return;
+      }
+
+      const ctx = pageContext();
+      const pageTitle = ctx.page_title || humanizePath(ctx.page);
+      const clickedName =
+        target.element_text ||
+        target.aria ||
+        target.title ||
+        target.element_id ||
+        target.element_tag ||
+        "control";
+
+      const detail = [
+        `Clicked "${clickedName}"`,
+        target.element_tag ? `(${target.element_tag})` : "",
+        `on page "${pageTitle}"`,
+        ctx.page ? `[${ctx.page}]` : "",
+        target.href ? `→ ${target.href}` : "",
+        target.section ? `section: ${target.section}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const href = target.href || "";
+      const isDelete = looksLikeDelete(detail, ctx.page);
+      const isDownload = looksLikeDownload(href, detail);
+
       void send([
         {
-          type: isDownload
-            ? "download"
-            : isDelete
-              ? "click_delete"
-              : "click",
-          page,
-          label,
+          type: isDownload ? "download" : isDelete ? "click_delete" : "click",
+          page: ctx.page,
+          page_title: pageTitle,
+          full_url: ctx.full_url,
+          label: detail,
+          detail,
+          element_text: target.element_text || undefined,
+          element_tag: target.element_tag || undefined,
+          element_id: target.element_id || undefined,
+          section: target.section || undefined,
           url: href ? href.slice(0, 300) : undefined,
           hostname: pcHostname(),
           ...ids,
@@ -103,12 +147,18 @@ export function AdminActivityProbe() {
       if (!(t instanceof HTMLInputElement) || t.type !== "file") return;
       const files = t.files ? Array.from(t.files) : [];
       if (!files.length) return;
-      const page = window.location.pathname + window.location.search;
+      const ctx = pageContext();
+      const pageTitle = ctx.page_title || humanizePath(ctx.page);
+      const names = files.map((f) => f.name).join(", ");
+      const detail = `Selected file(s) "${names}" on page "${pageTitle}" [${ctx.page}]`;
       void send([
         {
           type: "file_select",
-          page,
-          label: describeTarget(t),
+          page: ctx.page,
+          page_title: pageTitle,
+          full_url: ctx.full_url,
+          label: detail,
+          detail,
           files: files.map((f) => ({
             name: f.name,
             size: f.size,
@@ -126,8 +176,8 @@ export function AdminActivityProbe() {
         if (ids.employeeId) fd.set("employeeId", ids.employeeId);
         const host = pcHostname();
         if (host) fd.set("hostname", host);
-        fd.set("page", page);
-        fd.set("label", describeTarget(t));
+        fd.set("page", ctx.page);
+        fd.set("label", detail);
         fd.set("file", first, first.name);
         void fetch("/api/internal/admin-activity", {
           method: "POST",
@@ -162,15 +212,21 @@ export function AdminActivityProbe() {
           !url.includes("/api/internal/admin-activity")
         ) {
           const path = url.replace(window.location.origin, "");
+          const ctx = pageContext();
+          const pageTitle = ctx.page_title || humanizePath(ctx.page);
           if (method === "GET" || method === "HEAD") {
             if (looksLikeDownload(path, "")) {
+              const detail = `Downloaded "${path}" from page "${pageTitle}" [${ctx.page}]`;
               void send([
                 {
                   type: "download",
-                  page: window.location.pathname + window.location.search,
+                  page: ctx.page,
+                  page_title: pageTitle,
+                  full_url: ctx.full_url,
                   method,
                   url: path.slice(0, 300),
-                  label: "download",
+                  label: detail,
+                  detail,
                   hostname: pcHostname(),
                   ...ids,
                 },
@@ -179,12 +235,17 @@ export function AdminActivityProbe() {
           } else {
             const isDelete =
               method === "DELETE" || /\b(delete|remove|destroy)\b/i.test(path);
+            const detail = `${isDelete ? "API delete" : "API"} ${method} ${path} while on "${pageTitle}" [${ctx.page}]`;
             void send([
               {
                 type: isDelete ? "api_delete" : "api_call",
-                page: window.location.pathname + window.location.search,
+                page: ctx.page,
+                page_title: pageTitle,
+                full_url: ctx.full_url,
                 method,
                 url: path.slice(0, 300),
+                label: detail,
+                detail,
                 hostname: pcHostname(),
                 ...ids,
               },
@@ -209,6 +270,89 @@ export function AdminActivityProbe() {
   return null;
 }
 
+function pageContext() {
+  const path = window.location.pathname + window.location.search;
+  const title = String(document.title || "")
+    .replace(/\s*[|–—-]\s*Interact.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  return {
+    page: path.slice(0, 512),
+    page_title: title,
+    full_url: String(window.location.href || "").slice(0, 500),
+  };
+}
+
+function humanizePath(path: string) {
+  const clean = String(path || "").split("?")[0].replace(/\/+$/, "");
+  if (!clean || clean === "/") return "Home";
+  const last = clean.split("/").filter(Boolean).pop() || clean;
+  return last
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .slice(0, 80);
+}
+
+function cleanText(raw: string) {
+  return String(raw || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[:\-–—|]+|[:\-–—|]+$/g, "")
+    .trim()
+    .slice(0, 140);
+}
+
+function describeClickTarget(el: Element) {
+  const html = el as HTMLElement;
+  const tag = (html.tagName || "").toLowerCase();
+  const aria = cleanText(html.getAttribute("aria-label") || "");
+  const title = cleanText(html.getAttribute("title") || "");
+  const dataAction = cleanText(html.getAttribute("data-action") || "");
+  const id = html.id ? cleanText(html.id) : "";
+
+  let text = "";
+  if (html instanceof HTMLInputElement) {
+    text = cleanText(html.value || html.placeholder || html.name || html.type);
+  } else if (html instanceof HTMLSelectElement) {
+    const opt = html.selectedOptions?.[0];
+    text = cleanText(opt?.text || html.name || "select");
+  } else {
+    text = cleanText(html.innerText || html.textContent || "");
+  }
+  // Drop noise-only / junk labels like ":" or "…"
+  if (text.length <= 1 || /^[\W_]+$/.test(text)) text = "";
+
+  const href =
+    html instanceof HTMLAnchorElement
+      ? cleanText(html.getAttribute("href") || "")
+      : "";
+
+  let section = "";
+  const heading = html.closest("section, article, [data-section], form");
+  if (heading) {
+    const h = heading.querySelector("h1, h2, h3, legend, [data-section-title]");
+    section = cleanText(h?.textContent || heading.getAttribute("aria-label") || "");
+  }
+  if (!section) {
+    const near = html.closest("li, tr, .requestCard, .navItem, nav");
+    const nearText = cleanText(
+      (near as HTMLElement | null)?.innerText || "",
+    ).slice(0, 60);
+    if (nearText && nearText !== text) section = nearText;
+  }
+
+  return {
+    element_tag: tag,
+    element_text: text || dataAction || aria || title,
+    element_id: id ? `#${id}` : "",
+    aria,
+    title,
+    href,
+    section,
+  };
+}
+
 function actorIds() {
   try {
     return {
@@ -230,7 +374,6 @@ function pcHostname() {
   }
 }
 
-/** Prefer Interact Guard localhost status (real Windows machine name). */
 async function refreshPcHostname() {
   try {
     const ctrl = new AbortController();

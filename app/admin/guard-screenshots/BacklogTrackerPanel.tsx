@@ -256,12 +256,12 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
                       </div>
                     ) : null}
                   </td>
-                  <td style={{ padding: "8px 6px", maxWidth: 280 }}>
+                  <td style={{ padding: "8px 6px", maxWidth: 360 }}>
                     {r.detail || "—"}
                   </td>
-                  <td style={{ padding: "8px 6px", maxWidth: 260, wordBreak: "break-all" }}>
+                  <td style={{ padding: "8px 6px", maxWidth: 280, wordBreak: "break-all" }}>
                     {r.page_path || "—"}
-                    {r.url ? (
+                    {r.url && r.url !== r.page_path ? (
                       <div className={styles.tip} style={{ margin: 0 }}>
                         {r.url}
                       </div>

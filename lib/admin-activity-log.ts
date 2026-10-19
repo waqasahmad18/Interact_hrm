@@ -140,7 +140,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
     const type = String(event.type || "event");
     const page = String(event.page || event.page_path || "").slice(0, 512) || null;
     const detail = String(
-      event.label || event.detail || event.description || "",
+      event.detail || event.label || event.description || "",
     ).slice(0, 2000) || null;
     const method = event.method != null ? String(event.method).slice(0, 16) : null;
     const url = event.url != null ? String(event.url).slice(0, 512) : null;
