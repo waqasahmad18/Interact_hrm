@@ -5,6 +5,7 @@ import {
   enqueueScreenshotPolicyScan,
   tryBeginScreenshotUpload,
 } from "@/lib/guard-screenshot-ingest";
+import { assertScreenshotStorageWritable } from "@/lib/guard-screenshot-retention";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,6 +92,21 @@ async function readImageFromRequest(req: NextRequest): Promise<{
 }
 
 export async function POST(req: NextRequest) {
+  const storage = await assertScreenshotStorageWritable();
+  if (!storage.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: storage.reason || "storage unavailable",
+        retry_after_seconds: 60,
+      },
+      {
+        status: 503,
+        headers: { "Retry-After": "60" },
+      },
+    );
+  }
+
   if (!tryBeginScreenshotUpload()) {
     return NextResponse.json(
       {

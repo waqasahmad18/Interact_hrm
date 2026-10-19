@@ -70,6 +70,14 @@ export type SavedScreenshot = {
 export async function saveGuardScreenshot(
   input: SaveScreenshotInput
 ): Promise<SavedScreenshot> {
+  const { assertScreenshotStorageWritable } = await import(
+    "@/lib/guard-screenshot-retention"
+  );
+  const gate = await assertScreenshotStorageWritable();
+  if (!gate.ok) {
+    throw new Error(gate.reason || "screenshot storage unavailable");
+  }
+
   const employeeId = safeSegment(input.employeeId, "unknown");
   const name = safeSegment(input.employeeName || "", "Employee");
   const pseudo = safeSegment(input.pseudonym || "", "NA");
@@ -82,7 +90,15 @@ export async function saveGuardScreenshot(
   const dir = path.join(GUARD_SCREENSHOTS_ROOT, employeeId, dateFolder);
   await fs.mkdir(dir, { recursive: true });
   const absolutePath = path.join(dir, fileName);
-  await fs.writeFile(absolutePath, input.png);
+  try {
+    await fs.writeFile(absolutePath, input.png);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/ENOSPC|no space/i.test(msg)) {
+      throw new Error("disk full — screenshot not saved");
+    }
+    throw err;
+  }
   const relativePath = path
     .join(employeeId, dateFolder, fileName)
     .split(path.sep)

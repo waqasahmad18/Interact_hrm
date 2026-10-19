@@ -468,9 +468,14 @@ export function evaluateAppActivityPolicy(
 function ocrTextFromFile(absPath: string): Promise<string> {
   const script = path.join(process.cwd(), "image-to-text", "run-scan.js");
   return new Promise((resolve, reject) => {
+    // Staging is ~2GB RAM — keep OCR child heap modest (override via env).
+    const ocrHeap = Math.max(
+      128,
+      Math.min(448, Number(process.env.GUARD_SS_OCR_HEAP_MB || 256) || 256),
+    );
     execFile(
       process.execPath,
-      ["--max-old-space-size=448", script, absPath],
+      [`--max-old-space-size=${ocrHeap}`, script, absPath],
       {
         cwd: process.cwd(),
         env: process.env,
