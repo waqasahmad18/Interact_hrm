@@ -38,6 +38,7 @@ import {
   prefetchFaceModelAssets,
   preloadFaceRuntime,
 } from "@/lib/face-client-engine";
+import { AdminActivityProbe } from "../components/AdminActivityProbe";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
 const ClockBreakPrayerWidget = dynamic(
@@ -593,6 +594,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
             employeeName={employeeName || "Employee"}
           />
         ) : null}
+        <AdminActivityProbe />
       </div>
     </div>
     </EmployeeSessionProvider>

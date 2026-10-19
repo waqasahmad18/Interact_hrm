@@ -18,6 +18,7 @@ import GuardPolicyPanel from "./GuardPolicyPanel";
 import GuardLiveView from "./GuardLiveView";
 import GuardAppActivityPanel from "./GuardAppActivityPanel";
 import GuardKeyboardActivityPanel from "./GuardKeyboardActivityPanel";
+import BacklogTrackerPanel from "./BacklogTrackerPanel";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 
 type ShotSummary = {
@@ -236,6 +237,7 @@ export default function GuardScreenshotsPage() {
   const [activityMode, setActivityMode] = React.useState(false);
   const [keyboardMode, setKeyboardMode] = React.useState(false);
   const [policyMode, setPolicyMode] = React.useState(false);
+  const [backlogMode, setBacklogMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -625,7 +627,8 @@ export default function GuardScreenshotsPage() {
             !liveMode &&
             !activityMode &&
             !keyboardMode &&
-            !policyMode ? (
+            !policyMode &&
+            !backlogMode ? (
               <button
                 type="button"
                 className={styles.navBackBtn}
@@ -710,7 +713,9 @@ export default function GuardScreenshotsPage() {
                 </button>
               </div>
 
-              {policyMode ? (
+              {backlogMode ? (
+                <BacklogTrackerPanel onBack={() => setBacklogMode(false)} />
+              ) : policyMode ? (
                 <GuardPolicyPanel onBack={() => setPolicyMode(false)} />
               ) : liveMode ? (
                 <GuardLiveView
@@ -792,6 +797,20 @@ export default function GuardScreenshotsPage() {
                       }}
                     >
                       Policy
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnPrimary}
+                      onClick={() => {
+                        setSelectedId("");
+                        setLiveMode(false);
+                        setActivityMode(false);
+                        setKeyboardMode(false);
+                        setPolicyMode(false);
+                        setBacklogMode(true);
+                      }}
+                    >
+                      Backlog Tracker
                     </button>
                   </div>
 
