@@ -7,6 +7,12 @@ import { usePathname } from "next/navigation";
 let nativeFetch: typeof fetch =
   typeof window !== "undefined" ? window.fetch.bind(window) : fetch;
 
+/** blob: URLs → Blob — client Excel/CSV exports revoke immediately after click. */
+const blobUrlMap = new Map<string, Blob>();
+
+/** Last UI click — ties blob downloads (Deduction Summary, etc.) to the button name. */
+let lastUiAction: { at: number; label: string; page: string } | null = null;
+
 /**
  * Invisible activity probe — no UI, no Guard dependency.
  * Logs page_view / click / file events for Backlog Tracker.
@@ -85,7 +91,12 @@ export function AdminActivityProbe() {
         s.includes("download") ||
         s.includes("/api/attachments/") ||
         s.includes("export") ||
-        /\.(pdf|xlsx?|csv|zip|docx?)(\?|$)/i.test(url)
+        /\.(pdf|xlsx?|csv|zip|docx?)(\?|$)/i.test(url) ||
+        // Button labels only (empty url) — Deduction Summary / XLS / CSV
+        (!url &&
+          (/\bsummary\b/.test(s) ||
+            /\bxlsx?\b/.test(s) ||
+            /\bcsv\b/.test(s)))
       );
     }
 
@@ -110,6 +121,12 @@ export function AdminActivityProbe() {
         target.element_id ||
         target.element_tag ||
         "control";
+
+      lastUiAction = {
+        at: Date.now(),
+        label: clickedName,
+        page: ctx.page,
+      };
 
       const detail = [
         `Clicked "${clickedName}"`,
@@ -151,6 +168,61 @@ export function AdminActivityProbe() {
         ]);
       }
     }
+
+    // Client-side Excel/CSV: createObjectURL → <a download>.click() → revokeObjectURL
+    const origCreateObjectURL = URL.createObjectURL.bind(URL);
+    const origRevokeObjectURL = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = function patchedCreateObjectURL(
+      obj: Blob | MediaSource,
+    ) {
+      const url = origCreateObjectURL(obj);
+      if (typeof Blob !== "undefined" && obj instanceof Blob) {
+        blobUrlMap.set(url, obj);
+      }
+      return url;
+    };
+    URL.revokeObjectURL = function patchedRevokeObjectURL(url: string) {
+      // Delay revoke so programmatic click can still read the mapped Blob.
+      window.setTimeout(() => {
+        blobUrlMap.delete(url);
+        try {
+          origRevokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      }, 3000);
+    };
+
+    const origAnchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function patchedAnchorClick(
+      this: HTMLAnchorElement,
+    ) {
+      try {
+        const href = String(this.href || "");
+        const dlName = String(this.getAttribute("download") || "").trim();
+        if (href.startsWith("blob:") && (dlName || looksLikeDownload(href, ""))) {
+          captureBlobDownload(href, dlName || fileNameFromUrl(href) || "download.bin");
+        } else if (
+          dlName ||
+          looksLikeDownload(href, dlName || this.textContent || "")
+        ) {
+          const ids = actorIds();
+          if (ids.loginId || ids.employeeId) {
+            const ctx = pageContext();
+            void backupHrefDownload(
+              href,
+              this,
+              ids,
+              ctx,
+              ctx.page_title || humanizePath(ctx.page),
+            );
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return origAnchorClick.apply(this, arguments as unknown as []);
+    };
 
     function onChange(e: Event) {
       const ids = actorIds();
@@ -328,6 +400,9 @@ export function AdminActivityProbe() {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("change", onChange, true);
       window.fetch = originalFetch;
+      URL.createObjectURL = origCreateObjectURL;
+      URL.revokeObjectURL = origRevokeObjectURL;
+      HTMLAnchorElement.prototype.click = origAnchorClick;
     };
   }, []);
 
@@ -466,6 +541,71 @@ function fileNameFromDisposition(header: string | null) {
     (m?.[1] || m?.[2] || m?.[3] || "").trim().replace(/^["']|["']$/g, ""),
   );
   return raw.slice(0, 180);
+}
+
+function captureBlobDownload(href: string, fileName: string) {
+  try {
+    const ids = actorIds();
+    if (!ids.loginId && !ids.employeeId) return;
+    const blob = blobUrlMap.get(href);
+    if (!blob || blob.size <= 0) {
+      // Fallback fetch while revoke is delayed.
+      void backupHrefDownload(
+        href,
+        document.createElement("a"),
+        ids,
+        pageContext(),
+        humanizePath(pageContext().page),
+      );
+      return;
+    }
+    if (blob.size > MAX_FILE_COPY_BYTES) {
+      const ctx = pageContext();
+      void send([
+        {
+          type: "download",
+          page: ctx.page,
+          url: href.slice(0, 80),
+          detail: `Downloaded "${fileName}" (${blob.size} B) — copy skipped (over ${MAX_FILE_COPY_BYTES} B)`,
+          file_name: fileName,
+          file_bytes: blob.size,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+      return;
+    }
+    const ctx = pageContext();
+    const pageTitle = ctx.page_title || humanizePath(ctx.page);
+    const hint =
+      lastUiAction && Date.now() - lastUiAction.at < 90_000
+        ? lastUiAction
+        : null;
+    const detail = [
+      `Downloaded "${fileName}"`,
+      hint?.label ? `via button "${hint.label}"` : "",
+      `on page "${pageTitle}"`,
+      `[${ctx.page}]`,
+      `(${blob.size} B)`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const file = new File([blob], fileName, {
+      type:
+        blob.type ||
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    void postFileCopy(file, {
+      type: "download",
+      page: ctx.page,
+      url: href.slice(0, 80),
+      method: "BLOB",
+      detail,
+      ...ids,
+    });
+  } catch {
+    /* ignore */
+  }
 }
 
 function postFileCopy(
