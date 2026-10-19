@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       const form = await req.formData();
       const loginId = actorFrom(req, String(form.get("loginId") || ""));
       const employeeId = employeeIdFrom(req, String(form.get("employeeId") || ""));
+      const hostname = String(form.get("hostname") || "").trim();
       const type = String(form.get("type") || "file_upload");
       const page = String(form.get("page") || "");
       const label = String(form.get("label") || "");
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
           type,
           loginId,
           employeeId,
+          hostname: hostname || undefined,
           page,
           label,
           mime: f.type || null,
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
           type,
           loginId,
           employeeId,
+          hostname: hostname || undefined,
           page,
           label,
           ...meta,

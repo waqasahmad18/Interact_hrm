@@ -73,13 +73,30 @@ export async function resolveActivityActor(opts: {
   };
 }
 
+async function lookupHostnameByIp(ip: string | null | undefined): Promise<string | null> {
+  const addr = String(ip || "").trim();
+  if (!addr || addr === "127.0.0.1" || addr === "::1") return null;
+  try {
+    const [rows]: any = await query(
+      `SELECT hostname FROM presence_agents
+       WHERE last_ip = ? AND hostname IS NOT NULL AND TRIM(hostname) <> ''
+       ORDER BY last_seen_at DESC LIMIT 1`,
+      [addr],
+    );
+    const host = rows?.[0]?.hostname;
+    return typeof host === "string" && host.trim() ? host.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 async function insertBacklogRow(row: Record<string, unknown>) {
   try {
     await query(
       `INSERT INTO hrm_activity_backlog
-        (event_ts, day_key, event_type, employee_id, employee_name, pseudonym, employee_code,
+        (event_ts, day_key, event_type, employee_id, employee_name, pseudonym, employee_code, hostname,
          login_id, page_path, detail, method, url, file_name, file_bytes, ip, user_agent, payload_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.event_ts,
         row.day_key,
@@ -88,6 +105,7 @@ async function insertBacklogRow(row: Record<string, unknown>) {
         row.employee_name,
         row.pseudonym,
         row.employee_code,
+        row.hostname,
         row.login_id,
         row.page_path,
         row.detail,
@@ -101,7 +119,7 @@ async function insertBacklogRow(row: Record<string, unknown>) {
       ],
     );
   } catch {
-    /* table may not exist yet — JSONL still written */
+    /* table/column may not exist yet — JSONL still written */
   }
 }
 
@@ -142,6 +160,16 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
           ? event.file_bytes
           : null;
 
+    const ip =
+      event.ip != null ? String(event.ip).trim().slice(0, 64) || null : null;
+    let hostname =
+      String(event.hostname || event.machine_name || event.pc_name || "")
+        .trim()
+        .slice(0, 255) || null;
+    if (!hostname) {
+      hostname = await lookupHostnameByIp(ip);
+    }
+
     const row = {
       ts: now.toISOString(),
       day,
@@ -152,6 +180,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       employee_name: actor.employee_name,
       pseudonym: actor.pseudonym,
       employee_code: actor.employee_code,
+      hostname,
     };
 
     await fs.mkdir(ROOT, { recursive: true });
@@ -176,6 +205,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       employee_name: actor.employee_name,
       pseudonym: actor.pseudonym,
       employee_code: actor.employee_code,
+      hostname,
       login_id: loginId,
       page_path: page,
       detail,
@@ -183,7 +213,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       url,
       file_name: fileName,
       file_bytes: fileBytes,
-      ip: event.ip != null ? String(event.ip).slice(0, 64) : null,
+      ip,
       user_agent: event.ua != null ? String(event.ua).slice(0, 512) : null,
       payload_json: payloadJson,
     });
@@ -256,9 +286,9 @@ export async function listActivityBacklog(opts: BacklogListOpts = {}) {
   if (opts.search?.trim()) {
     const q = `%${opts.search.trim()}%`;
     where.push(
-      `(employee_name LIKE ? OR pseudonym LIKE ? OR employee_code LIKE ? OR employee_id LIKE ? OR detail LIKE ? OR page_path LIKE ? OR url LIKE ? OR file_name LIKE ?)`,
+      `(employee_name LIKE ? OR pseudonym LIKE ? OR employee_code LIKE ? OR employee_id LIKE ? OR hostname LIKE ? OR detail LIKE ? OR page_path LIKE ? OR url LIKE ? OR file_name LIKE ?)`,
     );
-    params.push(q, q, q, q, q, q, q, q);
+    params.push(q, q, q, q, q, q, q, q, q);
   }
 
   const whereSql = where.join(" AND ");
@@ -270,7 +300,7 @@ export async function listActivityBacklog(opts: BacklogListOpts = {}) {
 
   const [rows]: any = await query(
     `SELECT id, event_ts, day_key, event_type, employee_id, employee_name, pseudonym,
-            employee_code, login_id, page_path, detail, method, url, file_name, file_bytes, ip
+            employee_code, hostname, login_id, page_path, detail, method, url, file_name, file_bytes, ip
      FROM hrm_activity_backlog
      WHERE ${whereSql}
      ORDER BY event_ts DESC, id DESC

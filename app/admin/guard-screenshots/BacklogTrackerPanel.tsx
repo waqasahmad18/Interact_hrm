@@ -15,6 +15,7 @@ type Row = {
   employee_name: string | null;
   pseudonym: string | null;
   employee_code: string | null;
+  hostname: string | null;
   login_id: string | null;
   page_path: string | null;
   detail: string | null;
@@ -134,7 +135,7 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
             type="search"
             className={styles.profileSearchInput}
             value={search}
-            placeholder="Name, pseudo, code, detail…"
+            placeholder="Name, pseudo, code, PC name, detail…"
             onChange={(e) => {
               setPage(1);
               setSearch(e.target.value);
@@ -197,6 +198,7 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
               <th style={{ padding: "8px 6px" }}>Date / time</th>
               <th style={{ padding: "8px 6px" }}>Event</th>
               <th style={{ padding: "8px 6px" }}>Employee</th>
+              <th style={{ padding: "8px 6px" }}>PC name</th>
               <th style={{ padding: "8px 6px" }}>Detail</th>
               <th style={{ padding: "8px 6px" }}>Page / URL</th>
             </tr>
@@ -204,13 +206,13 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
           <tbody>
             {loading && rows.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 16 }} className={styles.tip}>
+                <td colSpan={6} style={{ padding: 16 }} className={styles.tip}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 16 }} className={styles.tip}>
+                <td colSpan={6} style={{ padding: 16 }} className={styles.tip}>
                   No backlog events for this filter yet. Use the app (clicks /
                   uploads / downloads) then Refresh.
                 </td>
@@ -245,6 +247,14 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
                         .filter(Boolean)
                         .join(" · ") || "—"}
                     </div>
+                  </td>
+                  <td style={{ padding: "8px 6px", whiteSpace: "nowrap" }}>
+                    {r.hostname || "—"}
+                    {r.ip ? (
+                      <div className={styles.tip} style={{ margin: 0 }}>
+                        IP {r.ip}
+                      </div>
+                    ) : null}
                   </td>
                   <td style={{ padding: "8px 6px", maxWidth: 280 }}>
                     {r.detail || "—"}

@@ -13,6 +13,10 @@ export function AdminActivityProbe() {
   const lastPage = useRef("");
 
   useEffect(() => {
+    void refreshPcHostname();
+  }, []);
+
+  useEffect(() => {
     const ids = actorIds();
     if (!ids.loginId && !ids.employeeId) return;
 
@@ -20,7 +24,7 @@ export function AdminActivityProbe() {
     if (page === lastPage.current) return;
     lastPage.current = page;
 
-    void send([{ type: "page_view", page, ...ids }]);
+    void send([{ type: "page_view", page, ...ids, hostname: pcHostname() }]);
   }, [pathname]);
 
   useEffect(() => {
@@ -86,6 +90,7 @@ export function AdminActivityProbe() {
           page,
           label,
           url: href ? href.slice(0, 300) : undefined,
+          hostname: pcHostname(),
           ...ids,
         },
       ]);
@@ -109,6 +114,7 @@ export function AdminActivityProbe() {
             size: f.size,
             mime: f.type,
           })),
+          hostname: pcHostname(),
           ...ids,
         },
       ]);
@@ -118,6 +124,8 @@ export function AdminActivityProbe() {
         fd.set("type", "file_upload");
         if (ids.loginId) fd.set("loginId", ids.loginId);
         if (ids.employeeId) fd.set("employeeId", ids.employeeId);
+        const host = pcHostname();
+        if (host) fd.set("hostname", host);
         fd.set("page", page);
         fd.set("label", describeTarget(t));
         fd.set("file", first, first.name);
@@ -163,6 +171,7 @@ export function AdminActivityProbe() {
                   method,
                   url: path.slice(0, 300),
                   label: "download",
+                  hostname: pcHostname(),
                   ...ids,
                 },
               ]);
@@ -176,6 +185,7 @@ export function AdminActivityProbe() {
                 page: window.location.pathname + window.location.search,
                 method,
                 url: path.slice(0, 300),
+                hostname: pcHostname(),
                 ...ids,
               },
             ]);
@@ -210,9 +220,45 @@ function actorIds() {
   }
 }
 
+const PC_HOST_KEY = "hrm_pc_hostname";
+
+function pcHostname() {
+  try {
+    return String(localStorage.getItem(PC_HOST_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Prefer Interact Guard localhost status (real Windows machine name). */
+async function refreshPcHostname() {
+  try {
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => ctrl.abort(), 1200);
+    const res = await fetch("http://127.0.0.1:19501/status", {
+      signal: ctrl.signal,
+      mode: "cors",
+      cache: "no-store",
+    });
+    window.clearTimeout(t);
+    if (!res.ok) return;
+    const data = await res.json();
+    const host = String(
+      data?.hostname || data?.machine_name || data?.pc_name || "",
+    ).trim();
+    if (host) localStorage.setItem(PC_HOST_KEY, host);
+  } catch {
+    /* Guard not running */
+  }
+}
+
 function send(events: Record<string, unknown>[]) {
   try {
-    const body = JSON.stringify({ events });
+    const host = pcHostname();
+    const enriched = events.map((e) =>
+      host && !e.hostname ? { ...e, hostname: host } : e,
+    );
+    const body = JSON.stringify({ events: enriched });
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       const blob = new Blob([body], { type: "application/json" });
       navigator.sendBeacon("/api/internal/admin-activity", blob);
