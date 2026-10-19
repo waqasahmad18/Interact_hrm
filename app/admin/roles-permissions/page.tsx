@@ -1170,20 +1170,14 @@ export default function SystemControlPage() {
     setBacklogShowPw(false);
   }
 
-  async function openBacklogGate() {
-    if (backlogVisible && activeTab === "backlog") return;
-    try {
-      const res = await fetch("/api/admin/guard-screenshots/unlock", {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (data.unlocked) {
-        await revealBacklogTracker();
-        return;
-      }
-    } catch {
-      /* fall through to password */
+  function openBacklogGate() {
+    // Always require password before the tab can appear (never auto-show from cookie).
+    if (backlogVisible) {
+      setActiveTab("backlog");
+      return;
     }
+    setBacklogPassword("");
+    setBacklogShowPw(false);
     setBacklogPwOpen(true);
     window.setTimeout(() => backlogPwRef.current?.focus(), 50);
   }
@@ -1213,6 +1207,10 @@ export default function SystemControlPage() {
   function hideBacklogTracker() {
     setBacklogVisible(false);
     if (activeTab === "backlog") setActiveTab("roles");
+    // Lock again so next open always needs password (and list API stays locked).
+    void fetch("/api/admin/guard-screenshots/unlock", { method: "DELETE" }).catch(
+      () => {},
+    );
   }
 
   const tabs: { id: TabId; label: string }[] = [
@@ -1232,7 +1230,7 @@ export default function SystemControlPage() {
             <p className={styles.scEyebrow}>Administration</p>
             <h1
               className={styles.scTitle}
-              onDoubleClick={() => void openBacklogGate()}
+              onDoubleClick={() => openBacklogGate()}
               style={{ cursor: "default", userSelect: "none" }}
             >
               System Control
