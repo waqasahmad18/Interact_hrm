@@ -5,12 +5,11 @@ import Link from "next/link";
 import {
   FaDownload,
   FaEllipsisV,
-  FaEye,
-  FaEyeSlash,
   FaTimes,
   FaTrash,
 } from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
+import SecretPasswordModal from "@/app/components/SecretPasswordModal";
 import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
@@ -201,8 +200,6 @@ function buildProfiles(
 export default function GuardScreenshotsPage() {
   const [unlocked, setUnlocked] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
-  const [password, setPassword] = React.useState("");
-  const [showPw, setShowPw] = React.useState(false);
   const [unlocking, setUnlocking] = React.useState(false);
 
   const [agents, setAgents] = React.useState<AgentRow[]>([]);
@@ -409,7 +406,8 @@ export default function GuardScreenshotsPage() {
     if (unlocked && selectedId) void loadFiles();
   }, [unlocked, selectedId, loadFiles]);
 
-  async function unlock() {
+  async function unlock(password: string) {
+    if (!password || unlocking) return;
     setUnlocking(true);
     try {
       const res = await fetch("/api/admin/guard-screenshots/unlock", {
@@ -422,7 +420,6 @@ export default function GuardScreenshotsPage() {
         toastError(data.error || "Invalid password");
         return;
       }
-      setPassword("");
       setUnlocked(true);
       toastSuccess("Unlocked");
     } catch {
@@ -651,42 +648,19 @@ export default function GuardScreenshotsPage() {
           {checking ? (
             <p className={styles.tip}>Checking access…</p>
           ) : !unlocked ? (
-            <div className={styles.section}>
-              <div className={styles.durationRow}>
-                <div className={styles.field} style={{ minWidth: 280 }}>
-                  <label htmlFor="gallery-password-page">Enter password</label>
-                  <div className={styles.passwordWrap}>
-                    <input
-                      id="gallery-password-page"
-                      type={showPw ? "text" : "password"}
-                      autoComplete="off"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void unlock();
-                      }}
-                      className={styles.passwordInput}
-                    />
-                    <button
-                      type="button"
-                      className={styles.passwordToggle}
-                      onClick={() => setShowPw((v) => !v)}
-                      aria-label={showPw ? "Hide password" : "Show password"}
-                    >
-                      {showPw ? <FaEyeSlash /> : <FaEye />}
-                    </button>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className={adminStyles.btnPrimary}
-                  disabled={unlocking || !password}
-                  onClick={() => void unlock()}
-                >
-                  {unlocking ? "Unlocking…" : "Enter"}
-                </button>
-              </div>
-            </div>
+            <>
+              <p className={styles.tip}>Enter password to open the gallery.</p>
+              <SecretPasswordModal
+                open
+                unlocking={unlocking}
+                onClose={() => {
+                  if (typeof window !== "undefined") {
+                    window.location.href = "/admin/presence-idle";
+                  }
+                }}
+                onSubmit={unlock}
+              />
+            </>
           ) : (
             <div className={styles.galleryWrap}>
               <div className={styles.durationRow} style={{ marginBottom: 2 }}>

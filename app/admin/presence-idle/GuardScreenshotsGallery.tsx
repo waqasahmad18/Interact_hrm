@@ -2,9 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
-import adminStyles from "../admin-page.module.css";
-import styles from "./presence-idle.module.css";
+import SecretPasswordModal from "@/app/components/SecretPasswordModal";
 import { toastError } from "@/lib/app-toast";
 
 type Props = {
@@ -12,34 +10,12 @@ type Props = {
   onClose: () => void;
 };
 
-/** Secret unlock modal — no screenshots wording. Opens gallery after password. */
+/** Secret unlock modal — same password UI as System Control Backlog Tracker. */
 export default function GuardScreenshotsGallery({ open, onClose }: Props) {
   const router = useRouter();
-  const [password, setPassword] = React.useState("");
-  const [showPw, setShowPw] = React.useState(false);
   const [unlocking, setUnlocking] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
 
-  React.useEffect(() => {
-    if (!open) {
-      setPassword("");
-      setShowPw(false);
-      return;
-    }
-    const t = window.setTimeout(() => inputRef.current?.focus(), 50);
-    return () => window.clearTimeout(t);
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  async function unlock() {
+  async function unlock(password: string) {
     if (!password || unlocking) return;
     setUnlocking(true);
     try {
@@ -53,7 +29,6 @@ export default function GuardScreenshotsGallery({ open, onClose }: Props) {
         toastError(data.error || "Invalid password");
         return;
       }
-      setPassword("");
       onClose();
       router.push("/admin/guard-screenshots");
     } catch {
@@ -63,63 +38,12 @@ export default function GuardScreenshotsGallery({ open, onClose }: Props) {
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div
-      className={styles.modalBackdrop}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Enter password"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className={styles.secretUnlockPanel}>
-        <label htmlFor="secret-unlock-pw" className={styles.secretUnlockLabel}>
-          Enter password
-        </label>
-        <div className={styles.passwordWrap}>
-          <input
-            ref={inputRef}
-            id="secret-unlock-pw"
-            type={showPw ? "text" : "password"}
-            autoComplete="off"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void unlock();
-            }}
-            className={styles.passwordInput}
-          />
-          <button
-            type="button"
-            className={styles.passwordToggle}
-            onClick={() => setShowPw((v) => !v)}
-            aria-label={showPw ? "Hide password" : "Show password"}
-          >
-            {showPw ? <FaEyeSlash /> : <FaEye />}
-          </button>
-        </div>
-        <div className={styles.modalActions}>
-          <button
-            type="button"
-            className={adminStyles.btnPrimary}
-            disabled={unlocking || !password}
-            onClick={() => void unlock()}
-          >
-            {unlocking ? "…" : "Enter"}
-          </button>
-          <button
-            type="button"
-            className={adminStyles.btnSecondary}
-            disabled={unlocking}
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+    <SecretPasswordModal
+      open={open}
+      unlocking={unlocking}
+      onClose={onClose}
+      onSubmit={unlock}
+    />
   );
 }

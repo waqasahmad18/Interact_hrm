@@ -15,6 +15,7 @@ import RolesPermissionsPanel from "./RolesPermissionsPanel";
 import BacklogTrackerPanel from "./BacklogTrackerPanel";
 import styles from "./system-control-demo.module.css";
 import { ModalPortal } from "@/app/components/ModalPortal";
+import SecretPasswordModal from "@/app/components/SecretPasswordModal";
 import { toastError } from "@/lib/app-toast";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 import {
@@ -114,10 +115,7 @@ export default function SystemControlPage() {
   /** Hidden Backlog Tracker — revealed via double-click on System Control title + password. */
   const [backlogVisible, setBacklogVisible] = useState(false);
   const [backlogPwOpen, setBacklogPwOpen] = useState(false);
-  const [backlogPassword, setBacklogPassword] = useState("");
-  const [backlogShowPw, setBacklogShowPw] = useState(false);
   const [backlogUnlocking, setBacklogUnlocking] = useState(false);
-  const backlogPwRef = React.useRef<HTMLInputElement | null>(null);
 
   const customRoles = useMemo(
     () => orgRoles.filter((r) => isCustomRole(r.id)),
@@ -1162,12 +1160,10 @@ export default function SystemControlPage() {
     }
   }
 
-  async function revealBacklogTracker() {
+  function revealBacklogTracker() {
     setBacklogVisible(true);
     setActiveTab("backlog");
     setBacklogPwOpen(false);
-    setBacklogPassword("");
-    setBacklogShowPw(false);
   }
 
   function openBacklogGate() {
@@ -1176,27 +1172,24 @@ export default function SystemControlPage() {
       setActiveTab("backlog");
       return;
     }
-    setBacklogPassword("");
-    setBacklogShowPw(false);
     setBacklogPwOpen(true);
-    window.setTimeout(() => backlogPwRef.current?.focus(), 50);
   }
 
-  async function unlockBacklogTracker() {
-    if (!backlogPassword || backlogUnlocking) return;
+  async function unlockBacklogTracker(password: string) {
+    if (!password || backlogUnlocking) return;
     setBacklogUnlocking(true);
     try {
       const res = await fetch("/api/admin/guard-screenshots/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: backlogPassword }),
+        body: JSON.stringify({ password }),
       });
       const data = await res.json();
       if (!data.success) {
         toastError(data.error || "Invalid password");
         return;
       }
-      await revealBacklogTracker();
+      revealBacklogTracker();
     } catch {
       toastError("Network error");
     } finally {
@@ -1441,87 +1434,15 @@ export default function SystemControlPage() {
           </ModalPortal>
         )}
 
-        {backlogPwOpen && (
-          <ModalPortal>
-            <div
-              className={styles.modalOverlay}
-              data-hrm-modal-overlay
-              role="presentation"
-              onClick={() => {
-                if (backlogUnlocking) return;
-                setBacklogPwOpen(false);
-                setBacklogPassword("");
-              }}
-            >
-              <div
-                className={styles.modalCard}
-                role="dialog"
-                aria-label="Enter password"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h2 className={styles.modalTitle}>Enter password</h2>
-                <label
-                  htmlFor="sc-backlog-pw"
-                  style={{ display: "block", marginBottom: 6, fontSize: 13 }}
-                >
-                  Password
-                </label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    ref={backlogPwRef}
-                    id="sc-backlog-pw"
-                    type={backlogShowPw ? "text" : "password"}
-                    autoComplete="off"
-                    value={backlogPassword}
-                    onChange={(e) => setBacklogPassword(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void unlockBacklogTracker();
-                      if (e.key === "Escape") {
-                        setBacklogPwOpen(false);
-                        setBacklogPassword("");
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      fontSize: 14,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={styles.btnGhost}
-                    onClick={() => setBacklogShowPw((v) => !v)}
-                  >
-                    {backlogShowPw ? "Hide" : "Show"}
-                  </button>
-                </div>
-                <div className={styles.modalActions} style={{ marginTop: 16 }}>
-                  <button
-                    type="button"
-                    className={styles.btnGhost}
-                    disabled={backlogUnlocking}
-                    onClick={() => {
-                      setBacklogPwOpen(false);
-                      setBacklogPassword("");
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.btnPrimary}
-                    disabled={backlogUnlocking || !backlogPassword}
-                    onClick={() => void unlockBacklogTracker()}
-                  >
-                    {backlogUnlocking ? "…" : "Enter"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </ModalPortal>
-        )}
+        <SecretPasswordModal
+          open={backlogPwOpen}
+          unlocking={backlogUnlocking}
+          onClose={() => {
+            if (backlogUnlocking) return;
+            setBacklogPwOpen(false);
+          }}
+          onSubmit={unlockBacklogTracker}
+        />
       </div>
     </OptionalAdminShell>
   );
