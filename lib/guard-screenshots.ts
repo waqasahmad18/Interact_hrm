@@ -59,6 +59,8 @@ export type SaveScreenshotInput = {
   capturedAt?: Date;
   /** File extension without dot — png | jpg */
   ext?: "png" | "jpg";
+  /** Caller already checked disk/RAM — skip second gate (upload hot path). */
+  skipStorageGate?: boolean;
 };
 
 export type SavedScreenshot = {
@@ -67,31 +69,50 @@ export type SavedScreenshot = {
   fileName: string;
 };
 
-export async function saveGuardScreenshot(
-  input: SaveScreenshotInput
-): Promise<SavedScreenshot> {
-  const { assertScreenshotStorageWritable } = await import(
-    "@/lib/guard-screenshot-retention"
-  );
-  const gate = await assertScreenshotStorageWritable();
-  if (!gate.ok) {
-    throw new Error(gate.reason || "screenshot storage unavailable");
-  }
-
+/** Allocate final path (+ mkdir) without writing bytes — for streamed uploads. */
+export async function allocateGuardScreenshotPath(input: {
+  employeeId: string;
+  employeeName?: string;
+  pseudonym?: string;
+  capturedAt?: Date;
+  ext?: "png" | "jpg";
+}): Promise<SavedScreenshot> {
   const employeeId = safeSegment(input.employeeId, "unknown");
   const name = safeSegment(input.employeeName || "", "Employee");
   const pseudo = safeSegment(input.pseudonym || "", "NA");
-  const when = input.capturedAt && !Number.isNaN(input.capturedAt.getTime())
-    ? input.capturedAt
-    : new Date();
+  const when =
+    input.capturedAt && !Number.isNaN(input.capturedAt.getTime())
+      ? input.capturedAt
+      : new Date();
   const { dateFolder, stamp } = formatCaptureParts(when);
   const ext = input.ext === "jpg" ? "jpg" : "png";
   const fileName = `${name}_${pseudo}_${stamp}.${ext}`;
   const dir = path.join(GUARD_SCREENSHOTS_ROOT, employeeId, dateFolder);
   await fs.mkdir(dir, { recursive: true });
   const absolutePath = path.join(dir, fileName);
+  const relativePath = path
+    .join(employeeId, dateFolder, fileName)
+    .split(path.sep)
+    .join("/");
+  return { relativePath, absolutePath, fileName };
+}
+
+export async function saveGuardScreenshot(
+  input: SaveScreenshotInput
+): Promise<SavedScreenshot> {
+  if (!input.skipStorageGate) {
+    const { assertScreenshotStorageWritable } = await import(
+      "@/lib/guard-screenshot-retention"
+    );
+    const gate = await assertScreenshotStorageWritable();
+    if (!gate.ok) {
+      throw new Error(gate.reason || "screenshot storage unavailable");
+    }
+  }
+
+  const dest = await allocateGuardScreenshotPath(input);
   try {
-    await fs.writeFile(absolutePath, input.png);
+    await fs.writeFile(dest.absolutePath, input.png);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/ENOSPC|no space/i.test(msg)) {
@@ -99,11 +120,7 @@ export async function saveGuardScreenshot(
     }
     throw err;
   }
-  const relativePath = path
-    .join(employeeId, dateFolder, fileName)
-    .split(path.sep)
-    .join("/");
-  return { relativePath, absolutePath, fileName };
+  return dest;
 }
 
 export type ScreenshotEmployeeSummary = {

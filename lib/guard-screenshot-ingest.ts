@@ -5,33 +5,31 @@ import {
 import { getMemAvailableMb } from "@/lib/guard-screenshot-retention";
 
 /**
- * Scale-safe ingest for Guard screenshots (100+ agents).
+ * Upload-first ingest: keep HRM up under screenshot load.
  *
- * Upload path must stay cheap: write JPEG to disk, return 200.
- * OCR/policy is CPU-heavy (spawns Node child) — never unbounded.
- * Staging (~2GB RAM): keep OCR capped and skip under memory pressure.
+ * - Upload path is cheap (disk write only) and hard-capped for concurrency.
+ * - OCR never runs while an upload is in flight (prevents 2GB RAM thrash).
+ * - OCR skipped / queue drained when memory is low.
  */
 
-/** Simultaneous raw image body receives into Node (disk write). */
+/** Simultaneous uploads into Node (keep low on small VMs). */
 const MAX_UPLOAD_INFLIGHT = Number(
-  process.env.GUARD_SS_MAX_UPLOAD_INFLIGHT || 4,
+  process.env.GUARD_SS_MAX_UPLOAD_INFLIGHT || 2,
 );
 
-/** Parallel OCR child processes (keep 1 on small VMs). */
 const MAX_OCR_INFLIGHT = Number(process.env.GUARD_SS_MAX_OCR_INFLIGHT || 1);
-
-/** Pending OCR jobs; older jobs dropped when full so gallery stays responsive. */
-const MAX_OCR_QUEUE = Number(process.env.GUARD_SS_MAX_OCR_QUEUE || 8);
-
-/** Skip OCR when MemAvailable below this (MB). */
-const OCR_MIN_MEM_MB = Number(process.env.GUARD_SS_OCR_MIN_MEM_MB || 450);
-
-/** Min gap between OCR starts (ms) — prevents stampede on 2GB boxes. */
-const OCR_MIN_GAP_MS = Number(process.env.GUARD_SS_OCR_MIN_GAP_MS || 25_000);
+const MAX_OCR_QUEUE = Number(process.env.GUARD_SS_MAX_OCR_QUEUE || 5);
+const OCR_MIN_MEM_MB = Number(process.env.GUARD_SS_OCR_MIN_MEM_MB || 550);
+const OCR_MIN_GAP_MS = Number(process.env.GUARD_SS_OCR_MIN_GAP_MS || 45_000);
+/** After last upload finishes, wait before OCR (ms). */
+const OCR_AFTER_UPLOAD_MS = Number(
+  process.env.GUARD_SS_OCR_AFTER_UPLOAD_MS || 5_000,
+);
 
 let uploadInflight = 0;
 let ocrInflight = 0;
 let lastOcrStartedAt = 0;
+let ocrResumeTimer: ReturnType<typeof setTimeout> | null = null;
 const ocrQueue: KeywordAlertInput[] = [];
 
 function ocrEnabled(): boolean {
@@ -40,38 +38,72 @@ function ocrEnabled(): boolean {
 }
 
 export function tryBeginScreenshotUpload(): boolean {
-  const cap = Math.max(1, Math.min(20, MAX_UPLOAD_INFLIGHT || 4));
+  const cap = Math.max(1, Math.min(8, MAX_UPLOAD_INFLIGHT || 2));
   if (uploadInflight >= cap) return false;
   uploadInflight += 1;
+  // Pause OCR immediately while uploads are active.
+  if (ocrResumeTimer) {
+    clearTimeout(ocrResumeTimer);
+    ocrResumeTimer = null;
+  }
   return true;
 }
 
 export function endScreenshotUpload(): void {
   uploadInflight = Math.max(0, uploadInflight - 1);
+  if (uploadInflight === 0 && ocrEnabled() && ocrQueue.length > 0) {
+    if (ocrResumeTimer) clearTimeout(ocrResumeTimer);
+    ocrResumeTimer = setTimeout(() => {
+      ocrResumeTimer = null;
+      pumpOcrQueue();
+    }, Math.max(1000, OCR_AFTER_UPLOAD_MS));
+  }
 }
 
 /**
  * Queue policy OCR after the file is already on disk.
- * Never blocks the upload HTTP response.
+ * Never blocks the upload HTTP response; never runs during uploads.
  */
 export function enqueueScreenshotPolicyScan(job: KeywordAlertInput): void {
   if (!ocrEnabled()) return;
-  const cap = Math.max(2, Math.min(80, MAX_OCR_QUEUE || 8));
+  const cap = Math.max(1, Math.min(40, MAX_OCR_QUEUE || 5));
   if (ocrQueue.length >= cap) {
-    // Drop oldest pending scan — screenshot file remains for gallery view.
     ocrQueue.shift();
   }
   ocrQueue.push(job);
-  pumpOcrQueue();
+  // Do not pump while uploads are active — schedule after quiet period.
+  if (uploadInflight > 0) return;
+  if (ocrResumeTimer) clearTimeout(ocrResumeTimer);
+  ocrResumeTimer = setTimeout(() => {
+    ocrResumeTimer = null;
+    pumpOcrQueue();
+  }, Math.max(500, OCR_AFTER_UPLOAD_MS));
+}
+
+function drainOcrQueue(reason: string) {
+  if (ocrQueue.length === 0) return;
+  console.warn(
+    `[guard-ss-ingest] OCR queue drained (${ocrQueue.length}) — ${reason}`,
+  );
+  ocrQueue.length = 0;
 }
 
 function pumpOcrQueue(): void {
-  const parallel = Math.max(1, Math.min(2, MAX_OCR_INFLIGHT || 1));
+  if (!ocrEnabled()) {
+    drainOcrQueue("OCR disabled");
+    return;
+  }
+  // Critical: never compete with live screenshot uploads.
+  if (uploadInflight > 0) return;
+
+  const parallel = Math.max(1, Math.min(1, MAX_OCR_INFLIGHT || 1));
   while (ocrInflight < parallel && ocrQueue.length > 0) {
+    if (uploadInflight > 0) return;
+
     const now = Date.now();
     if (lastOcrStartedAt > 0 && now - lastOcrStartedAt < OCR_MIN_GAP_MS) {
       const wait = OCR_MIN_GAP_MS - (now - lastOcrStartedAt);
-      setTimeout(() => pumpOcrQueue(), Math.max(500, wait));
+      setTimeout(() => pumpOcrQueue(), Math.max(1000, wait));
       break;
     }
 
@@ -83,11 +115,14 @@ function pumpOcrQueue(): void {
 
     void (async () => {
       try {
+        if (uploadInflight > 0) {
+          // Re-queue and wait for quiet period.
+          ocrQueue.unshift(job);
+          return;
+        }
         const mem = await getMemAvailableMb();
         if (mem != null && mem < OCR_MIN_MEM_MB) {
-          console.warn(
-            `[guard-ss-ingest] OCR skipped — low memory (${mem} MB < ${OCR_MIN_MEM_MB})`,
-          );
+          drainOcrQueue(`low memory (${mem} MB)`);
           return;
         }
         const result = await enforcePolicyAfterOcr(job);
@@ -106,7 +141,7 @@ function pumpOcrQueue(): void {
         console.warn("[guard-ss-ingest] policy queue error:", err);
       } finally {
         ocrInflight = Math.max(0, ocrInflight - 1);
-        pumpOcrQueue();
+        if (uploadInflight === 0) pumpOcrQueue();
       }
     })();
   }
