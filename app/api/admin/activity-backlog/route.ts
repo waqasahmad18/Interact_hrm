@@ -5,7 +5,7 @@ import { listActivityBacklog } from "@/lib/admin-activity-log";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Backlog Tracker list — only when Guard Screenshots gallery is unlocked. */
+/** Backlog Tracker list — same unlock cookie/password as Screenshots gallery. */
 export async function GET(req: NextRequest) {
   try {
     if (!isGalleryUnlocked(req)) {

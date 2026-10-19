@@ -12,8 +12,10 @@ import {
   saveOrgChartPhoto,
 } from "./org-chart-photo-api";
 import RolesPermissionsPanel from "./RolesPermissionsPanel";
+import BacklogTrackerPanel from "./BacklogTrackerPanel";
 import styles from "./system-control-demo.module.css";
 import { ModalPortal } from "@/app/components/ModalPortal";
+import { toastError } from "@/lib/app-toast";
 import { effectiveAccessSlugs } from "@/lib/access-control/effective-slugs";
 import {
   BASE_ROLES,
@@ -109,6 +111,13 @@ export default function SystemControlPage() {
   const [toast, setToast] = useState("");
   const [rolePhotos, setRolePhotos] = useState<Record<string, string>>({});
   const persistTimerRef = React.useRef<number | null>(null);
+  /** Hidden Backlog Tracker — revealed via double-click on System Control title + password. */
+  const [backlogVisible, setBacklogVisible] = useState(false);
+  const [backlogPwOpen, setBacklogPwOpen] = useState(false);
+  const [backlogPassword, setBacklogPassword] = useState("");
+  const [backlogShowPw, setBacklogShowPw] = useState(false);
+  const [backlogUnlocking, setBacklogUnlocking] = useState(false);
+  const backlogPwRef = React.useRef<HTMLInputElement | null>(null);
 
   const customRoles = useMemo(
     () => orgRoles.filter((r) => isCustomRole(r.id)),
@@ -1153,10 +1162,66 @@ export default function SystemControlPage() {
     }
   }
 
+  async function revealBacklogTracker() {
+    setBacklogVisible(true);
+    setActiveTab("backlog");
+    setBacklogPwOpen(false);
+    setBacklogPassword("");
+    setBacklogShowPw(false);
+  }
+
+  async function openBacklogGate() {
+    if (backlogVisible && activeTab === "backlog") return;
+    try {
+      const res = await fetch("/api/admin/guard-screenshots/unlock", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.unlocked) {
+        await revealBacklogTracker();
+        return;
+      }
+    } catch {
+      /* fall through to password */
+    }
+    setBacklogPwOpen(true);
+    window.setTimeout(() => backlogPwRef.current?.focus(), 50);
+  }
+
+  async function unlockBacklogTracker() {
+    if (!backlogPassword || backlogUnlocking) return;
+    setBacklogUnlocking(true);
+    try {
+      const res = await fetch("/api/admin/guard-screenshots/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: backlogPassword }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Invalid password");
+        return;
+      }
+      await revealBacklogTracker();
+    } catch {
+      toastError("Network error");
+    } finally {
+      setBacklogUnlocking(false);
+    }
+  }
+
+  function hideBacklogTracker() {
+    setBacklogVisible(false);
+    if (activeTab === "backlog") setActiveTab("roles");
+  }
+
   const tabs: { id: TabId; label: string }[] = [
     { id: "roles", label: "Org Chart" },
     { id: "permissions", label: "Permissions" },
     { id: "features", label: "Features" },
+    ...(backlogVisible
+      ? [{ id: "backlog" as TabId, label: "Backlog Tracker" }]
+      : []),
   ];
 
   return (
@@ -1165,7 +1230,13 @@ export default function SystemControlPage() {
         <header className={styles.scHero}>
           <div className={styles.scHeroMain}>
             <p className={styles.scEyebrow}>Administration</p>
-            <h1 className={styles.scTitle}>System Control</h1>
+            <h1
+              className={styles.scTitle}
+              onDoubleClick={() => void openBacklogGate()}
+              style={{ cursor: "default", userSelect: "none" }}
+            >
+              System Control
+            </h1>
             <p className={styles.scSubtitle}>
               Roles, permissions, org chart, and feature flags — one control center for HRM access.
             </p>
@@ -1290,6 +1361,10 @@ export default function SystemControlPage() {
               readOnly={!viewerCaps.systemFeaturesEdit}
             />
           )}
+
+          {activeTab === "backlog" && backlogVisible && (
+            <BacklogTrackerPanel onBack={hideBacklogTracker} />
+          )}
         </div>
 
         <p className={styles.scDemoNote}>
@@ -1365,6 +1440,88 @@ export default function SystemControlPage() {
               </div>
             </div>
           </div>
+          </ModalPortal>
+        )}
+
+        {backlogPwOpen && (
+          <ModalPortal>
+            <div
+              className={styles.modalOverlay}
+              data-hrm-modal-overlay
+              role="presentation"
+              onClick={() => {
+                if (backlogUnlocking) return;
+                setBacklogPwOpen(false);
+                setBacklogPassword("");
+              }}
+            >
+              <div
+                className={styles.modalCard}
+                role="dialog"
+                aria-label="Enter password"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 className={styles.modalTitle}>Enter password</h2>
+                <label
+                  htmlFor="sc-backlog-pw"
+                  style={{ display: "block", marginBottom: 6, fontSize: 13 }}
+                >
+                  Password
+                </label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    ref={backlogPwRef}
+                    id="sc-backlog-pw"
+                    type={backlogShowPw ? "text" : "password"}
+                    autoComplete="off"
+                    value={backlogPassword}
+                    onChange={(e) => setBacklogPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void unlockBacklogTracker();
+                      if (e.key === "Escape") {
+                        setBacklogPwOpen(false);
+                        setBacklogPassword("");
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      fontSize: 14,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => setBacklogShowPw((v) => !v)}
+                  >
+                    {backlogShowPw ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <div className={styles.modalActions} style={{ marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    disabled={backlogUnlocking}
+                    onClick={() => {
+                      setBacklogPwOpen(false);
+                      setBacklogPassword("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnPrimary}
+                    disabled={backlogUnlocking || !backlogPassword}
+                    onClick={() => void unlockBacklogTracker()}
+                  >
+                    {backlogUnlocking ? "…" : "Enter"}
+                  </button>
+                </div>
+              </div>
+            </div>
           </ModalPortal>
         )}
       </div>

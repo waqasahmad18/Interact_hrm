@@ -6,6 +6,8 @@ import styles from "../presence-idle/presence-idle.module.css";
 import { toastError } from "@/lib/app-toast";
 import { formatDateTimeInServerTz } from "@/lib/timezone";
 
+/** Independent of Interact Guard / Screenshots UI — same unlock cookie/password only. */
+
 type Row = {
   id: number;
   event_ts: string;
@@ -33,7 +35,7 @@ function todayYmd() {
 }
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
 };
 
 const EVENT_TYPES = [
@@ -79,7 +81,7 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
       });
       const data = await res.json();
       if (res.status === 401 || data.locked) {
-        toastError("Gallery locked — enter Screenshots password first");
+        toastError("Locked — double-click System Control title and enter password");
         return;
       }
       if (!data.success) {
@@ -102,13 +104,17 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
   return (
     <div className={styles.galleryWrap}>
       <div className={styles.detailHeader}>
-        <button
-          type="button"
-          className={adminStyles.btnSecondary}
-          onClick={onBack}
-        >
-          ← Back
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            className={adminStyles.btnSecondary}
+            onClick={onBack}
+          >
+            Hide
+          </button>
+        ) : (
+          <span />
+        )}
         <h2 className={adminStyles.title} style={{ margin: 0, fontSize: "1.25rem" }}>
           Backlog Tracker
         </h2>

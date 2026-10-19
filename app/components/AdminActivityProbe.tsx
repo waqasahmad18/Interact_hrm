@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 /**
- * Invisible activity probe — no UI.
- * Rich page_view / click details for Backlog Tracker.
+ * Invisible activity probe — no UI, no Guard dependency.
+ * Logs page_view / click / file events for Backlog Tracker.
+ * Optional PC hostname: best-effort local agent status only (ignored if absent).
  */
 export function AdminActivityProbe() {
   const pathname = usePathname();
