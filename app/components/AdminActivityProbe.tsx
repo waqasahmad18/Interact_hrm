@@ -81,6 +81,48 @@ export function AdminActivityProbe() {
     void refreshPcHostname();
   }, []);
 
+  // Every logged-in employee (not only admin): wake probe as soon as localStorage ids appear.
+  useEffect(() => {
+    let lastKey = "";
+    const wake = () => {
+      const ids = actorIds();
+      const key = `${ids.loginId}|${ids.employeeId}`;
+      if (!ids.loginId && !ids.employeeId) {
+        lastKey = "";
+        return;
+      }
+      if (key === lastKey) return;
+      const first = !lastKey;
+      lastKey = key;
+      if (!first) return;
+      const ctx = pageContext();
+      const who =
+        String(localStorage.getItem("employeeName") || "").trim() ||
+        ids.loginId ||
+        ids.employeeId;
+      void send([
+        {
+          type: "session_ready",
+          page: ctx.page,
+          page_title: ctx.page_title || humanizePath(ctx.page),
+          detail: `HRM session active — ${who}`,
+          label: `HRM session active — ${who}`,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+    };
+    wake();
+    window.addEventListener("hrm-auth-changed", wake);
+    window.addEventListener("focus", wake);
+    const t = window.setInterval(wake, 4000);
+    return () => {
+      window.removeEventListener("hrm-auth-changed", wake);
+      window.removeEventListener("focus", wake);
+      window.clearInterval(t);
+    };
+  }, []);
+
   useEffect(() => {
     const ids = actorIds();
     if (!ids.loginId && !ids.employeeId) return;

@@ -42,12 +42,17 @@ export async function resolveActivityActor(opts: {
 
   try {
     for (const key of keys) {
+      const keyLower = key.toLowerCase();
       const [rows]: any = await query(
-        `SELECT id, first_name, last_name, TRIM(pseudonym) AS pseudonym, employee_code
-         FROM hrm_employees
-         WHERE CAST(id AS CHAR) = ? OR employee_code = ?
+        `SELECT e.id, e.first_name, e.last_name, TRIM(e.pseudonym) AS pseudonym, e.employee_code
+         FROM hrm_employees e
+         LEFT JOIN employee_contacts ec ON e.id = ec.employee_id
+         WHERE CAST(e.id AS CHAR) = ?
+            OR e.employee_code = ?
+            OR LOWER(TRIM(e.username)) = ?
+            OR LOWER(TRIM(ec.email_work)) = ?
          LIMIT 1`,
-        [key, key],
+        [key, key, keyLower, keyLower],
       );
       const r = Array.isArray(rows) ? rows[0] : null;
       if (!r) continue;

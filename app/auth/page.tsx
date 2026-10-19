@@ -99,6 +99,11 @@ export default function LoginPage() {
           if (typeof window !== "undefined") {
             localStorage.setItem("loginId", trimmedLoginId);
             markAdminPortal();
+            try {
+              window.dispatchEvent(new Event("hrm-auth-changed"));
+            } catch {
+              /* ignore */
+            }
           }
           await persistCredentials(trimmedLoginId, rawPassword);
           router.push("/dashboard");
@@ -132,6 +137,11 @@ export default function LoginPage() {
               localStorage.setItem("employeeId", empId);
             } else {
               localStorage.removeItem("employeeId");
+            }
+            try {
+              window.dispatchEvent(new Event("hrm-auth-changed"));
+            } catch {
+              /* ignore */
             }
           }
           await persistCredentials(trimmedLoginId, rawPassword);

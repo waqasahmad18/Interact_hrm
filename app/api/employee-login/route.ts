@@ -7,6 +7,7 @@ import {
   normalizeEmployeeLoginId,
   parseHrmEmployeeId,
 } from "@/lib/employee-login-lookup";
+import { logServerEmployeeActivity } from "@/lib/admin-activity-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,6 +65,18 @@ export async function POST(req: NextRequest) {
 
     const displayName = employeeDisplayNameFromRecord(employee);
     const { password: _pw, ...safeEmployee } = employee;
+    const empId = String(employee.id ?? "").trim();
+
+    void logServerEmployeeActivity(req, {
+      type: "employee_login",
+      employeeId: empId,
+      employeeName: displayName,
+      loginId,
+      detail: `Logged in to HRM (${displayName || loginId})`,
+      page: "/auth",
+      method: "POST",
+      url: "/api/employee-login",
+    });
 
     return NextResponse.json({
       success: true,

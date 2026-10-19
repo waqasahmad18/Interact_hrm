@@ -41,15 +41,18 @@ type Props = {
 
 const EVENT_TYPES = [
   "",
+  "employee_login",
+  "session_ready",
+  "page_view",
   "click",
   "click_delete",
   "download",
   "file_select",
   "file_upload",
   "file_backup",
-  "page_view",
   "api_call",
   "api_delete",
+  "face_verify",
   "break_start",
   "break_end",
   "prayer_start",
@@ -141,9 +144,10 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
       </div>
 
       <p className={styles.tip} style={{ marginTop: 8 }}>
-        Every click, upload, download, and update with date/time and employee
-        identity. Upload/download file copies are saved — use Open file to
-        review them later.
+        Company-wide: every employee who logs into HRM is tracked — login,
+        clock in/out, break/prayer/refreshment/meeting, face verify, clicks,
+        page views, uploads and downloads (with file copies). Search by any
+        name, code, or PC — not limited to one person.
       </p>
 
       <div className={styles.profileFilterBar} style={{ marginTop: 12 }}>
@@ -233,8 +237,8 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: 16 }} className={styles.tip}>
-                  No backlog events for this filter yet. Use the app (clicks /
-                  uploads / downloads) then Refresh.
+                  No backlog events for this filter yet. Ask any employee to
+                  log in / clock in on HRM, then Refresh.
                 </td>
               </tr>
             ) : (
