@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
       const type = String(form.get("type") || "file_upload");
       const page = String(form.get("page") || "");
       const label = String(form.get("label") || "");
+      const url = String(form.get("url") || "");
+      const method = String(form.get("method") || "");
       const file = form.get("file");
       const meta = clientMeta(req);
       if (file && typeof file === "object" && "arrayBuffer" in file) {
@@ -57,6 +59,9 @@ export async function POST(req: NextRequest) {
           hostname: hostname || undefined,
           page,
           label,
+          detail: label || undefined,
+          url: url || undefined,
+          method: method || undefined,
           mime: f.type || null,
           ...meta,
         });

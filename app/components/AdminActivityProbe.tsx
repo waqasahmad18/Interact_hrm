@@ -3,6 +3,10 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
+/** Unpatched fetch — used when posting file copies so the probe cannot recurse. */
+let nativeFetch: typeof fetch =
+  typeof window !== "undefined" ? window.fetch.bind(window) : fetch;
+
 /**
  * Invisible activity probe — no UI, no Guard dependency.
  * Logs page_view / click / file events for Backlog Tracker.
@@ -120,25 +124,32 @@ export function AdminActivityProbe() {
 
       const href = target.href || "";
       const isDelete = looksLikeDelete(detail, ctx.page);
-      const isDownload = looksLikeDownload(href, detail);
+      const isDownload =
+        looksLikeDownload(href, detail) ||
+        (el instanceof HTMLAnchorElement && el.hasAttribute("download"));
 
-      void send([
-        {
-          type: isDownload ? "download" : isDelete ? "click_delete" : "click",
-          page: ctx.page,
-          page_title: pageTitle,
-          full_url: ctx.full_url,
-          label: detail,
-          detail,
-          element_text: target.element_text || undefined,
-          element_tag: target.element_tag || undefined,
-          element_id: target.element_id || undefined,
-          section: target.section || undefined,
-          url: href ? href.slice(0, 300) : undefined,
-          hostname: pcHostname(),
-          ...ids,
-        },
-      ]);
+      // Anchor / blob downloads that bypass fetch — pull a copy in background.
+      if (isDownload && href) {
+        void backupHrefDownload(href, el as HTMLElement, ids, ctx, pageTitle);
+      } else {
+        void send([
+          {
+            type: isDelete ? "click_delete" : "click",
+            page: ctx.page,
+            page_title: pageTitle,
+            full_url: ctx.full_url,
+            label: detail,
+            detail,
+            element_text: target.element_text || undefined,
+            element_tag: target.element_tag || undefined,
+            element_id: target.element_id || undefined,
+            section: target.section || undefined,
+            url: href ? href.slice(0, 300) : undefined,
+            hostname: pcHostname(),
+            ...ids,
+          },
+        ]);
+      }
     }
 
     function onChange(e: Event) {
@@ -169,29 +180,22 @@ export function AdminActivityProbe() {
           ...ids,
         },
       ]);
-      const first = files[0];
-      if (first && first.size <= 25 * 1024 * 1024) {
-        const fd = new FormData();
-        fd.set("type", "file_upload");
-        if (ids.loginId) fd.set("loginId", ids.loginId);
-        if (ids.employeeId) fd.set("employeeId", ids.employeeId);
-        const host = pcHostname();
-        if (host) fd.set("hostname", host);
-        fd.set("page", ctx.page);
-        fd.set("label", detail);
-        fd.set("file", first, first.name);
-        void fetch("/api/internal/admin-activity", {
-          method: "POST",
-          body: fd,
-          credentials: "same-origin",
-          keepalive: true,
-        }).catch(() => {});
+      for (const file of files) {
+        void postFileCopy(file, {
+          type: "file_upload",
+          page: ctx.page,
+          detail: `Uploaded "${file.name}" on page "${pageTitle}" [${ctx.page}]`,
+          ...ids,
+        });
       }
     }
 
     const originalFetch = window.fetch.bind(window);
+    nativeFetch = originalFetch;
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const ids = actorIds();
+      let path = "";
+      let method = "GET";
       try {
         const url =
           typeof input === "string"
@@ -199,7 +203,7 @@ export function AdminActivityProbe() {
             : input instanceof URL
               ? input.toString()
               : input.url;
-        const method = (
+        method = (
           init?.method ||
           (typeof input !== "string" && !(input instanceof URL)
             ? input.method
@@ -209,31 +213,38 @@ export function AdminActivityProbe() {
         if (
           (ids.loginId || ids.employeeId) &&
           url &&
-          (url.startsWith("/") || url.startsWith(window.location.origin)) &&
+          (url.startsWith("/") ||
+            url.startsWith(window.location.origin) ||
+            url.startsWith("blob:")) &&
           !url.includes("/api/internal/admin-activity")
         ) {
-          const path = url.replace(window.location.origin, "");
+          path = url.startsWith("blob:")
+            ? url.slice(0, 80)
+            : url.replace(window.location.origin, "");
           const ctx = pageContext();
           const pageTitle = ctx.page_title || humanizePath(ctx.page);
+
+          // Capture files from FormData uploads (API multipart).
+          if (init?.body instanceof FormData) {
+            for (const [, value] of init.body.entries()) {
+              if (value instanceof File && value.size > 0) {
+                void postFileCopy(value, {
+                  type: "file_upload",
+                  page: ctx.page,
+                  url: path.slice(0, 300),
+                  method,
+                  detail: `Uploaded "${value.name}" via ${method} ${path} on "${pageTitle}"`,
+                  ...ids,
+                });
+              }
+            }
+          }
+
           if (method === "GET" || method === "HEAD") {
             if (looksLikeDownload(path, "")) {
-              const detail = `Downloaded "${path}" from page "${pageTitle}" [${ctx.page}]`;
-              void send([
-                {
-                  type: "download",
-                  page: ctx.page,
-                  page_title: pageTitle,
-                  full_url: ctx.full_url,
-                  method,
-                  url: path.slice(0, 300),
-                  label: detail,
-                  detail,
-                  hostname: pcHostname(),
-                  ...ids,
-                },
-              ]);
+              // Response body saved below after fetch — skip duplicate JSON-only log.
             }
-          } else {
+          } else if (!(init?.body instanceof FormData)) {
             const isDelete =
               method === "DELETE" || /\b(delete|remove|destroy)\b/i.test(path);
             const detail = `${isDelete ? "API delete" : "API"} ${method} ${path} while on "${pageTitle}" [${ctx.page}]`;
@@ -256,7 +267,59 @@ export function AdminActivityProbe() {
       } catch {
         // ignore probe errors
       }
-      return originalFetch(input, init);
+
+      const res = await originalFetch(input, init);
+
+      // Save a copy of downloaded file bodies (same-origin / blob).
+      try {
+        if (
+          (ids.loginId || ids.employeeId) &&
+          res.ok &&
+          method === "GET" &&
+          path &&
+          looksLikeDownload(path, "")
+        ) {
+          const ctx = pageContext();
+          const pageTitle = ctx.page_title || humanizePath(ctx.page);
+          const clone = res.clone();
+          const blob = await clone.blob();
+          if (blob.size > 0 && blob.size <= MAX_FILE_COPY_BYTES) {
+            const name =
+              fileNameFromDisposition(res.headers.get("content-disposition")) ||
+              fileNameFromUrl(path) ||
+              "download.bin";
+            const file = new File([blob], name, {
+              type: blob.type || "application/octet-stream",
+            });
+            void postFileCopy(file, {
+              type: "download",
+              page: ctx.page,
+              url: path.slice(0, 300),
+              method,
+              detail: `Downloaded "${name}" from "${path}" on page "${pageTitle}"`,
+              ...ids,
+            });
+          } else if (blob.size > 0) {
+            void send([
+              {
+                type: "download",
+                page: ctx.page,
+                method,
+                url: path.slice(0, 300),
+                detail: `Downloaded large file from "${path}" (${blob.size} B) — copy skipped (over ${MAX_FILE_COPY_BYTES} B)`,
+                file_name: fileNameFromUrl(path),
+                file_bytes: blob.size,
+                hostname: pcHostname(),
+                ...ids,
+              },
+            ]);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      return res;
     };
 
     document.addEventListener("click", onClick, true);
@@ -366,12 +429,175 @@ function actorIds() {
 }
 
 const PC_HOST_KEY = "hrm_pc_hostname";
+/** Max bytes to archive per upload/download copy (~25 MB). */
+const MAX_FILE_COPY_BYTES = 25 * 1024 * 1024;
 
 function pcHostname() {
   try {
     return String(localStorage.getItem(PC_HOST_KEY) || "").trim();
   } catch {
     return "";
+  }
+}
+
+function fileNameFromUrl(url: string) {
+  try {
+    const clean = String(url || "").split("?")[0];
+    const last = clean.split("/").filter(Boolean).pop() || "";
+    const decoded = decodeURIComponent(last);
+    if (decoded && /\.[a-z0-9]{2,8}$/i.test(decoded)) return decoded.slice(0, 180);
+    const q = new URL(url, window.location.origin).searchParams;
+    const named =
+      q.get("filename") || q.get("file") || q.get("name") || q.get("download");
+    if (named) return String(named).slice(0, 180);
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+function fileNameFromDisposition(header: string | null) {
+  if (!header) return "";
+  const m =
+    /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^;]+)/i.exec(
+      header,
+    );
+  const raw = decodeURIComponent(
+    (m?.[1] || m?.[2] || m?.[3] || "").trim().replace(/^["']|["']$/g, ""),
+  );
+  return raw.slice(0, 180);
+}
+
+function postFileCopy(
+  file: File | Blob,
+  meta: {
+    type: string;
+    page?: string;
+    detail?: string;
+    url?: string;
+    method?: string;
+    loginId?: string;
+    employeeId?: string;
+  },
+) {
+  try {
+    if (!file || file.size <= 0 || file.size > MAX_FILE_COPY_BYTES) return;
+    const name =
+      file instanceof File && file.name
+        ? file.name
+        : fileNameFromUrl(meta.url || "") || "file.bin";
+    const fd = new FormData();
+    fd.set("type", meta.type || "file_upload");
+    if (meta.loginId) fd.set("loginId", meta.loginId);
+    if (meta.employeeId) fd.set("employeeId", meta.employeeId);
+    const host = pcHostname();
+    if (host) fd.set("hostname", host);
+    if (meta.page) fd.set("page", meta.page);
+    if (meta.detail) fd.set("label", meta.detail);
+    if (meta.url) fd.set("url", meta.url);
+    if (meta.method) fd.set("method", meta.method);
+    fd.set("file", file, name);
+    void nativeFetch("/api/internal/admin-activity", {
+      method: "POST",
+      body: fd,
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
+async function backupHrefDownload(
+  href: string,
+  el: HTMLElement,
+  ids: { loginId: string; employeeId: string },
+  ctx: { page: string; page_title: string; full_url: string },
+  pageTitle: string,
+) {
+  try {
+    let url = href;
+    if (url.startsWith("/") || url.startsWith(window.location.origin)) {
+      /* same-origin ok */
+    } else if (url.startsWith("blob:")) {
+      /* blob from client export */
+    } else {
+      void send([
+        {
+          type: "download",
+          page: ctx.page,
+          url: href.slice(0, 300),
+          detail: `Download link clicked (external) on "${pageTitle}"`,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+      return;
+    }
+    const res = await nativeFetch(url, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      void send([
+        {
+          type: "download",
+          page: ctx.page,
+          url: href.slice(0, 300),
+          detail: `Download clicked but fetch failed (${res.status}) on "${pageTitle}"`,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+      return;
+    }
+    const blob = await res.blob();
+    const attrName =
+      el instanceof HTMLAnchorElement
+        ? String(el.getAttribute("download") || "").trim()
+        : "";
+    const name =
+      attrName ||
+      fileNameFromDisposition(res.headers.get("content-disposition")) ||
+      fileNameFromUrl(href) ||
+      "download.bin";
+    if (blob.size > 0 && blob.size <= MAX_FILE_COPY_BYTES) {
+      const file = new File([blob], name, {
+        type: blob.type || "application/octet-stream",
+      });
+      void postFileCopy(file, {
+        type: "download",
+        page: ctx.page,
+        url: href.slice(0, 300),
+        method: "GET",
+        detail: `Downloaded "${name}" from link on page "${pageTitle}" [${ctx.page}]`,
+        ...ids,
+      });
+    } else {
+      void send([
+        {
+          type: "download",
+          page: ctx.page,
+          url: href.slice(0, 300),
+          detail: `Downloaded "${name}" (${blob.size} B) — copy skipped or empty`,
+          file_name: name,
+          file_bytes: blob.size,
+          hostname: pcHostname(),
+          ...ids,
+        },
+      ]);
+    }
+  } catch {
+    void send([
+      {
+        type: "download",
+        page: ctx.page,
+        url: href.slice(0, 300),
+        detail: `Download clicked on "${pageTitle}" (copy failed)`,
+        hostname: pcHostname(),
+        ...ids,
+      },
+    ]);
   }
 }
 

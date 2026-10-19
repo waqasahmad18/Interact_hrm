@@ -25,6 +25,7 @@ type Row = {
   url: string | null;
   file_name: string | null;
   file_bytes: number | null;
+  saved_path: string | null;
   ip: string | null;
 };
 
@@ -130,7 +131,8 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
 
       <p className={styles.tip} style={{ marginTop: 8 }}>
         Every click, upload, download, and update with date/time and employee
-        identity (id, name, pseudo, code).
+        identity. Upload/download file copies are saved — use Open file to
+        review them later.
       </p>
 
       <div className={styles.profileFilterBar} style={{ marginTop: 12 }}>
@@ -207,18 +209,19 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
               <th style={{ padding: "8px 6px" }}>PC name</th>
               <th style={{ padding: "8px 6px" }}>Detail</th>
               <th style={{ padding: "8px 6px" }}>Page / URL</th>
+              <th style={{ padding: "8px 6px" }}>Saved file</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: 16 }} className={styles.tip}>
+                <td colSpan={7} style={{ padding: 16 }} className={styles.tip}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: 16 }} className={styles.tip}>
+                <td colSpan={7} style={{ padding: 16 }} className={styles.tip}>
                   No backlog events for this filter yet. Use the app (clicks /
                   uploads / downloads) then Refresh.
                 </td>
@@ -272,6 +275,24 @@ export default function BacklogTrackerPanel({ onBack }: Props) {
                         {r.url}
                       </div>
                     ) : null}
+                  </td>
+                  <td style={{ padding: "8px 6px", whiteSpace: "nowrap" }}>
+                    {r.saved_path ? (
+                      <a
+                        href={`/api/admin/activity-backlog/file?id=${r.id}`}
+                        className={adminStyles.btnSecondary}
+                        style={{
+                          display: "inline-block",
+                          padding: "4px 10px",
+                          fontSize: 12,
+                          textDecoration: "none",
+                        }}
+                      >
+                        Open file
+                      </a>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               ))

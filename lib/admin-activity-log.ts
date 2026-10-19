@@ -95,8 +95,8 @@ async function insertBacklogRow(row: Record<string, unknown>) {
     await query(
       `INSERT INTO hrm_activity_backlog
         (event_ts, day_key, event_type, employee_id, employee_name, pseudonym, employee_code, hostname,
-         login_id, page_path, detail, method, url, file_name, file_bytes, ip, user_agent, payload_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         login_id, page_path, detail, method, url, file_name, file_bytes, saved_path, ip, user_agent, payload_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.event_ts,
         row.day_key,
@@ -113,6 +113,7 @@ async function insertBacklogRow(row: Record<string, unknown>) {
         row.url,
         row.file_name,
         row.file_bytes,
+        row.saved_path,
         row.ip,
         row.user_agent,
         row.payload_json,
@@ -158,6 +159,12 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
         ? event.bytes
         : typeof event.file_bytes === "number"
           ? event.file_bytes
+          : null;
+    const savedPath =
+      event.saved_path != null
+        ? String(event.saved_path).slice(0, 512)
+        : event.saved_as != null
+          ? String(event.saved_as).slice(0, 512)
           : null;
 
     const ip =
@@ -213,6 +220,7 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
       url,
       file_name: fileName,
       file_bytes: fileBytes,
+      saved_path: savedPath,
       ip,
       user_agent: event.ua != null ? String(event.ua).slice(0, 512) : null,
       payload_json: payloadJson,
@@ -222,7 +230,24 @@ export async function appendAdminActivity(event: Record<string, unknown>) {
   }
 }
 
-/** Copy an uploaded/exported buffer under logs/admin-activity/files/YYYY-MM-DD/ */
+export const ACTIVITY_FILES_ROOT = path.join(ROOT, "files");
+
+/** Resolve a stored backlog file path safely (must stay under logs/admin-activity/files). */
+export function resolveActivitySavedFile(
+  savedPath: string,
+): { abs: string; fileName: string } | null {
+  const raw = String(savedPath || "").trim().replace(/\\/g, "/");
+  if (!raw) return null;
+  const prefix = "logs/admin-activity/files/";
+  if (!raw.startsWith(prefix) || raw.includes("..")) return null;
+  const rel = raw.slice(prefix.length);
+  const abs = path.resolve(ACTIVITY_FILES_ROOT, rel);
+  const rootAbs = path.resolve(ACTIVITY_FILES_ROOT);
+  if (!abs.startsWith(rootAbs + path.sep) && abs !== rootAbs) return null;
+  return { abs, fileName: path.basename(abs) };
+}
+
+/** Copy an uploaded/downloaded buffer under logs/admin-activity/files/YYYY-MM-DD/ */
 export async function backupAdminActivityFile(
   originalName: string,
   data: Buffer,
@@ -237,12 +262,19 @@ export async function backupAdminActivityFile(
     const abs = path.join(dir, stored);
     await fs.writeFile(abs, data);
     const relative = `logs/admin-activity/files/${day}/${stored}`;
+    const type = String(meta?.type || "file_backup").slice(0, 64);
     await appendAdminActivity({
-      type: "file_backup",
-      original_name: originalName,
-      saved_as: relative,
-      bytes: data.length,
       ...meta,
+      type,
+      original_name: originalName,
+      file_name: originalName,
+      saved_as: relative,
+      saved_path: relative,
+      bytes: data.length,
+      file_bytes: data.length,
+      detail:
+        String(meta?.detail || meta?.label || "").trim() ||
+        `${type === "download" ? "Downloaded" : "Uploaded"} file "${originalName}" (${data.length} B)`,
     });
     return relative;
   } catch {
@@ -300,7 +332,8 @@ export async function listActivityBacklog(opts: BacklogListOpts = {}) {
 
   const [rows]: any = await query(
     `SELECT id, event_ts, day_key, event_type, employee_id, employee_name, pseudonym,
-            employee_code, hostname, login_id, page_path, detail, method, url, file_name, file_bytes, ip
+            employee_code, hostname, login_id, page_path, detail, method, url,
+            file_name, file_bytes, saved_path, ip
      FROM hrm_activity_backlog
      WHERE ${whereSql}
      ORDER BY event_ts DESC, id DESC
@@ -314,4 +347,13 @@ export async function listActivityBacklog(opts: BacklogListOpts = {}) {
     page,
     pageSize,
   };
+}
+
+export async function getActivityBacklogById(id: number) {
+  const [rows]: any = await query(
+    `SELECT id, event_type, file_name, saved_path, file_bytes
+     FROM hrm_activity_backlog WHERE id = ? LIMIT 1`,
+    [id],
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
