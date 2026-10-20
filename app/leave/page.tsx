@@ -112,7 +112,19 @@ export default function LeavePage() {
     null
   );
   const [searchText, setSearchText] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  const leaveDayKey = (l: any) => {
+    const raw = l?.start_date || l?.requested_at || "";
+    if (!raw) return "";
+    try {
+      return getDateStringInTimeZone(raw, SERVER_TIMEZONE) || "";
+    } catch {
+      return String(raw).slice(0, 10);
+    }
+  };
 
   const loadBalancesForLeaves = async (list: any[]) => {
     const ids = [
@@ -368,13 +380,22 @@ export default function LeavePage() {
 
   const sortedLeaves = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    const scoped = q
-      ? leaves.filter((l) => {
-          const name = String(l.employee_name || "").toLowerCase();
-          const pseudo = String(l.pseudonym || "").toLowerCase();
-          return name.includes(q) || pseudo.includes(q);
-        })
-      : leaves;
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
+    const scoped = leaves.filter((l) => {
+      if (q) {
+        const name = String(l.employee_name || "").toLowerCase();
+        const pseudo = String(l.pseudonym || "").toLowerCase();
+        if (!name.includes(q) && !pseudo.includes(q)) return false;
+      }
+      if (from || to) {
+        const day = leaveDayKey(l);
+        if (!day) return false;
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+      }
+      return true;
+    });
 
     // Default: most recent activity / approval on top.
     if (!sortConfig) {
@@ -415,7 +436,11 @@ export default function LeavePage() {
       }
       return direction === "asc" ? cmp : -cmp;
     });
-  }, [leaves, sortConfig, searchText]);
+  }, [leaves, sortConfig, searchText, dateFrom, dateTo]);
+
+  const hasActiveFilters = Boolean(
+    searchText.trim() || dateFrom.trim() || dateTo.trim(),
+  );
 
   const sortButtonStyle: React.CSSProperties = {
     border: "none",
@@ -469,24 +494,55 @@ export default function LeavePage() {
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
-          <p className={styles.subtitle}>
-            Single-step approve / reject. Team Lead / Manager approve department
-            leave here — CEOs (Joe / Max / Mubeen) use Ticket Inbox instead.
-          </p>
 
-          <div className={styles.searchBar}>
-            <label htmlFor="leave-search-name">Search</label>
-            <input
-              id="leave-search-name"
-              type="search"
-              className={styles.searchInput}
-              placeholder="Search by name or pseudo name…"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              autoComplete="off"
-            />
+          <div className={styles.filterBar}>
+            <div className={`${styles.filterField} ${styles.searchField}`}>
+              <label htmlFor="leave-search-name">Search</label>
+              <input
+                id="leave-search-name"
+                type="search"
+                className={styles.searchInput}
+                placeholder="Search by name or pseudo name…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="leave-date-from">From</label>
+              <input
+                id="leave-date-from"
+                type="date"
+                className={styles.searchInput}
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="leave-date-to">To</label>
+              <input
+                id="leave-date-to"
+                type="date"
+                className={styles.searchInput}
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className={styles.clearFilters}
+                onClick={() => {
+                  setSearchText("");
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
-          {!loading && leaves.length > 0 && searchText.trim() ? (
+          {!loading && leaves.length > 0 && hasActiveFilters ? (
             <p className={styles.searchMeta}>
               Showing {sortedLeaves.length} of {leaves.length} leave
               {sortedLeaves.length === 1 ? "" : "s"}
@@ -536,8 +592,8 @@ export default function LeavePage() {
                     {sortedLeaves.length === 0 ? (
                       <tr>
                         <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
-                          {searchText.trim()
-                            ? "No leave requests match your search."
+                          {hasActiveFilters
+                            ? "No leave requests match your filters."
                             : "No leave requests yet."}
                         </td>
                       </tr>
