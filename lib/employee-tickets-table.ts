@@ -30,6 +30,10 @@ export type EmployeeTicketRow = {
   approved_by?: string | null;
   /** Display name for Approved by … */
   approved_by_name?: string | null;
+  /** HR staff who acknowledged a non-leave ticket (before resolve/reject). */
+  acknowledged_by?: string | null;
+  acknowledged_by_name?: string | null;
+  acknowledged_at?: string | null;
 };
 
 export async function ensureEmployeeTicketsTable() {
@@ -80,6 +84,27 @@ export async function ensureEmployeeTicketsTable() {
     try {
       await conn.execute(
         `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN approved_by_name VARCHAR(255) NULL`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      await conn.execute(
+        `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN acknowledged_by VARCHAR(64) NULL`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      await conn.execute(
+        `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN acknowledged_by_name VARCHAR(255) NULL`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      await conn.execute(
+        `ALTER TABLE ${EMPLOYEE_TICKETS_TABLE} ADD COLUMN acknowledged_at TIMESTAMP NULL DEFAULT NULL`
       );
     } catch {
       /* column already exists */

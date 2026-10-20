@@ -152,9 +152,9 @@ export async function GET(req: NextRequest) {
         );
       }
       tickets = tickets.filter((t) => {
+        if (viewer && String(t.employee_id) === viewer.employeeId) return true;
         if (isLeaveTicketType(t.ticket_type)) {
-          // Leave visible in HR inbox / admin / owner / dept-head owned chips / direct reports.
-          if (viewer && String(t.employee_id) === viewer.employeeId) return true;
+          // Leave: HR inbox / dept-head owned chips / direct reports / classic admin.
           if (viewerDirectReports?.has(String(t.employee_id))) return true;
           if (viewer?.canViewHrInbox) return true;
           if (viewer?.deptHead?.headHint) {
@@ -168,9 +168,7 @@ export async function GET(req: NextRequest) {
           }
           return !isHrDepartmentSubmitter(t.employee_id, hrIds);
         }
-        const hrTicket = isHrDepartmentSubmitter(t.employee_id, hrIds);
-        if (!hrTicket) return true;
-        if (viewer && String(t.employee_id) === viewer.employeeId) return true;
+        // Non-leave: owner or HR inbox viewers only.
         return Boolean(viewer?.canViewHrInbox);
       });
       const sample = tickets[0];
@@ -442,6 +440,7 @@ export async function PATCH(req: NextRequest) {
     await ensureEmployeeTicketsTable();
     const body = await req.json();
     const { id, status, reply, admin_remark, author_name, from, employee_id } = body;
+    const wantAcknowledge = Boolean(body.acknowledge);
     if (!id) {
       return NextResponse.json({ success: false, error: "Invalid data" }, { status: 400 });
     }
@@ -449,10 +448,10 @@ export async function PATCH(req: NextRequest) {
     const replyText = String(reply ?? admin_remark ?? "").trim();
     const hasStatus = status && VALID_STATUSES.has(String(status));
     const isEmployeeReply = String(from || "").toLowerCase() === "employee";
-    if (!hasStatus && !replyText) {
+    if (!hasStatus && !replyText && !wantAcknowledge) {
       return NextResponse.json({ success: false, error: "Nothing to update" }, { status: 400 });
     }
-    if (isEmployeeReply && hasStatus) {
+    if (isEmployeeReply && (hasStatus || wantAcknowledge)) {
       return NextResponse.json(
         { success: false, error: "Employees cannot change ticket status" },
         { status: 403 }
@@ -475,10 +474,17 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Status change: scoped approvers only. Nobody may approve their own ticket.
+    if (wantAcknowledge && isLeaveTicketType(current.ticket_type)) {
+      return NextResponse.json(
+        { success: false, error: "Acknowledge is only for non-leave tickets." },
+        { status: 400 }
+      );
+    }
+
+    // Status / acknowledge: scoped approvers only. Nobody may act on their own ticket.
     let actorViewerId = "";
     let actorDisplayName: string | null = null;
-    if (hasStatus && !isEmployeeReply) {
+    if ((hasStatus || wantAcknowledge) && !isEmployeeReply) {
       actorViewerId =
         String(body.viewerId || body.viewer_id || employee_id || "").trim() ||
         viewerIdFromReq(req);
@@ -542,7 +548,11 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    const newStatus = (hasStatus ? String(status) : current.status) as TicketStatus;
+    // Acknowledge bumps pending → in_progress unless an explicit status was sent.
+    let newStatus = (hasStatus ? String(status) : current.status) as TicketStatus;
+    if (wantAcknowledge && !hasStatus && newStatus === "pending") {
+      newStatus = "in_progress";
+    }
     const resolvedAt =
       newStatus === "resolved" || newStatus === "rejected" || newStatus === "closed"
         ? new Date()
@@ -552,29 +562,67 @@ export async function PATCH(req: NextRequest) {
 
     const closing =
       newStatus === "resolved" || newStatus === "rejected" || newStatus === "closed";
+    const nextApprovedBy = closing
+      ? actorViewerId || null
+      : current.approved_by || null;
+    const nextApprovedByName = closing
+      ? actorDisplayName || null
+      : current.approved_by_name || null;
+    const nextAckBy = wantAcknowledge
+      ? actorViewerId || current.acknowledged_by || null
+      : current.acknowledged_by || null;
+    const nextAckByName = wantAcknowledge
+      ? actorDisplayName || current.acknowledged_by_name || null
+      : current.acknowledged_by_name || null;
+    const nextAckAt = wantAcknowledge
+      ? new Date()
+      : current.acknowledged_at || null;
+
     try {
       await query(
         `UPDATE ${EMPLOYEE_TICKETS_TABLE}
          SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW(),
-             approved_by = ?, approved_by_name = ?
+             approved_by = ?, approved_by_name = ?,
+             acknowledged_by = ?, acknowledged_by_name = ?, acknowledged_at = ?
          WHERE id = ?`,
         [
           newStatus,
           latestAdminRemark(messages),
           JSON.stringify(messages),
           resolvedAt,
-          closing && actorViewerId ? actorViewerId : null,
-          closing && actorDisplayName ? actorDisplayName : null,
+          nextApprovedBy,
+          nextApprovedByName,
+          nextAckBy,
+          nextAckByName,
+          nextAckAt,
           id,
         ]
       );
     } catch {
-      await query(
-        `UPDATE ${EMPLOYEE_TICKETS_TABLE}
-         SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW()
-         WHERE id = ?`,
-        [newStatus, latestAdminRemark(messages), JSON.stringify(messages), resolvedAt, id]
-      );
+      try {
+        await query(
+          `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+           SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW(),
+               approved_by = ?, approved_by_name = ?
+           WHERE id = ?`,
+          [
+            newStatus,
+            latestAdminRemark(messages),
+            JSON.stringify(messages),
+            resolvedAt,
+            nextApprovedBy,
+            nextApprovedByName,
+            id,
+          ]
+        );
+      } catch {
+        await query(
+          `UPDATE ${EMPLOYEE_TICKETS_TABLE}
+           SET status = ?, admin_remark = ?, messages = ?, resolved_at = ?, updated_at = NOW()
+           WHERE id = ?`,
+          [newStatus, latestAdminRemark(messages), JSON.stringify(messages), resolvedAt, id]
+        );
+      }
     }
 
     const [rows]: any = await query(

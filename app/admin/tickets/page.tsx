@@ -35,12 +35,15 @@ type Ticket = {
   requested_at: string;
   approved_by?: string | null;
   approved_by_name?: string | null;
+  acknowledged_by?: string | null;
+  acknowledged_by_name?: string | null;
+  acknowledged_at?: string | null;
   /** Per-ticket: viewer may approve/reject (HR Manager may view all leave but only moderate in-scope). */
   can_moderate?: boolean;
 };
 
 type TicketsPageProps = {
-  /** admin = main dashboard (excludes HR dept tickets). hr = HR department inbox (view all HR; approve Manager only). */
+  /** admin = leave hierarchy inbox. hr = HR inbox (all leave + all non-leave). */
   inboxMode?: "admin" | "hr";
 };
 
@@ -255,7 +258,10 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
     return () => ws.close();
   }, [fetchTickets, selected?.id]);
 
-  const patchTicket = async (id: number, status?: string) => {
+  const patchTicket = async (
+    id: number,
+    opts?: { status?: string; acknowledge?: boolean },
+  ) => {
     setProcessing(true);
     try {
       const res = await fetch("/api/employee-tickets", {
@@ -268,7 +274,8 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
         },
         body: JSON.stringify({
           id,
-          status,
+          status: opts?.status,
+          acknowledge: opts?.acknowledge || undefined,
           reply: reply.trim() || undefined,
           author_name: viewerName || (inboxMode === "hr" ? "HR" : "Admin"),
           viewerId: viewerId || undefined,
@@ -279,7 +286,7 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
         setReply("");
         if (data.ticket) {
           setSelected(data.ticket);
-        } else if (!status) {
+        } else if (!opts?.status && !opts?.acknowledge) {
           setSelected(null);
         }
         void fetchTickets();
@@ -294,7 +301,11 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
   };
 
   const handleStatus = (id: number, status: string) => {
-    void patchTicket(id, status);
+    void patchTicket(id, { status });
+  };
+
+  const handleAcknowledge = (id: number) => {
+    void patchTicket(id, { acknowledge: true });
   };
 
   const handleSendReply = (id: number) => {
@@ -665,6 +676,14 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
                       {categoryLabel(t.category)} ·{" "}
                       {ticketTypeLabel(t.category, t.ticket_type)}
                     </div>
+                    {t.ticket_type !== "leave" && t.acknowledged_by_name ? (
+                      <div
+                        className={adminStyles.muted}
+                        style={{ marginTop: 6, fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}
+                      >
+                        Acknowledged by {t.acknowledged_by_name}
+                      </div>
+                    ) : null}
                     {t.approved_by_name &&
                     (t.status === "resolved" ||
                       t.status === "rejected" ||
@@ -746,6 +765,14 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
               <span className={`${adminStyles.badge} ${statusBadge(selected.status)}`}>
                 {formatTicketStatusLabel(selected.status, selected.ticket_type)}
               </span>
+              {selected.ticket_type !== "leave" && selected.acknowledged_by_name ? (
+                <span
+                  className={`${adminStyles.badge} ${adminStyles.badgeType}`}
+                  style={{ background: "#eff6ff", color: "#1d4ed8" }}
+                >
+                  Acknowledged by {selected.acknowledged_by_name}
+                </span>
+              ) : null}
               {selected.approved_by_name &&
               (selected.status === "resolved" ||
                 selected.status === "rejected" ||
@@ -863,6 +890,23 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
 
             {!ticketClosed && canModerateSelected ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {selected.ticket_type !== "leave" ? (
+                <button
+                  type="button"
+                  className={adminStyles.btnSecondary}
+                  disabled={processing || Boolean(selected.acknowledged_by)}
+                  onClick={() => handleAcknowledge(selected.id)}
+                  title={
+                    selected.acknowledged_by_name
+                      ? `Already acknowledged by ${selected.acknowledged_by_name}`
+                      : "Mark as acknowledged by you"
+                  }
+                >
+                  {selected.acknowledged_by_name
+                    ? `Acknowledged by ${selected.acknowledged_by_name}`
+                    : "Acknowledge"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={adminStyles.btnPrimary}

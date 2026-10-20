@@ -1,11 +1,11 @@
 /**
  * Ticket inbox visibility + leave moderation.
  *
- * - HR Manager inbox: ALL leave tickets (any dept) + HR-dept non-leave tickets.
- *   Approve only when in hierarchy/scope; otherwise view-only.
+ * - HR inbox: ALL leave (any dept) + ALL non-leave (custom / HRM issue / etc.).
+ *   Leave approve stays hierarchy-scoped; non-leave moderated by HR Manager / HR TL / CEO.
  * - Dept heads (Joe / Max / Mubeen): leave tickets for their owned depts in Ticket Inbox.
  * - Non-HR Team Leads: leave approve on Leaves page (not Ticket Inbox).
- * - Admin inbox: non-HR submitter tickets (plus CEO dept leave when viewer is dept head).
+ * - Admin inbox: leave only (non-leave lives in HR inbox).
  */
 
 import { pool } from "@/lib/db";
@@ -207,8 +207,9 @@ function isLeaveTicket(ticketType?: string | null): boolean {
 
 /**
  * Filter tickets for list APIs.
- * - inbox=admin: non-HR submitters; dept heads also see their owned-dept leave tickets
- * - inbox=hr: ALL leave tickets + HR-staff non-leave tickets
+ * - inbox=admin: leave only (dept heads / direct reports / classic leave visibility)
+ * - inbox=hr: ALL leave + ALL non-leave (custom, HRM issue, …) for HR staff;
+ *   dept heads (non-HR) still see owned leave only
  * - employeeId own list: always allow owner's tickets
  */
 export function filterTicketsForInbox<
@@ -224,7 +225,7 @@ export function filterTicketsForInbox<
     directReportIds?: Set<string>;
   }
 ): T[] {
-  const { inbox, viewer, hrIds, empChips, directReportIds } = opts;
+  const { inbox, viewer, empChips, directReportIds } = opts;
   const reportsToMe = directReportIds || new Set<string>();
 
   if (inbox === "own") {
@@ -249,33 +250,30 @@ export function filterTicketsForInbox<
       });
     }
 
-    // HR Manager / HR staff: every leave ticket company-wide + HR-dept other tickets.
-    return tickets.filter((t) => {
-      if (isLeaveTicket(t.ticket_type)) return true;
-      return isHrDepartmentSubmitter(t.employee_id, hrIds);
-    });
+    // HR Manager / HR staff: every leave + every non-leave company-wide.
+    return tickets;
   }
 
-  // admin inbox
+  // admin inbox — leave hierarchy only; non-leave is HR inbox.
   const head = viewer?.deptHead;
   const owned = new Set((head?.ownedChips || []).map((c) => c.toLowerCase()));
 
   return tickets.filter((t) => {
     const empId = String(t.employee_id || "").trim();
-    const isLeave = isLeaveTicket(t.ticket_type);
+    if (!isLeaveTicket(t.ticket_type)) return false;
 
     // Direct reports' leave always visible to their Reporting Manager / CEO.
-    if (isLeave && reportsToMe.has(empId)) return true;
+    if (reportsToMe.has(empId)) return true;
 
     // Dept head (Joe/Max/Mubeen): always include leave from owned chips.
-    if (isLeave && owned.size > 0 && empChips) {
+    if (owned.size > 0 && empChips) {
       const chip = empChips.get(empId);
       if (chip && owned.has(chip.toLowerCase())) return true;
     }
 
-    // Classic admin: hide HR-department submitters (they live in HR inbox).
-    if (isHrDepartmentSubmitter(t.employee_id, hrIds)) return false;
-    return true;
+    // Classic admin leave list (non-dept-head viewers without owned chips).
+    if (!viewer?.deptHead?.headHint && !viewer?.isHrStaff) return true;
+    return false;
   });
 }
 
@@ -302,8 +300,7 @@ export function canModerateTicketStatus(opts: {
   /** When false, skip async scope (sync path). Prefer canModerateTicketStatusAsync. */
   inScope?: boolean;
 }): boolean {
-  const { ticketEmployeeId, viewer, hrIds, ticketType, submitterChip, inScope } =
-    opts;
+  const { ticketEmployeeId, viewer, ticketType, submitterChip, inScope } = opts;
 
   if (viewer && String(ticketEmployeeId) === viewer.employeeId) {
     return false;
@@ -353,22 +350,9 @@ export function canModerateTicketStatus(opts: {
     return isLeaveApproverRole(viewer.orgRole);
   }
 
-  const hrTicket = isHrDepartmentSubmitter(ticketEmployeeId, hrIds);
-
-  if (hrTicket) {
-    if (!viewer) return false;
-    return viewer.canModerateHrTickets;
-  }
-
-  if (!viewer) return true;
-  if (
-    isCeoOrgRole(viewer.orgRole) ||
-    isManagerOrgRole(viewer.orgRole) ||
-    Boolean(viewer.deptHead?.headHint)
-  ) {
-    return true;
-  }
-  return false;
+  // Non-leave (custom / HRM issue / …): HR Manager / HR Team Lead / CEO only.
+  if (!viewer) return false;
+  return viewer.canModerateHrTickets;
 }
 
 /** Async moderation check with department scope for leave. */
