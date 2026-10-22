@@ -87,14 +87,15 @@ function HeroSearch() {
 type NavTab = { name: string; path: string; icon: React.ReactNode };
 type MenuItem = { name?: string; path?: string };
 
-/** Match sidebar tab including ?view= on shared /summaries hub. */
+/** Match sidebar tab — summaries use distinct paths (/summaries/break). */
 function navTabIsActive(
   pathname: string | null | undefined,
   searchParams: URLSearchParams | null,
   tabPath: string,
 ): boolean {
   const path = String(pathname || "");
-  const [tabBaseRaw, tabQuery = ""] = String(tabPath || "").split("?");
+  const rawTab = String(tabPath || "");
+  const [tabBaseRaw, tabQuery = ""] = rawTab.split("?");
   const tabBase = tabBaseRaw || "";
   if (!tabBase) return false;
 
@@ -102,32 +103,44 @@ function navTabIsActive(
     return path === "/employee-dashboard";
   }
 
-  const pathMatches =
-    path === tabBase || path.startsWith(`${tabBase}/`);
-  if (!pathMatches) return false;
+  // Exact path match (Break / Prayer / Attendance each have their own path).
+  if (path === tabBase) return true;
 
-  const tabParams = new URLSearchParams(tabQuery);
-  const tabView = tabParams.get("view");
-  const isSummariesHub =
-    tabBase === "/employee-dashboard/summaries" || tabBase === "/summaries";
-
-  if (isSummariesHub || tabParams.has("view")) {
-    const currentView = searchParams?.get("view") || "attendance";
-    if (tabView) return currentView === tabView;
-    // Attendance Summary has no ?view= → active only on default attendance view
-    return currentView === "attendance";
+  // Attendance hub root must NOT stay active on /summaries/break|prayer.
+  if (
+    tabBase === "/employee-dashboard/summaries" ||
+    tabBase === "/summaries"
+  ) {
+    if (path === tabBase) {
+      const view = searchParams?.get("view");
+      return !view || view === "attendance";
+    }
+    return false;
   }
 
-  // Other tabs with query: require every param to match
+  // Child routes under a more specific tab path.
+  if (path.startsWith(`${tabBase}/`)) return true;
+
+  // Legacy menu cache still using ?view=break while URL is /summaries/break.
   if (tabQuery) {
-    for (const [key, value] of tabParams.entries()) {
-      if ((searchParams?.get(key) || "") !== value) return false;
+    const want = new URLSearchParams(tabQuery).get("view");
+    if (want && (path === `/employee-dashboard/summaries/${want}` || path === `/summaries/${want}`)) {
+      return true;
+    }
+    if (
+      want &&
+      (path === "/employee-dashboard/summaries" || path === "/summaries")
+    ) {
+      const have = searchParams?.get("view") || "attendance";
+      return have === want;
     }
   }
-  return true;
+
+  return false;
 }
 
-const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache";
+/** Bump when menu paths change so stale localStorage links (e.g. ?view=) refresh. */
+const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache_v2";
 
 const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
