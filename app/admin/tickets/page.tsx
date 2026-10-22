@@ -943,8 +943,9 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
             ) : null}
             {!ticketClosed && !canModerateSelected && !isOwnSelectedTicket ? (
               <p className={adminStyles.muted} style={{ marginTop: 8 }}>
-                View only — you can see this leave, but approve is limited to the
-                department hierarchy (Team Lead / Manager / dept head CEO).
+                {selected.ticket_type === "leave"
+                  ? "View only — you can see this leave, but approve is limited to the department hierarchy (Team Lead / Manager / dept head CEO)."
+                  : "View only — HR staff can acknowledge or resolve this ticket."}
               </p>
             ) : null}
           </div>

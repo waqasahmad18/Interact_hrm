@@ -286,10 +286,10 @@ function isLeaveApproverRole(orgRole: string | null | undefined): boolean {
 }
 
 /**
- * May change status (approve/reject/resolve) on this ticket?
+ * May change status (approve/reject/resolve/acknowledge) on this ticket?
  * Leave: Manager / Team Lead / dept head CEO in scope — not own ticket.
+ * Non-leave: any HR staff (or CEO / HR moderator) — not own ticket.
  * Non-HR Team Lead: Leaves page only (not Ticket Inbox).
- * HR officers: view only.
  */
 export function canModerateTicketStatus(opts: {
   ticketEmployeeId: string | number;
@@ -308,7 +308,17 @@ export function canModerateTicketStatus(opts: {
 
   const isLeave = isLeaveTicket(ticketType);
 
-  // HR officers (not Manager / Team Lead / CEO / dept head) — view only.
+  // Non-leave (custom / HRM issue / …): any HR staff can acknowledge / resolve.
+  if (!isLeave) {
+    if (!viewer) return false;
+    return (
+      viewer.isHrStaff ||
+      viewer.canModerateHrTickets ||
+      isCeoOrgRole(viewer.orgRole)
+    );
+  }
+
+  // Leave: HR officers (not Manager / Team Lead / CEO / dept head) — view only.
   if (
     viewer?.isHrStaff &&
     !isManagerOrgRole(viewer.orgRole) &&
@@ -319,40 +329,34 @@ export function canModerateTicketStatus(opts: {
     return false;
   }
 
-  if (isLeave) {
-    if (!viewer) return true; // classic admin inbox without viewer
+  if (!viewer) return true; // classic admin inbox without viewer
 
-    // Non-HR Team Lead (not Manager, not dept head) → Leaves page only.
-    if (
-      isTeamLeadOrgRole(viewer.orgRole) &&
-      !viewer.isHrStaff &&
-      !isManagerOrgRole(viewer.orgRole) &&
-      !viewer.deptHead?.headHint
-    ) {
-      return false;
-    }
-
-    // Dept head: owned department leave, or anyone who reports to them.
-    if (viewer.deptHead?.headHint) {
-      if (typeof inScope === "boolean") return inScope;
-      if (submitterChip) {
-        return viewer.deptHead.ownedChips.some(
-          (c) => c.toLowerCase() === submitterChip.toLowerCase()
-        );
-      }
-      return true;
-    }
-
-    // HR Manager / Manager: must be in department scope when provided.
-    if (typeof inScope === "boolean") {
-      return inScope && isLeaveApproverRole(viewer.orgRole);
-    }
-    return isLeaveApproverRole(viewer.orgRole);
+  // Non-HR Team Lead (not Manager, not dept head) → Leaves page only.
+  if (
+    isTeamLeadOrgRole(viewer.orgRole) &&
+    !viewer.isHrStaff &&
+    !isManagerOrgRole(viewer.orgRole) &&
+    !viewer.deptHead?.headHint
+  ) {
+    return false;
   }
 
-  // Non-leave (custom / HRM issue / …): HR Manager / HR Team Lead / CEO only.
-  if (!viewer) return false;
-  return viewer.canModerateHrTickets;
+  // Dept head: owned department leave, or anyone who reports to them.
+  if (viewer.deptHead?.headHint) {
+    if (typeof inScope === "boolean") return inScope;
+    if (submitterChip) {
+      return viewer.deptHead.ownedChips.some(
+        (c) => c.toLowerCase() === submitterChip.toLowerCase()
+      );
+    }
+    return true;
+  }
+
+  // HR Manager / Manager: must be in department scope when provided.
+  if (typeof inScope === "boolean") {
+    return inScope && isLeaveApproverRole(viewer.orgRole);
+  }
+  return isLeaveApproverRole(viewer.orgRole);
 }
 
 /** Async moderation check with department scope for leave. */
