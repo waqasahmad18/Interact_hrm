@@ -3,7 +3,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmployeeShellProvider, markEmployeePortal } from "@/lib/access-control/employee-shell";
 import {
   employeeDisplayNameFromRecord,
@@ -86,6 +86,46 @@ function HeroSearch() {
 
 type NavTab = { name: string; path: string; icon: React.ReactNode };
 type MenuItem = { name?: string; path?: string };
+
+/** Match sidebar tab including ?view= on shared /summaries hub. */
+function navTabIsActive(
+  pathname: string | null | undefined,
+  searchParams: URLSearchParams | null,
+  tabPath: string,
+): boolean {
+  const path = String(pathname || "");
+  const [tabBaseRaw, tabQuery = ""] = String(tabPath || "").split("?");
+  const tabBase = tabBaseRaw || "";
+  if (!tabBase) return false;
+
+  if (tabBase === "/employee-dashboard") {
+    return path === "/employee-dashboard";
+  }
+
+  const pathMatches =
+    path === tabBase || path.startsWith(`${tabBase}/`);
+  if (!pathMatches) return false;
+
+  const tabParams = new URLSearchParams(tabQuery);
+  const tabView = tabParams.get("view");
+  const isSummariesHub =
+    tabBase === "/employee-dashboard/summaries" || tabBase === "/summaries";
+
+  if (isSummariesHub || tabParams.has("view")) {
+    const currentView = searchParams?.get("view") || "attendance";
+    if (tabView) return currentView === tabView;
+    // Attendance Summary has no ?view= → active only on default attendance view
+    return currentView === "attendance";
+  }
+
+  // Other tabs with query: require every param to match
+  if (tabQuery) {
+    for (const [key, value] of tabParams.entries()) {
+      if ((searchParams?.get(key) || "") !== value) return false;
+    }
+  }
+  return true;
+}
 
 const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache";
 
@@ -194,6 +234,46 @@ const PREFETCH_PATHS = [
   "/employee-dashboard/time",
   "/employee-dashboard/attendance",
 ];
+
+function EmployeeSidebarNav({ tabs }: { tabs: NavTab[] }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  return (
+    <nav className={`${styles.nav} ${styles.navEmployee} ${empStyles.sidebarNav}`}>
+      {tabs.map((tab, idx) => {
+        const isActive = navTabIsActive(pathname, searchParams, tab.path);
+        return (
+          <Link
+            key={tab.path || idx}
+            href={tab.path}
+            prefetch
+            className={
+              isActive
+                ? `${styles.navItem} ${styles.navItemActive} ${empStyles.navItemPdf} ${empStyles.navItemPdfActive}`
+                : `${styles.navItem} ${empStyles.navItemPdf}`
+            }
+            onClick={(e) => {
+              // Soft client nav — layout stays mounted so sidebar does not reload.
+              if (isActive) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
+            {tab.name === "Employee Dashboard" ? (
+              <span className={`${empStyles.navLabelPdf} ${empStyles.navLabelStacked}`}>
+                <span className={empStyles.navLabelLine}>Employee</span>
+                <span className={empStyles.navLabelLine}>Dashboard</span>
+              </span>
+            ) : (
+              <span className={empStyles.navLabelPdf}>{tab.name}</span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export default function EmployeeDashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -485,42 +565,25 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           </div>
         </div>
 
-        <nav className={`${styles.nav} ${styles.navEmployee} ${empStyles.sidebarNav}`}>
-          {employeeTabs.map((tab, idx) => {
-            const isActive =
-              tab.path === "/employee-dashboard"
-                ? pathname === tab.path
-                : pathname === tab.path || (pathname?.startsWith(tab.path + "/") ?? false);
-            return (
-              <Link
-                key={tab.path || idx}
-                href={tab.path}
-                prefetch
-                className={
-                  isActive
-                    ? `${styles.navItem} ${styles.navItemActive} ${empStyles.navItemPdf} ${empStyles.navItemPdfActive}`
-                    : `${styles.navItem} ${empStyles.navItemPdf}`
-                }
-                onClick={(e) => {
-                  // Soft client nav — layout stays mounted so sidebar does not reload.
-                  if (isActive) {
-                    e.preventDefault();
-                  }
-                }}
-              >
-                <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
-                {tab.name === "Employee Dashboard" ? (
-                  <span className={`${empStyles.navLabelPdf} ${empStyles.navLabelStacked}`}>
-                    <span className={empStyles.navLabelLine}>Employee</span>
-                    <span className={empStyles.navLabelLine}>Dashboard</span>
-                  </span>
-                ) : (
+        <React.Suspense
+          fallback={
+            <nav className={`${styles.nav} ${styles.navEmployee} ${empStyles.sidebarNav}`}>
+              {employeeTabs.map((tab, idx) => (
+                <Link
+                  key={tab.path || idx}
+                  href={tab.path}
+                  prefetch
+                  className={`${styles.navItem} ${empStyles.navItemPdf}`}
+                >
+                  <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
                   <span className={empStyles.navLabelPdf}>{tab.name}</span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+                </Link>
+              ))}
+            </nav>
+          }
+        >
+          <EmployeeSidebarNav tabs={employeeTabs} />
+        </React.Suspense>
       </aside>
 
       <div className={`${styles.contentArea} ${empStyles.contentFull} ${empStyles.contentModern}`}>
