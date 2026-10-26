@@ -10,6 +10,7 @@ import {
   tryBeginScreenshotUpload,
 } from "@/lib/guard-screenshot-ingest";
 import { assertScreenshotStorageWritable } from "@/lib/guard-screenshot-retention";
+import { enqueueScreenshotWinshareMirror } from "@/lib/guard-screenshot-winshare";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -207,6 +208,8 @@ export async function POST(req: NextRequest) {
         employeeName,
         pseudonym,
       });
+      // Optional CIFS winshare mirror — never awaited (HRM stays responsive).
+      enqueueScreenshotWinshareMirror({ absolutePath, relativePath });
 
       return NextResponse.json({
         success: true,
@@ -262,6 +265,10 @@ export async function POST(req: NextRequest) {
       employeeId: emp,
       employeeName: saved.fileName,
       pseudonym,
+    });
+    enqueueScreenshotWinshareMirror({
+      absolutePath: saved.absolutePath,
+      relativePath: saved.relativePath,
     });
     return NextResponse.json({
       success: true,
