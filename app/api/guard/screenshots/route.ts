@@ -209,7 +209,14 @@ export async function POST(req: NextRequest) {
         pseudonym,
       });
       // Optional CIFS winshare mirror — never awaited (HRM stays responsive).
-      enqueueScreenshotWinshareMirror({ absolutePath, relativePath });
+      // Share layout: {id}_{Name}/{date}/{file}.jpg
+      enqueueScreenshotWinshareMirror({
+        absolutePath,
+        relativePath,
+        employeeId,
+        employeeName,
+        fileName,
+      });
 
       return NextResponse.json({
         success: true,
@@ -269,6 +276,10 @@ export async function POST(req: NextRequest) {
     enqueueScreenshotWinshareMirror({
       absolutePath: saved.absolutePath,
       relativePath: saved.relativePath,
+      employeeId: emp,
+      employeeName:
+        String(form.get("employee_name") || "").trim() || employeeName,
+      fileName: saved.fileName,
     });
     return NextResponse.json({
       success: true,
