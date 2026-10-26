@@ -7,7 +7,7 @@ namespace InteractGuard;
 public sealed class AppSettings
 {
     public const string ProductName = "Interact Guard";
-    public const string Version = "1.2.65";
+    public const string Version = "1.2.66";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\InteractGuard";
 
     public string HrmBaseUrl { get; set; } = "https://192.168.10.6:8443";

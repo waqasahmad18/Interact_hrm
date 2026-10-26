@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
-$Version = "1.2.65"
+$Version = "1.2.66"
 $Out = Join-Path $Root "dist"
 $Stage = Join-Path $Out "stage"
 $Payload = Join-Path $Stage "payload"

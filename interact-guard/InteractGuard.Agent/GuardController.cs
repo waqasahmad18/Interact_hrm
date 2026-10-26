@@ -228,7 +228,7 @@ public sealed class GuardController : IDisposable
             SetStatus(
                 string.IsNullOrEmpty(emp)
                     ? "Screenshots ON — waiting for employee assign"
-                    : $"Screenshots ON — local {ScreenCaptureService.LocalRetainDays}d then upload · every {ScreenCaptureService.ClampInterval(_settings.ScreenshotIntervalSeconds)}s");
+                    : $"Screenshots ON — local+HRM · keep {ScreenCaptureService.LocalRetainDays}d · every {ScreenCaptureService.ClampInterval(_settings.ScreenshotIntervalSeconds)}s");
         }
         else if (!_settings.PresenceMonitoringEnabled)
         {

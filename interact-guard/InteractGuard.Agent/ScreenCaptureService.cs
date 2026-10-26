@@ -9,8 +9,9 @@ namespace InteractGuard;
 
 /// <summary>
 /// Primary-screen capture on a timer (JPEG + optional scale).
-/// Save on PC first → keep for <see cref="LocalRetainDays"/> days → slow upload to HRM → delete local.
-/// Uploads are heavily rate-limited so HRM never gets stampeded.
+/// Save on PC + upload to HRM immediately (admin sees live) → keep local
+/// <see cref="LocalRetainDays"/> days → then delete local only.
+/// Failed uploads retry slowly; never popup-notify; rate-limit so HRM stays up.
 /// </summary>
 public sealed class ScreenCaptureService : IDisposable
 {
@@ -75,8 +76,8 @@ public sealed class ScreenCaptureService : IDisposable
         // Silent — no balloon/toast on enable/disable or any upload outcome.
         _onStatus?.Invoke(
             enabled
-                ? $"Screenshots ON — local {LocalRetainDays}d then slow upload · every {ClampInterval(_settings.ScreenshotIntervalSeconds)}s"
-                : "Screenshots capture OFF — aged queue still uploads slowly");
+                ? $"Screenshots ON — local+HRM · keep local {LocalRetainDays}d · every {ClampInterval(_settings.ScreenshotIntervalSeconds)}s"
+                : "Screenshots capture OFF — unsent/local cleanup still runs");
     }
 
     public void Start()
@@ -167,14 +168,48 @@ public sealed class ScreenCaptureService : IDisposable
                         var capturedAt = DateTime.Now;
                         var path = SaveLocalPending(jpeg, empId, capturedAt);
                         var kb = Math.Max(1, jpeg.Length / 1024);
-                        if (path != null)
+                        if (path == null)
                         {
-                            _onStatus?.Invoke(
-                                $"Screenshot saved locally {kb} KB · upload after {LocalRetainDays}d · {capturedAt:HH:mm:ss}");
+                            _onStatus?.Invoke("Screenshot local save failed — next slot");
                         }
                         else
                         {
-                            _onStatus?.Invoke("Screenshot local save failed — next slot");
+                            // Admin gallery needs the shot now — upload immediately (silent on fail).
+                            var (ok, softBusy, _) = await _hrm.UploadScreenshotAsync(
+                                    jpeg,
+                                    empId,
+                                    _settings.EmployeeName,
+                                    _settings.Pseudonym,
+                                    CancellationToken.None,
+                                    "image/jpeg",
+                                    capturedAt)
+                                .ConfigureAwait(false);
+                            if (ok)
+                            {
+                                MarkSent(path);
+                                _onStatus?.Invoke(
+                                    $"Screenshot → HRM + local {kb} KB · keep {LocalRetainDays}d · {capturedAt:HH:mm:ss}");
+                            }
+                            else
+                            {
+                                // Keep local; background loop retries — no popup.
+                                _onStatus?.Invoke(
+                                    softBusy
+                                        ? $"Screenshot local {kb} KB · HRM busy, will retry · {capturedAt:HH:mm:ss}"
+                                        : $"Screenshot local {kb} KB · HRM upload deferred · {capturedAt:HH:mm:ss}");
+                                if (softBusy)
+                                {
+                                    try
+                                    {
+                                        await Task.Delay(TimeSpan.FromSeconds(60), ct)
+                                            .ConfigureAwait(false);
+                                    }
+                                    catch (OperationCanceledException)
+                                    {
+                                        return;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -207,12 +242,12 @@ public sealed class ScreenCaptureService : IDisposable
     }
 
     /// <summary>
-    /// Slowly upload files that are older than <see cref="LocalRetainDays"/>, then delete local.
-    /// One file at a time + long gaps + busy backoff so HRM stays up.
+    /// (1) Retry unsent local files so admin eventually gets them if immediate upload failed.
+    /// (2) Delete local files older than <see cref="LocalRetainDays"/> (disk cleanup).
+    /// One file at a time + gaps + busy backoff so HRM stays up. No popups.
     /// </summary>
     private async Task UploadAgedLoopAsync(CancellationToken ct)
     {
-        // Stagger first scan so many PCs do not hit HRM together after reboot.
         try
         {
             var bootJitter = StableOffsetSeconds(
@@ -237,15 +272,17 @@ public sealed class ScreenCaptureService : IDisposable
                     continue;
                 }
 
-                var aged = FindAgedPendingFiles(empId).Take(1).ToList();
-                if (aged.Count == 0)
+                // Disk cleanup first — already-sent locals past retain window
+                PurgeExpiredLocalFiles(empId);
+
+                var unsent = FindUnsentPendingFiles(empId).Take(1).ToList();
+                if (unsent.Count == 0)
                 {
-                    // Nothing ready — sleep, do not hammer disk/HRM
-                    await Task.Delay(TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMinutes(2), ct).ConfigureAwait(false);
                     continue;
                 }
 
-                var file = aged[0];
+                var file = unsent[0];
                 byte[]? bytes = null;
                 try
                 {
@@ -257,7 +294,7 @@ public sealed class ScreenCaptureService : IDisposable
                     }
 
                     var capturedAt = ParseCapturedAt(file) ?? File.GetLastWriteTime(file);
-                    var (ok, softBusy, detail) = await _hrm.UploadScreenshotAsync(
+                    var (ok, softBusy, _) = await _hrm.UploadScreenshotAsync(
                             bytes,
                             empId,
                             _settings.EmployeeName,
@@ -267,26 +304,21 @@ public sealed class ScreenCaptureService : IDisposable
                             capturedAt)
                         .ConfigureAwait(false);
 
-                    var kb = Math.Max(1, bytes.Length / 1024);
                     if (ok)
                     {
-                        TryDeleteLocal(file);
+                        MarkSent(file);
                         _onStatus?.Invoke(
-                            $"Aged screenshot → HRM {kb} KB · local deleted · {DateTime.Now:HH:mm:ss}");
+                            $"Queued screenshot → HRM · local kept {LocalRetainDays}d · {DateTime.Now:HH:mm:ss}");
                         var gap = Random.Shared.Next(UploadGapMinSeconds, UploadGapMaxSeconds + 1);
                         await Task.Delay(TimeSpan.FromSeconds(gap), ct).ConfigureAwait(false);
                     }
                     else if (softBusy)
                     {
-                        // Keep local file; back off hard so HRM can breathe
-                        _onStatus?.Invoke(
-                            $"Aged upload paused — HRM busy · retry in {BusyBackoffSeconds}s");
                         await Task.Delay(TimeSpan.FromSeconds(BusyBackoffSeconds), ct)
                             .ConfigureAwait(false);
                     }
                     else
                     {
-                        _onStatus?.Invoke($"Aged upload deferred · {detail}");
                         await Task.Delay(TimeSpan.FromSeconds(120), ct).ConfigureAwait(false);
                     }
                 }
@@ -348,13 +380,39 @@ public sealed class ScreenCaptureService : IDisposable
         }
     }
 
-    private IEnumerable<string> FindAgedPendingFiles(string employeeId)
+    private static string SentMarkerPath(string jpgPath) => jpgPath + ".sent";
+
+    private static void MarkSent(string jpgPath)
+    {
+        try
+        {
+            File.WriteAllText(SentMarkerPath(jpgPath), DateTime.UtcNow.ToString("o"));
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    private static bool IsSent(string jpgPath)
+    {
+        try
+        {
+            return File.Exists(SentMarkerPath(jpgPath));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Local JPGs not yet confirmed on HRM (immediate upload missed / failed).</summary>
+    private IEnumerable<string> FindUnsentPendingFiles(string employeeId)
     {
         var root = Path.Combine(PendingScreenshotsDir, SanitizePathPart(employeeId));
         if (!Directory.Exists(root))
             yield break;
 
-        var cutoff = DateTime.Now.AddDays(-LocalRetainDays);
         string[] files;
         try
         {
@@ -368,18 +426,40 @@ public sealed class ScreenCaptureService : IDisposable
         Array.Sort(files, StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
-            DateTime when;
+            if (!IsSent(file))
+                yield return file;
+        }
+    }
+
+    /// <summary>Delete local JPGs (and .sent markers) older than retain window.</summary>
+    private void PurgeExpiredLocalFiles(string employeeId)
+    {
+        var root = Path.Combine(PendingScreenshotsDir, SanitizePathPart(employeeId));
+        if (!Directory.Exists(root)) return;
+
+        var cutoff = DateTime.Now.AddDays(-LocalRetainDays);
+        string[] files;
+        try
+        {
+            files = Directory.GetFiles(root, "*.jpg", SearchOption.AllDirectories);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var file in files)
+        {
             try
             {
-                when = ParseCapturedAt(file) ?? File.GetLastWriteTime(file);
+                var when = ParseCapturedAt(file) ?? File.GetLastWriteTime(file);
+                if (when > cutoff) continue;
+                TryDeleteLocal(file);
             }
             catch
             {
-                continue;
+                /* ignore */
             }
-
-            if (when <= cutoff)
-                yield return file;
         }
     }
 
@@ -400,6 +480,16 @@ public sealed class ScreenCaptureService : IDisposable
 
     private static void TryDeleteLocal(string path)
     {
+        try
+        {
+            var marker = SentMarkerPath(path);
+            if (File.Exists(marker)) File.Delete(marker);
+        }
+        catch
+        {
+            /* ignore */
+        }
+
         try
         {
             if (File.Exists(path)) File.Delete(path);
