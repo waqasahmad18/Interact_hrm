@@ -34,13 +34,15 @@ export function isWinshareMirrorEnabled(): boolean {
   return Boolean(winshareMirrorRoot());
 }
 
-/** One folder per employee: `97_Waqas_Rafique` */
+/** One folder per employee: `97_Waqas_Rafique` (never append placeholder NA). */
 export function employeeWinshareFolder(
   employeeId: string,
   employeeName?: string | null,
 ): string {
   const id = safeSegment(employeeId, "unknown");
-  const name = safeSegment(employeeName || "", "Employee");
+  let name = safeSegment(employeeName || "", "Employee");
+  name = name.replace(/_NA$/i, "");
+  if (!name || name.toUpperCase() === "NA") name = "Employee";
   return `${id}_${name}`;
 }
 
@@ -160,15 +162,17 @@ async function copyOne(
   }
 }
 
-/** Name from HRM file `Waqas_Rafique_Developer_2026-10-27_01-54-21.jpg` → Waqas_Rafique */
+/**
+ * Name from HRM file `Abdul_Wahab_NA_2026-10-27_01-54-27.jpg` → Abdul_Wahab
+ * (drop placeholder pseudo `NA` so we don't create duplicate *_NA folders)
+ */
 function nameFromScreenshotFile(fileName: string): string {
   const base = fileName.replace(/\.(jpe?g|png)$/i, "");
   const m = base.match(/^(.*)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/);
   if (!m) return "Employee";
-  // strip trailing _Pseudo if present (last underscore segment before stamp already in m[1])
-  // m[1] is like Waqas_Rafique_Developer — keep full name+pseudo as folder label is OK,
-  // but user asked name+id: use first two tokens as name when possible.
-  const head = m[1];
+  let head = m[1];
+  // Filename is Name_Pseudo_stamp — drop trailing _NA placeholder pseudonym
+  head = head.replace(/_NA$/i, "");
   return safeSegment(head, "Employee");
 }
 
