@@ -32,6 +32,11 @@ import {
   STATUS_SECOND_HALF_DAY,
 } from "../../../lib/monthly-attendance-status";
 import { compareAttendanceRows } from "../../../lib/attendance-sort";
+import {
+  medicalDeductionForPackage,
+  normalizeMedicalPackage,
+  type MedicalPackageId,
+} from "@/lib/medical-package";
 
 // ...existing code...
 
@@ -222,9 +227,14 @@ export default function MonthlyAttendancePage() {
   const [breakExceedDedByEmployee, setBreakExceedDedByEmployee] = useState<Record<string, number>>({});
   const [kpisDedByEmployee, setKpisDedByEmployee] = useState<Record<string, number>>({});
   const [otherDedByEmployee, setOtherDedByEmployee] = useState<Record<string, number>>({});
-  /** CTD + Fuel + Unpaid days — persisted in monthly_payroll_adjustments */
+  /** CTD + Fuel + Unpaid + Claims — persisted in monthly_payroll_adjustments */
   const [ctdByEmployee, setCtdByEmployee] = useState<Record<string, number>>({});
   const [fuelByEmployee, setFuelByEmployee] = useState<Record<string, number>>({});
+  const [claimsByEmployee, setClaimsByEmployee] = useState<Record<string, number>>({});
+  /** Package from Allowances → drives Medical Dedc column */
+  const [medicalPackageByEmployee, setMedicalPackageByEmployee] = useState<
+    Record<string, MedicalPackageId>
+  >({});
   /** Session-only unpaid override (after HR edits). Default = live Monthly Attendance calc. */
   const [unpaidDaysByEmployee, setUnpaidDaysByEmployee] = useState<Record<string, number>>({});
   /** Only persist unpaid override after the user edits the field (avoid locking system value on blur). */
@@ -344,6 +354,36 @@ export default function MonthlyAttendancePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employee_id: employeeId, month: selectedMonth, ctd }),
     }).catch((err) => console.error("CTD save failed", err));
+  }
+
+  function getClaimsForEmployee(employee: { employeeId?: string }) {
+    const empId = String(employee.employeeId ?? "");
+    return claimsByEmployee[empId] ?? 0;
+  }
+
+  function getMedicalDedcForEmployee(employee: { employeeId?: string }) {
+    const empId = String(employee.employeeId ?? "");
+    const pkg = medicalPackageByEmployee[empId] ?? null;
+    return medicalDeductionForPackage(pkg);
+  }
+
+  function setClaimsAmount(employeeId: string, raw: string) {
+    setClaimsByEmployee((prev) => ({ ...prev, [employeeId]: parsePositiveMoney(raw) }));
+  }
+
+  function saveClaimsAmount(employeeId: string, raw?: string) {
+    if (!selectedMonth) return;
+    const medical_claims =
+      raw !== undefined ? parsePositiveMoney(raw) : (claimsByEmployee[employeeId] ?? 0);
+    void fetch("/api/monthly-payroll-adjustments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employee_id: employeeId,
+        month: selectedMonth,
+        medical_claims,
+      }),
+    }).catch((err) => console.error("Claims save failed", err));
   }
 
   const manualInputStyle: React.CSSProperties = {
@@ -609,6 +649,7 @@ export default function MonthlyAttendancePage() {
     if (!selectedMonth) {
       setCtdByEmployee({});
       setFuelByEmployee({});
+      setClaimsByEmployee({});
       setUnpaidDaysByEmployee({});
       unpaidEditedRef.current = new Set();
       return;
@@ -623,12 +664,14 @@ export default function MonthlyAttendancePage() {
         if (cancelled) return;
         const ctdMap: Record<string, number> = {};
         const fuelMap: Record<string, number> = {};
+        const claimsMap: Record<string, number> = {};
         if (data.success && Array.isArray(data.adjustments)) {
           data.adjustments.forEach(
             (row: {
               employee_id?: string | number;
               ctd?: number | null;
               fuel_allowance?: number | null;
+              medical_claims?: number | null;
             }) => {
               const id = String(row.employee_id ?? "").trim();
               if (!id) return;
@@ -638,12 +681,16 @@ export default function MonthlyAttendancePage() {
               if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
                 fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
               }
+              if (row.medical_claims !== null && row.medical_claims !== undefined) {
+                claimsMap[id] = parsePositiveMoney(row.medical_claims);
+              }
               // unpaid_days from DB intentionally ignored — T.Unpaid Days is live from attendance.
             }
           );
         }
         setCtdByEmployee(ctdMap);
         setFuelByEmployee(fuelMap);
+        setClaimsByEmployee(claimsMap);
         setUnpaidDaysByEmployee({});
         unpaidEditedRef.current = new Set();
       })
@@ -652,6 +699,7 @@ export default function MonthlyAttendancePage() {
         if (!cancelled) {
           setCtdByEmployee({});
           setFuelByEmployee({});
+          setClaimsByEmployee({});
           setUnpaidDaysByEmployee({});
         }
       });
@@ -852,6 +900,8 @@ export default function MonthlyAttendancePage() {
         ctd: getCtdForEmployee(emp),
         fuelAllowance: getFuelAllowanceForEmployee(emp),
         unpaidDays: getUnpaidDaysForEmployee(emp),
+        medicalClaims: getClaimsForEmployee(emp),
+        medicalDedc: getMedicalDedcForEmployee(emp),
       });
       return {
       "ID": emp.employeeId,
@@ -871,12 +921,14 @@ export default function MonthlyAttendancePage() {
       "Existing Client Incentive": getCommissionDisplay(emp.employeeId, "existing_client_incentive"),
       "Trainer Incentive": getCommissionDisplay(emp.employeeId, "trainer_incentive"),
       "Floor Incentive": getCommissionDisplay(emp.employeeId, "floor_incentive"),
+      "Claims": row.medicalClaims,
       "Gross Salary": row.grossSalary,
       "Unpaid Days Salary": row.unpaidDaysSalary,
       "Break Exceed Ded.": row.breakExceedDed,
       "KPIs Ded.": row.kpisDed,
       "Other Ded": row.otherDed,
       "CTD": row.ctd,
+      "Medical Dedc": row.medicalDedc,
       "Loan/Advance": row.loanAdvance,
       "Total Deductions": row.totalDeductions,
       "Net before Tax": row.netBeforeTax,
@@ -1120,6 +1172,7 @@ export default function MonthlyAttendancePage() {
           const map: Record<string, number> = {};
           const fuelDefaults: Record<string, number> = {};
           const ctdDefaults: Record<string, number> = {};
+          const medicalDefaults: Record<string, MedicalPackageId> = {};
           data.salaries.forEach((row: any) => {
             if (row.salary_hidden) return;
             if (row.employee_id != null && row.amount !== undefined && row.amount !== null) {
@@ -1144,10 +1197,15 @@ export default function MonthlyAttendancePage() {
                 ctdDefaults[String(row.employee_id)] = ctd;
               }
             }
+            const pkg = normalizeMedicalPackage(row.medical_package);
+            if (row.employee_id != null && pkg) {
+              medicalDefaults[String(row.employee_id)] = pkg;
+            }
           });
           setSalaryMap(map);
           setDefaultFuelByEmployee(fuelDefaults);
           setDefaultCtdByEmployee(ctdDefaults);
+          setMedicalPackageByEmployee(medicalDefaults);
         }
       });
   }, []);
@@ -1348,6 +1406,8 @@ export default function MonthlyAttendancePage() {
       ctd?: number;
       fuelAllowance?: number;
       unpaidDays?: number;
+      medicalClaims?: number;
+      medicalDedc?: number;
     } = {}
   ) {
     const taxAmount = opts.taxAmount ?? 0;
@@ -1358,6 +1418,14 @@ export default function MonthlyAttendancePage() {
       opts.fuelAllowance !== undefined
         ? parsePositiveMoney(opts.fuelAllowance)
         : 0;
+    const medicalClaims =
+      opts.medicalClaims !== undefined
+        ? parsePositiveMoney(opts.medicalClaims)
+        : getClaimsForEmployee(employee);
+    const medicalDedc =
+      opts.medicalDedc !== undefined
+        ? parsePositiveMoney(opts.medicalDedc)
+        : getMedicalDedcForEmployee(employee);
     const paidHoursPerDay =
       Number(employee.paidHoursPerDay) > 0 ? Number(employee.paidHoursPerDay) : 9;
 
@@ -1416,7 +1484,8 @@ export default function MonthlyAttendancePage() {
       commission +
       existingClientIncentive +
       trainerIncentive +
-      floorIncentive;
+      floorIncentive +
+      medicalClaims;
 
     // Unpaid cut from truncated full-day pay (e.g. 235/day), not rounded Basic÷W.Days.
     const unpaidDaysSalary =
@@ -1443,7 +1512,13 @@ export default function MonthlyAttendancePage() {
       (Number.isFinite(adv) ? adv : 0) + (Number.isFinite(loan) ? loan : 0);
 
     const totalDeductions =
-      unpaidDaysSalary + breakExceedDed + kpisDed + otherDed + ctd + loanAdvance;
+      unpaidDaysSalary +
+      breakExceedDed +
+      kpisDed +
+      otherDed +
+      ctd +
+      medicalDedc +
+      loanAdvance;
 
     const netBeforeTax = grossSalary - totalDeductions;
     const tax = Number.isFinite(taxAmount) && taxAmount > 0 ? taxAmount : 0;
@@ -1457,6 +1532,8 @@ export default function MonthlyAttendancePage() {
     return {
       basicSalary,
       fuelAllowance,
+      medicalClaims,
+      medicalDedc,
       workingDays,
       unpaidDays,
       unpaidDaysDisplay,
@@ -1583,12 +1660,14 @@ export default function MonthlyAttendancePage() {
                 <th>Existing Client Incentive</th>
                 <th>Trainer Incentive</th>
                 <th>Floor Incentive</th>
+                <th>Claims</th>
                 <th>Gross Salary</th>
                 <th>Unpaid Days Salary</th>
                 <th>Break Exceed Ded.</th>
                 <th>KPIs Ded.</th>
                 <th>Other Ded (fine,etc.)</th>
                 <th>CTD</th>
+                <th>Medical Dedc</th>
                 <th>Loan/Advance</th>
                 <th>Total Deductions</th>
                 <th>Net. Salary before Tax</th>
@@ -1608,6 +1687,8 @@ export default function MonthlyAttendancePage() {
                   const ctdVal = getCtdForEmployee(employee);
                   const fuelVal = getFuelAllowanceForEmployee(employee);
                   const unpaidVal = getUnpaidDaysForEmployee(employee);
+                  const claimsVal = getClaimsForEmployee(employee);
+                  const medicalDedcVal = getMedicalDedcForEmployee(employee);
                   const row = getPayrollBreakdown(employee, {
                     taxAmount: taxVal,
                     breakExceedDed: breakVal,
@@ -1616,6 +1697,8 @@ export default function MonthlyAttendancePage() {
                     ctd: ctdVal,
                     fuelAllowance: fuelVal,
                     unpaidDays: unpaidVal,
+                    medicalClaims: claimsVal,
+                    medicalDedc: medicalDedcVal,
                   });
                   return (
                     <tr key={employee.employeeId}>
@@ -1674,6 +1757,18 @@ export default function MonthlyAttendancePage() {
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "existing_client_incentive"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "trainer_incentive"))}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(getCommissionDisplay(employee.employeeId, "floor_incentive"))}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={claimsVal}
+                          onChange={(e) => setClaimsAmount(empId, e.target.value)}
+                          onBlur={(e) => saveClaimsAmount(empId, e.target.value)}
+                          style={fuelInputStyle}
+                          title="Claims — added to Gross Salary; saved for this month"
+                        />
+                      </td>
                       <td style={{ color: '#007a5a', fontWeight: 700 }}>{formatWithCommas(row.grossSalary)}</td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.unpaidDaysSalary)}</td>
                       <td>
@@ -1721,6 +1816,16 @@ export default function MonthlyAttendancePage() {
                           title="CTD — editable; default from Allowances, saved for this month when changed"
                         />
                       </td>
+                      <td
+                        style={{ color: '#dc2626', fontWeight: 600 }}
+                        title={
+                          medicalPackageByEmployee[empId]
+                            ? `From ${medicalPackageByEmployee[empId]} package (Allowances)`
+                            : "No medical package on Allowances"
+                        }
+                      >
+                        {formatWithCommas(row.medicalDedc)}
+                      </td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.loanAdvance)}</td>
                       <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatWithCommas(row.totalDeductions)}</td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netBeforeTax)}</td>
@@ -1741,7 +1846,7 @@ export default function MonthlyAttendancePage() {
                   );
                 })
               ) : (
-                <tr><td colSpan={29} className={styles.breakSummaryNoRecords}>No records found</td></tr>
+                <tr><td colSpan={31} className={styles.breakSummaryNoRecords}>No records found</td></tr>
               )}
             </tbody>
           </table>

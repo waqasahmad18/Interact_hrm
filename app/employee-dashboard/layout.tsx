@@ -30,9 +30,14 @@ import empStyles from "./emp-shell.module.css";
 import { fetchShellBranding } from "../shell-branding-api";
 import { EmployeeAvatar } from "../components/EmployeeAvatar";
 import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
+import { MedicalPackageBadge } from "./components/MedicalPackageBadge";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
 import { syncInteractGuardBind } from "./sync-interact-guard";
 import { GuardPresenceFaceHost } from "./GuardPresenceFaceHost";
+import {
+  normalizeMedicalPackage,
+  type MedicalPackageId,
+} from "@/lib/medical-package";
 import {
   ensureFaceModelsLoaded,
   prefetchFaceModelAssets,
@@ -292,6 +297,9 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   const pathname = usePathname();
   const router = useRouter();
   const [employeeName, setEmployeeName] = React.useState<string>("");
+  const [medicalPackage, setMedicalPackage] = React.useState<MedicalPackageId | null>(
+    null,
+  );
   const [employeeId, setEmployeeId] = React.useState<string>("");
   const [employeePseudonym, setEmployeePseudonym] = React.useState<string>("");
   const [heroDateTime, setHeroDateTime] = React.useState(formatHeroDateTime);
@@ -408,6 +416,29 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
       });
   }, []);
+
+  // Medical package badge (Silver / Gold / Platinum) next to employee name.
+  React.useEffect(() => {
+    if (!employeeId || !/^\d+$/.test(employeeId)) {
+      setMedicalPackage(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/employee_salaries?employeeId=${encodeURIComponent(employeeId)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setMedicalPackage(normalizeMedicalPackage(data?.salary?.medical_package));
+      })
+      .catch(() => {
+        if (!cancelled) setMedicalPackage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
 
   // Keep Interact Guard agent bound to this logged-in employee (auto id/name/pseudo).
   React.useEffect(() => {
@@ -617,6 +648,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                     <h1 className={empStyles.heroTitle}>
                       {greetingLabel()},{" "}
                       <span className={empStyles.heroNameAccent}>{employeeName || "Employee"}!</span>
+                      <MedicalPackageBadge packageId={medicalPackage} size="md" />
                     </h1>
                     <span className={empStyles.heroDate}>{heroDateTime}</span>
                   </div>
@@ -650,6 +682,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                 size="sm"
               />
               <span>{employeeName || "Employee"}</span>
+              <MedicalPackageBadge packageId={medicalPackage} size="sm" />
               <EmployeeProfileMenu
                 employeeId={employeeId}
                 onAvatarUpdated={(dataUrl) => setEmployeeAvatar(dataUrl)}

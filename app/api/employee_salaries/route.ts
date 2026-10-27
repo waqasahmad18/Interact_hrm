@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "../../../lib/db";
+import { normalizeMedicalPackage } from "@/lib/medical-package";
 
 function parseAmount(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -13,6 +14,11 @@ function salaryFields(body: any) {
     body.company_transport_deduction ??
     body.companyTransportDeduction ??
     body.ctd;
+  const hasMedicalPackage = Object.prototype.hasOwnProperty.call(
+    body,
+    "medical_package",
+  ) || Object.prototype.hasOwnProperty.call(body, "medicalPackage");
+  const medicalRaw = body.medical_package ?? body.medicalPackage;
   return {
     employee_id: body.employee_id ?? body.employeeId,
     component: body.component ?? null,
@@ -28,6 +34,12 @@ function salaryFields(body: any) {
     depositAmount: parseAmount(body.depositAmount ?? body.deposit_amount),
     fuelAllowance: fuelRaw === undefined ? undefined : parseAmount(fuelRaw),
     companyTransportDeduction: ctdRaw === undefined ? undefined : parseAmount(ctdRaw),
+    hasMedicalPackage,
+    medicalPackage: hasMedicalPackage
+      ? medicalRaw === null || medicalRaw === ""
+        ? null
+        : normalizeMedicalPackage(medicalRaw)
+      : undefined,
     allowancesOnly: Boolean(
       body.allowancesOnly ?? body.allowances_only ?? body.fuelOnly ?? body.fuel_only
     ),
@@ -83,17 +95,22 @@ export async function PUT(req: NextRequest) {
     }
 
     const [existing]: any = await pool.execute(
-      "SELECT id, fuel_allowance, company_transport_deduction FROM employee_salaries WHERE employee_id = ? ORDER BY id DESC LIMIT 1",
+      "SELECT id, fuel_allowance, company_transport_deduction, medical_package FROM employee_salaries WHERE employee_id = ? ORDER BY id DESC LIMIT 1",
       [f.employee_id]
     );
 
     if (existing && existing.length > 0) {
       if (f.allowancesOnly) {
+        const medical =
+          f.medicalPackage !== undefined
+            ? f.medicalPackage
+            : existing[0].medical_package ?? null;
         await pool.execute(
-          `UPDATE employee_salaries SET fuel_allowance = ?, company_transport_deduction = ? WHERE id = ?`,
+          `UPDATE employee_salaries SET fuel_allowance = ?, company_transport_deduction = ?, medical_package = ? WHERE id = ?`,
           [
             f.fuelAllowance ?? null,
             f.companyTransportDeduction ?? null,
+            medical,
             existing[0].id,
           ]
         );
@@ -106,11 +123,15 @@ export async function PUT(req: NextRequest) {
           f.companyTransportDeduction !== undefined
             ? f.companyTransportDeduction
             : existing[0].company_transport_deduction ?? null;
+        const medical =
+          f.medicalPackage !== undefined
+            ? f.medicalPackage
+            : existing[0].medical_package ?? null;
         await pool.execute(
           `UPDATE employee_salaries SET
              component = ?, pay_grade = ?, pay_frequency = ?, currency = ?, amount = ?, comments = ?,
              direct_deposit = ?, account_number = ?, account_type = ?, routing_number = ?, deposit_amount = ?,
-             fuel_allowance = ?, company_transport_deduction = ?
+             fuel_allowance = ?, company_transport_deduction = ?, medical_package = ?
            WHERE id = ?`,
           [
             f.component,
@@ -126,6 +147,7 @@ export async function PUT(req: NextRequest) {
             f.depositAmount,
             fuel,
             ctd,
+            medical,
             existing[0].id,
           ]
         );
@@ -135,8 +157,8 @@ export async function PUT(req: NextRequest) {
         `INSERT INTO employee_salaries
            (employee_id, component, pay_grade, pay_frequency, currency, amount, comments,
             direct_deposit, account_number, account_type, routing_number, deposit_amount,
-            fuel_allowance, company_transport_deduction)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            fuel_allowance, company_transport_deduction, medical_package)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           f.employee_id,
           f.allowancesOnly ? null : f.component,
@@ -152,6 +174,7 @@ export async function PUT(req: NextRequest) {
           f.allowancesOnly ? null : f.depositAmount,
           f.fuelAllowance ?? null,
           f.companyTransportDeduction ?? null,
+          f.medicalPackage ?? null,
         ]
       );
     }

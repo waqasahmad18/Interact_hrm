@@ -4,6 +4,7 @@ import {
   filterSalariesForViewer,
   viewerIdFromRequest,
 } from '@/lib/access-control/salary-visibility';
+import { normalizeMedicalPackage } from '@/lib/medical-package';
 
 function asEmployeeId(raw: unknown): string {
   return String(raw ?? "").trim();
@@ -16,7 +17,12 @@ function mergeSalaryAmounts(
 ): Array<Record<string, unknown>> {
   const byEmp = new Map<
     string,
-    { amount: number; fuel_allowance: number | null; company_transport_deduction: number | null }
+    {
+      amount: number;
+      fuel_allowance: number | null;
+      company_transport_deduction: number | null;
+      medical_package: string | null;
+    }
   >();
   for (const s of salaryRows) {
     const eid = asEmployeeId(s.employee_id);
@@ -25,6 +31,7 @@ function mergeSalaryAmounts(
       amount: 0,
       fuel_allowance: null,
       company_transport_deduction: null,
+      medical_package: null,
     };
     const amt = Number(s.amount);
     if (Number.isFinite(amt) && amt > 0) prev.amount += amt;
@@ -40,6 +47,8 @@ function mergeSalaryAmounts(
           ? ctd
           : Math.max(prev.company_transport_deduction, ctd);
     }
+    const pkg = normalizeMedicalPackage(s.medical_package);
+    if (pkg) prev.medical_package = pkg;
     byEmp.set(eid, prev);
     // Also index numeric alias so "097" / 97 join cleanly
     if (/^\d+$/.test(eid)) byEmp.set(String(Number(eid)), prev);
@@ -59,6 +68,7 @@ function mergeSalaryAmounts(
       amount: sal?.amount ?? 0,
       fuel_allowance: sal?.fuel_allowance ?? null,
       company_transport_deduction: sal?.company_transport_deduction ?? null,
+      medical_package: sal?.medical_package ?? null,
     };
   });
 }
@@ -84,7 +94,7 @@ export async function GET(req: NextRequest) {
       ORDER BY e.id DESC
     `);
     const [salaryRows]: any = await pool.execute(`
-      SELECT employee_id, amount, fuel_allowance, company_transport_deduction
+      SELECT employee_id, amount, fuel_allowance, company_transport_deduction, medical_package
       FROM employee_salaries
     `);
     const rows = mergeSalaryAmounts(

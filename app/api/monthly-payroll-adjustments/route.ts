@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const connection = await pool.getConnection();
     try {
       const [rows]: any = await connection.query(
-        `SELECT employee_id, month, ctd, fuel_allowance, unpaid_days
+        `SELECT employee_id, month, ctd, fuel_allowance, unpaid_days, medical_claims
          FROM monthly_payroll_adjustments
          WHERE month = ?
          ORDER BY employee_id ASC`,
@@ -73,9 +73,9 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT { employee_id, month, ctd?, fuel_allowance?, unpaid_days? }
+ * PUT { employee_id, month, ctd?, fuel_allowance?, unpaid_days?, medical_claims? }
  * Upserts; only provided fields are overwritten (others kept).
- * NULL ctd / fuel_allowance / unpaid_days in DB = not set (UI uses employee/system default).
+ * NULL ctd / fuel_allowance / unpaid_days / medical_claims in DB = not set (UI uses defaults).
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -85,6 +85,7 @@ export async function PUT(request: NextRequest) {
     const hasCtd = Object.prototype.hasOwnProperty.call(body, "ctd");
     const hasFuel = Object.prototype.hasOwnProperty.call(body, "fuel_allowance");
     const hasUnpaid = Object.prototype.hasOwnProperty.call(body, "unpaid_days");
+    const hasClaims = Object.prototype.hasOwnProperty.call(body, "medical_claims");
 
     if (!employeeId || !/^\d{4}-\d{2}$/.test(month)) {
       return NextResponse.json(
@@ -92,9 +93,12 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (!hasCtd && !hasFuel && !hasUnpaid) {
+    if (!hasCtd && !hasFuel && !hasUnpaid && !hasClaims) {
       return NextResponse.json(
-        { success: false, error: "Provide ctd, fuel_allowance, and/or unpaid_days" },
+        {
+          success: false,
+          error: "Provide ctd, fuel_allowance, unpaid_days, and/or medical_claims",
+        },
         { status: 400 }
       );
     }
@@ -102,7 +106,7 @@ export async function PUT(request: NextRequest) {
     const connection = await pool.getConnection();
     try {
       const [existingRows]: any = await connection.query(
-        `SELECT ctd, fuel_allowance, unpaid_days FROM monthly_payroll_adjustments
+        `SELECT ctd, fuel_allowance, unpaid_days, medical_claims FROM monthly_payroll_adjustments
          WHERE employee_id = ? AND month = ? LIMIT 1`,
         [employeeId, month]
       );
@@ -125,15 +129,22 @@ export async function PUT(request: NextRequest) {
         : existing
           ? existing.unpaid_days
           : null;
+      const medicalClaims = hasClaims
+        ? parseMoney(body.medical_claims)
+        : existing
+          ? existing.medical_claims
+          : null;
 
       await connection.query(
-        `INSERT INTO monthly_payroll_adjustments (employee_id, month, ctd, fuel_allowance, unpaid_days)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO monthly_payroll_adjustments
+           (employee_id, month, ctd, fuel_allowance, unpaid_days, medical_claims)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            ctd = VALUES(ctd),
            fuel_allowance = VALUES(fuel_allowance),
-           unpaid_days = VALUES(unpaid_days)`,
-        [employeeId, month, ctd, fuelAllowance, unpaidDays]
+           unpaid_days = VALUES(unpaid_days),
+           medical_claims = VALUES(medical_claims)`,
+        [employeeId, month, ctd, fuelAllowance, unpaidDays, medicalClaims]
       );
       return NextResponse.json({
         success: true,
@@ -142,6 +153,7 @@ export async function PUT(request: NextRequest) {
         ctd,
         fuel_allowance: fuelAllowance,
         unpaid_days: unpaidDays,
+        medical_claims: medicalClaims,
       });
     } finally {
       connection.release();
