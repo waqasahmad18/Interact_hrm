@@ -346,9 +346,17 @@ export default function MonthlyAttendancePage() {
   }
 
   const [attendance, setAttendance] = useState<any[]>([]);
+  /** Day-level manual status (attendance_id = 0). */
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Record<string, string>>>({});
+  /** Per attendance-session manual status (same calendar day can differ). */
+  const [statusOverridesByAttendanceId, setStatusOverridesByAttendanceId] = useState<
+    Record<string, string>
+  >({});
   const [statusOverrideNotes, setStatusOverrideNotes] = useState<
     Record<string, Record<string, string>>
+  >({});
+  const [statusOverrideNotesByAttendanceId, setStatusOverrideNotesByAttendanceId] = useState<
+    Record<string, string>
   >({});
   const [statusSavingKey, setStatusSavingKey] = useState<string>("");
   const [statusReasonDraft, setStatusReasonDraft] = useState<StatusChangeReasonDraft | null>(null);
@@ -625,19 +633,29 @@ export default function MonthlyAttendancePage() {
             if (gen !== fetchGenRef.current) return;
             if (ovData.success && Array.isArray(ovData.overrides)) {
               const map: Record<string, Record<string, string>> = {};
+              const byAtt: Record<string, string> = {};
               const notes: Record<string, Record<string, string>> = {};
+              const notesByAtt: Record<string, string> = {};
               ovData.overrides.forEach(
                 (o: {
                   employee_id: string;
                   attendance_date: string;
+                  attendance_id?: number | null;
                   status_label: string;
                   reason?: string | null;
                 }) => {
                   const eid = String(o.employee_id);
                   const dk = String(o.attendance_date).slice(0, 10);
-                  if (!map[eid]) map[eid] = {};
-                  map[eid][dk] = normalizeAttendanceStatus(o.status_label);
+                  const attId = Number(o.attendance_id || 0);
+                  const status = normalizeAttendanceStatus(o.status_label);
                   const reason = String(o.reason || "").trim();
+                  if (Number.isFinite(attId) && attId > 0) {
+                    byAtt[String(attId)] = status;
+                    if (reason) notesByAtt[String(attId)] = reason;
+                    return;
+                  }
+                  if (!map[eid]) map[eid] = {};
+                  map[eid][dk] = status;
                   if (reason) {
                     if (!notes[eid]) notes[eid] = {};
                     notes[eid][dk] = reason;
@@ -645,15 +663,21 @@ export default function MonthlyAttendancePage() {
                 },
               );
               setStatusOverrides(map);
+              setStatusOverridesByAttendanceId(byAtt);
               setStatusOverrideNotes(notes);
+              setStatusOverrideNotesByAttendanceId(notesByAtt);
             } else {
               setStatusOverrides({});
+              setStatusOverridesByAttendanceId({});
               setStatusOverrideNotes({});
+              setStatusOverrideNotesByAttendanceId({});
             }
           } catch {
             if (gen === fetchGenRef.current) {
               setStatusOverrides({});
+              setStatusOverridesByAttendanceId({});
               setStatusOverrideNotes({});
+              setStatusOverrideNotesByAttendanceId({});
             }
           }
           try {
@@ -988,7 +1012,31 @@ export default function MonthlyAttendancePage() {
     );
   }
 
-  function overrideStatusFor(employeeId: string, dateKey: string): string | null {
+  function normalizeOverrideAttendanceId(raw: unknown): number {
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function statusSaveKey(employeeId: string, dateKey: string, attendanceId?: number | null) {
+    const att = normalizeOverrideAttendanceId(attendanceId);
+    return att > 0 ? `${employeeId}|${dateKey}|${att}` : `${employeeId}|${dateKey}`;
+  }
+
+  /**
+   * Resolve manual status for a row.
+   * - With attendanceId: that session's override only (no day-level bleed onto sibling sessions).
+   * - Without attendanceId: day-level override (empty day / legacy).
+   */
+  function overrideStatusFor(
+    employeeId: string,
+    dateKey: string,
+    attendanceId?: number | null,
+  ): string | null {
+    const att = normalizeOverrideAttendanceId(attendanceId);
+    if (att > 0) {
+      const session = statusOverridesByAttendanceId[String(att)];
+      return session ? normalizeAttendanceStatus(session) : null;
+    }
     const v = statusOverrides[String(employeeId)]?.[dateKey];
     return v ? normalizeAttendanceStatus(v) : null;
   }
@@ -998,38 +1046,58 @@ export default function MonthlyAttendancePage() {
     dateKey: string,
     nextValue: string,
     reason?: string,
+    attendanceId?: number | null,
   ) {
-    const key = `${employeeId}|${dateKey}`;
+    const attId = normalizeOverrideAttendanceId(attendanceId);
+    const key = statusSaveKey(employeeId, dateKey, attId);
     if (statusSavingKey === key) return;
     setStatusSavingKey(key);
     try {
       if (!nextValue || nextValue === "__auto__") {
+        const qs = new URLSearchParams({
+          employeeId,
+          attendanceDate: dateKey,
+        });
+        if (attId > 0) qs.set("attendanceId", String(attId));
         const res = await fetch(
-          `/api/monthly-attendance-status-overrides?employeeId=${encodeURIComponent(employeeId)}&attendanceDate=${encodeURIComponent(dateKey)}`,
+          `/api/monthly-attendance-status-overrides?${qs.toString()}`,
           { method: "DELETE" },
         );
         const data = await res.json();
         if (!data.success) throw new Error(data.error || "Failed to clear status");
-        setStatusOverrides((prev) => {
-          const next = { ...prev };
-          if (next[employeeId]) {
-            const dayMap = { ...next[employeeId] };
-            delete dayMap[dateKey];
-            if (Object.keys(dayMap).length) next[employeeId] = dayMap;
-            else delete next[employeeId];
-          }
-          return next;
-        });
-        setStatusOverrideNotes((prev) => {
-          const next = { ...prev };
-          if (next[employeeId]) {
-            const dayMap = { ...next[employeeId] };
-            delete dayMap[dateKey];
-            if (Object.keys(dayMap).length) next[employeeId] = dayMap;
-            else delete next[employeeId];
-          }
-          return next;
-        });
+        if (attId > 0) {
+          setStatusOverridesByAttendanceId((prev) => {
+            const next = { ...prev };
+            delete next[String(attId)];
+            return next;
+          });
+          setStatusOverrideNotesByAttendanceId((prev) => {
+            const next = { ...prev };
+            delete next[String(attId)];
+            return next;
+          });
+        } else {
+          setStatusOverrides((prev) => {
+            const next = { ...prev };
+            if (next[employeeId]) {
+              const dayMap = { ...next[employeeId] };
+              delete dayMap[dateKey];
+              if (Object.keys(dayMap).length) next[employeeId] = dayMap;
+              else delete next[employeeId];
+            }
+            return next;
+          });
+          setStatusOverrideNotes((prev) => {
+            const next = { ...prev };
+            if (next[employeeId]) {
+              const dayMap = { ...next[employeeId] };
+              delete dayMap[dateKey];
+              if (Object.keys(dayMap).length) next[employeeId] = dayMap;
+              else delete next[employeeId];
+            }
+            return next;
+          });
+        }
         toastSuccess("Status reset to auto.", "Manual status");
       } else {
         const statusLabel = normalizeAttendanceStatus(nextValue);
@@ -1046,24 +1114,67 @@ export default function MonthlyAttendancePage() {
             statusLabel,
             reason: trimmedReason,
             updatedBy: "admin",
+            attendanceId: attId > 0 ? attId : 0,
           }),
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error || "Failed to save status");
-        setStatusOverrides((prev) => ({
-          ...prev,
-          [employeeId]: {
-            ...(prev[employeeId] || {}),
-            [dateKey]: statusLabel,
-          },
-        }));
-        setStatusOverrideNotes((prev) => ({
-          ...prev,
-          [employeeId]: {
-            ...(prev[employeeId] || {}),
-            [dateKey]: trimmedReason,
-          },
-        }));
+        if (attId > 0) {
+          setStatusOverridesByAttendanceId((prev) => ({
+            ...prev,
+            [String(attId)]: statusLabel,
+          }));
+          setStatusOverrideNotesByAttendanceId((prev) => ({
+            ...prev,
+            [String(attId)]: trimmedReason,
+          }));
+          // Clear legacy day-level so sibling sessions stay independent (fall back to auto).
+          if (statusOverrides[employeeId]?.[dateKey]) {
+            try {
+              await fetch(
+                `/api/monthly-attendance-status-overrides?employeeId=${encodeURIComponent(employeeId)}&attendanceDate=${encodeURIComponent(dateKey)}`,
+                { method: "DELETE" },
+              );
+            } catch {
+              /* non-fatal */
+            }
+            setStatusOverrides((prev) => {
+              const next = { ...prev };
+              if (next[employeeId]) {
+                const dayMap = { ...next[employeeId] };
+                delete dayMap[dateKey];
+                if (Object.keys(dayMap).length) next[employeeId] = dayMap;
+                else delete next[employeeId];
+              }
+              return next;
+            });
+            setStatusOverrideNotes((prev) => {
+              const next = { ...prev };
+              if (next[employeeId]) {
+                const dayMap = { ...next[employeeId] };
+                delete dayMap[dateKey];
+                if (Object.keys(dayMap).length) next[employeeId] = dayMap;
+                else delete next[employeeId];
+              }
+              return next;
+            });
+          }
+        } else {
+          setStatusOverrides((prev) => ({
+            ...prev,
+            [employeeId]: {
+              ...(prev[employeeId] || {}),
+              [dateKey]: statusLabel,
+            },
+          }));
+          setStatusOverrideNotes((prev) => ({
+            ...prev,
+            [employeeId]: {
+              ...(prev[employeeId] || {}),
+              [dateKey]: trimmedReason,
+            },
+          }));
+        }
         toastSuccess(`Status set to ${statusLabel}`, "Manual status");
       }
     } catch (err) {
@@ -1080,13 +1191,18 @@ export default function MonthlyAttendancePage() {
     dateKey: string,
     fromStatus: string,
     nextValue: string,
+    attendanceId?: number | null,
   ) {
+    const attId = normalizeOverrideAttendanceId(attendanceId);
     if (!nextValue || nextValue === "__auto__") {
-      void saveManualStatus(employeeId, dateKey, "__auto__");
+      void saveManualStatus(employeeId, dateKey, "__auto__", undefined, attId || null);
       return;
     }
     const nextStatus = normalizeAttendanceStatus(nextValue);
-    if (nextStatus === normalizeAttendanceStatus(fromStatus) && overrideStatusFor(employeeId, dateKey)) {
+    if (
+      nextStatus === normalizeAttendanceStatus(fromStatus) &&
+      overrideStatusFor(employeeId, dateKey, attId || null)
+    ) {
       return;
     }
     setStatusReasonDraft({
@@ -1094,6 +1210,7 @@ export default function MonthlyAttendancePage() {
       dateKey,
       fromStatus: normalizeAttendanceStatus(fromStatus),
       nextStatus,
+      attendanceId: attId > 0 ? attId : null,
     });
   }
 
@@ -1104,12 +1221,22 @@ export default function MonthlyAttendancePage() {
     lateMinutes?: number | null;
     isManual?: boolean;
     disabled?: boolean;
+    attendanceId?: number | null;
   }) {
-    const { employeeId, dateKey, displayStatus, lateMinutes, isManual, disabled } = opts;
+    const {
+      employeeId,
+      dateKey,
+      displayStatus,
+      lateMinutes,
+      isManual,
+      disabled,
+      attendanceId,
+    } = opts;
     if (displayStatus === "---" || disabled) {
       return <span>---</span>;
     }
-    const saving = statusSavingKey === `${employeeId}|${dateKey}`;
+    const attId = normalizeOverrideAttendanceId(attendanceId);
+    const saving = statusSavingKey === statusSaveKey(employeeId, dateKey, attId);
     const current = normalizeAttendanceStatus(displayStatus);
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
@@ -1118,11 +1245,13 @@ export default function MonthlyAttendancePage() {
           disabled={saving || Boolean(statusReasonDraft)}
           onChange={(e) => {
             const v = e.target.value;
-            requestManualStatusChange(employeeId, dateKey, current, v);
+            requestManualStatusChange(employeeId, dateKey, current, v, attId || null);
           }}
           title={
             isManual
-              ? "Manual status (M). Choose Auto to reset."
+              ? attId > 0
+                ? "Manual status for this session (M). Choose Auto to reset."
+                : "Manual status (M). Choose Auto to reset."
               : "Change status manually"
           }
           style={{
@@ -1229,8 +1358,15 @@ export default function MonthlyAttendancePage() {
     attendanceId?: number | null,
     dayRecords?: Array<{ id?: number | null }>
   ): string {
-    const manualReason = String(statusOverrideNotes[String(employeeId)]?.[dateKey] || "").trim();
-    if (manualReason) return manualReason;
+    if (attendanceId != null && Number(attendanceId) > 0) {
+      const sessionReason = String(
+        statusOverrideNotesByAttendanceId[String(attendanceId)] || "",
+      ).trim();
+      if (sessionReason) return sessionReason;
+    } else {
+      const manualReason = String(statusOverrideNotes[String(employeeId)]?.[dateKey] || "").trim();
+      if (manualReason) return manualReason;
+    }
 
     const isTardy = normalizeAttendanceStatus(statusLabel) === "Tardy";
     if (!isTardy) return "";
@@ -1983,7 +2119,16 @@ export default function MonthlyAttendancePage() {
     });
 
     return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
-  }, [attendance, showingImported, importedSnapshot, selectedDepartment, fromDate, toDate, statusOverrides]);
+  }, [
+    attendance,
+    showingImported,
+    importedSnapshot,
+    selectedDepartment,
+    fromDate,
+    toDate,
+    statusOverrides,
+    statusOverridesByAttendanceId,
+  ]);
 
   /** Enrich employee_code + include Tungsten-only employees (no HRM clock-in). */
   const attendanceByEmployeeAllMerged = useMemo((): MonthlyAttendanceEmployeeRow[] => {
@@ -2564,22 +2709,15 @@ export default function MonthlyAttendancePage() {
                           const leaveAttDay = leaveKindDay
                             ? attendanceFromApprovedLeaveDay(leaveKindDay)
                             : null;
-                          const manualOverride = overrideStatusFor(
+                          const dayLevelOverride = overrideStatusFor(
                             employee.employeeId,
                             day.dateKey,
                           );
-                          const recordStatus = manualOverride
-                            ? manualOverride
-                            : leaveAttDay
-                              ? leaveAttDay.statusLabel
-                              : normalizeAttendanceStatus(meta?.statusLabel || "-");
-                          const dayDeductionDisplay = manualOverride
-                            ? deductionForAttendanceStatus(manualOverride, meta?.runningLate)
-                            : leaveAttDay
-                              ? leaveAttDay.deduction
-                              : meta?.deduction || "";
-                          const statusIsManual =
-                            Boolean(manualOverride) || Boolean(meta?.isManual);
+                          const dayAutoStatus = leaveAttDay
+                            ? leaveAttDay.statusLabel
+                            : normalizeAttendanceStatus(
+                                meta?.autoStatusLabel || meta?.statusLabel || "-",
+                              );
                           const sessionsToShow = getDaySessionRows(
                             day.dateKey,
                             dayRecords,
@@ -2587,6 +2725,27 @@ export default function MonthlyAttendancePage() {
                           );
 
                           return sessionsToShow.map(({ session, record }, index) => {
+                            const attId = normalizeOverrideAttendanceId(record?.id);
+                            // Session-specific override wins; else legacy day-level; else auto.
+                            const sessionOverride =
+                              attId > 0
+                                ? overrideStatusFor(
+                                    employee.employeeId,
+                                    day.dateKey,
+                                    attId,
+                                  )
+                                : null;
+                            const effectiveOverride = sessionOverride || dayLevelOverride;
+                            const rowStatus = effectiveOverride || dayAutoStatus;
+                            const rowDeduction = effectiveOverride
+                              ? deductionForAttendanceStatus(
+                                  effectiveOverride,
+                                  meta?.runningLate,
+                                )
+                              : leaveAttDay
+                                ? leaveAttDay.deduction
+                                : meta?.deduction || "";
+                            const statusIsManual = Boolean(effectiveOverride);
                             return (
                               <tr
                                 key={`${employee.employeeId}-${day.dateKey}-session-${index}`}
@@ -2634,29 +2793,29 @@ export default function MonthlyAttendancePage() {
                                 <td>{meta?.runningLate ? meta.runningLate : ""}</td>
                                 <td
                                   style={{
-                                    color: uiStatusTextColor(recordStatus),
+                                    color: uiStatusTextColor(rowStatus),
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {/* Same-day status is shared; every session row stays editable. */}
                                   {renderEditableStatusCell({
                                     employeeId: employee.employeeId,
                                     dateKey: day.dateKey,
-                                    displayStatus: recordStatus,
+                                    displayStatus: rowStatus,
                                     lateMinutes: index === 0 ? meta?.lateMinutes : null,
                                     isManual: statusIsManual,
+                                    attendanceId: attId > 0 ? attId : null,
                                   })}
                                 </td>
                                 <td style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280, lineHeight: 1.35, wordBreak: "break-word" }}>
                                   {tardyNoteForCell(
                                     employee.employeeId,
                                     day.dateKey,
-                                    recordStatus,
-                                    record?.id,
+                                    rowStatus,
+                                    attId > 0 ? attId : record?.id,
                                     dayRecords
                                   )}
                                 </td>
-                                <td>{dayDeductionDisplay}</td>
+                                <td>{rowDeduction}</td>
                               </tr>
                             );
                           });
@@ -2722,7 +2881,11 @@ export default function MonthlyAttendancePage() {
           Boolean(
             statusReasonDraft &&
               statusSavingKey ===
-                `${statusReasonDraft.employeeId}|${statusReasonDraft.dateKey}`,
+                statusSaveKey(
+                  statusReasonDraft.employeeId,
+                  statusReasonDraft.dateKey,
+                  statusReasonDraft.attendanceId,
+                ),
           )
         }
         onCancel={() => setStatusReasonDraft(null)}
@@ -2735,6 +2898,7 @@ export default function MonthlyAttendancePage() {
               draft.dateKey,
               draft.nextStatus,
               reason,
+              draft.attendanceId,
             );
             if (ok) setStatusReasonDraft(null);
           })();

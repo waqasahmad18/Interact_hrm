@@ -784,15 +784,33 @@ export default function MonthlyAttendancePage() {
         if (cancelled) return;
         const map: Record<string, Record<string, string>> = {};
         if (data.success && Array.isArray(data.overrides)) {
+          // Day-level (attendance_id=0) wins for payroll unpaid calc.
+          // Session-only overrides fill a day only when no day-level row exists.
+          const sessionFill: Array<{ eid: string; dk: string; status: string }> = [];
           data.overrides.forEach(
-            (o: { employee_id?: string; attendance_date?: string; status_label?: string }) => {
+            (o: {
+              employee_id?: string;
+              attendance_date?: string;
+              status_label?: string;
+              attendance_id?: number | null;
+            }) => {
               const eid = String(o.employee_id ?? "").trim();
               const dk = String(o.attendance_date ?? "").trim().slice(0, 10);
               if (!eid || !dk) return;
+              const status = normalizeAttendanceStatus(String(o.status_label || ""));
+              const attId = Number(o.attendance_id || 0);
+              if (Number.isFinite(attId) && attId > 0) {
+                sessionFill.push({ eid, dk, status });
+                return;
+              }
               if (!map[eid]) map[eid] = {};
-              map[eid][dk] = normalizeAttendanceStatus(String(o.status_label || ""));
+              map[eid][dk] = status;
             },
           );
+          sessionFill.forEach(({ eid, dk, status }) => {
+            if (!map[eid]) map[eid] = {};
+            if (!map[eid][dk]) map[eid][dk] = status;
+          });
         }
         setStatusOverrides(map);
       })
