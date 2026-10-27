@@ -270,7 +270,13 @@ export default function GuardPolicyInbox() {
               </div>
 
               <div className={styles.block}>
-                <h3 className={styles.blockTitle}>OCR excerpt (context)</h3>
+                <h3 className={styles.blockTitle}>
+                  Full context (text before «matched word» after)
+                </h3>
+                <p className={styles.tip} style={{ marginBottom: 8 }}>
+                  Matched word is wrapped in « » — read surrounding OCR text for
+                  what appeared on screen before and after it.
+                </p>
                 <HighlightEvidence text={evidence} matched={matched} />
               </div>
 

@@ -236,6 +236,83 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const EVIDENCE_CONTEXT_CHARS = 140;
+const EVIDENCE_MAX_SNIPPETS = 4;
+
+/**
+ * Build ticket evidence from text BEFORE + AFTER each matched word/phrase
+ * (not just the isolated keyword). Marks the hit with «word» for admin review.
+ */
+export function buildEvidenceAroundMatches(
+  fullText: string,
+  matched: string[],
+  opts?: { contextChars?: number; maxSnippets?: number },
+): string {
+  const source = String(fullText || "");
+  if (!source.trim()) return "";
+  const needles = (matched || [])
+    .map((m) => String(m || "").trim())
+    .filter((m) => m.length >= 2);
+  if (!needles.length) return source.slice(0, 1600);
+
+  const ctx = Math.max(40, opts?.contextChars ?? EVIDENCE_CONTEXT_CHARS);
+  const maxSnippets = Math.max(1, opts?.maxSnippets ?? EVIDENCE_MAX_SNIPPETS);
+  const snippets: string[] = [];
+  const lower = source.toLowerCase();
+
+  for (const needle of needles) {
+    if (snippets.length >= maxSnippets) break;
+    const n = needle.toLowerCase();
+    let from = 0;
+    let localHits = 0;
+    while (localHits < 2 && snippets.length < maxSnippets) {
+      const idx = lower.indexOf(n, from);
+      if (idx < 0) break;
+      const beforeCh = idx === 0 ? "" : source[idx - 1];
+      const afterCh =
+        idx + needle.length >= source.length
+          ? ""
+          : source[idx + needle.length];
+      // Prefer word-ish boundaries for single tokens (skip mid-word noise)
+      const boundaryOk =
+        /\s/.test(needle) ||
+        needle.includes(".") ||
+        ((!beforeCh || /[^a-z0-9_]/i.test(beforeCh)) &&
+          (!afterCh || /[^a-z0-9_]/i.test(afterCh)));
+      if (boundaryOk) {
+        const start = Math.max(0, idx - ctx);
+        const end = Math.min(source.length, idx + needle.length + ctx);
+        let piece = source.slice(start, end).replace(/[^\S\n]+/g, " ").trim();
+        if (start > 0) piece = `…${piece}`;
+        if (end < source.length) piece = `${piece}…`;
+        // Highlight every occurrence of this needle inside the window
+        const marked = piece.replace(
+          new RegExp(escapeRegExp(needle), "ig"),
+          (m) => `«${m}»`,
+        );
+        snippets.push(marked);
+        localHits += 1;
+      }
+      from = idx + Math.max(1, needle.length);
+    }
+  }
+
+  if (!snippets.length) {
+    // Match may only exist in collapsed haystack — fall back to head of OCR
+    return source.slice(0, 1600);
+  }
+
+  return snippets
+    .map((s, i) => {
+      const label =
+        snippets.length === 1
+          ? "Context (before «match» after)"
+          : `Context ${i + 1} (before «match» after)`;
+      return `${label}:\n${s}`;
+    })
+    .join("\n\n");
+}
+
 /**
  * Build a richer haystack from OCR so policy never relies on one raw line.
  * Always includes: raw text, collapsed spaced letters (B C → BC), URLs/domains, file names.
@@ -407,7 +484,6 @@ export function evaluateTextPolicy(
   if (isPolicySettingsSelfScan(source)) return null;
 
   const hay = preparePolicyHaystack(source);
-  const evidence = source.slice(0, 1600);
 
   const sites = pickPrimaryMatches(
     source,
@@ -415,7 +491,11 @@ export function evaluateTextPolicy(
     2
   );
   if (sites.length) {
-    return { kind: "website", matched: sites, evidence };
+    return {
+      kind: "website",
+      matched: sites,
+      evidence: buildEvidenceAroundMatches(source, sites),
+    };
   }
 
   const uploads = pickPrimaryMatches(
@@ -424,12 +504,20 @@ export function evaluateTextPolicy(
     2
   );
   if (uploads.length) {
-    return { kind: "upload", matched: uploads, evidence };
+    return {
+      kind: "upload",
+      matched: uploads,
+      evidence: buildEvidenceAroundMatches(source, uploads),
+    };
   }
 
   const apps = pickPrimaryMatches(source, findMatchedLoose(hay, settings.apps), 2);
   if (apps.length) {
-    return { kind: "app", matched: apps, evidence };
+    return {
+      kind: "app",
+      matched: apps,
+      evidence: buildEvidenceAroundMatches(source, apps),
+    };
   }
 
   const words = pickPrimaryMatches(
@@ -438,7 +526,11 @@ export function evaluateTextPolicy(
     1
   );
   if (words.length) {
-    return { kind: "keyword", matched: words, evidence };
+    return {
+      kind: "keyword",
+      matched: words,
+      evidence: buildEvidenceAroundMatches(source, words),
+    };
   }
 
   return null;
@@ -456,17 +548,29 @@ export function evaluateAppActivityPolicy(
 
   const apps = findMatchedLoose(appHay, settings.apps);
   if (apps.length) {
-    return { kind: "app", matched: apps, evidence: combined.slice(0, 1600) };
+    return {
+      kind: "app",
+      matched: apps,
+      evidence: buildEvidenceAroundMatches(combined, apps),
+    };
   }
 
   const sites = findMatchedLoose(combined, settings.websites);
   if (sites.length) {
-    return { kind: "website", matched: sites, evidence: combined.slice(0, 1600) };
+    return {
+      kind: "website",
+      matched: sites,
+      evidence: buildEvidenceAroundMatches(combined, sites),
+    };
   }
 
   const uploads = findMatchedLoose(combined, settings.uploads);
   if (uploads.length) {
-    return { kind: "upload", matched: uploads, evidence: combined.slice(0, 1600) };
+    return {
+      kind: "upload",
+      matched: uploads,
+      evidence: buildEvidenceAroundMatches(combined, uploads),
+    };
   }
 
   return null;
@@ -697,7 +801,12 @@ export async function createGuardPolicyTicket(input: {
   const displayName = pseudonym
     ? `${employeeName} (${pseudonym})`
     : employeeName;
-  const evidenceClear = clearEvidenceText(input.evidence);
+  // Prefer contextual before/after snippets around the matched word(s).
+  const contextual = buildEvidenceAroundMatches(
+    input.evidence,
+    primaryMatched,
+  );
+  const evidenceClear = clearEvidenceText(contextual || input.evidence);
   const { subject, summary, detailLines } = buildProfessionalSummary({
     kind: input.kind,
     matched: primaryMatched,
@@ -707,6 +816,9 @@ export async function createGuardPolicyTicket(input: {
   });
   const description = [
     ...detailLines,
+    "",
+    "Context around match (before «word» after):",
+    evidenceClear,
     `HRM ID: ${employeeId}`,
     input.relativePath ? `Screenshot: ${input.relativePath}` : null,
     input.sourceDetail ? `Source: ${input.sourceDetail}` : null,
@@ -724,6 +836,7 @@ export async function createGuardPolicyTicket(input: {
     app_name: appName || null,
     caption: caption || null,
     evidence: evidenceClear,
+    evidence_has_context: true,
     screenshot_path: input.relativePath || null,
     source: "guard_policy_watch",
     silent: true,
