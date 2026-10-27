@@ -285,8 +285,15 @@ export function findMatchedKeywords(text: string, keywords: string[]): string[] 
       hits.push(needle);
       continue;
     }
-    // Short words: allow OCR gaps between letters (B C, B.C, B-C)
-    if (needle.length <= 4 && /^[a-z0-9]+$/i.test(needle)) {
+    // Short slang only (e.g. BC): allow OCR gaps B C / B.C.
+    // NEVER flex-match repeated letters like "xxx" — OCR often invents "X x X" / "XxX"
+    // from Chrome UI chrome (Gemini buttons, etc.) and creates false policy tickets.
+    const uniqueLetters = new Set(needle.toLowerCase().split(""));
+    if (
+      needle.length <= 4 &&
+      /^[a-z0-9]+$/i.test(needle) &&
+      uniqueLetters.size >= 2
+    ) {
       const flex = needle
         .split("")
         .map((ch) => escapeRegExp(ch))
@@ -556,12 +563,12 @@ function buildProfessionalSummary(input: {
   } else if (input.kind === "app") {
     summary = `Employee used a restricted application “${word}”${caption ? ` — window: “${caption.slice(0, 120)}”` : ""}.`;
   } else {
-    summary = `Employee used the restricted word “${word}” while using ${whereApp}${whereCaption}.`;
+    summary = `Restricted word “${word}” was detected on a screenshot while ${whereApp} was active${whereCaption}. This is OCR of on-screen text (not proof the employee typed it).`;
   }
 
   const subject =
     input.kind === "keyword"
-      ? `Policy alert — ${input.employeeName} used “${word}” in ${whereApp}`
+      ? `Policy alert — ${input.employeeName} · “${word}” on screen · ${whereApp}`
       : `Policy alert — ${input.employeeName} · ${kindLabel(input.kind)} · ${word}`;
 
   const detailLines = [

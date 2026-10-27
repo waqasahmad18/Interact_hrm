@@ -252,7 +252,7 @@ export default function GuardPolicyInbox() {
               )}
 
               <div className={styles.block} style={{ marginTop: 10 }}>
-                <h3 className={styles.blockTitle}>Word used</h3>
+                <h3 className={styles.blockTitle}>Word matched (on screen)</h3>
                 <div className={styles.chips}>
                   {matched.length ? (
                     matched.map((m) => (
@@ -264,17 +264,38 @@ export default function GuardPolicyInbox() {
                     <span className={styles.tip}>—</span>
                   )}
                 </div>
+                <p className={styles.tip} style={{ marginTop: 6 }}>
+                  OCR reads the screenshot — match ≠ typed in chat/browser.
+                </p>
               </div>
 
               <div className={styles.block}>
-                <h3 className={styles.blockTitle}>OCR excerpt</h3>
+                <h3 className={styles.blockTitle}>OCR excerpt (context)</h3>
                 <HighlightEvidence text={evidence} matched={matched} />
               </div>
 
               {form.screenshot_path ? (
-                <p className={styles.tip}>
-                  Screenshot: {String(form.screenshot_path)}
-                </p>
+                <div className={styles.block}>
+                  <h3 className={styles.blockTitle}>Screenshot evidence</h3>
+                  <p className={styles.tip} style={{ marginBottom: 8 }}>
+                    {String(form.screenshot_path)}
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/admin/guard-screenshots/file?path=${encodeURIComponent(
+                      String(form.screenshot_path),
+                    )}`}
+                    alt="Policy screenshot evidence"
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: 420,
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f0",
+                      background: "#0f172a",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
               ) : null}
 
               <div className={styles.actions} style={{ marginTop: 12 }}>
