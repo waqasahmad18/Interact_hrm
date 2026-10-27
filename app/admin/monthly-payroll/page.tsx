@@ -239,6 +239,9 @@ export default function MonthlyAttendancePage() {
   const [unpaidDaysByEmployee, setUnpaidDaysByEmployee] = useState<Record<string, number>>({});
   /** Only persist unpaid override after the user edits the field (avoid locking system value on blur). */
   const unpaidEditedRef = React.useRef<Set<string>>(new Set());
+  /** Only persist fuel/CTD after the user edits (avoid blur-saving 0 over Allowances default). */
+  const fuelEditedRef = React.useRef<Set<string>>(new Set());
+  const ctdEditedRef = React.useRef<Set<string>>(new Set());
   /** Same manual status map as Monthly Attendance (drives live T.Unpaid Days). */
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Record<string, string>>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
@@ -265,22 +268,47 @@ export default function MonthlyAttendancePage() {
     return Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
-  /** Monthly override if saved; otherwise employee default fuel from Allowances. */
-  function getFuelAllowanceForEmployee(employee: { employeeId?: string }) {
-    const empId = String(employee.employeeId ?? "");
-    if (Object.prototype.hasOwnProperty.call(fuelByEmployee, empId)) {
-      return fuelByEmployee[empId] ?? 0;
+  /** Normalize "097" / 97 / "97" so Allowances defaults match payroll rows. */
+  function payrollIdKeys(raw: string | number | undefined | null): string[] {
+    const s = String(raw ?? "").trim();
+    if (!s) return [];
+    const keys = [s];
+    if (/^\d+$/.test(s)) {
+      const n = String(Number(s));
+      if (n !== s) keys.push(n);
     }
-    return defaultFuelByEmployee[empId] ?? 0;
+    return keys;
   }
 
-  /** Monthly override if saved; otherwise employee default CTD from Allowances. */
+  function lookupMoneyMap(
+    map: Record<string, number>,
+    empId: string,
+  ): number | undefined {
+    for (const k of payrollIdKeys(empId)) {
+      if (Object.prototype.hasOwnProperty.call(map, k)) return map[k] ?? 0;
+    }
+    return undefined;
+  }
+
+  /**
+   * Monthly override (positive) wins; otherwise Allowances default.
+   * Monthly 0 is ignored so accidental blur-saves don't wipe the default.
+   */
+  function getFuelAllowanceForEmployee(employee: { employeeId?: string }) {
+    const empId = String(employee.employeeId ?? "");
+    const monthly = lookupMoneyMap(fuelByEmployee, empId);
+    if (monthly != null && monthly > 0) return monthly;
+    const def = lookupMoneyMap(defaultFuelByEmployee, empId);
+    return def != null && def > 0 ? def : 0;
+  }
+
+  /** Monthly override if saved (>0); otherwise employee default CTD from Allowances. */
   function getCtdForEmployee(employee: { employeeId?: string }) {
     const empId = String(employee.employeeId ?? "");
-    if (Object.prototype.hasOwnProperty.call(ctdByEmployee, empId)) {
-      return ctdByEmployee[empId] ?? 0;
-    }
-    return defaultCtdByEmployee[empId] ?? 0;
+    const monthly = lookupMoneyMap(ctdByEmployee, empId);
+    if (monthly != null && monthly > 0) return monthly;
+    const def = lookupMoneyMap(defaultCtdByEmployee, empId);
+    return def != null && def > 0 ? def : 0;
   }
 
   /** Live unpaid days from Monthly Attendance deduction % (e.g. 400% → 4 days). */
@@ -327,11 +355,18 @@ export default function MonthlyAttendancePage() {
   }
 
   function setFuelAmount(employeeId: string, raw: string) {
-    setFuelByEmployee((prev) => ({ ...prev, [employeeId]: parsePositiveMoney(raw) }));
+    fuelEditedRef.current.add(String(employeeId));
+    const v = parsePositiveMoney(raw);
+    setFuelByEmployee((prev) => {
+      const next = { ...prev };
+      for (const k of payrollIdKeys(employeeId)) next[k] = v;
+      return next;
+    });
   }
 
   function saveFuelAmount(employeeId: string, raw?: string) {
     if (!selectedMonth) return;
+    if (!fuelEditedRef.current.has(String(employeeId))) return;
     const fuel_allowance =
       raw !== undefined ? parsePositiveMoney(raw) : (fuelByEmployee[employeeId] ?? 0);
     void fetch("/api/monthly-payroll-adjustments", {
@@ -342,11 +377,18 @@ export default function MonthlyAttendancePage() {
   }
 
   function setCtdAmount(employeeId: string, raw: string) {
-    setCtdByEmployee((prev) => ({ ...prev, [employeeId]: parsePositiveMoney(raw) }));
+    ctdEditedRef.current.add(String(employeeId));
+    const v = parsePositiveMoney(raw);
+    setCtdByEmployee((prev) => {
+      const next = { ...prev };
+      for (const k of payrollIdKeys(employeeId)) next[k] = v;
+      return next;
+    });
   }
 
   function saveCtdAmount(employeeId: string, raw?: string) {
     if (!selectedMonth) return;
+    if (!ctdEditedRef.current.has(String(employeeId))) return;
     const ctd =
       raw !== undefined ? parsePositiveMoney(raw) : (ctdByEmployee[employeeId] ?? 0);
     void fetch("/api/monthly-payroll-adjustments", {
@@ -363,7 +405,13 @@ export default function MonthlyAttendancePage() {
 
   function getMedicalDedcForEmployee(employee: { employeeId?: string }) {
     const empId = String(employee.employeeId ?? "");
-    const pkg = medicalPackageByEmployee[empId] ?? null;
+    let pkg: MedicalPackageId | null = null;
+    for (const k of payrollIdKeys(empId)) {
+      if (medicalPackageByEmployee[k]) {
+        pkg = medicalPackageByEmployee[k];
+        break;
+      }
+    }
     return medicalDeductionForPackage(pkg);
   }
 
@@ -655,6 +703,8 @@ export default function MonthlyAttendancePage() {
       return;
     }
     unpaidEditedRef.current = new Set();
+    fuelEditedRef.current = new Set();
+    ctdEditedRef.current = new Set();
     let cancelled = false;
     fetch(`/api/monthly-payroll-adjustments?month=${encodeURIComponent(selectedMonth)}`, {
       cache: "no-store",
@@ -675,14 +725,24 @@ export default function MonthlyAttendancePage() {
             }) => {
               const id = String(row.employee_id ?? "").trim();
               if (!id) return;
+              // Only positive monthly overrides — 0 means “use Allowances default”.
               if (row.ctd !== null && row.ctd !== undefined) {
-                ctdMap[id] = parsePositiveMoney(row.ctd);
+                const ctd = parsePositiveMoney(row.ctd);
+                if (ctd > 0) {
+                  for (const k of payrollIdKeys(id)) ctdMap[k] = ctd;
+                }
               }
               if (row.fuel_allowance !== null && row.fuel_allowance !== undefined) {
-                fuelMap[id] = parsePositiveMoney(row.fuel_allowance);
+                const fuel = parsePositiveMoney(row.fuel_allowance);
+                if (fuel > 0) {
+                  for (const k of payrollIdKeys(id)) fuelMap[k] = fuel;
+                }
               }
               if (row.medical_claims !== null && row.medical_claims !== undefined) {
-                claimsMap[id] = parsePositiveMoney(row.medical_claims);
+                const claims = parsePositiveMoney(row.medical_claims);
+                if (claims > 0) {
+                  for (const k of payrollIdKeys(id)) claimsMap[k] = claims;
+                }
               }
               // unpaid_days from DB intentionally ignored — T.Unpaid Days is live from attendance.
             }
@@ -1178,13 +1238,17 @@ export default function MonthlyAttendancePage() {
             if (row.employee_id != null && row.amount !== undefined && row.amount !== null) {
               const amt = Number(row.amount);
               if (Number.isFinite(amt) && amt > 0) {
-                map[String(row.employee_id)] = amt;
+                for (const k of payrollIdKeys(row.employee_id)) {
+                  map[k] = amt;
+                }
               }
             }
             if (row.employee_id != null && row.fuel_allowance != null && row.fuel_allowance !== "") {
               const fuel = Number(row.fuel_allowance);
               if (Number.isFinite(fuel) && fuel > 0) {
-                fuelDefaults[String(row.employee_id)] = fuel;
+                for (const k of payrollIdKeys(row.employee_id)) {
+                  fuelDefaults[k] = fuel;
+                }
               }
             }
             if (
@@ -1194,12 +1258,16 @@ export default function MonthlyAttendancePage() {
             ) {
               const ctd = Number(row.company_transport_deduction);
               if (Number.isFinite(ctd) && ctd > 0) {
-                ctdDefaults[String(row.employee_id)] = ctd;
+                for (const k of payrollIdKeys(row.employee_id)) {
+                  ctdDefaults[k] = ctd;
+                }
               }
             }
             const pkg = normalizeMedicalPackage(row.medical_package);
             if (row.employee_id != null && pkg) {
-              medicalDefaults[String(row.employee_id)] = pkg;
+              for (const k of payrollIdKeys(row.employee_id)) {
+                medicalDefaults[k] = pkg;
+              }
             }
           });
           setSalaryMap(map);

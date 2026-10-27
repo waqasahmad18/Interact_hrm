@@ -308,26 +308,28 @@ export default function AddEmployeeForm({
       return;
     }
     try {
+      // Only send travel fields when that type is selected — never wipe the other
+      // (or wipe fuel when only medical package is updated).
+      const payload: Record<string, unknown> = {
+        employee_id: employeeId,
+        medical_package: medicalPackage || null,
+        allowancesOnly: true,
+      };
+      if (travelAllowanceType === "fuel") {
+        payload.fuel_allowance =
+          fuelAllowance === "" ? null : Number(fuelAllowance);
+        payload.company_transport_deduction = null;
+      } else if (travelAllowanceType === "ctd") {
+        payload.company_transport_deduction =
+          companyTransportDeduction === ""
+            ? null
+            : Number(companyTransportDeduction);
+        payload.fuel_allowance = null;
+      }
       const res = await fetch('/api/employee_salaries', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: employeeId,
-          fuel_allowance:
-            travelAllowanceType === "fuel"
-              ? fuelAllowance === ""
-                ? null
-                : Number(fuelAllowance)
-              : null,
-          company_transport_deduction:
-            travelAllowanceType === "ctd"
-              ? companyTransportDeduction === ""
-                ? null
-                : Number(companyTransportDeduction)
-              : null,
-          medical_package: medicalPackage || null,
-          allowancesOnly: true,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {

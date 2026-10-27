@@ -101,18 +101,22 @@ export async function PUT(req: NextRequest) {
 
     if (existing && existing.length > 0) {
       if (f.allowancesOnly) {
+        // Preserve existing fuel/CTD/medical when field omitted (e.g. only package changed).
+        const fuel =
+          f.fuelAllowance !== undefined
+            ? f.fuelAllowance
+            : existing[0].fuel_allowance ?? null;
+        const ctd =
+          f.companyTransportDeduction !== undefined
+            ? f.companyTransportDeduction
+            : existing[0].company_transport_deduction ?? null;
         const medical =
           f.medicalPackage !== undefined
             ? f.medicalPackage
             : existing[0].medical_package ?? null;
         await pool.execute(
           `UPDATE employee_salaries SET fuel_allowance = ?, company_transport_deduction = ?, medical_package = ? WHERE id = ?`,
-          [
-            f.fuelAllowance ?? null,
-            f.companyTransportDeduction ?? null,
-            medical,
-            existing[0].id,
-          ]
+          [fuel, ctd, medical, existing[0].id]
         );
       } else {
         const fuel =
