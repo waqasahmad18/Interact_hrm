@@ -62,8 +62,31 @@ export async function getFaceVerificationStatus() {
   };
 }
 
-export async function verifyDescriptorForEmployee(
-  descriptor: number[],
+type VerifyFail = Extract<VerifyResult, { verified: false }>;
+
+function preferFail(a: VerifyFail | null, b: VerifyFail): VerifyFail {
+  if (!a) return b;
+  // Prefer identity failures over no_face for messaging.
+  const rank = (r: VerifyFail) => {
+    if (r.code === "wrong_person") return 3;
+    if (r.code === "low_similarity") return 2;
+    if (r.code === "not_enrolled") return 1;
+    return 0;
+  };
+  if (rank(b) > rank(a)) return b;
+  if (rank(b) < rank(a)) return a;
+  const as = a.similarity ?? 0;
+  const bs = b.similarity ?? 0;
+  return bs >= as ? b : a;
+}
+
+/**
+ * Verify one or more face probes from the same frame.
+ * Multi-person OK: if ANY probe is a clear match to the claimed employee
+ * (gallery winner + uniqueness gates), succeed. Wrong-only faces still fail.
+ */
+export async function verifyDescriptorsForEmployee(
+  descriptors: number[][],
   employeeId: string,
   employeeName?: string | null,
   opts?: { purpose?: "action" | "presence" }
@@ -76,7 +99,9 @@ export async function verifyDescriptorForEmployee(
   if (!isFaceVerificationEnabled()) {
     return { verified: false, reason: "Face verification is disabled.", code: "error" };
   }
-  if (!isValidDescriptor(descriptor)) {
+
+  const probes = descriptors.filter(isValidDescriptor);
+  if (!probes.length) {
     return {
       verified: false,
       reason: "No face detected. Center your face in the camera frame.",
@@ -87,7 +112,6 @@ export async function verifyDescriptorForEmployee(
   const id = (await resolveEmployeeDbId(rawId)) || rawId;
   const matchKeys = await getEmployeeMatchKeys(id, employeeName);
   const label = employeeDisplayLabel(matchKeys, id);
-  // All ID aliases (db id / code) — Mongo-safe per-id `=` load
   const idAliases = matchKeys.dbIds.length ? matchKeys.dbIds : [id];
   const enrollment = await getDescriptorsForEmployees(idAliases);
   const descriptorCount =
@@ -119,78 +143,97 @@ export async function verifyDescriptorForEmployee(
       : getMinMatchingPhotos(enrollment.descriptors.length);
   const needPct = Math.round((1 - maxDistance / 0.65) * 100);
 
-  const self = matchProbeToDescriptors(
-    descriptor,
-    enrollment.descriptors,
-    maxDistance,
-    minPhotos
-  );
-
-  if (!self.pass) {
-    const simPct = Math.round(self.similarity * 100);
-    return {
-      verified: false,
-      reason: `Face does not match ${label} (${simPct}% — need ~${needPct}%+ on ${minPhotos} enrolled photos).`,
-      code: "low_similarity",
-      similarity: self.similarity,
-      subject,
-      expectedSubject: subject,
-    };
-  }
-
   const rivals = await getOtherEmployeesDescriptorSamples(idAliases);
-
-  // 1:N identify across ALL enrolled employees — who is actually in the camera?
   const gallery = [
     { employeeId: id, descriptors: enrollment.descriptors },
     ...rivals,
   ];
-  const ranked = rankGalleryByProbe(
-    descriptor,
-    gallery,
-    maxDistance,
-    minPhotos
-  );
-  const winnerCheck = assertClaimedIsGalleryWinner(
-    idAliases,
-    ranked,
-    maxDistance,
-    purpose
-  );
-  if (!winnerCheck.ok) {
-    return {
-      verified: false,
-      reason: winnerCheck.reason,
-      code: winnerCheck.code,
-      similarity: winnerCheck.similarity ?? self.similarity,
-      subject,
-      expectedSubject: subject,
-    };
-  }
 
-  // Extra look-alike / centroid gates (centroid + median clarity)
-  const unique = assertUniqueIdentity(
-    descriptor,
-    self.bestDistance,
-    enrollment.descriptors,
-    rivals,
-    maxDistance,
-    purpose
-  );
-  if (!unique.ok) {
+  let bestFail: VerifyFail | null = null;
+
+  for (const descriptor of probes) {
+    const self = matchProbeToDescriptors(
+      descriptor,
+      enrollment.descriptors,
+      maxDistance,
+      minPhotos
+    );
+
+    if (!self.pass) {
+      const simPct = Math.round(self.similarity * 100);
+      bestFail = preferFail(bestFail, {
+        verified: false,
+        reason: `Face does not match ${label} (${simPct}% — need ~${needPct}%+ on ${minPhotos} enrolled photos).`,
+        code: "low_similarity",
+        similarity: self.similarity,
+        subject,
+        expectedSubject: subject,
+      });
+      continue;
+    }
+
+    const ranked = rankGalleryByProbe(descriptor, gallery, maxDistance, minPhotos);
+    const winnerCheck = assertClaimedIsGalleryWinner(
+      idAliases,
+      ranked,
+      maxDistance,
+      purpose
+    );
+    if (!winnerCheck.ok) {
+      bestFail = preferFail(bestFail, {
+        verified: false,
+        reason: winnerCheck.reason,
+        code: winnerCheck.code,
+        similarity: winnerCheck.similarity ?? self.similarity,
+        subject,
+        expectedSubject: subject,
+      });
+      continue;
+    }
+
+    const unique = assertUniqueIdentity(
+      descriptor,
+      self.bestDistance,
+      enrollment.descriptors,
+      rivals,
+      maxDistance,
+      purpose
+    );
+    if (!unique.ok) {
+      bestFail = preferFail(bestFail, {
+        verified: false,
+        reason: unique.reason,
+        code: "wrong_person",
+        similarity: self.similarity,
+        subject,
+        expectedSubject: subject,
+      });
+      continue;
+    }
+
     return {
-      verified: false,
-      reason: unique.reason,
-      code: "wrong_person",
+      verified: true,
       similarity: self.similarity,
       subject,
-      expectedSubject: subject,
     };
   }
 
-  return {
-    verified: true,
-    similarity: self.similarity,
-    subject,
-  };
+  return (
+    bestFail || {
+      verified: false,
+      reason: `Face does not match ${label}.`,
+      code: "low_similarity",
+      subject,
+      expectedSubject: subject,
+    }
+  );
+}
+
+export async function verifyDescriptorForEmployee(
+  descriptor: number[],
+  employeeId: string,
+  employeeName?: string | null,
+  opts?: { purpose?: "action" | "presence" }
+): Promise<VerifyResult> {
+  return verifyDescriptorsForEmployee([descriptor], employeeId, employeeName, opts);
 }

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { BiometricAction } from "@/lib/face-types";
 import {
   averageDescriptors,
-  countFacesInVideo,
+  collectFaceDescriptorsFromVideo,
   descriptorDistance,
   descriptorToJson,
   ensureFaceModelsLoaded,
@@ -49,14 +49,14 @@ type Props = {
   clearBackdrop?: boolean;
 };
 
-const SCAN_INTERVAL_MS = 280;
+const SCAN_INTERVAL_MS = 220;
 const SCAN_INTERVAL_PRESENCE_MS = 200;
 const RETRY_AFTER_FAIL_MS = 200;
 // Good consecutive frames whose descriptors are averaged into one stable probe.
 // Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
 // match is far more reliable — and harder to fool — than a single snapshot.
-// Break / Clock: 6 strong frames; Guard presence: 4 for faster seat check.
-const REQUIRED_PROBES = 6;
+// Break / Clock / Guard: 4 strong frames (multi-face allowed; server tries all).
+const REQUIRED_PROBES = 4;
 const REQUIRED_PROBES_PRESENCE = 4;
 /** Face height / frame height — sweet spot for a sharp, unique embedding. */
 const COVERAGE_MIN = 0.22;
@@ -64,7 +64,6 @@ const COVERAGE_MAX = 0.72;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
-  multipleFaces: boolean;
   verifying: boolean;
   cameraReady: boolean;
   modelsReady: boolean;
@@ -72,7 +71,6 @@ function resolveScanMode(input: {
   guidance: string | null;
 }): FaceScanMode {
   if (input.verifySuccess) return "success";
-  if (input.multipleFaces) return "blocked";
   if (input.verifying) return "verifying";
   if (!input.cameraReady || !input.modelsReady) return "initializing";
   if (
@@ -112,7 +110,6 @@ export function FaceVerifyModal({
   const scanInFlightRef = React.useRef(false);
   const lastScanAtRef = React.useRef(0);
   const singleFaceStreakRef = React.useRef(0);
-  const multiFaceStreakRef = React.useRef(0);
   const probeBufferRef = React.useRef<number[][]>([]);
   const identityFailsRef = React.useRef(0);
   const lastFaceAtRef = React.useRef<number | null>(null);
@@ -124,7 +121,6 @@ export function FaceVerifyModal({
   const [status, setStatus] = React.useState("Loading face engine…");
   const [error, setError] = React.useState<string | null>(null);
   const [verifying, setVerifying] = React.useState(false);
-  const [multipleFaces, setMultipleFaces] = React.useState(false);
   const [guidance, setGuidance] = React.useState<string | null>(null);
   const [verifySuccess, setVerifySuccess] = React.useState(false);
   const verifySuccessRef = React.useRef(false);
@@ -142,21 +138,6 @@ export function FaceVerifyModal({
       videoRef.current.srcObject = null;
     }
     setCameraReady(false);
-  }, []);
-
-  const blockMultipleFaces = React.useCallback((count: number) => {
-    singleFaceStreakRef.current = 0;
-    probeBufferRef.current = [];
-    setMultipleFaces(true);
-    setError(null);
-    setGuidance("Only one person should be in the frame — others please step out of camera view.");
-    // Cap display — detector ghost stacks (e.g. 409) are not real people.
-    const n = Number.isFinite(count) ? Math.floor(count) : 0;
-    setStatus(
-      n >= 2 && n <= 8
-        ? `${n} faces in frame — clock action blocked.`
-        : "Multiple faces in the frame — clock action blocked."
-    );
   }, []);
 
   const submitScan = React.useCallback(async () => {
@@ -179,26 +160,17 @@ export function FaceVerifyModal({
 
     scanInFlightRef.current = true;
     try {
-      // Same Break engine: full-frame multi-face + whole-frame descriptors (edges included).
+      // Multi-person OK: engine picks primary face for capture; submit tries all faces.
       const scan = await scanVideoFrame(video);
 
       if (scan.status === "multiple") {
-        // Guard: block immediately. Break: need 2 frames to ignore a ghost flicker.
-        multiFaceStreakRef.current += 1;
-        const needStreak = presenceCheck ? 1 : 2;
-        if (multiFaceStreakRef.current >= needStreak) {
-          blockMultipleFaces(scan.count);
-        }
+        // Legacy status — treat as keep scanning (no block).
         return;
       }
-
-      // Any non-multiple result clears the multi-face streak immediately.
-      multiFaceStreakRef.current = 0;
 
       if (scan.status === "none") {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
-        if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Look at the camera — scanning automatically…");
         setGuidance(null);
@@ -211,14 +183,12 @@ export function FaceVerifyModal({
       if (scan.status === "adjust") {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
-        if (multipleFaces) setMultipleFaces(false);
         setError(null);
         setStatus("Adjusting…");
         setGuidance("Keep your face in frame (edges OK), look straight and hold still.");
         return;
       }
 
-      if (multipleFaces) setMultipleFaces(false);
       setError(null);
 
       // Distance guidance from face coverage. If the face is too close or too
@@ -273,18 +243,24 @@ export function FaceVerifyModal({
       busyRef.current = true;
       setVerifying(true);
 
-      // Whole-frame multi-pass count (edges included) — never verify if 2+ people.
-      const faceCount = await countFacesInVideo(video);
-      if (faceCount >= 2) {
-        busyRef.current = false;
-        setVerifying(false);
-        blockMultipleFaces(faceCount);
-        return;
-      }
-
       setStatus("Face detected — verifying…");
 
       try {
+        // Collect every confident face in the frame. Server accepts if ANY face
+        // is a clear match to the logged-in employee (coworker in view is OK).
+        const frameFaces = await collectFaceDescriptorsFromVideo(video);
+        const probes = [averagedProbe, ...frameFaces].filter(
+          (d, i, arr) =>
+            Array.isArray(d) &&
+            d.length === 128 &&
+            arr.findIndex(
+              (x) =>
+                Array.isArray(x) &&
+                x.length === 128 &&
+                descriptorDistance(x, d) < 0.08,
+            ) === i,
+        );
+
         const endpoint = presenceCheck
           ? "/api/biometric/presence-check"
           : "/api/biometric/verify";
@@ -297,12 +273,14 @@ export function FaceVerifyModal({
                   employee_id: employeeId,
                   employee_name: employeeName || "",
                   descriptor: averagedProbe,
+                  descriptors: probes,
                 }
               : {
                   employee_id: employeeId,
                   employee_name: employeeName || "",
                   action,
                   descriptor: averagedProbe,
+                  descriptors: probes,
                 },
           ),
         });
@@ -329,7 +307,7 @@ export function FaceVerifyModal({
               });
             }
             onVerified(token);
-          }, 750);
+          }, 400);
           return;
         }
 
@@ -402,13 +380,11 @@ export function FaceVerifyModal({
     }
   }, [
     action,
-    blockMultipleFaces,
     cameraReady,
     employeeId,
     employeeName,
     identityFailLimit,
     modelsReady,
-    multipleFaces,
     onClose,
     onVerified,
     presenceCheck,
@@ -421,10 +397,8 @@ export function FaceVerifyModal({
     setVerifySuccess(false);
     setError(null);
     setGuidance(null);
-    setMultipleFaces(false);
     probeBufferRef.current = [];
     singleFaceStreakRef.current = 0;
-    multiFaceStreakRef.current = 0;
     busyRef.current = false;
     scanInFlightRef.current = false;
     setStatus("Look at the camera — scanning automatically…");
@@ -437,14 +411,12 @@ export function FaceVerifyModal({
       setModelsReady(false);
       setVerifying(false);
       setError(null);
-      setMultipleFaces(false);
       setGuidance(null);
       verifySuccessRef.current = false;
       setVerifySuccess(false);
       identityFailsRef.current = 0;
       lastFaceAtRef.current = null;
       singleFaceStreakRef.current = 0;
-      multiFaceStreakRef.current = 0;
       probeBufferRef.current = [];
       scanInFlightRef.current = false;
       busyRef.current = false;
@@ -645,7 +617,6 @@ export function FaceVerifyModal({
       : REQUIRED_PROBES;
   const scanMode = resolveScanMode({
     verifySuccess,
-    multipleFaces,
     verifying,
     cameraReady,
     modelsReady,
@@ -689,16 +660,6 @@ export function FaceVerifyModal({
           {employeeId ? ` · ID ${employeeId}` : ""}
         </div>
 
-        {multipleFaces && (
-          <div className={modalStyles.alertBlocked} role="alert">
-            Multiple faces in the frame
-            <div className={modalStyles.alertBlockedDetail}>
-              {actionLabel} is blocked. Only one person should be visible — remove others from
-              camera view.
-            </div>
-          </div>
-        )}
-
         <div
           className={[modalStyles.scanWrap, verifySuccess ? modalStyles.scanWrapSuccess : ""]
             .filter(Boolean)
@@ -732,7 +693,6 @@ export function FaceVerifyModal({
           <div
             className={[
               modalStyles.guidance,
-              multipleFaces ? modalStyles.guidanceBlocked : "",
               verifySuccess ? modalStyles.guidanceSuccess : "",
             ]
               .filter(Boolean)
@@ -741,7 +701,7 @@ export function FaceVerifyModal({
             {guidance}
           </div>
         )}
-        {error && !multipleFaces && <div className={modalStyles.error}>{error}</div>}
+        {error && <div className={modalStyles.error}>{error}</div>}
 
         <div className={modalStyles.actions}>
           {!presenceCheck &&
