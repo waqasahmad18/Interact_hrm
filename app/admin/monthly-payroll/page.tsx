@@ -37,6 +37,7 @@ import {
   normalizeMedicalPackage,
   type MedicalPackageId,
 } from "@/lib/medical-package";
+import { monthlySalaryTaxFromGross } from "@/lib/pakistan-salary-tax";
 
 // ...existing code...
 
@@ -242,6 +243,8 @@ export default function MonthlyAttendancePage() {
   /** Only persist fuel/CTD after the user edits (avoid blur-saving 0 over Allowances default). */
   const fuelEditedRef = React.useRef<Set<string>>(new Set());
   const ctdEditedRef = React.useRef<Set<string>>(new Set());
+  /** Tax defaults from PK slabs on Gross; only lock after HR edits the Tax cell. */
+  const taxEditedRef = React.useRef<Set<string>>(new Set());
   /** Same manual status map as Monthly Attendance (drives live T.Unpaid Days). */
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Record<string, string>>>({});
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
@@ -705,6 +708,8 @@ export default function MonthlyAttendancePage() {
     unpaidEditedRef.current = new Set();
     fuelEditedRef.current = new Set();
     ctdEditedRef.current = new Set();
+    taxEditedRef.current = new Set();
+    setTaxByEmployee({});
     let cancelled = false;
     fetch(`/api/monthly-payroll-adjustments?month=${encodeURIComponent(selectedMonth)}`, {
       cache: "no-store",
@@ -970,11 +975,14 @@ export default function MonthlyAttendancePage() {
     // Export the same data as shown in the table (filteredEmployees)
     // Export the same data as shown in the table (filteredEmployees)
     const dataToExport = filteredEmployees.map(emp => {
+      const empId = String(emp.employeeId);
+      const taxManual = taxEditedRef.current.has(empId);
       const row = getPayrollBreakdown(emp, {
-        taxAmount: taxByEmployee[emp.employeeId] ?? 0,
-        breakExceedDed: breakExceedDedByEmployee[emp.employeeId] ?? 0,
-        kpisDed: kpisDedByEmployee[emp.employeeId] ?? 0,
-        otherDed: otherDedByEmployee[emp.employeeId] ?? 0,
+        taxAmount: taxByEmployee[empId] ?? 0,
+        taxManual,
+        breakExceedDed: breakExceedDedByEmployee[empId] ?? 0,
+        kpisDed: kpisDedByEmployee[empId] ?? 0,
+        otherDed: otherDedByEmployee[empId] ?? 0,
         ctd: getCtdForEmployee(emp),
         fuelAllowance: getFuelAllowanceForEmployee(emp),
         unpaidDays: getUnpaidDaysForEmployee(emp),
@@ -1480,12 +1488,15 @@ export default function MonthlyAttendancePage() {
   /**
    * Full payroll row from live system data.
    * OT: Per hour = Basic ÷ Working Days ÷ Hours/Day; OT Salary = Per hour × OT hours.
+   * Tax: Pakistan salaried slabs on Gross (annualize ÷12) unless taxManual override.
    * Final = Gross − Total Deductions − Tax. Manual columns (Fuel, CTD, etc.) feed live.
    */
   function getPayrollBreakdown(
     employee: any,
     opts: {
       taxAmount?: number;
+      /** When true, use taxAmount even if 0 (manual override). */
+      taxManual?: boolean;
       breakExceedDed?: number;
       kpisDed?: number;
       otherDed?: number;
@@ -1496,7 +1507,6 @@ export default function MonthlyAttendancePage() {
       medicalDedc?: number;
     } = {}
   ) {
-    const taxAmount = opts.taxAmount ?? 0;
     const hasAttendance = Object.keys(employee.byDate || {}).length > 0;
 
     const basicSalary = Number(employee.basicSalary ?? 0) || 0;
@@ -1607,7 +1617,12 @@ export default function MonthlyAttendancePage() {
       loanAdvance;
 
     const netBeforeTax = grossSalary - totalDeductions;
-    const tax = Number.isFinite(taxAmount) && taxAmount > 0 ? taxAmount : 0;
+    const autoTax = monthlySalaryTaxFromGross(grossSalary);
+    const tax = opts.taxManual
+      ? Number.isFinite(opts.taxAmount) && (opts.taxAmount as number) > 0
+        ? (opts.taxAmount as number)
+        : 0
+      : autoTax;
     const netSalary = netBeforeTax - tax;
     const finalSalary = netSalary;
 
@@ -1766,7 +1781,7 @@ export default function MonthlyAttendancePage() {
               {filteredEmployees && filteredEmployees.length > 0 ? (
                 filteredEmployees.map((employee) => {
                   const empId = employee.employeeId;
-                  const taxVal = taxByEmployee[empId] ?? 0;
+                  const taxManual = taxEditedRef.current.has(String(empId));
                   const breakVal = breakExceedDedByEmployee[empId] ?? 0;
                   const kpisVal = kpisDedByEmployee[empId] ?? 0;
                   const otherVal = otherDedByEmployee[empId] ?? 0;
@@ -1776,7 +1791,8 @@ export default function MonthlyAttendancePage() {
                   const claimsVal = getClaimsForEmployee(employee);
                   const medicalDedcVal = getMedicalDedcForEmployee(employee);
                   const row = getPayrollBreakdown(employee, {
-                    taxAmount: taxVal,
+                    taxAmount: taxByEmployee[empId] ?? 0,
+                    taxManual,
                     breakExceedDed: breakVal,
                     kpisDed: kpisVal,
                     otherDed: otherVal,
@@ -1786,6 +1802,7 @@ export default function MonthlyAttendancePage() {
                     medicalClaims: claimsVal,
                     medicalDedc: medicalDedcVal,
                   });
+                  const taxVal = row.tax;
                   return (
                     <tr key={employee.employeeId}>
                       <td className={styles.cellMuted}>{employee.employeeId}</td>
@@ -1921,9 +1938,12 @@ export default function MonthlyAttendancePage() {
                           min={0}
                           step={1}
                           value={taxVal}
-                          onChange={(e) => setManualAmount(setTaxByEmployee, empId, e.target.value)}
+                          onChange={(e) => {
+                            taxEditedRef.current.add(String(empId));
+                            setManualAmount(setTaxByEmployee, empId, e.target.value);
+                          }}
                           style={manualInputStyle}
-                          title="Tax — Final updates when you change this"
+                          title="Auto from Pakistan salaried tax slabs on Gross (TY 2026-27). Edit to override — Final = Net before Tax − Tax"
                         />
                       </td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netSalary)}</td>
