@@ -1488,8 +1488,8 @@ export default function MonthlyAttendancePage() {
   /**
    * Full payroll row from live system data.
    * OT: Per hour = Basic ÷ Working Days ÷ Hours/Day; OT Salary = Per hour × OT hours.
-   * Tax: Pakistan salaried slabs on Gross (annualize ÷12) unless taxManual override.
-   * Final = Gross − Total Deductions − Tax. Manual columns (Fuel, CTD, etc.) feed live.
+   * Tax: Pakistan salaried slabs on Net before Tax (annualize ÷12) unless taxManual override.
+   * Final = Net before Tax − Tax. Manual columns (Fuel, CTD, etc.) feed live.
    */
   function getPayrollBreakdown(
     employee: any,
@@ -1616,8 +1616,9 @@ export default function MonthlyAttendancePage() {
       medicalDedc +
       loanAdvance;
 
-    const netBeforeTax = grossSalary - totalDeductions;
-    const autoTax = monthlySalaryTaxFromGross(grossSalary);
+    const netBeforeTax = Math.max(0, grossSalary - totalDeductions);
+    // Tax base = Net. Salary before Tax (not Gross).
+    const autoTax = monthlySalaryTaxFromGross(netBeforeTax);
     const tax = opts.taxManual
       ? Number.isFinite(opts.taxAmount) && (opts.taxAmount as number) > 0
         ? (opts.taxAmount as number)
@@ -1943,7 +1944,7 @@ export default function MonthlyAttendancePage() {
                             setManualAmount(setTaxByEmployee, empId, e.target.value);
                           }}
                           style={manualInputStyle}
-                          title="Auto from Pakistan salaried tax slabs on Gross (TY 2026-27). Edit to override — Final = Net before Tax − Tax"
+                          title="Auto from Pakistan salaried tax slabs on Net before Tax (TY 2026-27). Edit to override — Final = Net before Tax − Tax"
                         />
                       </td>
                       <td style={{ color: '#007a5a', fontWeight: 600 }}>{formatWithCommas(row.netSalary)}</td>

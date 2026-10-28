@@ -46,16 +46,16 @@ export function annualSalariedIncomeTax(
 }
 
 /**
- * Monthly tax from this month's gross salary (annualize ×12, tax, ÷12).
- * Rounded to nearest rupee for payroll display.
+ * Monthly tax from this month's taxable pay (Net before Tax / similar).
+ * Annualize ×12 → slab tax → ÷12. Rounded to nearest rupee for payroll.
  */
 export function monthlySalaryTaxFromGross(
-  monthlyGross: number,
+  monthlyTaxable: number,
   slabs: SalaryTaxSlab[] = PAKISTAN_SALARIED_TAX_SLABS_TY2027,
 ): number {
-  const gross = Number(monthlyGross);
-  if (!Number.isFinite(gross) || gross <= 0) return 0;
-  const annual = gross * 12;
+  const monthly = Number(monthlyTaxable);
+  if (!Number.isFinite(monthly) || monthly <= 0) return 0;
+  const annual = monthly * 12;
   const annualTax = annualSalariedIncomeTax(annual, slabs);
   return Math.max(0, Math.round(annualTax / 12));
 }
