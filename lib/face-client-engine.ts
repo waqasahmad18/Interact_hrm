@@ -95,8 +95,10 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // enough that edge faces still count (not centre-only), but above tiny ghosts.
 const COUNT_MIN_FACE_AREA_RATIO = 0.03;
 const COUNT_MIN_SCORE = 0.5;
-/** Live verify: only accept confident, well-framed faces for the descriptor. */
-const VERIFY_MIN_SCORE = 0.38;
+/** Live verify primary — soft enough for desk cams; match gates stay server-side. */
+const VERIFY_MIN_SCORE = 0.32;
+/** Side-face / multi-region extras — lower than primary, still a real detection. */
+const EXTRA_MIN_SCORE = 0.22;
 /** Collapse overlapping boxes on the same face (prevents absurd counts like 409). */
 const COUNT_NMS_IOU = 0.35;
 /** Second person must be at least this fraction of the largest face area. */
@@ -105,6 +107,8 @@ const COUNT_RELATIVE_MIN_AREA = 0.28;
 let videoCanvasFull: HTMLCanvasElement | null = null;
 let videoCanvasCrop: HTMLCanvasElement | null = null;
 let videoCanvasWhole: HTMLCanvasElement | null = null;
+let videoCanvasLeft: HTMLCanvasElement | null = null;
+let videoCanvasRight: HTMLCanvasElement | null = null;
 
 async function initFaceRuntime(): Promise<void> {
   if (faceapi && tf && LIVE_DESCRIPTOR) return;
@@ -358,6 +362,107 @@ function drawWholeFrameCanvas(
   return el;
 }
 
+/**
+ * Left/right horizontal strip of the raw webcam frame.
+ * TinyFaceDetector often misses a smaller side face on a wide whole-frame
+ * pass — zooming that half makes the edge face large enough to detect.
+ */
+function drawVideoSideCanvas(
+  video: HTMLVideoElement,
+  side: "left" | "right",
+  maxSize = 416
+): HTMLCanvasElement | null {
+  if (video.readyState < 2 || video.videoWidth < 64) return null;
+
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  // 62% width with overlap so a face near center-left/right is still caught.
+  const sw = Math.max(64, Math.round(vw * 0.62));
+  const sx = side === "left" ? 0 : Math.max(0, vw - sw);
+  const scale = Math.min(1, maxSize / Math.max(sw, vh));
+  const w = Math.max(64, Math.round(sw * scale));
+  const h = Math.max(64, Math.round(vh * scale));
+
+  const el =
+    (side === "left" ? videoCanvasLeft : videoCanvasRight) ??
+    document.createElement("canvas");
+  if (side === "left") videoCanvasLeft = el;
+  else videoCanvasRight = el;
+  el.width = w;
+  el.height = h;
+  const ctx = el.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(video, sx, 0, sw, vh, 0, 0, w, h);
+  return el;
+}
+
+/** Merge face hits; same person across regions ≈ close descriptors. */
+function mergeFaceHits(
+  base: WithDescriptor[],
+  more: WithDescriptor[],
+): WithDescriptor[] {
+  const out = [...base];
+  for (const hit of more) {
+    if (!hit?.descriptor) continue;
+    const desc = descriptorToJson(hit.descriptor);
+    const dup = out.some(
+      (x) =>
+        x.descriptor &&
+        descriptorDistance(descriptorToJson(x.descriptor), desc) < 0.22,
+    );
+    if (!dup) out.push(hit);
+  }
+  return out;
+}
+
+/**
+ * Whole frame + left/right halves. Needed for 2-person desks where one face
+ * sits on the edge and is invisible to a single wide TinyFace pass.
+ */
+async function detectFacesMultiRegion(
+  video: HTMLVideoElement,
+  opts?: { forceSides?: boolean },
+): Promise<WithDescriptor[]> {
+  if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return [];
+
+  let hits: WithDescriptor[] = [];
+
+  const whole = drawWholeFrameCanvas(video, 640);
+  if (whole) {
+    const a = await detectWithDescriptors(
+      whole,
+      LIVE_DESCRIPTOR,
+      EDGE_FACE_AREA_RATIO,
+    );
+    hits = mergeFaceHits(hits, a.significant);
+  }
+
+  // Side halves: edge faces are often invisible on a wide whole-frame pass.
+  // forceSides on submit collect — always try left/right even if whole found 1–2.
+  const needSides = opts?.forceSides || hits.length < 2;
+  if (needSides) {
+    for (const side of ["left", "right"] as const) {
+      const strip = drawVideoSideCanvas(video, side, 416);
+      if (!strip) continue;
+      const a = await detectWithDescriptors(
+        strip,
+        LIVE_DESCRIPTOR,
+        EDGE_FACE_AREA_RATIO,
+      );
+      hits = mergeFaceHits(hits, a.significant);
+      const b = await detectWithDescriptors(
+        strip,
+        LIVE_DESCRIPTOR_FALLBACK,
+        EDGE_FACE_AREA_RATIO,
+      );
+      hits = mergeFaceHits(hits, b.significant);
+    }
+  }
+
+  return hits;
+}
+
 function scaleImageToCanvas(
   img: HTMLImageElement,
   maxDim: number,
@@ -575,25 +680,27 @@ function extrasFromSignificant(
 ): number[][] {
   const out: number[][] = [];
   for (const hit of significant) {
-    if (hit === primary || !hit.descriptor || hit.detection.score < 0.26) continue;
+    if (hit === primary || !hit.descriptor || hit.detection.score < EXTRA_MIN_SCORE) {
+      continue;
+    }
     out.push(descriptorToJson(hit.descriptor));
-    if (out.length >= 5) break;
+    if (out.length >= 6) break;
   }
   return out;
 }
 
-function outcomeFromHit(
-  canvas: HTMLCanvasElement,
-  hit: WithDescriptor,
-  significant?: WithDescriptor[],
-): FaceScanOutcome {
+function outcomeFromHits(significant: WithDescriptor[]): FaceScanOutcome {
+  const hit = pickPrimaryFace(significant);
+  if (!hit?.descriptor) return { status: "none" };
   const box = hit.detection.box;
+  // Coverage vs a typical 480p frame height — multi-region boxes aren't on one canvas.
+  const coverage = Math.min(0.95, Math.max(0.12, box.height / Math.max(box.height + 80, 240)));
   return {
     status: "ok",
     descriptor: hit.descriptor,
-    coverage: box.height / canvas.height,
+    coverage,
     score: hit.detection.score,
-    extraDescriptors: significant ? extrasFromSignificant(significant, hit) : undefined,
+    extraDescriptors: extrasFromSignificant(significant, hit),
   };
 }
 
@@ -601,69 +708,53 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   await ensureFaceModelsLoaded();
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return { status: "none" };
 
-  // Whole frame at 560 keeps left/right edge faces (2-person desks).
-  // Soft EDGE_FACE_AREA so the smaller side face is not dropped before extras.
-  const whole = drawWholeFrameCanvas(video, 560);
-  if (whole) {
-    const { significant } = await detectWithDescriptors(
-      whole,
-      LIVE_DESCRIPTOR,
-      EDGE_FACE_AREA_RATIO,
-    );
-    const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(whole, hit, significant);
+  // Whole + left/right halves so an edge face in a 2-person frame is not missed.
+  const significant = await detectFacesMultiRegion(video);
+  if (significant.length) {
+    const outcome = outcomeFromHits(significant);
+    if (outcome.status === "ok") return outcome;
   }
 
-  // Crop fallback only when whole frame found nobody — crop loses side edges.
+  // Last resort: center crop (may lose edges — only when multi-region found nobody).
   const crop = drawVideoToCanvas(video, "crop", 320);
   if (crop) {
-    const { significant } = await detectWithDescriptors(
+    const { significant: cropHits } = await detectWithDescriptors(
       crop,
       LIVE_DESCRIPTOR_FALLBACK,
       MIN_FACE_AREA_RATIO,
     );
-    const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(crop, hit, significant);
-  }
-
-  if (whole) {
-    const bright = brightenCanvas(whole, 0.6);
-    const { significant } = await detectWithDescriptors(
-      bright,
-      LIVE_DESCRIPTOR_FALLBACK,
-      EDGE_FACE_AREA_RATIO,
-    );
-    const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(bright, hit, significant);
+    const hit = pickPrimaryFace(cropHits);
+    if (hit?.descriptor) {
+      const box = hit.detection.box;
+      return {
+        status: "ok",
+        descriptor: hit.descriptor,
+        coverage: box.height / crop.height,
+        score: hit.detection.score,
+        extraDescriptors: extrasFromSignificant(cropHits, hit),
+      };
+    }
   }
 
   return { status: "none" };
 }
 
 /**
- * Edge-aware collect for submit — larger canvas + soft area/score so a
- * side-of-frame enrolled face is still tried. Match thresholds stay server-side.
+ * Submit collect — same multi-region path so edge enrolled face is always tried.
+ * Match accuracy stays on the server (gallery winner + uniqueness).
  */
 export async function collectFaceDescriptorsFromVideo(
   video: HTMLVideoElement,
 ): Promise<number[][]> {
   await ensureFaceModelsLoaded();
-  if (!faceapi || !LIVE_DESCRIPTOR) return [];
+  if (!LIVE_DESCRIPTOR) return [];
 
-  const whole = drawWholeFrameCanvas(video, 640);
-  if (!whole) return [];
-
-  const { significant } = await detectWithDescriptors(
-    whole,
-    LIVE_DESCRIPTOR,
-    EDGE_FACE_AREA_RATIO,
-  );
-
+  const significant = await detectFacesMultiRegion(video, { forceSides: true });
   const out: number[][] = [];
   for (const hit of significant) {
-    if (!hit.descriptor || hit.detection.score < 0.26) continue;
+    if (!hit.descriptor || hit.detection.score < EXTRA_MIN_SCORE) continue;
     out.push(descriptorToJson(hit.descriptor));
-    if (out.length >= 6) break;
+    if (out.length >= 8) break;
   }
   return out;
 }

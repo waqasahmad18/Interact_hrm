@@ -200,18 +200,23 @@ export function FaceVerifyModal({
       const frameExtras = scan.extraDescriptors?.length
         ? scan.extraDescriptors
         : [];
-      if (frameExtras.length) {
-        frameExtrasRef.current = [
-          ...frameExtrasRef.current,
-          ...frameExtras,
-        ].slice(-10);
-      }
+      const multiFaceNow = frameExtras.length >= 1;
 
-      // Soft distance guidance on primary only. With 2 faces, the large face may
-      // be too close while the enrolled person sits on the edge — keep extras.
+      // Pool every face this frame (primary + edges). Deduped on submit.
+      const stashFace = (d: number[]) => {
+        if (!Array.isArray(d) || d.length !== 128) return;
+        const pool = frameExtrasRef.current;
+        if (pool.some((x) => descriptorDistance(x, d) < 0.12)) return;
+        pool.push(d);
+        if (pool.length > 12) pool.splice(0, pool.length - 12);
+      };
+      stashFace(frameDesc);
+      for (const d of frameExtras) stashFace(d);
+
+      // Soft distance guidance only for single-face frames.
       const primaryCoverageBad =
         scan.coverage >= COVERAGE_MAX || scan.coverage <= COVERAGE_MIN;
-      if (primaryCoverageBad && !frameExtras.length && !frameExtrasRef.current.length) {
+      if (primaryCoverageBad && !multiFaceNow && frameExtrasRef.current.length < 2) {
         setStatus("Adjust distance…");
         setGuidance(
           scan.coverage >= COVERAGE_MAX
@@ -225,51 +230,30 @@ export function FaceVerifyModal({
       const primaryFlipped =
         !!prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX;
 
-      if (primaryFlipped) {
-        // 2-person frames often flip who is "largest" — do NOT wipe the buffer
-        // or replace it with the other person. Stash this face as an extra.
-        frameExtrasRef.current = [
-          ...frameExtrasRef.current,
-          frameDesc,
-          ...frameExtras,
-        ].slice(-10);
-        setError(null);
-        setStatus(
-          probeBufferRef.current.length
-            ? `Capturing face… (${probeBufferRef.current.length}/${probeNeed})`
-            : "Capturing faces…",
-        );
-        setGuidance("Two faces OK — keep your face visible (edges OK).");
-        // Enough stable primary OR extras from multi-face → verify.
-        if (
-          probeBufferRef.current.length < probeNeed &&
-          frameExtrasRef.current.length < 2
-        ) {
-          return;
-        }
-      } else if (!primaryCoverageBad) {
+      if (!primaryFlipped && !primaryCoverageBad) {
         singleFaceStreakRef.current += 1;
         probeBufferRef.current.push(frameDesc);
-        if (probeBufferRef.current.length < probeNeed) {
-          setError(null);
-          setGuidance(
-            frameExtrasRef.current.length || frameExtras.length
-              ? "Two faces OK — hold still…"
-              : "Good — hold still…",
-          );
-          setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
-          return;
-        }
-      } else {
-        // Primary size off but extras present — wait until we have extras to try.
-        if (
-          probeBufferRef.current.length < probeNeed &&
-          frameExtrasRef.current.length < 2
-        ) {
-          setStatus("Capturing faces…");
-          setGuidance("Keep your face in frame (edges OK).");
-          return;
-        }
+      }
+      // primaryFlipped: keep existing buffer — other person became "largest".
+
+      const bufferLen = probeBufferRef.current.length;
+      const poolLen = frameExtrasRef.current.length;
+      // 2-person / edge: proceed once we have 2+ distinct faces OR 2 stable primaries.
+      const readyMulti = poolLen >= 2 && (bufferLen >= 1 || multiFaceNow);
+      const readySingle = bufferLen >= probeNeed;
+      if (!readyMulti && !readySingle) {
+        setError(null);
+        setGuidance(
+          multiFaceNow || poolLen >= 2
+            ? "Two faces OK — edges covered, hold still…"
+            : "Good — hold still…",
+        );
+        setStatus(
+          multiFaceNow || poolLen >= 2
+            ? `Capturing faces… (${Math.max(bufferLen, 1)}/${probeNeed})`
+            : `Capturing face… (${bufferLen}/${probeNeed})`,
+        );
+        return;
       }
 
       const bufferCopy = [...probeBufferRef.current];
@@ -277,20 +261,24 @@ export function FaceVerifyModal({
         bufferCopy.length > 0
           ? averageDescriptors(bufferCopy)
           : frameDesc;
-      const extras = [...frameExtrasRef.current];
+      const pooled = [...frameExtrasRef.current];
       probeBufferRef.current = [];
       frameExtrasRef.current = [];
 
-      setGuidance("Hold still…");
+      setGuidance(
+        pooled.length >= 2
+          ? "Two faces OK — verifying all…"
+          : "Hold still…",
+      );
       busyRef.current = true;
       setVerifying(true);
       setStatus("Face detected — verifying…");
 
       try {
-        // Edge safety: one whole-frame collect so a side face is not missed.
-        // Server match thresholds unchanged — only more probe candidates.
+        // Force left/right region collect so edge enrolled face is in probes.
+        // Server match thresholds unchanged.
         const edgeFaces = await collectFaceDescriptorsFromVideo(video);
-        const probes = [averagedProbe, ...bufferCopy, ...extras, ...edgeFaces].filter(
+        const probes = [averagedProbe, ...bufferCopy, ...pooled, ...edgeFaces].filter(
           (d, i, arr) =>
             Array.isArray(d) &&
             d.length === 128 &&
