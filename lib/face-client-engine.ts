@@ -83,6 +83,8 @@ export type FaceScanOutcome =
     };
 
 const MIN_FACE_AREA_RATIO = 0.045;
+/** Edge / side faces in a 2-person frame are smaller — still collect for verify. */
+const EDGE_FACE_AREA_RATIO = 0.018;
 const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 // A genuine second person (a real privacy/security concern) produces a sizable,
 // high-confidence detection. Background texture — ceiling lights, wall patterns,
@@ -573,9 +575,9 @@ function extrasFromSignificant(
 ): number[][] {
   const out: number[][] = [];
   for (const hit of significant) {
-    if (hit === primary || !hit.descriptor || hit.detection.score < 0.32) continue;
+    if (hit === primary || !hit.descriptor || hit.detection.score < 0.26) continue;
     out.push(descriptorToJson(hit.descriptor));
-    if (out.length >= 3) break;
+    if (out.length >= 5) break;
   }
   return out;
 }
@@ -599,20 +601,20 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   await ensureFaceModelsLoaded();
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return { status: "none" };
 
-  // Progressive fast path — one detector pass first (Break/Clock/Prayer).
-  // Multi-person OK: primary feeds the live buffer; extras go with submit
-  // so we do not need a second full detect on verify.
-  const whole = drawWholeFrameCanvas(video, 416);
+  // Whole frame at 560 keeps left/right edge faces (2-person desks).
+  // Soft EDGE_FACE_AREA so the smaller side face is not dropped before extras.
+  const whole = drawWholeFrameCanvas(video, 560);
   if (whole) {
     const { significant } = await detectWithDescriptors(
       whole,
       LIVE_DESCRIPTOR,
-      MIN_FACE_AREA_RATIO,
+      EDGE_FACE_AREA_RATIO,
     );
     const hit = pickPrimaryFace(significant);
     if (hit?.descriptor) return outcomeFromHit(whole, hit, significant);
   }
 
+  // Crop fallback only when whole frame found nobody — crop loses side edges.
   const crop = drawVideoToCanvas(video, "crop", 320);
   if (crop) {
     const { significant } = await detectWithDescriptors(
@@ -624,13 +626,12 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
     if (hit?.descriptor) return outcomeFromHit(crop, hit, significant);
   }
 
-  // One brighten rescue for backlit desks — avoid 4× heavy passes.
   if (whole) {
     const bright = brightenCanvas(whole, 0.6);
     const { significant } = await detectWithDescriptors(
       bright,
       LIVE_DESCRIPTOR_FALLBACK,
-      MIN_FACE_AREA_RATIO,
+      EDGE_FACE_AREA_RATIO,
     );
     const hit = pickPrimaryFace(significant);
     if (hit?.descriptor) return outcomeFromHit(bright, hit, significant);
@@ -640,8 +641,8 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
 }
 
 /**
- * All confident face descriptors in the current frame (multi-person OK).
- * Single whole-frame pass — fast enough for Break/Clock submit path.
+ * Edge-aware collect for submit — larger canvas + soft area/score so a
+ * side-of-frame enrolled face is still tried. Match thresholds stay server-side.
  */
 export async function collectFaceDescriptorsFromVideo(
   video: HTMLVideoElement,
@@ -649,22 +650,20 @@ export async function collectFaceDescriptorsFromVideo(
   await ensureFaceModelsLoaded();
   if (!faceapi || !LIVE_DESCRIPTOR) return [];
 
-  const whole = drawWholeFrameCanvas(video, 480);
+  const whole = drawWholeFrameCanvas(video, 640);
   if (!whole) return [];
 
   const { significant } = await detectWithDescriptors(
     whole,
     LIVE_DESCRIPTOR,
-    MIN_FACE_AREA_RATIO * 0.75,
+    EDGE_FACE_AREA_RATIO,
   );
 
   const out: number[][] = [];
   for (const hit of significant) {
-    // Slightly softer than live VERIFY_MIN so a smaller coworker-side face
-    // of the enrolled employee is still tried on the server.
-    if (!hit.descriptor || hit.detection.score < 0.36) continue;
+    if (!hit.descriptor || hit.detection.score < 0.26) continue;
     out.push(descriptorToJson(hit.descriptor));
-    if (out.length >= 4) break;
+    if (out.length >= 6) break;
   }
   return out;
 }

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { BiometricAction } from "@/lib/face-types";
 import {
   averageDescriptors,
+  collectFaceDescriptorsFromVideo,
   descriptorDistance,
   descriptorToJson,
   ensureFaceModelsLoaded,
@@ -91,14 +92,15 @@ export function FaceVerifyModal({
   onClose,
   presenceCheck = false,
   onPresenceResult,
-  /** Presence: stop after this many identity fails. Break/clock uses max(this, 5). */
+  /** Presence: stop after this many identity fails. Break/clock auto-retries longer. */
   maxIdentityFails = 2,
   noFaceTimeoutSec = 0,
   clearBackdrop = false,
 }: Props) {
+  // Break/Clock/Prayer: more silent auto-retries before Retry button (was ~5 — too quick).
   const identityFailLimit = presenceCheck
     ? Math.max(1, maxIdentityFails)
-    : Math.max(5, maxIdentityFails);
+    : Math.max(14, maxIdentityFails);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const rafRef = React.useRef<number | null>(null);
@@ -194,50 +196,87 @@ export function FaceVerifyModal({
 
       setError(null);
 
-      // Soft distance guidance — skip this frame only; keep buffer so a
-      // momentary lean does not restart Capturing from zero.
-      if (scan.coverage >= COVERAGE_MAX) {
-        setStatus("Adjust distance…");
-        setGuidance("Too close — move back a little.");
-        return;
-      }
-      if (scan.coverage <= COVERAGE_MIN) {
-        setStatus("Adjust distance…");
-        setGuidance("Too far — move a little closer.");
-        return;
-      }
-
       const frameDesc = descriptorToJson(scan.descriptor);
-      if (scan.extraDescriptors?.length) {
+      const frameExtras = scan.extraDescriptors?.length
+        ? scan.extraDescriptors
+        : [];
+      if (frameExtras.length) {
         frameExtrasRef.current = [
           ...frameExtrasRef.current,
-          ...scan.extraDescriptors,
-        ].slice(-6);
+          ...frameExtras,
+        ].slice(-10);
       }
-      // Drop only severe jumps — slight pose change must not wipe the buffer.
+
+      // Soft distance guidance on primary only. With 2 faces, the large face may
+      // be too close while the enrolled person sits on the edge — keep extras.
+      const primaryCoverageBad =
+        scan.coverage >= COVERAGE_MAX || scan.coverage <= COVERAGE_MIN;
+      if (primaryCoverageBad && !frameExtras.length && !frameExtrasRef.current.length) {
+        setStatus("Adjust distance…");
+        setGuidance(
+          scan.coverage >= COVERAGE_MAX
+            ? "Too close — move back a little."
+            : "Too far — move a little closer.",
+        );
+        return;
+      }
+
       const prev = probeBufferRef.current[probeBufferRef.current.length - 1];
-      if (prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX) {
-        probeBufferRef.current = [frameDesc];
-        singleFaceStreakRef.current = 1;
-        setError(null);
-        setStatus("Hold still…");
-        setGuidance("Hold still — looking straight helps.");
-        return;
-      }
+      const primaryFlipped =
+        !!prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX;
 
-      singleFaceStreakRef.current += 1;
-
-      // Two good frames → average → verify. Faster than 3+ without much noise.
-      probeBufferRef.current.push(frameDesc);
-      if (probeBufferRef.current.length < probeNeed) {
+      if (primaryFlipped) {
+        // 2-person frames often flip who is "largest" — do NOT wipe the buffer
+        // or replace it with the other person. Stash this face as an extra.
+        frameExtrasRef.current = [
+          ...frameExtrasRef.current,
+          frameDesc,
+          ...frameExtras,
+        ].slice(-10);
         setError(null);
-        setGuidance("Good — hold still…");
-        setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
-        return;
+        setStatus(
+          probeBufferRef.current.length
+            ? `Capturing face… (${probeBufferRef.current.length}/${probeNeed})`
+            : "Capturing faces…",
+        );
+        setGuidance("Two faces OK — keep your face visible (edges OK).");
+        // Enough stable primary OR extras from multi-face → verify.
+        if (
+          probeBufferRef.current.length < probeNeed &&
+          frameExtrasRef.current.length < 2
+        ) {
+          return;
+        }
+      } else if (!primaryCoverageBad) {
+        singleFaceStreakRef.current += 1;
+        probeBufferRef.current.push(frameDesc);
+        if (probeBufferRef.current.length < probeNeed) {
+          setError(null);
+          setGuidance(
+            frameExtrasRef.current.length || frameExtras.length
+              ? "Two faces OK — hold still…"
+              : "Good — hold still…",
+          );
+          setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
+          return;
+        }
+      } else {
+        // Primary size off but extras present — wait until we have extras to try.
+        if (
+          probeBufferRef.current.length < probeNeed &&
+          frameExtrasRef.current.length < 2
+        ) {
+          setStatus("Capturing faces…");
+          setGuidance("Keep your face in frame (edges OK).");
+          return;
+        }
       }
 
       const bufferCopy = [...probeBufferRef.current];
-      const averagedProbe = averageDescriptors(bufferCopy);
+      const averagedProbe =
+        bufferCopy.length > 0
+          ? averageDescriptors(bufferCopy)
+          : frameDesc;
       const extras = [...frameExtrasRef.current];
       probeBufferRef.current = [];
       frameExtrasRef.current = [];
@@ -248,9 +287,10 @@ export function FaceVerifyModal({
       setStatus("Face detected — verifying…");
 
       try {
-        // Reuse capture-loop faces — no second full detect (was a major stall).
-        // Server accepts if ANY probe matches the logged-in employee.
-        const probes = [averagedProbe, ...bufferCopy, ...extras].filter(
+        // Edge safety: one whole-frame collect so a side face is not missed.
+        // Server match thresholds unchanged — only more probe candidates.
+        const edgeFaces = await collectFaceDescriptorsFromVideo(video);
+        const probes = [averagedProbe, ...bufferCopy, ...extras, ...edgeFaces].filter(
           (d, i, arr) =>
             Array.isArray(d) &&
             d.length === 128 &&
