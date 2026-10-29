@@ -92,7 +92,7 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 const COUNT_MIN_FACE_AREA_RATIO = 0.03;
 const COUNT_MIN_SCORE = 0.5;
 /** Live verify: only accept confident, well-framed faces for the descriptor. */
-const VERIFY_MIN_SCORE = 0.48;
+const VERIFY_MIN_SCORE = 0.42;
 /** Collapse overlapping boxes on the same face (prevents absurd counts like 409). */
 const COUNT_NMS_IOU = 0.35;
 /** Second person must be at least this fraction of the largest face area. */
@@ -116,14 +116,15 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
-  // Stronger live detector — higher score + larger input = sharper identity embedding
+  // Live verify: 416 is much faster than 512 and still sharp enough for match.
+  // Heavy 512 multi-pass was making Break/Clock feel stuck and capture unstable.
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 512,
-    scoreThreshold: 0.42,
+    inputSize: 416,
+    scoreThreshold: 0.4,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.36,
+    inputSize: 320,
+    scoreThreshold: 0.32,
   });
   // Counting detectors — high score so ceiling lights / walls are not faces.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
@@ -565,32 +566,66 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
   return { status: "none" };
 }
 
+function outcomeFromHit(
+  canvas: HTMLCanvasElement,
+  hit: WithDescriptor,
+): FaceScanOutcome {
+  const box = hit.detection.box;
+  return {
+    status: "ok",
+    descriptor: hit.descriptor,
+    coverage: box.height / canvas.height,
+    score: hit.detection.score,
+  };
+}
+
 export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanOutcome> {
   await ensureFaceModelsLoaded();
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return { status: "none" };
 
-  // Multi-person frames are allowed: pick the largest confident face for the
-  // live probe buffer. Final verify also tries every face in the frame so the
-  // enrolled employee still passes when a coworker is beside them.
-  // Whole frame first (no side crop) so off-centre faces are not lost.
-  const wholeCanvas = drawWholeFrameCanvas(video, 640);
-  const cropCanvas = drawVideoToCanvas(video, "crop", 416);
+  // Progressive fast path — one detector pass first (Break/Clock/Prayer).
+  // Multi-person OK: largest confident face feeds the live buffer; submit
+  // collect still sends every face so the enrolled employee can match.
+  const whole = drawWholeFrameCanvas(video, 480);
+  if (whole) {
+    const { significant } = await detectWithDescriptors(
+      whole,
+      LIVE_DESCRIPTOR,
+      MIN_FACE_AREA_RATIO,
+    );
+    const hit = pickPrimaryFace(significant);
+    if (hit?.descriptor) return outcomeFromHit(whole, hit);
+  }
 
-  const primary = await descriptorFromCanvases([wholeCanvas, cropCanvas]);
-  if (primary) return primary;
+  const crop = drawVideoToCanvas(video, "crop", 320);
+  if (crop) {
+    const { significant } = await detectWithDescriptors(
+      crop,
+      LIVE_DESCRIPTOR_FALLBACK,
+      MIN_FACE_AREA_RATIO,
+    );
+    const hit = pickPrimaryFace(significant);
+    if (hit?.descriptor) return outcomeFromHit(crop, hit);
+  }
 
-  // RESCUE PASS — dark / backlit faces.
-  const brightWhole = wholeCanvas ? brightenCanvas(wholeCanvas, 0.6) : null;
-  const brightCrop = cropCanvas ? brightenCanvas(cropCanvas, 0.6) : null;
-  const rescued = await descriptorFromCanvases([brightWhole, brightCrop]);
-  if (rescued) return rescued;
+  // One brighten rescue for backlit desks — avoid 4× heavy passes.
+  if (whole) {
+    const bright = brightenCanvas(whole, 0.6);
+    const { significant } = await detectWithDescriptors(
+      bright,
+      LIVE_DESCRIPTOR_FALLBACK,
+      MIN_FACE_AREA_RATIO,
+    );
+    const hit = pickPrimaryFace(significant);
+    if (hit?.descriptor) return outcomeFromHit(bright, hit);
+  }
 
   return { status: "none" };
 }
 
 /**
  * All confident face descriptors in the current frame (multi-person OK).
- * Server tries each against the claimed employee — any true match succeeds.
+ * Single whole-frame pass — fast enough for Break/Clock submit path.
  */
 export async function collectFaceDescriptorsFromVideo(
   video: HTMLVideoElement,
@@ -598,34 +633,23 @@ export async function collectFaceDescriptorsFromVideo(
   await ensureFaceModelsLoaded();
   if (!faceapi || !LIVE_DESCRIPTOR) return [];
 
-  const canvases: HTMLCanvasElement[] = [];
-  const whole = drawWholeFrameCanvas(video, 640);
-  const crop = drawVideoToCanvas(video, "crop", 416);
-  if (whole) canvases.push(whole);
-  if (crop) canvases.push(crop);
-  if (whole) canvases.push(brightenCanvas(whole, 0.6));
+  const whole = drawWholeFrameCanvas(video, 480);
+  if (!whole) return [];
+
+  const { significant } = await detectWithDescriptors(
+    whole,
+    LIVE_DESCRIPTOR,
+    MIN_FACE_AREA_RATIO * 0.75,
+  );
 
   const out: number[][] = [];
-  const seen: number[][] = [];
-
-  for (const canvas of canvases) {
-    const { significant } = await detectWithDescriptors(
-      canvas,
-      LIVE_DESCRIPTOR,
-      MIN_FACE_AREA_RATIO,
-    );
-    for (const hit of significant) {
-      if (!hit.descriptor || hit.detection.score < VERIFY_MIN_SCORE) continue;
-      const desc = descriptorToJson(hit.descriptor);
-      // Dedupe near-identical embeddings from whole/crop/bright passes.
-      const dup = seen.some((s) => descriptorDistance(s, desc) < 0.12);
-      if (dup) continue;
-      seen.push(desc);
-      out.push(desc);
-    }
-    if (out.length >= 6) break;
+  for (const hit of significant) {
+    // Slightly softer than live VERIFY_MIN so a smaller coworker-side face
+    // of the enrolled employee is still tried on the server.
+    if (!hit.descriptor || hit.detection.score < 0.36) continue;
+    out.push(descriptorToJson(hit.descriptor));
+    if (out.length >= 4) break;
   }
-
   return out;
 }
 

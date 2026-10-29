@@ -49,18 +49,16 @@ type Props = {
   clearBackdrop?: boolean;
 };
 
-const SCAN_INTERVAL_MS = 220;
-const SCAN_INTERVAL_PRESENCE_MS = 200;
-const RETRY_AFTER_FAIL_MS = 200;
+const SCAN_INTERVAL_MS = 300;
+const SCAN_INTERVAL_PRESENCE_MS = 240;
+const RETRY_AFTER_FAIL_MS = 180;
 // Good consecutive frames whose descriptors are averaged into one stable probe.
-// Averaging cancels per-frame noise (pose, lighting, glasses glare, blur) so the
-// match is far more reliable — and harder to fool — than a single snapshot.
-// Break / Clock / Guard: 4 strong frames (multi-face allowed; server tries all).
-const REQUIRED_PROBES = 4;
-const REQUIRED_PROBES_PRESENCE = 4;
+// 3 frames: faster Break/Clock/Prayer while still cancelling noise.
+const REQUIRED_PROBES = 3;
+const REQUIRED_PROBES_PRESENCE = 3;
 /** Face height / frame height — sweet spot for a sharp, unique embedding. */
-const COVERAGE_MIN = 0.22;
-const COVERAGE_MAX = 0.72;
+const COVERAGE_MIN = 0.16;
+const COVERAGE_MAX = 0.78;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
@@ -210,11 +208,14 @@ export function FaceVerifyModal({
       }
 
       const frameDesc = descriptorToJson(scan.descriptor);
-      // Drop jittery/blurry frames — they make you look like other employees.
+      // Drop only severe jumps — slight pose change must not wipe the buffer
+      // (was making Break/Clock feel like it never verifies).
       const prev = probeBufferRef.current[probeBufferRef.current.length - 1];
-      if (prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX) {
-        probeBufferRef.current = [];
-        singleFaceStreakRef.current = 0;
+      const agreeMax = Math.max(PROBE_FRAME_AGREE_MAX, 0.34);
+      if (prev && descriptorDistance(prev, frameDesc) > agreeMax) {
+        // Keep last good frame instead of full reset when possible.
+        probeBufferRef.current = probeBufferRef.current.slice(-1);
+        singleFaceStreakRef.current = probeBufferRef.current.length;
         setError(null);
         setStatus("Hold still…");
         setGuidance("Face moved — look straight at the camera and hold still.");

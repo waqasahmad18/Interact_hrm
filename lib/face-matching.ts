@@ -11,9 +11,11 @@ export function isFaceVerificationEnabled(): boolean {
  */
 export function getMaxMatchDistance(): number {
   const raw = process.env.FACE_MATCH_MAX_DISTANCE;
-  const parsed = raw ? parseFloat(raw) : 0.34;
-  // Hard upper clamp 0.38 so misconfiguration cannot loosen past a safe band.
-  return Number.isFinite(parsed) ? Math.min(0.38, Math.max(0.28, parsed)) : 0.34;
+  // 0.36: slightly more tolerant for desk lighting / angle on Break-Clock-Prayer
+  // while still rejecting clear look-alikes (usually ≥0.40+).
+  const parsed = raw ? parseFloat(raw) : 0.36;
+  // Hard upper clamp 0.40 so misconfiguration cannot loosen past a safe band.
+  return Number.isFinite(parsed) ? Math.min(0.4, Math.max(0.28, parsed)) : 0.36;
 }
 
 /**
@@ -26,9 +28,10 @@ export function getPresenceMaxMatchDistance(): number {
 
 export function getMinMatchingPhotos(totalEnrolled: number): number {
   const raw = process.env.FACE_MIN_MATCH_PHOTOS;
-  // Default 3: look-alikes may luck one/two close photos; three agreements is harder.
-  const configured = raw ? parseInt(raw, 10) : 3;
-  const want = Number.isFinite(configured) && configured > 0 ? configured : 3;
+  // Default 2: genuine captures often match 2 of 3 enrolled angles tightly;
+  // gallery-winner + uniqueness gates still block wrong person.
+  const configured = raw ? parseInt(raw, 10) : 2;
+  const want = Number.isFinite(configured) && configured > 0 ? configured : 2;
   return Math.min(totalEnrolled, Math.max(1, want));
 }
 
@@ -280,9 +283,9 @@ export function assertClaimedIsGalleryWinner(
  * Must not be stricter than getMaxMatchDistance() or genuine matches
  * pass the first gate then get rejected here and FaceVerifyModal retries forever.
  */
-const ABSOLUTE_BEST_CAP = 0.34;
+const ABSOLUTE_BEST_CAP = 0.36;
 /** Idle presence cap — desk lighting / angle need a little more room. */
-const ABSOLUTE_BEST_CAP_PRESENCE = 0.40;
+const ABSOLUTE_BEST_CAP_PRESENCE = 0.42;
 
 /**
  * Average of L2-normalized enrollment vectors. Look-alikes may luck one photo
