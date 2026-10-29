@@ -52,6 +52,20 @@ export function punchOnlyUsesLastSpanOut(employeeId: string): boolean {
   return PUNCH_ONLY_LAST_SPAN_OUT_IDS.has(String(employeeId));
 }
 
+/**
+ * Midnight-shift exit: T.Out = last punch after midnight (shift end) until morning
+ * cap — not next-day late-morning / midday return punches.
+ * Only Pervaiz for now; other Admin punch-only keep Khalid noon-span logic.
+ */
+export const PUNCH_ONLY_MIDNIGHT_EXIT_IDS = new Set(["84"]);
+
+export function punchOnlyUsesMidnightExitLastOut(employeeId: string): boolean {
+  return PUNCH_ONLY_MIDNIGHT_EXIT_IDS.has(String(employeeId));
+}
+
+/** Morning after overnight — punches at/after this are next-day arrivals, not T.Out. */
+export const PUNCH_ONLY_MIDNIGHT_EXIT_MORNING_CAP = "08:00:00";
+
 /** Historical office-boy shift used on staging when these cards worked. */
 export const PUNCH_ONLY_DEFAULT_SHIFT = {
   startTime: "13:00:00",

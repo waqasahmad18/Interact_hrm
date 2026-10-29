@@ -14,7 +14,11 @@ import {
   type HrmCodeProfile,
   type PinProfile,
 } from "./zkbio-employee-resolve";
-import { punchOnlyUsesLastSpanOut } from "./punch-only-employees";
+import {
+  PUNCH_ONLY_MIDNIGHT_EXIT_MORNING_CAP,
+  punchOnlyUsesLastSpanOut,
+  punchOnlyUsesMidnightExitLastOut,
+} from "./punch-only-employees";
 
 export const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
 const TUNGSTEN_AFTER_CLOCK_GRACE_MS = 30 * 60 * 1000;
@@ -544,6 +548,11 @@ type ShiftDayPunchOptions = {
    * T.Out = last punch in span until next day's shift start (overnight-safe).
    */
   lastAnyPunchInSpan?: boolean;
+  /**
+   * Pervaiz midnight shift: T.Out = last punch after midnight (shift end)
+   * until morning cap (default 08:00) — ignores next-day late-morning returns.
+   */
+  midnightExitLastPunch?: boolean;
 };
 
 /** Simple shift-day T.Punch: first punch at/after shift start; last punch near shift end (± window). */
@@ -573,6 +582,40 @@ function firstLastPunchForShiftDay(
     sessionDate,
   );
   if (shiftStartMs == null || shiftEndMs == null) return { punchIn: "-", punchOut: "-" };
+
+  // Pervaiz midnight: last punch after shift end until morning — not 10am–noon returns.
+  if (options?.midnightExitLastPunch === true && shiftEndMs <= shiftStartMs) {
+    const nextStartMs = wallClockToEpochMs(
+      addDaysToDateKey(sessionDate, 1),
+      shift.startTime,
+    );
+    const morningCapMs = wallClockToEpochMs(
+      addDaysToDateKey(sessionDate, 1),
+      PUNCH_ONLY_MIDNIGHT_EXIT_MORNING_CAP,
+    );
+    let collectUntilMs =
+      nextStartMs != null ? nextStartMs - 1 : shiftStartMs + MAX_SESSION_MS;
+    if (morningCapMs != null) {
+      collectUntilMs = Math.min(collectUntilMs, morningCapMs);
+    }
+    const spanPunches = tungstenByTime
+      .filter((t) => t.atMs >= shiftStartMs && t.atMs <= collectUntilMs)
+      .sort((a, b) => a.atMs - b.atMs);
+    if (!spanPunches.length) return { punchIn: "-", punchOut: "-" };
+    const punchIn = spanPunches[0].time;
+    const afterMidnight = spanPunches.filter(
+      (t) => t.atMs >= shiftEndMs && t.time !== punchIn,
+    );
+    let punchOut = "-";
+    if (afterMidnight.length) {
+      punchOut = afterMidnight[afterMidnight.length - 1].time;
+    } else if (spanPunches.length > 1) {
+      // Left before midnight — last evening punch still counts as Out.
+      punchOut = spanPunches[spanPunches.length - 1].time;
+    }
+    if (punchOut === punchIn) punchOut = "-";
+    return { punchIn, punchOut };
+  }
 
   // Khalid / last-span mode: collect through overnight until just before next shift start
   if (options?.lastAnyPunchInSpan === true) {
@@ -809,6 +852,7 @@ export function buildShiftPunchOnlySessions(
 
   const empId = String(target.employeeId ?? "").trim();
   const allowLastSpanOut = punchOnlyUsesLastSpanOut(empId);
+  const midnightExit = punchOnlyUsesMidnightExitLastOut(empId);
 
   const sessions: EmployeeReportSession[] = [];
   let day = dateFrom;
@@ -819,12 +863,16 @@ export function buildShiftPunchOnlySessions(
       const [sh = 0, sm = 0] = String(shift.startTime).split(":").map(Number);
       const [eh = 0, em = 0] = String(shift.endTime).split(":").map(Number);
       const crossesMidnight = eh * 60 + em <= sh * 60 + sm;
-      const lastAnyPunchInSpan = allowLastSpanOut && crossesMidnight;
+      // Pervaiz: dedicated midnight last-out. Others: Khalid last-span (noon-capped).
+      const useMidnightExit = midnightExit && crossesMidnight;
+      const lastAnyPunchInSpan =
+        !useMidnightExit && allowLastSpanOut && crossesMidnight;
 
       const { punchIn, punchOut } = firstLastPunchForShiftDay(tungsten, day, shift, {
         // Day shifts: allow exit window from 1h before shift end (not only after end).
         requireOutAfterShiftEnd: false,
         lastAnyPunchInSpan,
+        midnightExitLastPunch: useMidnightExit,
       });
       if (punchIn !== "-" || punchOut !== "-") {
         sessions.push({
