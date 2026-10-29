@@ -78,6 +78,8 @@ export type FaceScanOutcome =
       coverage: number;
       /** Detector confidence 0–1 — low scores are noisy and cross-match others. */
       score: number;
+      /** Other confident faces in the same frame (multi-person submit path). */
+      extraDescriptors?: number[][];
     };
 
 const MIN_FACE_AREA_RATIO = 0.045;
@@ -92,7 +94,7 @@ const ENROLL_MIN_FACE_AREA_RATIO = 0.025;
 const COUNT_MIN_FACE_AREA_RATIO = 0.03;
 const COUNT_MIN_SCORE = 0.5;
 /** Live verify: only accept confident, well-framed faces for the descriptor. */
-const VERIFY_MIN_SCORE = 0.42;
+const VERIFY_MIN_SCORE = 0.38;
 /** Collapse overlapping boxes on the same face (prevents absurd counts like 409). */
 const COUNT_NMS_IOU = 0.35;
 /** Second person must be at least this fraction of the largest face area. */
@@ -116,15 +118,14 @@ async function initFaceRuntime(): Promise<void> {
   faceapi = faceapiMod;
   tf = tfMod;
 
-  // Live verify: 416 is much faster than 512 and still sharp enough for match.
-  // Heavy 512 multi-pass was making Break/Clock feel stuck and capture unstable.
+  // Live verify: 416 primary, soft threshold so desk/backlight still catches.
   LIVE_DESCRIPTOR = new faceapi.TinyFaceDetectorOptions({
     inputSize: 416,
-    scoreThreshold: 0.4,
+    scoreThreshold: 0.35,
   });
   LIVE_DESCRIPTOR_FALLBACK = new faceapi.TinyFaceDetectorOptions({
     inputSize: 320,
-    scoreThreshold: 0.32,
+    scoreThreshold: 0.28,
   });
   // Counting detectors — high score so ceiling lights / walls are not faces.
   LIVE_FACE_COUNT = new faceapi.TinyFaceDetectorOptions({
@@ -566,9 +567,23 @@ async function analyzeEnrollCanvas(canvas: HTMLCanvasElement): Promise<FaceScanO
   return { status: "none" };
 }
 
+function extrasFromSignificant(
+  significant: WithDescriptor[],
+  primary: WithDescriptor,
+): number[][] {
+  const out: number[][] = [];
+  for (const hit of significant) {
+    if (hit === primary || !hit.descriptor || hit.detection.score < 0.32) continue;
+    out.push(descriptorToJson(hit.descriptor));
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 function outcomeFromHit(
   canvas: HTMLCanvasElement,
   hit: WithDescriptor,
+  significant?: WithDescriptor[],
 ): FaceScanOutcome {
   const box = hit.detection.box;
   return {
@@ -576,6 +591,7 @@ function outcomeFromHit(
     descriptor: hit.descriptor,
     coverage: box.height / canvas.height,
     score: hit.detection.score,
+    extraDescriptors: significant ? extrasFromSignificant(significant, hit) : undefined,
   };
 }
 
@@ -584,9 +600,9 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
   if (!LIVE_DESCRIPTOR || !LIVE_DESCRIPTOR_FALLBACK) return { status: "none" };
 
   // Progressive fast path — one detector pass first (Break/Clock/Prayer).
-  // Multi-person OK: largest confident face feeds the live buffer; submit
-  // collect still sends every face so the enrolled employee can match.
-  const whole = drawWholeFrameCanvas(video, 480);
+  // Multi-person OK: primary feeds the live buffer; extras go with submit
+  // so we do not need a second full detect on verify.
+  const whole = drawWholeFrameCanvas(video, 416);
   if (whole) {
     const { significant } = await detectWithDescriptors(
       whole,
@@ -594,7 +610,7 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
       MIN_FACE_AREA_RATIO,
     );
     const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(whole, hit);
+    if (hit?.descriptor) return outcomeFromHit(whole, hit, significant);
   }
 
   const crop = drawVideoToCanvas(video, "crop", 320);
@@ -605,7 +621,7 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
       MIN_FACE_AREA_RATIO,
     );
     const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(crop, hit);
+    if (hit?.descriptor) return outcomeFromHit(crop, hit, significant);
   }
 
   // One brighten rescue for backlit desks — avoid 4× heavy passes.
@@ -617,7 +633,7 @@ export async function scanVideoFrame(video: HTMLVideoElement): Promise<FaceScanO
       MIN_FACE_AREA_RATIO,
     );
     const hit = pickPrimaryFace(significant);
-    if (hit?.descriptor) return outcomeFromHit(bright, hit);
+    if (hit?.descriptor) return outcomeFromHit(bright, hit, significant);
   }
 
   return { status: "none" };
@@ -782,4 +798,5 @@ export function descriptorDistance(
 }
 
 /** Consecutive live frames of the same person should stay under this. */
-export const PROBE_FRAME_AGREE_MAX = 0.28;
+/** Soft agree — desk micro-moves must not wipe the capture buffer. */
+export const PROBE_FRAME_AGREE_MAX = 0.4;

@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import type { BiometricAction } from "@/lib/face-types";
 import {
   averageDescriptors,
-  collectFaceDescriptorsFromVideo,
   descriptorDistance,
   descriptorToJson,
   ensureFaceModelsLoaded,
@@ -49,16 +48,15 @@ type Props = {
   clearBackdrop?: boolean;
 };
 
-const SCAN_INTERVAL_MS = 300;
-const SCAN_INTERVAL_PRESENCE_MS = 240;
-const RETRY_AFTER_FAIL_MS = 180;
-// Good consecutive frames whose descriptors are averaged into one stable probe.
-// 3 frames: faster Break/Clock/Prayer while still cancelling noise.
-const REQUIRED_PROBES = 3;
-const REQUIRED_PROBES_PRESENCE = 3;
-/** Face height / frame height — sweet spot for a sharp, unique embedding. */
-const COVERAGE_MIN = 0.16;
-const COVERAGE_MAX = 0.78;
+const SCAN_INTERVAL_MS = 160;
+const SCAN_INTERVAL_PRESENCE_MS = 180;
+const RETRY_AFTER_FAIL_MS = 120;
+// 2 stable frames is enough for Break/Clock/Prayer — cuts ~half the wait.
+const REQUIRED_PROBES = 2;
+const REQUIRED_PROBES_PRESENCE = 2;
+/** Face height / frame height — wide band so Adjust loops don't stall verify. */
+const COVERAGE_MIN = 0.1;
+const COVERAGE_MAX = 0.88;
 
 function resolveScanMode(input: {
   verifySuccess: boolean;
@@ -109,6 +107,8 @@ export function FaceVerifyModal({
   const lastScanAtRef = React.useRef(0);
   const singleFaceStreakRef = React.useRef(0);
   const probeBufferRef = React.useRef<number[][]>([]);
+  /** Extra faces seen during capture — reused on submit (no second detect). */
+  const frameExtrasRef = React.useRef<number[][]>([]);
   const identityFailsRef = React.useRef(0);
   const lastFaceAtRef = React.useRef<number | null>(null);
   const onPresenceResultRef = React.useRef(onPresenceResult);
@@ -167,11 +167,16 @@ export function FaceVerifyModal({
       }
 
       if (scan.status === "none") {
-        singleFaceStreakRef.current = 0;
-        probeBufferRef.current = [];
-        setError(null);
-        setStatus("Look at the camera — scanning automatically…");
-        setGuidance(null);
+        // Brief miss: keep partial buffer so flicker does not restart 0/2.
+        if (probeBufferRef.current.length === 0) {
+          singleFaceStreakRef.current = 0;
+          setError(null);
+          setStatus("Look at the camera — scanning automatically…");
+          setGuidance(null);
+        } else {
+          setStatus("Hold still…");
+          setGuidance("Face briefly lost — stay in the oval.");
+        }
         return;
       }
 
@@ -189,68 +194,63 @@ export function FaceVerifyModal({
 
       setError(null);
 
-      // Distance guidance from face coverage. If the face is too close or too
-      // far we DON'T verify yet — we show guidance and let the user adjust, so
-      // the message is actually visible and verification happens at a good size.
+      // Soft distance guidance — skip this frame only; keep buffer so a
+      // momentary lean does not restart Capturing from zero.
       if (scan.coverage >= COVERAGE_MAX) {
-        singleFaceStreakRef.current = 0;
-        probeBufferRef.current = [];
         setStatus("Adjust distance…");
-        setGuidance("Too close — move back so your whole face fits in the oval.");
+        setGuidance("Too close — move back a little.");
         return;
       }
       if (scan.coverage <= COVERAGE_MIN) {
-        singleFaceStreakRef.current = 0;
-        probeBufferRef.current = [];
         setStatus("Adjust distance…");
-        setGuidance("Too far — move closer until your face fills the oval.");
+        setGuidance("Too far — move a little closer.");
         return;
       }
 
       const frameDesc = descriptorToJson(scan.descriptor);
-      // Drop only severe jumps — slight pose change must not wipe the buffer
-      // (was making Break/Clock feel like it never verifies).
+      if (scan.extraDescriptors?.length) {
+        frameExtrasRef.current = [
+          ...frameExtrasRef.current,
+          ...scan.extraDescriptors,
+        ].slice(-6);
+      }
+      // Drop only severe jumps — slight pose change must not wipe the buffer.
       const prev = probeBufferRef.current[probeBufferRef.current.length - 1];
-      const agreeMax = Math.max(PROBE_FRAME_AGREE_MAX, 0.34);
-      if (prev && descriptorDistance(prev, frameDesc) > agreeMax) {
-        // Keep last good frame instead of full reset when possible.
-        probeBufferRef.current = probeBufferRef.current.slice(-1);
-        singleFaceStreakRef.current = probeBufferRef.current.length;
+      if (prev && descriptorDistance(prev, frameDesc) > PROBE_FRAME_AGREE_MAX) {
+        probeBufferRef.current = [frameDesc];
+        singleFaceStreakRef.current = 1;
         setError(null);
         setStatus("Hold still…");
-        setGuidance("Face moved — look straight at the camera and hold still.");
+        setGuidance("Hold still — looking straight helps.");
         return;
       }
 
       singleFaceStreakRef.current += 1;
 
-      // Collect several good frames and average their descriptors into one
-      // stable probe before contacting the server. A single frame can be noisy
-      // (slight angle, glasses glare, blur); the averaged embedding is much
-      // closer to the enrolled photos and far harder to fool.
+      // Two good frames → average → verify. Faster than 3+ without much noise.
       probeBufferRef.current.push(frameDesc);
       if (probeBufferRef.current.length < probeNeed) {
         setError(null);
-        setGuidance("Good — look straight, hold still…");
+        setGuidance("Good — hold still…");
         setStatus(`Capturing face… (${probeBufferRef.current.length}/${probeNeed})`);
         return;
       }
 
-      const averagedProbe = averageDescriptors(probeBufferRef.current);
+      const bufferCopy = [...probeBufferRef.current];
+      const averagedProbe = averageDescriptors(bufferCopy);
+      const extras = [...frameExtrasRef.current];
       probeBufferRef.current = [];
+      frameExtrasRef.current = [];
 
       setGuidance("Hold still…");
-      setStatus("Checking frame…");
       busyRef.current = true;
       setVerifying(true);
-
       setStatus("Face detected — verifying…");
 
       try {
-        // Collect every confident face in the frame. Server accepts if ANY face
-        // is a clear match to the logged-in employee (coworker in view is OK).
-        const frameFaces = await collectFaceDescriptorsFromVideo(video);
-        const probes = [averagedProbe, ...frameFaces].filter(
+        // Reuse capture-loop faces — no second full detect (was a major stall).
+        // Server accepts if ANY probe matches the logged-in employee.
+        const probes = [averagedProbe, ...bufferCopy, ...extras].filter(
           (d, i, arr) =>
             Array.isArray(d) &&
             d.length === 128 &&
@@ -308,7 +308,7 @@ export function FaceVerifyModal({
               });
             }
             onVerified(token);
-          }, 400);
+          }, 180);
           return;
         }
 
@@ -360,6 +360,7 @@ export function FaceVerifyModal({
 
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
+        frameExtrasRef.current = [];
         setError(
           failErr ||
             `Face not verified (${identityFailsRef.current}/${identityFailLimit}). Hold still — retrying…`
@@ -369,6 +370,7 @@ export function FaceVerifyModal({
       } catch {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
+        frameExtrasRef.current = [];
         setError("Network error. Retrying…");
         setStatus("Scanning again…");
         lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
@@ -399,6 +401,7 @@ export function FaceVerifyModal({
     setError(null);
     setGuidance(null);
     probeBufferRef.current = [];
+    frameExtrasRef.current = [];
     singleFaceStreakRef.current = 0;
     busyRef.current = false;
     scanInFlightRef.current = false;
@@ -419,6 +422,7 @@ export function FaceVerifyModal({
       lastFaceAtRef.current = null;
       singleFaceStreakRef.current = 0;
       probeBufferRef.current = [];
+      frameExtrasRef.current = [];
       scanInFlightRef.current = false;
       busyRef.current = false;
       lastScanAtRef.current = 0;
@@ -456,10 +460,11 @@ export function FaceVerifyModal({
             });
           }
         } else {
+          // 640×480 is enough for TinyFaceDetector and opens/scans faster than 720p.
           const videoConstraints: MediaTrackConstraints = {
             facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             frameRate: { ideal: 24, max: 30 },
           };
           try {
