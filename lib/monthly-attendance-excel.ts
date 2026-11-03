@@ -47,13 +47,25 @@ export type MonthlyAttendanceExcelRow = {
   isSummary?: boolean;
 };
 
+/** True when DB/UI has a real pseudo — not blank, "-", "NA", "N/A", etc. */
+export function hasAssignedPseudonym(pseudonym?: string | null): boolean {
+  const pseudo = String(pseudonym ?? "").trim();
+  if (!pseudo) return false;
+  const normalized = pseudo.replace(/[\s._-]+/g, "").toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "-" || normalized === "na" || normalized === "n/a") return false;
+  if (normalized === "null" || normalized === "none" || normalized === "nil") return false;
+  // "NA NA", "N/A N/A" collapse to nana after strip — treat as unassigned
+  if (normalized === "nana" || normalized === "n/an/a") return false;
+  return true;
+}
+
 /** Sheet tab / export label: assigned pseudo name, else real name. */
 export function excelEmployeeLabel(
   employeeName: string | null | undefined,
   pseudonym?: string | null,
 ): string {
-  const pseudo = String(pseudonym ?? "").trim();
-  if (pseudo && pseudo !== "-") return pseudo;
+  if (hasAssignedPseudonym(pseudonym)) return String(pseudonym).trim();
   const name = String(employeeName ?? "").trim();
   return name || "Employee";
 }
