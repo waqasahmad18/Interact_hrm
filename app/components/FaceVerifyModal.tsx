@@ -59,6 +59,23 @@ const REQUIRED_PROBES_PRESENCE = 2;
 const COVERAGE_MIN = 0.1;
 const COVERAGE_MAX = 0.88;
 
+/** Short UI prompts only — no long server essays under the camera. */
+const PROMPT = {
+  loading: "Loading…",
+  camera: "Starting camera…",
+  look: "Look at the camera",
+  hold: "Hold still",
+  closer: "Come closer to the camera",
+  back: "Move back a little",
+  capturing: "Hold still",
+  verifying: "Verifying face",
+  verified: "Verified",
+  retrying: "Hold still",
+  failed: "Could not verify",
+  notEnrolled: "Face not enrolled",
+  cameraFail: "Camera unavailable",
+} as const;
+
 function resolveScanMode(input: {
   verifySuccess: boolean;
   verifying: boolean;
@@ -71,14 +88,21 @@ function resolveScanMode(input: {
   if (input.verifying) return "verifying";
   if (!input.cameraReady || !input.modelsReady) return "initializing";
   if (
+    input.status === PROMPT.closer ||
+    input.status === PROMPT.back ||
     input.status.startsWith("Adjust") ||
-    input.guidance?.includes("Center") ||
-    input.guidance?.includes("Too close") ||
-    input.guidance?.includes("Too far")
+    input.guidance === PROMPT.closer ||
+    input.guidance === PROMPT.back
   ) {
     return "adjust";
   }
-  if (input.status.startsWith("Capturing")) return "capturing";
+  if (
+    input.status === PROMPT.hold ||
+    input.status === PROMPT.capturing ||
+    input.status.startsWith("Capturing")
+  ) {
+    return "capturing";
+  }
   return "scanning";
 }
 
@@ -118,9 +142,10 @@ export function FaceVerifyModal({
 
   const [modelsReady, setModelsReady] = React.useState(false);
   const [cameraReady, setCameraReady] = React.useState(false);
-  const [status, setStatus] = React.useState("Loading face engine…");
+  const [status, setStatus] = React.useState<string>(PROMPT.loading);
   const [error, setError] = React.useState<string | null>(null);
   const [verifying, setVerifying] = React.useState(false);
+  /** Extra tip under camera — only when needed (distance / final fail). */
   const [guidance, setGuidance] = React.useState<string | null>(null);
   const [verifySuccess, setVerifySuccess] = React.useState(false);
   const verifySuccessRef = React.useRef(false);
@@ -173,11 +198,12 @@ export function FaceVerifyModal({
         if (probeBufferRef.current.length === 0) {
           singleFaceStreakRef.current = 0;
           setError(null);
-          setStatus("Look at the camera — scanning automatically…");
+          setStatus(PROMPT.look);
           setGuidance(null);
         } else {
-          setStatus("Hold still…");
-          setGuidance("Face briefly lost — stay in the oval.");
+          setError(null);
+          setStatus(PROMPT.hold);
+          setGuidance(null);
         }
         return;
       }
@@ -189,8 +215,8 @@ export function FaceVerifyModal({
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         setError(null);
-        setStatus("Adjusting…");
-        setGuidance("Keep your face in frame (edges OK), look straight and hold still.");
+        setStatus(PROMPT.hold);
+        setGuidance(null);
         return;
       }
 
@@ -217,12 +243,8 @@ export function FaceVerifyModal({
       const primaryCoverageBad =
         scan.coverage >= COVERAGE_MAX || scan.coverage <= COVERAGE_MIN;
       if (primaryCoverageBad && !multiFaceNow && frameExtrasRef.current.length < 2) {
-        setStatus("Adjust distance…");
-        setGuidance(
-          scan.coverage >= COVERAGE_MAX
-            ? "Too close — move back a little."
-            : "Too far — move a little closer.",
-        );
+        setStatus(scan.coverage >= COVERAGE_MAX ? PROMPT.back : PROMPT.closer);
+        setGuidance(null);
         return;
       }
 
@@ -243,16 +265,8 @@ export function FaceVerifyModal({
       const readySingle = bufferLen >= probeNeed;
       if (!readyMulti && !readySingle) {
         setError(null);
-        setGuidance(
-          multiFaceNow || poolLen >= 2
-            ? "Two faces OK — edges covered, hold still…"
-            : "Good — hold still…",
-        );
-        setStatus(
-          multiFaceNow || poolLen >= 2
-            ? `Capturing faces… (${Math.max(bufferLen, 1)}/${probeNeed})`
-            : `Capturing face… (${bufferLen}/${probeNeed})`,
-        );
+        setGuidance(null);
+        setStatus(PROMPT.hold);
         return;
       }
 
@@ -265,14 +279,10 @@ export function FaceVerifyModal({
       probeBufferRef.current = [];
       frameExtrasRef.current = [];
 
-      setGuidance(
-        pooled.length >= 2
-          ? "Two faces OK — verifying all…"
-          : "Hold still…",
-      );
+      setGuidance(null);
       busyRef.current = true;
       setVerifying(true);
-      setStatus("Face detected — verifying…");
+      setStatus(PROMPT.verifying);
 
       try {
         // Force left/right region collect so edge enrolled face is in probes.
@@ -323,8 +333,8 @@ export function FaceVerifyModal({
           verifySuccessRef.current = true;
           setVerifySuccess(true);
           setError(null);
-          setGuidance("Face verified successfully.");
-          setStatus("Verified");
+          setGuidance(null);
+          setStatus(PROMPT.verified);
           window.setTimeout(() => {
             stopCamera();
             if (presenceCheck) {
@@ -341,7 +351,6 @@ export function FaceVerifyModal({
         }
 
         const failCode = String(data.code || "mismatch");
-        const failErr = String(data.error || data.reason || "Face not verified");
         const identityFail =
           failCode === "wrong_person" ||
           failCode === "low_similarity" ||
@@ -352,9 +361,9 @@ export function FaceVerifyModal({
         // Enrollment missing — do not spin forever
         if (failCode === "not_enrolled" || failCode === "no_enrollment") {
           verifySuccessRef.current = true;
-          setError(failErr);
-          setStatus("Not enrolled");
-          setGuidance("Ask HR to enroll your face photos, then try again.");
+          setError(null);
+          setStatus(PROMPT.notEnrolled);
+          setGuidance("Ask HR to enroll your face");
           busyRef.current = false;
           setVerifying(false);
           return;
@@ -364,16 +373,17 @@ export function FaceVerifyModal({
           identityFailsRef.current += 1;
           if (identityFailsRef.current >= identityFailLimit) {
             verifySuccessRef.current = true; // stop scan loop
-            setError(failErr);
-            setStatus("Verification failed");
-            setGuidance("Hold still in good light, then use Retry — or Cancel.");
+            // Short final message only — no server similarity essays.
+            setError(null);
+            setStatus(PROMPT.failed);
+            setGuidance(null);
             if (presenceCheck) {
               window.setTimeout(() => {
                 stopCamera();
                 onPresenceResultRef.current?.({
                   verified: false,
                   code: failCode,
-                  error: failErr,
+                  error: PROMPT.failed,
                   similarity:
                     typeof data.similarity === "number" ? data.similarity : null,
                 });
@@ -386,21 +396,21 @@ export function FaceVerifyModal({
           }
         }
 
+        // Silent auto-retry — no attempt counts / fail detail under the camera.
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         frameExtrasRef.current = [];
-        setError(
-          failErr ||
-            `Face not verified (${identityFailsRef.current}/${identityFailLimit}). Hold still — retrying…`
-        );
-        setStatus("Scanning again…");
+        setError(null);
+        setGuidance(null);
+        setStatus(PROMPT.retrying);
         lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
       } catch {
         singleFaceStreakRef.current = 0;
         probeBufferRef.current = [];
         frameExtrasRef.current = [];
-        setError("Network error. Retrying…");
-        setStatus("Scanning again…");
+        setError(null);
+        setGuidance(null);
+        setStatus(PROMPT.retrying);
         lastScanAtRef.current = performance.now() - scanInterval + RETRY_AFTER_FAIL_MS;
       } finally {
         busyRef.current = false;
@@ -433,7 +443,7 @@ export function FaceVerifyModal({
     singleFaceStreakRef.current = 0;
     busyRef.current = false;
     scanInFlightRef.current = false;
-    setStatus("Look at the camera — scanning automatically…");
+    setStatus(PROMPT.look);
     lastScanAtRef.current = performance.now() - 1000;
   }, []);
 
@@ -454,7 +464,7 @@ export function FaceVerifyModal({
       scanInFlightRef.current = false;
       busyRef.current = false;
       lastScanAtRef.current = 0;
-      setStatus("Loading face engine…");
+      setStatus(PROMPT.loading);
       return;
     }
 
@@ -462,7 +472,7 @@ export function FaceVerifyModal({
 
     (async () => {
       try {
-        setStatus("Starting camera…");
+        setStatus(PROMPT.camera);
         setError(null);
 
         // Paint FaceVerify card first (2 frames), THEN open camera — sync UI ↔ LED.
@@ -509,8 +519,9 @@ export function FaceVerifyModal({
         }
 
         if (!stream) {
-          setError("Camera could not start. Check permission and retry.");
-          setStatus("Camera unavailable");
+          setError(null);
+          setGuidance("Allow camera and try again");
+          setStatus(PROMPT.cameraFail);
           return;
         }
 
@@ -531,8 +542,9 @@ export function FaceVerifyModal({
           video = videoRef.current;
         }
         if (!video) {
-          setError("Camera preview failed to load.");
-          setStatus("Camera unavailable");
+          setError(null);
+          setGuidance("Try again");
+          setStatus(PROMPT.cameraFail);
           stream.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
           return;
@@ -545,23 +557,24 @@ export function FaceVerifyModal({
 
         if (cancelled) return;
         setCameraReady(true);
-        setStatus("Look at the camera — scanning…");
+        setStatus(PROMPT.look);
 
         await modelsPromise;
         if (cancelled) return;
         setModelsReady(true);
       } catch (err) {
         const name = err instanceof DOMException ? err.name : "";
-        const msg =
+        const tip =
           name === "NotAllowedError" || name === "PermissionDeniedError"
-            ? "Camera access denied. Allow camera permission and retry."
+            ? "Allow camera permission"
             : name === "NotFoundError"
-              ? "No camera found on this PC."
+              ? "No camera found"
               : name === "NotReadableError"
-                ? "Camera is in use by another app. Close it and retry."
-                : "Camera could not start. Check permission and retry.";
-        setError(msg);
-        setStatus("Camera unavailable");
+                ? "Camera in use — close other apps"
+                : "Allow camera and try again";
+        setError(null);
+        setGuidance(tip);
+        setStatus(PROMPT.cameraFail);
       }
     })();
 
@@ -613,8 +626,8 @@ export function FaceVerifyModal({
       if (last == null) return;
       if (performance.now() - last < limitMs) return;
       verifySuccessRef.current = true;
-      setError("No face in frame");
-      setStatus("No face — closing…");
+      setError(null);
+      setStatus(PROMPT.look);
       setGuidance(null);
       window.setTimeout(() => {
         stopCamera();
@@ -642,13 +655,15 @@ export function FaceVerifyModal({
   if (!open) return null;
   // Embed SSR must still paint the card — returning null left a blank white WebView.
 
-  const captureMatch = status.match(/\((\d+)\/(\d+)\)/);
-  const captureCurrent = captureMatch ? Number(captureMatch[1]) : 0;
-  const captureTotal = captureMatch
-    ? Number(captureMatch[2])
-    : presenceCheck
-      ? REQUIRED_PROBES_PRESENCE
-      : REQUIRED_PROBES;
+  const captureCurrent =
+    status === PROMPT.hold || status === PROMPT.capturing
+      ? Math.min(probeBufferRef.current.length || 1, presenceCheck ? REQUIRED_PROBES_PRESENCE : REQUIRED_PROBES)
+      : verifying
+        ? presenceCheck
+          ? REQUIRED_PROBES_PRESENCE
+          : REQUIRED_PROBES
+        : 0;
+  const captureTotal = presenceCheck ? REQUIRED_PROBES_PRESENCE : REQUIRED_PROBES;
   const scanMode = resolveScanMode({
     verifySuccess,
     verifying,
@@ -657,12 +672,32 @@ export function FaceVerifyModal({
     status,
     guidance,
   });
-  const hudStatus =
+  const hudStatus = (
     verifySuccess
-      ? "VERIFICATION COMPLETE"
-      : status === "Look at the camera — scanning automatically…"
-        ? "SCANNING FACE"
-        : status.replace(/…/g, "").toUpperCase();
+      ? PROMPT.verified
+      : verifying
+        ? PROMPT.verifying
+        : status === PROMPT.look
+          ? "Scanning face"
+          : status
+  ).toUpperCase();
+  // One short tip under camera only when needed — HUD already shows status.
+  const showFooterTip =
+    Boolean(guidance) ||
+    status === PROMPT.closer ||
+    status === PROMPT.back ||
+    status === PROMPT.failed ||
+    status === PROMPT.notEnrolled ||
+    status === PROMPT.cameraFail;
+  const footerText =
+    guidance ||
+    (status === PROMPT.closer ||
+    status === PROMPT.back ||
+    status === PROMPT.failed ||
+    status === PROMPT.notEnrolled ||
+    status === PROMPT.cameraFail
+      ? status
+      : null);
 
   const overlay = (
     <div
@@ -709,38 +744,32 @@ export function FaceVerifyModal({
             captureCurrent={captureCurrent}
             captureTotal={captureTotal}
             loadingLabel={
-              !cameraReady ? "Starting camera…" : !modelsReady ? "Loading face engine…" : undefined
+              !cameraReady ? PROMPT.camera : !modelsReady ? PROMPT.loading : undefined
             }
             aspectRatio="5 / 4"
           />
         </div>
 
-        <div
-          className={[modalStyles.statusLine, verifySuccess ? modalStyles.statusLineSuccess : ""]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          {status}
-        </div>
-
-        {guidance && !error && (
+        {showFooterTip && footerText ? (
           <div
             className={[
               modalStyles.guidance,
+              status === PROMPT.failed || status === PROMPT.cameraFail
+                ? modalStyles.error
+                : "",
               verifySuccess ? modalStyles.guidanceSuccess : "",
             ]
               .filter(Boolean)
               .join(" ")}
           >
-            {guidance}
+            {footerText}
           </div>
-        )}
-        {error && <div className={modalStyles.error}>{error}</div>}
+        ) : null}
 
         <div className={modalStyles.actions}>
           {!presenceCheck &&
           !verifySuccess &&
-          status === "Verification failed" ? (
+          status === PROMPT.failed ? (
             <button
               type="button"
               onClick={retryAfterFail}
