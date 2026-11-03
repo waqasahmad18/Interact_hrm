@@ -88,21 +88,13 @@ type CommissionAmountField =
 const OVERTIME_MIN_SECONDS = 60 * 60;
 
 export default function MonthlyAttendancePage() {
-    // Calculate total working days for the month (excluding leaves and off days)
-    function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
+    // Month working days: Mon–Fri (or calendar "working"), minus calendar "off" only.
+    // Full-day leave does NOT reduce this — leave stays paid against the month base.
+    function getTotalWorkingDays(monthInfo: any) {
       let count = 0;
       if (!monthInfo || !monthInfo.days) return count;
       monthInfo.days.forEach((day: any) => {
-        const workingDay = isWorkingDay(day.dateKey);
-        // Exclude off days and approved leaves
-        if (workingDay) {
-          const kind = approvedLeaveOnDay(
-            approvedLeavesMap,
-            employee.employeeId,
-            day.dateKey,
-          );
-          if (kind !== "full") count++;
-        }
+        if (isWorkingDay(day.dateKey)) count++;
       });
       return count;
     }
@@ -1148,7 +1140,7 @@ export default function MonthlyAttendancePage() {
         OverTime: '',
         "Tardy Count": '',
         Status: 'Total Working Days:',
-        Deduction: `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`
+        Deduction: `${getTotalWorkingDays(monthInfo)}`
       }
     );
 
@@ -1527,11 +1519,7 @@ export default function MonthlyAttendancePage() {
 
     // Always use calendar working days for rates (Basic÷W.Days÷hours).
     // Gating on punches made Per Hour / day pay show 0/0 for most of the roster.
-    const workingDays = getTotalWorkingDays(
-      employee,
-      monthInfo,
-      approvedLeavesMap,
-    );
+    const workingDays = getTotalWorkingDays(monthInfo);
 
     const systemUnpaidDays = calculateTotalDeduction(employee) / 100;
     const unpaidDays =

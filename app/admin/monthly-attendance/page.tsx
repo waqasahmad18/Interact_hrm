@@ -218,22 +218,13 @@ function emptyWorkingDayStatus(
 const OVERTIME_MIN_SECONDS = 60 * 60;
 
 export default function MonthlyAttendancePage() {
-    // Calculate total working days for the month (excluding leaves and off days)
-    function getTotalWorkingDays(employee: any, monthInfo: any, approvedLeavesMap: any) {
+    // Month working days: Mon–Fri (or calendar "working"), minus calendar "off" only.
+    // Full-day leave does NOT reduce this — leave stays paid against the month base.
+    function getTotalWorkingDays(monthInfo: any) {
       let count = 0;
       if (!monthInfo || !monthInfo.days) return count;
       monthInfo.days.forEach((day: any) => {
-        const workingDay = isWorkingDay(day.dateKey);
-        // Exclude off days and approved leaves
-        if (workingDay) {
-          // Only full-day leave removes the day from working-days count.
-          const kind = approvedLeaveOnDay(
-            approvedLeavesMap,
-            employee.employeeId,
-            day.dateKey,
-          );
-          if (kind !== "full") count++;
-        }
+        if (isWorkingDay(day.dateKey)) count++;
       });
       return count;
     }
@@ -1582,7 +1573,7 @@ export default function MonthlyAttendancePage() {
             "",
             "Total Working Days:",
             "",
-            footer?.workingDays ?? `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`,
+            footer?.workingDays ?? `${getTotalWorkingDays(monthInfo)}`,
           ],
           status: "",
           isSummary: true,
@@ -1716,7 +1707,7 @@ export default function MonthlyAttendancePage() {
           "",
           "Total Working Days:",
           "",
-          `${getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}`,
+          `${getTotalWorkingDays(monthInfo)}`,
         ],
         status: "",
         isSummary: true,
@@ -2855,7 +2846,7 @@ export default function MonthlyAttendancePage() {
                           <td>
                             {employee.isImported && employee.importedFooter?.workingDays
                               ? employee.importedFooter.workingDays
-                              : getTotalWorkingDays(employee, monthInfo, approvedLeavesMap)}
+                              : getTotalWorkingDays(monthInfo)}
                           </td>
                         </tr>
                       </tfoot>
