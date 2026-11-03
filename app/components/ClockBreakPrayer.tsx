@@ -42,6 +42,11 @@ import {
 import { useBiometricGate, type VerifyModalCloseReason } from "../../lib/useBiometricGate";
 import type { BiometricAction } from "@/lib/face-types";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
+import {
+  FULL_BREAK_ALLOWANCE_SECONDS,
+  breakAllowanceFromAttendanceRow,
+  exceedSecondsOverAllowance,
+} from "@/lib/break-prayer-allowance";
 
 /** When clocked in across midnight, breaks span multiple calendar days; use session range, not date=today only. */
 function buildBreaksListUrl(employeeId: string, attendanceRows: any[]): string {
@@ -1082,12 +1087,17 @@ function BreakSummary({
   const isSlack = variant === "slack" || variant === "todayStatus";
   const slackStyles = variant === "todayStatus" ? todayStyles : slackStylesDefault;
   const [completedBreakSeconds, setCompletedBreakSeconds] = React.useState(0);
+  const [breakAllowanceSeconds, setBreakAllowanceSeconds] = React.useState(
+    FULL_BREAK_ALLOWANCE_SECONDS,
+  );
   // Removed prayer totals from BreakSummary; shown in Prayer widget instead
 
   const displayTotalSeconds =
     completedBreakSeconds + (isOnBreak ? Math.max(0, liveBreakSeconds) : 0);
-  const displayExceedSeconds =
-    displayTotalSeconds > 3600 ? displayTotalSeconds - 3600 : 0;
+  const displayExceedSeconds = exceedSecondsOverAllowance(
+    displayTotalSeconds,
+    breakAllowanceSeconds,
+  );
 
   const refreshTotals = React.useCallback(async () => {
     try {
@@ -1129,6 +1139,10 @@ function BreakSummary({
         sortedAttendance.find((a: any) => a.clock_in && !a.clock_out) ||
         sortedAttendance[0] ||
         null;
+
+      setBreakAllowanceSeconds(
+        breakAllowanceFromAttendanceRow(activeOrLatestAttendance),
+      );
 
       const activeAttendanceId =
         activeOrLatestAttendance?.id !== undefined &&
@@ -1217,7 +1231,7 @@ function BreakSummary({
           <div className={slackStyles.summaryLabel}>Total Break</div>
           <div
             className={slackStyles.summaryValue}
-            style={displayTotalSeconds > 3600 ? { color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" } : undefined}
+            style={displayExceedSeconds > 0 ? { color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" } : undefined}
           >
             {formatDuration(displayTotalSeconds)}
           </div>
@@ -1232,7 +1246,7 @@ function BreakSummary({
   return (
     <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
       <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#e67e22", marginBottom: 6 }}>Today's Total Break</div>
-      <div style={{ fontSize: "1rem", fontWeight: 500, color: displayTotalSeconds > 3600 ? "#e74c3c" : "#2d3436" }}>{formatDuration(displayTotalSeconds)}</div>
+      <div style={{ fontSize: "1rem", fontWeight: 500, color: displayExceedSeconds > 0 ? "#e74c3c" : "#2d3436" }}>{formatDuration(displayTotalSeconds)}</div>
       {displayExceedSeconds > 0 && (
         <div style={{ fontSize: "0.9rem", color: "#e74c3c", marginTop: 4 }}>Exceed: {formatDuration(displayExceedSeconds)}</div>
       )}

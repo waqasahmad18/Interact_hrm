@@ -22,6 +22,11 @@ import {
   filterRowsByClockInSessionDate,
   overnightFetchRange,
 } from "@/lib/break-session-date";
+import {
+  buildAllowanceSecondsByEmployeeSession,
+  exceedSecondsOverAllowance,
+  resolveAllowanceSeconds,
+} from "@/lib/break-prayer-allowance";
 
 function getLocalDateString(date: Date = new Date()) {
   return getDateStringInTimeZone(date, SERVER_TIMEZONE);
@@ -55,6 +60,7 @@ export default function PrayerSummaryView() {
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
+  const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -96,13 +102,28 @@ export default function PrayerSummaryView() {
       toDate: range.toDate,
     });
     setLoading(true);
-    fetch(`/api/prayer_breaks?${params.toString()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setPrayerBreaks(data.prayer_breaks || []);
-        else setPrayerBreaks([]);
+    Promise.all([
+      fetch(`/api/prayer_breaks?${params.toString()}`, { cache: "no-store" }).then(
+        (r) => r.json(),
+      ),
+      fetch(`/api/attendance?${params.toString()}&summary=1`, {
+        cache: "no-store",
+      }).then((r) => r.json()),
+    ])
+      .then(([prayerData, attData]) => {
+        setPrayerBreaks(
+          prayerData.success ? prayerData.prayer_breaks || [] : [],
+        );
+        setAttendanceRows(
+          attData.success && Array.isArray(attData.attendance)
+            ? attData.attendance
+            : [],
+        );
       })
-      .catch(() => setPrayerBreaks([]))
+      .catch(() => {
+        setPrayerBreaks([]);
+        setAttendanceRows([]);
+      })
       .finally(() => setLoading(false));
   }, [fromDate, toDate, today]);
 
@@ -149,6 +170,11 @@ export default function PrayerSummaryView() {
     return map;
   }, [filteredPrayerBreaks]);
 
+  const prayerAllowanceMap = useMemo(
+    () => buildAllowanceSecondsByEmployeeSession(attendanceRows, "prayer"),
+    [attendanceRows],
+  );
+
   const rows = useMemo(() => {
     const liveTotals = new Map(staticTotals);
     for (const p of filteredPrayerBreaks) {
@@ -167,10 +193,17 @@ export default function PrayerSummaryView() {
         const sessionSeconds = p.prayer_break_start ? Math.floor((end - start) / 1000) : 0;
         const key = getSessionGroupingKey(p);
         const dailySeconds = liveTotals.get(key) || sessionSeconds;
-        const exceedToday = dailySeconds > 1800 ? dailySeconds - 1800 : 0;
+        const sessionDate = breakSessionDate(p);
+        const allowance = resolveAllowanceSeconds(prayerAllowanceMap, {
+          employeeId: p.employee_id,
+          sessionDate,
+          attendanceSessionId: p.attendance_session_id,
+          kind: "prayer",
+        });
+        const exceedToday = exceedSecondsOverAllowance(dailySeconds, allowance);
         return {
           ...p,
-          date_display: breakSessionDate(p),
+          date_display: sessionDate,
           prayer_start_display: p.prayer_break_start ? getTimeStringInTimeZone(p.prayer_break_start, SERVER_TIMEZONE) : "",
           prayer_end_display: p.prayer_break_end ? getTimeStringInTimeZone(p.prayer_break_end, SERVER_TIMEZONE) : (isRunning ? "Running..." : ""),
           total_prayer_time: formatDuration(sessionSeconds),
@@ -179,7 +212,7 @@ export default function PrayerSummaryView() {
         };
       })
       .sort((a, b) => new Date(b.prayer_break_start || 0).getTime() - new Date(a.prayer_break_start || 0).getTime());
-  }, [filteredPrayerBreaks, staticTotals, now]);
+  }, [filteredPrayerBreaks, staticTotals, now, prayerAllowanceMap]);
 
   const downloadPrayerCSV = () => {
     const headers = [

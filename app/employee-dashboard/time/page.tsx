@@ -30,6 +30,11 @@ import {
   filterRowsByClockInSessionDate,
   overnightFetchRange,
 } from "@/lib/break-session-date";
+import {
+  buildAllowanceSecondsByEmployeeSession,
+  exceedSecondsOverAllowance,
+  resolveAllowanceSeconds,
+} from "@/lib/break-prayer-allowance";
 
 
 // Helper to format duration in hh:mm:ss
@@ -129,6 +134,8 @@ export default function EmployeeTimePage() {
   const [breaks, setBreaks] = useState<any[]>([]);
   const [prayerBreaks, setPrayerBreaks] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  /** Attendance used only to resolve half-day break/prayer allowances. */
+  const [allowanceAttendance, setAllowanceAttendance] = useState<any[]>([]);
   /** Default: current day only — expand range when user picks dates */
   const today = getLocalDateString();
   const [breakFromDate, setBreakFromDate] = useState(today);
@@ -180,15 +187,31 @@ export default function EmployeeTimePage() {
       toDate: range.toDate,
     });
     setLoadingBreaks(true);
-    fetch(`/api/breaks?${params.toString()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
+    const attParams = new URLSearchParams(params);
+    attParams.set("summary", "1");
+    Promise.all([
+      fetch(`/api/breaks?${params.toString()}`, { cache: "no-store" }).then((r) =>
+        r.json(),
+      ),
+      fetch(`/api/attendance?${attParams.toString()}`, { cache: "no-store" }).then(
+        (r) => r.json(),
+      ),
+    ])
+      .then(([data, attData]) => {
         if (data.success) {
           const list = filterRowsByClockInSessionDate(data.breaks || [], from, to);
           setBreaks(list);
         } else setBreaks([]);
+        setAllowanceAttendance(
+          attData.success && Array.isArray(attData.attendance)
+            ? attData.attendance
+            : [],
+        );
       })
-      .catch(() => setBreaks([]))
+      .catch(() => {
+        setBreaks([]);
+        setAllowanceAttendance([]);
+      })
       .finally(() => setLoadingBreaks(false));
   }, [employeeId, breakFromDate, breakToDate, today]);
 
@@ -203,15 +226,31 @@ export default function EmployeeTimePage() {
       toDate: range.toDate,
     });
     setLoadingPrayer(true);
-    fetch(`/api/prayer_breaks?${params.toString()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
+    const attParams = new URLSearchParams(params);
+    attParams.set("summary", "1");
+    Promise.all([
+      fetch(`/api/prayer_breaks?${params.toString()}`, { cache: "no-store" }).then(
+        (r) => r.json(),
+      ),
+      fetch(`/api/attendance?${attParams.toString()}`, { cache: "no-store" }).then(
+        (r) => r.json(),
+      ),
+    ])
+      .then(([data, attData]) => {
         if (data.success) {
           const list = filterRowsByClockInSessionDate(data.prayer_breaks || [], from, to);
           setPrayerBreaks(list);
         } else setPrayerBreaks([]);
+        setAllowanceAttendance(
+          attData.success && Array.isArray(attData.attendance)
+            ? attData.attendance
+            : [],
+        );
       })
-      .catch(() => setPrayerBreaks([]))
+      .catch(() => {
+        setPrayerBreaks([]);
+        setAllowanceAttendance([]);
+      })
       .finally(() => setLoadingPrayer(false));
   }, [employeeId, prayerFromDate, prayerToDate, today]);
 
@@ -280,6 +319,15 @@ export default function EmployeeTimePage() {
     };
   }, [activeTab, fetchBreaks, fetchPrayerBreaks, fetchAttendance]);
 
+  const breakAllowanceMap = useMemo(
+    () => buildAllowanceSecondsByEmployeeSession(allowanceAttendance, "break"),
+    [allowanceAttendance],
+  );
+  const prayerAllowanceMap = useMemo(
+    () => buildAllowanceSecondsByEmployeeSession(allowanceAttendance, "prayer"),
+    [allowanceAttendance],
+  );
+
   const breakRows = useMemo(() => {
     const staticTotals = new Map<string, number>();
     for (const b of breaks) {
@@ -312,7 +360,14 @@ export default function EmployeeTimePage() {
       }
       const key = getSessionGroupingKey(b, "break_start");
       const dailySeconds = liveTotals.get(key) || sessionSeconds;
-      const dailyExceed = dailySeconds > 3600 ? dailySeconds - 3600 : 0;
+      const sessionDate = breakSessionDate(b);
+      const allowance = resolveAllowanceSeconds(breakAllowanceMap, {
+        employeeId: b.employee_id || employeeId,
+        sessionDate,
+        attendanceSessionId: b.attendance_session_id,
+        kind: "break",
+      });
+      const dailyExceed = exceedSecondsOverAllowance(dailySeconds, allowance);
       return {
         ...b,
         break_start_display: b.break_start ? getTimeStringInTimeZone(b.break_start, SERVER_TIMEZONE) : "",
@@ -324,11 +379,11 @@ export default function EmployeeTimePage() {
         total_break_time: formatDuration(sessionSeconds),
         total_break_time_today: formatDuration(dailySeconds),
         exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-        date_display: breakSessionDate(b),
+        date_display: sessionDate,
         isRunning,
       };
     });
-  }, [breaks, now]);
+  }, [breaks, now, breakAllowanceMap, employeeId]);
 
   const prayerRows = useMemo(() => {
     const staticTotals = new Map<string, number>();
@@ -364,7 +419,14 @@ export default function EmployeeTimePage() {
       }
       const key = getSessionGroupingKey(p, "prayer_break_start");
       const dailySeconds = liveTotals.get(key) || sessionSeconds;
-      const dailyExceed = dailySeconds > 1800 ? dailySeconds - 1800 : 0;
+      const sessionDate = breakSessionDate(p);
+      const allowance = resolveAllowanceSeconds(prayerAllowanceMap, {
+        employeeId: p.employee_id || employeeId,
+        sessionDate,
+        attendanceSessionId: p.attendance_session_id,
+        kind: "prayer",
+      });
+      const dailyExceed = exceedSecondsOverAllowance(dailySeconds, allowance);
       return {
         ...p,
         prayer_start_display: p.prayer_break_start
@@ -378,11 +440,11 @@ export default function EmployeeTimePage() {
         total_prayer_time: formatDuration(sessionSeconds),
         total_prayer_time_today: formatDuration(dailySeconds),
         exceed_today: dailyExceed > 0 ? formatDuration(dailyExceed) : "",
-        date_display: breakSessionDate(p),
+        date_display: sessionDate,
         isRunning,
       };
     });
-  }, [prayerBreaks, now]);
+  }, [prayerBreaks, now, prayerAllowanceMap, employeeId]);
 
   const closedAttendanceHours = useMemo(() => {
     const map = new Map<string | number, string>();

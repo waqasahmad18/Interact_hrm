@@ -24,6 +24,11 @@ import {
   filterRowsByClockInSessionDate,
   overnightFetchRange,
 } from "@/lib/break-session-date";
+import {
+  buildAllowanceSecondsByEmployeeSession,
+  exceedSecondsOverAllowance,
+  resolveAllowanceSeconds,
+} from "@/lib/break-prayer-allowance";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
@@ -66,6 +71,7 @@ function getSessionGroupingKey(record: any) {
 export default function BreakSummaryView() {
   const viewerScope = useViewerDataScope();
   const [breaks, setBreaks] = useState<any[]>([]);
+  const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -114,13 +120,26 @@ export default function BreakSummaryView() {
       toDate: range.toDate,
     });
     setLoading(true);
-    fetch(`/api/breaks?${params.toString()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setBreaks(data.breaks || []);
-        else setBreaks([]);
+    Promise.all([
+      fetch(`/api/breaks?${params.toString()}`, { cache: "no-store" }).then((r) =>
+        r.json(),
+      ),
+      fetch(`/api/attendance?${params.toString()}&summary=1`, {
+        cache: "no-store",
+      }).then((r) => r.json()),
+    ])
+      .then(([breakData, attData]) => {
+        setBreaks(breakData.success ? breakData.breaks || [] : []);
+        setAttendanceRows(
+          attData.success && Array.isArray(attData.attendance)
+            ? attData.attendance
+            : [],
+        );
       })
-      .catch(() => setBreaks([]))
+      .catch(() => {
+        setBreaks([]);
+        setAttendanceRows([]);
+      })
       .finally(() => setLoading(false));
   }, [fromDate, toDate, today]);
 
@@ -169,6 +188,11 @@ export default function BreakSummaryView() {
     return map;
   }, [filteredBreaks]);
 
+  const breakAllowanceMap = useMemo(
+    () => buildAllowanceSecondsByEmployeeSession(attendanceRows, "break"),
+    [attendanceRows],
+  );
+
   const rows = useMemo(() => {
     const liveTotals = new Map(staticTotals);
     for (const b of filteredBreaks) {
@@ -187,10 +211,17 @@ export default function BreakSummaryView() {
         const sessionSeconds = b.break_start ? Math.floor((end - start) / 1000) : 0;
         const key = getSessionGroupingKey(b);
         const dailySeconds = liveTotals.get(key) || sessionSeconds;
-        const exceedToday = dailySeconds > 3600 ? dailySeconds - 3600 : 0;
+        const sessionDate = breakSessionDate(b);
+        const allowance = resolveAllowanceSeconds(breakAllowanceMap, {
+          employeeId: b.employee_id,
+          sessionDate,
+          attendanceSessionId: b.attendance_session_id,
+          kind: "break",
+        });
+        const exceedToday = exceedSecondsOverAllowance(dailySeconds, allowance);
         return {
           ...b,
-          date_display: breakSessionDate(b),
+          date_display: sessionDate,
           break_start_display: b.break_start ? getTimeStringInTimeZone(b.break_start, SERVER_TIMEZONE) : "",
           break_end_display: b.break_end
             ? getTimeStringInTimeZone(b.break_end, SERVER_TIMEZONE)
@@ -203,7 +234,7 @@ export default function BreakSummaryView() {
         };
       })
       .sort((a, b) => new Date(b.break_start || 0).getTime() - new Date(a.break_start || 0).getTime());
-  }, [filteredBreaks, staticTotals, now]);
+  }, [filteredBreaks, staticTotals, now, breakAllowanceMap]);
 
   const downloadBreakCSV = () => {
     const headers = [
