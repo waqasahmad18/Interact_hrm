@@ -164,7 +164,10 @@ export default function ShiftManagementPage() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/hrm-shifts-assignments");
+      const res = await fetch("/api/hrm-shifts-assignments", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (!data.success || !Array.isArray(data.employees)) {
         toastError(data.error || "Failed to fetch employees");
@@ -428,8 +431,30 @@ export default function ShiftManagementPage() {
       const data = await res.json();
       if (data.success) {
         toastSuccess("Shift timing updated successfully!");
+        // Instant UI update — don't wait for full refetch / browser cache.
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.id === editingId
+              ? {
+                  ...emp,
+                  assignment_id: data.assignment_id ?? emp.assignment_id,
+                  shift_name: data.shift_name ?? editShiftName,
+                  start_time: data.start_time ?? editStartTime,
+                  end_time: data.end_time ?? editEndTime,
+                  allow_overtime:
+                    data.allow_overtime !== undefined
+                      ? data.allow_overtime
+                      : editAllowOvertime
+                        ? 1
+                        : 0,
+                  assigned_date: data.assigned_date ?? data.effective_from ?? emp.assigned_date,
+                }
+              : emp,
+          ),
+        );
         setEditingId(null);
-        fetchEmployees();
+        setEditAssignmentId(null);
+        void fetchEmployees();
       } else {
         toastError(data.error || "Failed to update shift");
       }
