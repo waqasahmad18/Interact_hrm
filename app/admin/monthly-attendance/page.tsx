@@ -8,6 +8,7 @@ import { useEmployeeDetailPopup } from "../../components/use-employee-detail-pop
 import { FaFileExcel } from "react-icons/fa";
 import {
   downloadMonthlyAttendanceExcel,
+  excelEmployeeLabel,
   type MonthlyAttendanceExcelRow,
 } from "../../../lib/monthly-attendance-excel";
 import {
@@ -1725,7 +1726,7 @@ export default function MonthlyAttendancePage() {
 
     const ctx = await ensureTungstenCtx();
     const sheets = attendanceByEmployee.map((employee) => ({
-      name: employee.employeeName,
+      name: excelEmployeeLabel(employee.employeeName, employee.pseudonym),
       rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
     }));
 
@@ -1737,13 +1738,14 @@ export default function MonthlyAttendancePage() {
 
   async function downloadEmployeeExcel(employee: any) {
     const ctx = await ensureTungstenCtx();
+    const label = excelEmployeeLabel(employee.employeeName, employee.pseudonym);
     const sheets = [
       {
-        name: employee.employeeName,
+        name: label,
         rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
       },
     ];
-    const fileName = `attendance-${employee.employeeName.replace(/\s+/g, "_")}-${selectedMonth}.xlsx`;
+    const fileName = `attendance-${label.replace(/\s+/g, "_")}-${selectedMonth}.xlsx`;
     await downloadMonthlyAttendanceExcel(sheets, fileName);
   }
 
@@ -1960,7 +1962,7 @@ export default function MonthlyAttendancePage() {
     }
 
     return {
-      employeeName: employee.employeeName,
+      employeeName: excelEmployeeLabel(employee.employeeName, employee.pseudonym),
       rows,
       totalDeduction: calculateTotalDeduction(employee),
     };

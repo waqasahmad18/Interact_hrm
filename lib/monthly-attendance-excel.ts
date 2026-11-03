@@ -47,7 +47,18 @@ export type MonthlyAttendanceExcelRow = {
   isSummary?: boolean;
 };
 
-function sanitizeSheetName(name: string): string {
+/** Sheet tab / export label: assigned pseudo name, else real name. */
+export function excelEmployeeLabel(
+  employeeName: string | null | undefined,
+  pseudonym?: string | null,
+): string {
+  const pseudo = String(pseudonym ?? "").trim();
+  if (pseudo && pseudo !== "-") return pseudo;
+  const name = String(employeeName ?? "").trim();
+  return name || "Employee";
+}
+
+export function sanitizeSheetName(name: string): string {
   const cleaned = String(name || "Employee")
     .replace(/[\\/*?:\[\]]/g, "")
     .trim();
