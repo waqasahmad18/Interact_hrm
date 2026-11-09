@@ -377,6 +377,37 @@ export async function fetchLoansWithInstallments(opts: {
         employeeId: opts.employeeId,
         year: opts.year,
       });
+      const legacyPaid = new Map<string, LoanInstallmentRow>();
+      for (const leg of legacy) {
+        for (const inst of leg.installments || []) {
+          const key = `${Number(leg.employee_id)}|${inst.due_month}`;
+          if (String(inst.status || "").toLowerCase() === "paid") {
+            legacyPaid.set(key, inst);
+          }
+        }
+      }
+
+      // Heal history rows: if Loan page installment is Paid, History must show Paid too
+      for (const loan of loans) {
+        const insts = loan.installments || [];
+        for (const inst of insts) {
+          const key = `${Number(loan.employee_id)}|${inst.due_month}`;
+          const paidLeg = legacyPaid.get(key);
+          if (!paidLeg) continue;
+          if (String(inst.status || "").toLowerCase() === "paid") continue;
+          inst.status = "paid";
+          inst.paid_amount = num(paidLeg.paid_amount) || num(inst.payable_amount) || num(inst.original_amount);
+          inst.paid_at = paidLeg.paid_at || inst.paid_at || paidLeg.updated_at || null;
+        }
+        if (insts.length) {
+          const anyPending = insts.some(
+            (r) => String(r.status || "pending").toLowerCase() === "pending",
+          );
+          loan.status = anyPending ? "active" : "closed";
+          Object.assign(loan, decorateLoan(loan, insts));
+        }
+      }
+
       const covered = new Set<string>();
       for (const loan of loans) {
         for (const inst of loan.installments || []) {
@@ -964,8 +995,28 @@ export async function markMonthDeductionsPaid(
   return { advance, loan };
 }
 
-export async function markMonthDeductionsPaidForAll(month: string): Promise<number> {
-  if (!/^\d{4}-\d{2}$/.test(month)) return 0;
+export type MarkPaidMonthResult = {
+  employees_updated: number;
+  advances_marked: number;
+  loans_marked: number;
+  history_loans_marked: number;
+};
+
+/**
+ * Bulk-mark every advance + loan installment for a payroll month as paid.
+ * Uses month-wide UPDATEs first (reliable), then per-employee sync for ledger gaps.
+ */
+export async function markMonthDeductionsPaidForAll(
+  month: string,
+): Promise<MarkPaidMonthResult> {
+  const empty: MarkPaidMonthResult = {
+    employees_updated: 0,
+    advances_marked: 0,
+    loans_marked: 0,
+    history_loans_marked: 0,
+  };
+  if (!/^\d{4}-\d{2}$/.test(month)) return empty;
+
   const ids = new Set<number>();
   const addIds = (rows: { employee_id: number }[]) => {
     for (const r of rows) {
@@ -974,14 +1025,118 @@ export async function markMonthDeductionsPaidForAll(month: string): Promise<numb
     }
   };
 
+  let advancesMarked = 0;
+  let loansMarked = 0;
+  let historyLoansMarked = 0;
+
+  // 1) Ensure history ledger rows exist for legacy advances this month
   try {
-    const [a]: any = await query(
-      `SELECT DISTINCT employee_id FROM advance_salary
+    const [legacyAdv]: any = await query(
+      `SELECT employee_id, advance_amount
+       FROM advance_salary
        WHERE DATE_FORMAT(created_at, '%Y-%m') = ?
           OR DATE_FORMAT(updated_at, '%Y-%m') = ?`,
       [month, month],
     );
-    addIds(asRows<{ employee_id: number }>(a));
+    for (const row of asRows<{ employee_id: number; advance_amount: number }>(legacyAdv)) {
+      addIds([row]);
+      const amt = num(row.advance_amount);
+      if (!(amt > 0)) continue;
+      await syncAdvanceLedger({
+        employeeId: Number(row.employee_id),
+        payrollMonth: month,
+        amount: amt,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2) Bulk mark advances in history ledger
+  try {
+    const [res]: any = await query(
+      `UPDATE employee_advances
+       SET status = 'paid',
+           notes = 'Marked paid from monthly payroll',
+           updated_at = NOW()
+       WHERE payroll_month = ?
+         AND LOWER(COALESCE(status, 'active')) NOT IN ('paid', 'cancelled')`,
+      [month],
+    );
+    advancesMarked = Number(res?.affectedRows || 0);
+  } catch {
+    /* ignore */
+  }
+
+  // 3) Bulk mark legacy loan installments (Loan page source of truth)
+  try {
+    const [res]: any = await query(
+      `UPDATE loan_installments
+       SET status = 'paid',
+           paid_amount = COALESCE(payable_this_month, original_amount, paid_amount, 0),
+           updated_at = NOW()
+       WHERE month = ?
+         AND LOWER(COALESCE(status, 'pending')) <> 'paid'`,
+      [month],
+    );
+    loansMarked = Number(res?.affectedRows || 0);
+  } catch {
+    /* ignore */
+  }
+
+  // 4) Reconcile so history installments exist for legacy loans
+  try {
+    await reconcileLegacyFinancialHistory();
+  } catch {
+    /* ignore */
+  }
+
+  // 5) Bulk mark history loan installments for this due month
+  try {
+    const [res]: any = await query(
+      `UPDATE employee_loan_installments i
+       INNER JOIN employee_loans l ON l.id = i.loan_id
+       SET i.status = 'paid',
+           i.paid_amount = COALESCE(NULLIF(i.paid_amount, 0), i.payable_amount, i.original_amount, 0),
+           i.paid_at = COALESCE(i.paid_at, NOW()),
+           i.notes = 'Marked paid from monthly payroll',
+           i.updated_at = NOW()
+       WHERE i.due_month = ?
+         AND LOWER(COALESCE(i.status, 'pending')) NOT IN ('paid', 'stopped', 'stop')`,
+      [month],
+    );
+    historyLoansMarked = Number(res?.affectedRows || 0);
+  } catch {
+    /* ignore */
+  }
+
+  // 6) Close loan masters with no pending installments left
+  try {
+    await query(
+      `UPDATE employee_loans l
+       SET l.status = 'closed', l.updated_at = NOW()
+       WHERE LOWER(COALESCE(l.status, 'active')) = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM employee_loan_installments i
+           WHERE i.loan_id = l.id AND LOWER(COALESCE(i.status, 'pending')) = 'pending'
+         )
+         AND EXISTS (
+           SELECT 1 FROM employee_loan_installments i2
+           WHERE i2.loan_id = l.id AND i2.due_month = ?
+         )`,
+      [month],
+    );
+  } catch {
+    /* ignore */
+  }
+
+  // Collect employee ids touched this month (for response count)
+  try {
+    const [c]: any = await query(
+      `SELECT DISTINCT employee_id FROM employee_advances WHERE payroll_month = ?`,
+      [month],
+    );
+    addIds(asRows<{ employee_id: number }>(c));
   } catch {
     /* ignore */
   }
@@ -991,15 +1146,6 @@ export async function markMonthDeductionsPaidForAll(month: string): Promise<numb
       [month],
     );
     addIds(asRows<{ employee_id: number }>(b));
-  } catch {
-    /* ignore */
-  }
-  try {
-    const [c]: any = await query(
-      `SELECT DISTINCT employee_id FROM employee_advances WHERE payroll_month = ?`,
-      [month],
-    );
-    addIds(asRows<{ employee_id: number }>(c));
   } catch {
     /* ignore */
   }
@@ -1016,12 +1162,19 @@ export async function markMonthDeductionsPaidForAll(month: string): Promise<numb
     /* ignore */
   }
 
+  // Per-employee pass as safety net (covers edge ID / sync gaps)
   let n = 0;
   for (const id of ids) {
     const res = await markMonthDeductionsPaid(id, month);
     if (res.advance || res.loan) n += 1;
   }
-  return n;
+
+  return {
+    employees_updated: Math.max(n, ids.size > 0 && (advancesMarked > 0 || loansMarked > 0 || historyLoansMarked > 0) ? ids.size : n),
+    advances_marked: advancesMarked,
+    loans_marked: loansMarked,
+    history_loans_marked: historyLoansMarked,
+  };
 }
 
 export async function fetchEmployeeActivitySummary(year: string) {

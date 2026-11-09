@@ -2126,7 +2126,7 @@ export default function MonthlyAttendancePage() {
                           type: "success",
                           message:
                             data.message ||
-                            `Advance and loan installment for ${selectedMonth} are now Paid in Financial History. Refresh that page to see green Paid status.`,
+                            `Advance and this month's loan installment are now Paid on the Loan page, Advance page, and Financial History. Refresh those pages to see Paid (green).`,
                         });
                       } catch {
                         setFinalizeResult({

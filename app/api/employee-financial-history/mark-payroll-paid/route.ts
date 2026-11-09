@@ -7,7 +7,7 @@ import {
 
 /**
  * POST { month: "YYYY-MM", employee_id?: number }
- * Marks that month's advance + loan installment as paid (manual or from payroll).
+ * Marks that month's advance + loan installment as paid (Loan page, Advance page, Financial History).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -37,16 +37,16 @@ export async function POST(req: NextRequest) {
         month,
         employee_id: employeeId,
         ...result,
-        message: `Advance + loan installment for ${month} marked Paid (Financial History)`,
+        message: `Advance + loan installment for ${month} marked Paid on Loan page, Advance page, and Financial History.`,
       });
     }
 
-    const count = await markMonthDeductionsPaidForAll(month);
+    const result = await markMonthDeductionsPaidForAll(month);
     return NextResponse.json({
       success: true,
       month,
-      employees_updated: count,
-      message: `${count} employee(s): ${month} Advance + Loan installment → Paid in Financial History`,
+      ...result,
+      message: `${month}: ${result.advances_marked} advance(s) + ${result.loans_marked} loan installment(s) marked Paid (Loan page, Advance page, Financial History).`,
     });
   } catch (error: any) {
     return NextResponse.json(

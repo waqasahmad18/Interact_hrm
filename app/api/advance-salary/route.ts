@@ -33,8 +33,9 @@ export async function GET(req: NextRequest) {
         `SELECT employee_id, employee_name, pseudonym, department, advance_amount, created_at
          FROM advance_salary
          WHERE DATE_FORMAT(created_at, '%Y-%m') = ?
+            OR DATE_FORMAT(updated_at, '%Y-%m') = ?
          ORDER BY created_at DESC, id DESC`,
-        [month],
+        [month, month],
       );
       for (const row of asRows<any>(legacyRows)) {
         const key = String(row.employee_id);
