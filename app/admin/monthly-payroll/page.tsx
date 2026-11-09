@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { fetchAdvanceSalary, fetchPayrollLoanAdvance } from "./advanceSalaryUtils";
 import { fetchLoanSalary } from "./loanSalaryUtils";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
@@ -9,6 +10,7 @@ import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFileExcel, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 import finalizeModal from "./finalize-modal.module.css";
+import { orgDeptChipLabel } from "@/app/admin/roles-permissions/system-control-data";
 import * as XLSX from 'xlsx';
 import {
   getDateStringInTimeZone,
@@ -982,6 +984,17 @@ export default function MonthlyAttendancePage() {
         medicalClaims: getClaimsForEmployee(emp),
         medicalDedc: getMedicalDedcForEmployee(emp),
       });
+      if (financePayrollView) {
+        return {
+          ID: emp.employeeId,
+          "Employee Name": emp.employeeName,
+          Pseudonym: emp.pseudonym,
+          Department: emp.departmentName,
+          Advance: row.advanceDeduction,
+          Loan: row.loanDeduction,
+          "Final Salary": row.finalSalary,
+        };
+      }
       return {
       "ID": emp.employeeId,
       "Employee Name": emp.employeeName,
@@ -1215,6 +1228,47 @@ export default function MonthlyAttendancePage() {
   const [finalizeResult, setFinalizeResult] = React.useState<
     null | { type: "success" | "error"; message: string }
   >(null);
+  const pathname = usePathname() || "";
+  const onEmployeePortal = pathname.includes("/employee-dashboard");
+  const [viewerEmployeeId, setViewerEmployeeId] = React.useState("");
+  const [isFinanceViewer, setIsFinanceViewer] = React.useState(false);
+  /** Finance employee-dashboard: compact Final Salary view + Mark Paid */
+  const financePayrollView = onEmployeePortal && isFinanceViewer;
+  const showMarkPaidButton = financePayrollView;
+
+  React.useEffect(() => {
+    let eid = "";
+    try {
+      eid = String(localStorage.getItem("employeeId") || "").trim();
+    } catch {
+      eid = "";
+    }
+    setViewerEmployeeId(/^\d+$/.test(eid) ? eid : "");
+    if (!/^\d+$/.test(eid)) {
+      setIsFinanceViewer(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/access-control/me?employeeId=${encodeURIComponent(eid)}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const dept =
+          data?.departmentName ||
+          data?.department_name ||
+          data?.employee?.department_name ||
+          "";
+        setIsFinanceViewer(orgDeptChipLabel(dept) === "Finance");
+      })
+      .catch(() => {
+        if (!cancelled) setIsFinanceViewer(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const expandIdMap = React.useCallback((raw: Record<string, number>) => {
     const out: Record<string, number> = {};
@@ -1228,21 +1282,14 @@ export default function MonthlyAttendancePage() {
     return out;
   }, []);
 
-  // Fetch unpaid advance + loan for selected month (Loan/Advance = sum)
+  // Fetch unpaid advance + loan for selected month (separate maps)
   React.useEffect(() => {
     if (!selectedMonth) return;
     let cancelled = false;
     fetchPayrollLoanAdvance(selectedMonth).then((data) => {
       if (cancelled) return;
-      // Prefer server combined map (advance + loan already summed per employee)
-      const combined = expandIdMap(data.combined || {});
-      if (Object.keys(combined).length > 0) {
-        setAdvanceSalaryMap(combined);
-        setLoanSalaryMap({});
-      } else {
-        setAdvanceSalaryMap(expandIdMap(data.advances));
-        setLoanSalaryMap(expandIdMap(data.loans));
-      }
+      setAdvanceSalaryMap(expandIdMap(data.advances || {}));
+      setLoanSalaryMap(expandIdMap(data.loans || {}));
     });
     return () => {
       cancelled = true;
@@ -1623,13 +1670,17 @@ export default function MonthlyAttendancePage() {
       ? (opts.ctd as number)
       : 0;
 
-    // Loan/Advance column = unpaid advance + unpaid loan installment for this month
+    // Separate advance + loan (Finance compact view + admin Loan/Advance column)
     const empKey = String(employee.employeeId ?? "");
-    const adv = Number(lookupMoneyMap(advanceSalaryMap, empKey) ?? 0);
-    const loan = Number(lookupMoneyMap(loanSalaryMap, empKey) ?? 0);
-    const loanAdvance =
-      (Number.isFinite(adv) && adv > 0 ? adv : 0) +
-      (Number.isFinite(loan) && loan > 0 ? loan : 0);
+    const advanceDeduction = (() => {
+      const n = Number(lookupMoneyMap(advanceSalaryMap, empKey) ?? 0);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })();
+    const loanDeduction = (() => {
+      const n = Number(lookupMoneyMap(loanSalaryMap, empKey) ?? 0);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })();
+    const loanAdvance = advanceDeduction + loanDeduction;
 
     const totalDeductions =
       unpaidDaysSalary +
@@ -1638,7 +1689,8 @@ export default function MonthlyAttendancePage() {
       otherDed +
       ctd +
       medicalDedc +
-      loanAdvance;
+      advanceDeduction +
+      loanDeduction;
 
     const netBeforeTax = Math.max(0, grossSalary - totalDeductions);
     // Tax base = Net. Salary before Tax (not Gross).
@@ -1672,6 +1724,8 @@ export default function MonthlyAttendancePage() {
       kpisDed,
       otherDed,
       ctd,
+      advanceDeduction,
+      loanDeduction,
       loanAdvance,
       totalDeductions,
       netBeforeTax,
@@ -1705,9 +1759,13 @@ export default function MonthlyAttendancePage() {
     <OptionalAdminShell>
       <div className={styles.breakSummaryContainer}>
         <div style={{ marginBottom: 20 }}>
-          <h1 className={styles.pageTitle}>Monthly Payroll</h1>
+          <h1 className={styles.pageTitle}>
+            {financePayrollView ? "Final Salary (Finance)" : "Monthly Payroll"}
+          </h1>
           <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
-            View and manage all employee payroll records
+            {financePayrollView
+              ? "Company-wide Final Salary with Advance and Loan — mark Paid after recovery"
+              : "View and manage all employee payroll records"}
           </p>
         </div>
 
@@ -1759,18 +1817,20 @@ export default function MonthlyAttendancePage() {
           >
             <FaFileExcel /> Export Excel
           </button>
-          <button
-            type="button"
-            className={styles.breakSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #611f69 0%, #4a1850 100%)" }}
-            onClick={() => {
-              if (!selectedMonth) return;
-              setFinalizeResult(null);
-              setFinalizeModalOpen(true);
-            }}
-          >
-            Mark Final Loan/Advance Paid
-          </button>
+          {showMarkPaidButton ? (
+            <button
+              type="button"
+              className={styles.breakSummaryXLSButton}
+              style={{ background: "linear-gradient(135deg, #611f69 0%, #4a1850 100%)" }}
+              onClick={() => {
+                if (!selectedMonth) return;
+                setFinalizeResult(null);
+                setFinalizeModalOpen(true);
+              }}
+            >
+              Mark Final Loan/Advance Paid
+            </button>
+          ) : null}
         </div>
 
         {loading ? (
@@ -1784,6 +1844,78 @@ export default function MonthlyAttendancePage() {
             {monthInfo.label && `Payroll for ${monthInfo.label}`}
           </h3>
           <div className={styles.breakSummaryTableWrapper}>
+          {financePayrollView ? (
+          <table className={styles.breakSummaryTable} style={{ minWidth: 900 }}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Employee Name</th>
+                <th>Pseudonym</th>
+                <th>Department</th>
+                <th>Advance</th>
+                <th>Loan</th>
+                <th>Final Salary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEmployees && filteredEmployees.length > 0 ? (
+                filteredEmployees.map((employee) => {
+                  const empId = employee.employeeId;
+                  const taxManual = taxEditedRef.current.has(String(empId));
+                  const row = getPayrollBreakdown(employee, {
+                    taxAmount: taxByEmployee[empId],
+                    taxManual,
+                    breakExceedDed: breakExceedDedByEmployee[empId] ?? 0,
+                    kpisDed: kpisDedByEmployee[empId] ?? 0,
+                    otherDed: otherDedByEmployee[empId] ?? 0,
+                    ctd: getCtdForEmployee(employee),
+                    fuelAllowance: getFuelAllowanceForEmployee(employee),
+                    unpaidDays: getUnpaidDaysForEmployee(employee),
+                    medicalClaims: getClaimsForEmployee(employee),
+                    medicalDedc: getMedicalDedcForEmployee(employee),
+                  });
+                  return (
+                    <tr key={employee.employeeId}>
+                      <td className={styles.cellMuted}>{employee.employeeId}</td>
+                      <td>
+                        <EmployeeTableNameCell
+                          name={employee.employeeName}
+                          employeeId={employee.employeeId}
+                          photo={getPhoto(employee.employeeId)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: employee.employeeId,
+                              employee_name: employee.employeeName,
+                              pseudonym: employee.pseudonym,
+                              department_name: employee.departmentName,
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{employee.pseudonym}</td>
+                      <td>{employee.departmentName}</td>
+                      <td style={{ color: "#dc2626", fontWeight: 600 }}>
+                        {formatWithCommas(row.advanceDeduction)}
+                      </td>
+                      <td style={{ color: "#dc2626", fontWeight: 600 }}>
+                        {formatWithCommas(row.loanDeduction)}
+                      </td>
+                      <td style={{ color: "#007a5a", fontWeight: 700 }}>
+                        {formatWithCommas(row.finalSalary)}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className={styles.breakSummaryNoRecords}>
+                    No records found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          ) : (
           <table className={styles.breakSummaryTable} style={{ minWidth: 2000 }}>
             <thead>
               <tr>
@@ -1999,6 +2131,7 @@ export default function MonthlyAttendancePage() {
               )}
             </tbody>
           </table>
+          )}
           </div>
         </div>
       </div>
@@ -2107,8 +2240,17 @@ export default function MonthlyAttendancePage() {
                           "/api/employee-financial-history/mark-payroll-paid",
                           {
                             method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ month: selectedMonth }),
+                            headers: {
+                              "Content-Type": "application/json",
+                              "x-employee-id": viewerEmployeeId,
+                              "x-hrm-employee-id": viewerEmployeeId,
+                            },
+                            body: JSON.stringify({
+                              month: selectedMonth,
+                              viewer_id: viewerEmployeeId
+                                ? Number(viewerEmployeeId)
+                                : undefined,
+                            }),
                           },
                         );
                         const data = await res.json();

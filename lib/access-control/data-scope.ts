@@ -15,7 +15,7 @@ import {
   permissionImpliesDepartmentScope,
 } from "@/lib/org-role";
 import { basePermissionKey, permissionSetHas } from "@/lib/access-control/permission-scope";
-import { isHrDepartment } from "@/lib/access-control/hr-access";
+import { isFinanceDepartment, isHrDepartment } from "@/lib/access-control/hr-access";
 
 export type ViewerDataScope = {
   mode: "all" | "department" | "team" | "self";
@@ -167,6 +167,11 @@ export async function resolveViewerDataScope(
 
   // HR staff need company-wide ops data (payroll / attendance / leaves across depts)
   if (isHrDepartment(selfDeptName)) {
+    return emptyScope(orgRole);
+  }
+
+  // Finance / Accounts — company-wide final salary + advance/loan for all employees
+  if (isFinanceDepartment(selfDeptName)) {
     return emptyScope(orgRole);
   }
 

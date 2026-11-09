@@ -40,6 +40,22 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "portal.my_info.view",
 ];
 
+/**
+ * Every Finance / Accounts employee — company-wide final salary view,
+ * Advance / Loan / Financial History, and Mark Paid from Monthly Payroll.
+ * `@all_departments` so lists are not limited to Finance dept only.
+ */
+export const FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
+  "payroll.monthly.view@all_departments",
+  "payroll.monthly.edit@all_departments",
+  "payroll.advance@all_departments",
+  "payroll.loan@all_departments",
+  "payroll.financial_history@all_departments",
+  "people.employee_list.view@all_departments",
+  "portal.tickets.create",
+  "portal.my_info.view",
+];
+
 /** All HR staff — company HR ticket inbox (view). Approve is Manager-only. */
 export const HR_TICKET_VIEW_PERMISSIONS: string[] = ["ops.tickets.view"];
 
@@ -71,6 +87,10 @@ const ROLE_RANK: Record<string, number> = {
 
 export function isHrDepartment(departmentName: string | null | undefined): boolean {
   return orgDeptChipLabel(departmentName) === "HR";
+}
+
+export function isFinanceDepartment(departmentName: string | null | undefined): boolean {
+  return orgDeptChipLabel(departmentName) === "Finance";
 }
 
 function roleRank(role: unknown): number {
@@ -117,7 +137,10 @@ export function mergeHrAccessPermissions(opts: {
   const headHint = detectDeptHeadHint(opts.firstName, opts.lastName);
   const deptHeadCeo = ceo || Boolean(headHint);
 
+  const finance = isFinanceDepartment(opts.departmentName);
+
   // Master switch: everyone → default employee dashboard (no role menus).
+  // Exception: Finance staff still get payroll / advance / loan / history menus.
   if (opts.allEmployeeDashboardEnabled) {
     const set = new Set<string>();
     for (const k of opts.permissions.filter(Boolean)) {
@@ -130,6 +153,9 @@ export function mergeHrAccessPermissions(opts: {
         if (k.startsWith("system.")) set.delete(k);
       }
     }
+    if (finance) {
+      for (const k of FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
+    }
     return [...set];
   }
 
@@ -139,6 +165,10 @@ export function mergeHrAccessPermissions(opts: {
   const slugs = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase()
   );
+
+  if (finance) {
+    for (const k of FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
+  }
 
   // Joe / Max / Mubeen (and BOD/CEO): leave tickets in Ticket Inbox — not Leaves page.
   if (deptHeadCeo) {
