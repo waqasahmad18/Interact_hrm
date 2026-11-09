@@ -279,8 +279,9 @@ export default function SalaryDisbursementPage() {
         <div className={fh.hero}>
           <h1 className={fh.heroTitle}>Salary Disbursement</h1>
           <p className={fh.heroSub}>
-            Finance bank transfer tracker — filter Askari vs Other banks, select employees, confirm
-            total amount, then mark Salary Paid / Unpaid.
+            Finance bank transfer tracker — amounts come from Monthly Payroll Final Salary for the
+            selected month. Filter Askari vs Other banks, select employees, confirm total, then mark
+            Salary Paid / Unpaid.
           </p>
         </div>
 
@@ -407,7 +408,7 @@ export default function SalaryDisbursementPage() {
                   <th>Department</th>
                   <th>Bank name</th>
                   <th>Account number</th>
-                  <th>Salary amount</th>
+                  <th>Final Salary</th>
                   <th>Status</th>
                 </tr>
               </thead>

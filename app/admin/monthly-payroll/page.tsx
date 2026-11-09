@@ -1858,6 +1858,76 @@ export default function MonthlyAttendancePage() {
     medicalPackageByEmployee,
   ]);
 
+  // Snapshot Final Salary for Salary Disbursement (exact Monthly Payroll values).
+  React.useEffect(() => {
+    if (!selectedMonth || !attendanceByEmployee.length) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const rows = attendanceByEmployee.map((employee: any) => {
+        const empId = employee.employeeId;
+        const taxManual = taxEditedRef.current.has(String(empId));
+        const row = getPayrollBreakdown(employee, {
+          taxAmount: taxByEmployee[empId],
+          taxManual,
+          breakExceedDed: breakExceedDedByEmployee[empId] ?? 0,
+          kpisDed: kpisDedByEmployee[empId] ?? 0,
+          otherDed: otherDedByEmployee[empId] ?? 0,
+          ctd: getCtdForEmployee(employee),
+          fuelAllowance: getFuelAllowanceForEmployee(employee),
+          unpaidDays: getUnpaidDaysForEmployee(employee),
+          medicalClaims: getClaimsForEmployee(employee),
+          medicalDedc: getMedicalDedcForEmployee(employee),
+        });
+        return {
+          employee_id: Number(empId),
+          final_salary: Number(row.finalSalary) || 0,
+        };
+      });
+      let viewer = "";
+      try {
+        viewer = String(localStorage.getItem("employeeId") || "").trim();
+      } catch {
+        viewer = "";
+      }
+      void fetch("/api/monthly-payroll/final-salaries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(viewer ? { "x-employee-id": viewer, "x-hrm-employee-id": viewer } : {}),
+        },
+        body: JSON.stringify({
+          month: selectedMonth,
+          rows,
+          viewer_id: /^\d+$/.test(viewer) ? Number(viewer) : undefined,
+        }),
+      }).catch(() => {
+        /* non-blocking sync */
+      });
+    }, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedMonth,
+    attendanceByEmployee,
+    taxByEmployee,
+    breakExceedDedByEmployee,
+    kpisDedByEmployee,
+    otherDedByEmployee,
+    advanceSalaryMap,
+    loanSalaryMap,
+    ctdByEmployee,
+    fuelByEmployee,
+    claimsByEmployee,
+    unpaidDaysByEmployee,
+    defaultCtdByEmployee,
+    defaultFuelByEmployee,
+    medicalPackageByEmployee,
+  ]);
+
   const clearFinanceFilters = () => {
     setSearchName("");
     setSearchPseudo("");

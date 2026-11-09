@@ -7,6 +7,7 @@ import {
   normalizeDisbursementStatus,
   type SalaryBankGroup,
 } from "@/lib/salary-disbursement";
+import { computeMonthlyFinalSalaries } from "@/lib/monthly-payroll-final-salary";
 
 function asRows<T>(result: any): T[] {
   if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as T[];
@@ -167,6 +168,7 @@ export async function GET(req: NextRequest) {
       bankParam === "askari" || bankParam === "other" ? bankParam : "all";
 
     const snapshots = await loadEmployeeSalarySnapshots();
+    const finalSalaryMap = await computeMonthlyFinalSalaries(month);
 
     let existing: DisbursementRow[] = [];
     try {
@@ -187,6 +189,17 @@ export async function GET(req: NextRequest) {
       if (Number.isFinite(id)) byEmp.set(id, row);
     }
 
+    const lookupFinal = (employeeId: number): number => {
+      const keys = [String(employeeId), String(Number(employeeId))];
+      for (const k of keys) {
+        const n = Number(finalSalaryMap[k]);
+        if (Number.isFinite(n) && n >= 0 && Object.prototype.hasOwnProperty.call(finalSalaryMap, k)) {
+          return n;
+        }
+      }
+      return 0;
+    };
+
     const records = snapshots
       .map((emp) => {
         const saved = byEmp.get(emp.employee_id);
@@ -195,10 +208,15 @@ export async function GET(req: NextRequest) {
           saved?.account_number || emp.account_number || "",
         ).trim();
         const group = bankGroupFromName(bankName);
+        const status = normalizeDisbursementStatus(saved?.status);
+        const liveFinal = lookupFinal(emp.employee_id);
+        // Paid rows keep frozen marked amount; unpaid/live rows use Monthly Payroll Final Salary
         const amount =
-          saved?.amount != null && Number(saved.amount) > 0
+          status === "paid" && saved?.amount != null && Number(saved.amount) >= 0
             ? Number(saved.amount)
-            : emp.amount;
+            : liveFinal > 0
+              ? liveFinal
+              : Number(emp.amount) || 0;
         return {
           employee_id: emp.employee_id,
           first_name: emp.first_name,
@@ -211,7 +229,7 @@ export async function GET(req: NextRequest) {
           account_number: accountNumber,
           bank_group: group,
           amount,
-          status: normalizeDisbursementStatus(saved?.status),
+          status,
           marked_at: saved?.marked_at || null,
         };
       })
@@ -295,9 +313,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const snapshots = (await loadEmployeeSalarySnapshots()).filter(
-      (r) => r.bank_group === bankGroup,
-    ).filter((r) => r.amount > 0 || r.account_number || r.bank_name);
+    const finalSalaryMap = await computeMonthlyFinalSalaries(month);
+    const snapshots = (await loadEmployeeSalarySnapshots())
+      .filter((r) => r.bank_group === bankGroup)
+      .filter((r) => r.amount > 0 || r.account_number || r.bank_name);
 
     let paidCount = 0;
     let unpaidCount = 0;
@@ -306,9 +325,15 @@ export async function POST(req: NextRequest) {
 
     for (const row of snapshots) {
       const status = selectedSet.has(row.employee_id) ? "paid" : "unpaid";
+      const liveFinal =
+        Number(finalSalaryMap[String(row.employee_id)]) ||
+        Number(finalSalaryMap[String(Number(row.employee_id))]) ||
+        0;
       const amount = amountMap.has(row.employee_id)
         ? Number(amountMap.get(row.employee_id))
-        : row.amount;
+        : liveFinal > 0
+          ? liveFinal
+          : row.amount;
       try {
         await query(
           `INSERT INTO salary_disbursements
