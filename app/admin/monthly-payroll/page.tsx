@@ -1744,7 +1744,7 @@ export default function MonthlyAttendancePage() {
               if (!selectedMonth) return;
               if (
                 !window.confirm(
-                  `Mark all Loan/Advance deductions for ${selectedMonth} as Paid in Financial History?`,
+                  `Final Salary ke liye ${selectedMonth} ki Loan/Advance deductions Paid mark karein?\n\nLoan page pe status green (Paid) ho jayega.`,
                 )
               ) {
                 return;
@@ -1763,13 +1763,16 @@ export default function MonthlyAttendancePage() {
                 // Refresh deduction maps so Final Salary no longer re-deducts paid items
                 fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
                 fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
-                window.alert(data.message || "Marked paid");
+                window.alert(
+                  data.message ||
+                    "Marked paid — Loan page pe status Paid (green) dikhega.",
+                );
               } catch {
                 window.alert("Failed to mark paid");
               }
             }}
           >
-            Mark Loan/Advance Paid
+            Mark Final Loan/Advance Paid
           </button>
         </div>
 

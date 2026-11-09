@@ -55,40 +55,252 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function decorateLoan(loan: LoanRow, inst: LoanInstallmentRow[]): LoanRow {
+  const paidTotal = inst.reduce((s, r) => s + num(r.paid_amount), 0);
+  const remaining = inst.reduce((s, r) => {
+    const due = Math.max(0, num(r.payable_amount) - num(r.paid_amount));
+    return s + (String(r.status).toLowerCase() === "paid" ? 0 : due);
+  }, 0);
+  return {
+    ...loan,
+    principal: num(loan.principal),
+    installment_count: num(loan.installment_count) || inst.length,
+    installments: inst.map((r) => ({
+      ...r,
+      original_amount: num(r.original_amount),
+      payable_amount: num(r.payable_amount),
+      paid_amount: num(r.paid_amount),
+    })),
+    paid_total: paidTotal,
+    remaining_amount: remaining,
+  };
+}
+
+/** Read legacy loan_installments and group consecutive months into loan masters. */
+async function fetchLoansFromLegacy(opts: {
+  employeeId?: number;
+  year?: string;
+}): Promise<LoanRow[]> {
+  const where: string[] = ["employee_id IS NOT NULL", "month IS NOT NULL"];
+  const params: any[] = [];
+  if (opts.employeeId != null) {
+    where.push("employee_id = ?");
+    params.push(opts.employeeId);
+  }
+  if (opts.year) {
+    where.push("LEFT(month, 4) = ?");
+    params.push(opts.year);
+  }
+
+  const [raw]: any = await query(
+    `SELECT employee_id, month, original_amount, paid_amount,
+            COALESCE(payable_this_month, original_amount) AS payable_this_month,
+            status, created_at, updated_at
+     FROM loan_installments
+     WHERE ${where.join(" AND ")}
+     ORDER BY employee_id ASC, month ASC, created_at ASC`,
+    params,
+  );
+  const rows = asRows<{
+    employee_id: number;
+    month: string;
+    original_amount: number;
+    paid_amount: number;
+    payable_this_month: number;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }>(raw);
+
+  const byEmp = new Map<number, typeof rows>();
+  for (const row of rows) {
+    const id = Number(row.employee_id);
+    const list = byEmp.get(id) || [];
+    list.push(row);
+    byEmp.set(id, list);
+  }
+
+  const out: LoanRow[] = [];
+  let synthId = -1;
+  for (const [employeeId, empRows] of byEmp) {
+    const sorted = [...empRows].sort((a, b) => String(a.month).localeCompare(String(b.month)));
+    const blocks: (typeof sorted)[] = [];
+    let current: typeof sorted = [];
+    for (const row of sorted) {
+      if (current.length === 0) {
+        current = [row];
+        continue;
+      }
+      const prev = String(current[current.length - 1].month).slice(0, 7);
+      const cur = String(row.month).slice(0, 7);
+      if (cur === nextYm(prev)) current.push(row);
+      else {
+        blocks.push(current);
+        current = [row];
+      }
+    }
+    if (current.length) blocks.push(current);
+
+    for (const block of blocks) {
+      const loanId = synthId--;
+      const startMonth = String(block[0].month).slice(0, 7);
+      const principal = block.reduce((s, r) => s + num(r.original_amount), 0);
+      const anyPending = block.some(
+        (r) => String(r.status || "pending").toLowerCase() === "pending",
+      );
+      const installments: LoanInstallmentRow[] = block.map((r, i) => {
+        const st = String(r.status || "pending").toLowerCase();
+        const payable = num(r.payable_this_month ?? r.original_amount);
+        return {
+          id: loanId * 100 - (i + 1),
+          loan_id: loanId,
+          installment_no: i + 1,
+          due_month: String(r.month).slice(0, 7),
+          original_amount: num(r.original_amount),
+          payable_amount: payable,
+          paid_amount: st === "paid" ? num(r.paid_amount) || payable : num(r.paid_amount),
+          status: st || "pending",
+          paid_at: st === "paid" ? r.updated_at || r.created_at || null : null,
+          notes: "From loan page",
+          created_at: r.created_at,
+          updated_at: r.updated_at || r.created_at,
+        };
+      });
+      out.push(
+        decorateLoan(
+          {
+            id: loanId,
+            employee_id: employeeId,
+            principal,
+            installment_count: block.length,
+            start_month: startMonth,
+            status: anyPending ? "active" : "closed",
+            notes: "From loan page",
+            issued_at: block[0].created_at || null,
+            created_by: null,
+            created_at: block[0].created_at,
+            updated_at: block[block.length - 1].updated_at || block[block.length - 1].created_at,
+          },
+          installments,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+async function fetchAdvancesFromLegacy(opts: {
+  employeeId?: number;
+  year?: string;
+  monthFrom?: string;
+  monthTo?: string;
+}): Promise<AdvanceRow[]> {
+  const where: string[] = ["employee_id IS NOT NULL", "advance_amount IS NOT NULL"];
+  const params: any[] = [];
+  if (opts.employeeId != null) {
+    where.push("employee_id = ?");
+    params.push(opts.employeeId);
+  }
+  if (opts.year) {
+    where.push("DATE_FORMAT(created_at, '%Y') = ?");
+    params.push(opts.year);
+  }
+  if (opts.monthFrom) {
+    where.push("DATE_FORMAT(created_at, '%Y-%m') >= ?");
+    params.push(opts.monthFrom);
+  }
+  if (opts.monthTo) {
+    where.push("DATE_FORMAT(created_at, '%Y-%m') <= ?");
+    params.push(opts.monthTo);
+  }
+
+  const [raw]: any = await query(
+    `SELECT id, employee_id, DATE_FORMAT(created_at, '%Y-%m') AS payroll_month,
+            advance_amount AS amount, created_at, updated_at
+     FROM advance_salary
+     WHERE ${where.join(" AND ")}
+     ORDER BY created_at DESC, id DESC`,
+    params,
+  );
+  return asRows<{
+    id: number;
+    employee_id: number;
+    payroll_month: string;
+    amount: number;
+    created_at: string;
+    updated_at: string;
+  }>(raw).map((r) => ({
+    id: Number(r.id),
+    employee_id: Number(r.employee_id),
+    payroll_month: String(r.payroll_month).slice(0, 7),
+    amount: num(r.amount),
+    status: "active",
+    notes: "From advance page",
+    created_by: null,
+    created_at: r.created_at,
+    updated_at: r.updated_at || r.created_at,
+  }));
+}
+
 export async function fetchAdvances(opts: {
   employeeId?: number;
   year?: string;
   monthFrom?: string;
   monthTo?: string;
 }): Promise<AdvanceRow[]> {
-  const where: string[] = ["status <> 'cancelled'"];
-  const params: any[] = [];
+  let ledger: AdvanceRow[] = [];
+  try {
+    const where: string[] = ["status <> 'cancelled'"];
+    const params: any[] = [];
 
-  if (opts.employeeId != null) {
-    where.push("employee_id = ?");
-    params.push(opts.employeeId);
-  }
-  if (opts.year) {
-    where.push("LEFT(payroll_month, 4) = ?");
-    params.push(opts.year);
-  }
-  if (opts.monthFrom) {
-    where.push("payroll_month >= ?");
-    params.push(opts.monthFrom);
-  }
-  if (opts.monthTo) {
-    where.push("payroll_month <= ?");
-    params.push(opts.monthTo);
+    if (opts.employeeId != null) {
+      where.push("employee_id = ?");
+      params.push(opts.employeeId);
+    }
+    if (opts.year) {
+      where.push("LEFT(payroll_month, 4) = ?");
+      params.push(opts.year);
+    }
+    if (opts.monthFrom) {
+      where.push("payroll_month >= ?");
+      params.push(opts.monthFrom);
+    }
+    if (opts.monthTo) {
+      where.push("payroll_month <= ?");
+      params.push(opts.monthTo);
+    }
+
+    const [result]: any = await query(
+      `SELECT id, employee_id, payroll_month, amount, status, notes, created_by, created_at, updated_at
+       FROM employee_advances
+       WHERE ${where.join(" AND ")}
+       ORDER BY payroll_month DESC, id DESC`,
+      params,
+    );
+    ledger = asRows<AdvanceRow>(result).map((a) => ({
+      ...a,
+      employee_id: Number(a.employee_id),
+      amount: num(a.amount),
+    }));
+  } catch {
+    ledger = [];
   }
 
-  const [result]: any = await query(
-    `SELECT id, employee_id, payroll_month, amount, status, notes, created_by, created_at, updated_at
-     FROM employee_advances
-     WHERE ${where.join(" AND ")}
-     ORDER BY payroll_month DESC, id DESC`,
-    params,
-  );
-  return asRows<AdvanceRow>(result);
+  // Merge any legacy advances missing from ledger (same employee + month)
+  try {
+    const legacy = await fetchAdvancesFromLegacy(opts);
+    const have = new Set(ledger.map((a) => `${a.employee_id}|${a.payroll_month}`));
+    for (const row of legacy) {
+      const key = `${row.employee_id}|${row.payroll_month}`;
+      if (have.has(key)) continue;
+      ledger.push(row);
+      have.add(key);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return ledger.sort((a, b) => String(b.payroll_month).localeCompare(String(a.payroll_month)));
 }
 
 export async function fetchLoansWithInstallments(opts: {
@@ -96,78 +308,135 @@ export async function fetchLoansWithInstallments(opts: {
   year?: string;
   loanId?: number;
 }): Promise<LoanRow[]> {
-  const where: string[] = ["1=1"];
-  const params: any[] = [];
+  let loans: LoanRow[] = [];
+  try {
+    const where: string[] = ["1=1"];
+    const params: any[] = [];
 
-  if (opts.loanId != null) {
-    where.push("id = ?");
-    params.push(opts.loanId);
-  }
-  if (opts.employeeId != null) {
-    where.push("employee_id = ?");
-    params.push(opts.employeeId);
-  }
-  if (opts.year) {
-    // Loans issued in year OR having any installment due in year
-    where.push(`(
-      LEFT(start_month, 4) = ?
-      OR id IN (
-        SELECT loan_id FROM employee_loan_installments WHERE LEFT(due_month, 4) = ?
-      )
-    )`);
-    params.push(opts.year, opts.year);
+    if (opts.loanId != null) {
+      where.push("id = ?");
+      params.push(opts.loanId);
+    }
+    if (opts.employeeId != null) {
+      where.push("employee_id = ?");
+      params.push(opts.employeeId);
+    }
+    if (opts.year) {
+      where.push(`(
+        LEFT(start_month, 4) = ?
+        OR id IN (
+          SELECT loan_id FROM employee_loan_installments WHERE LEFT(due_month, 4) = ?
+        )
+      )`);
+      params.push(opts.year, opts.year);
+    }
+
+    const [loanResult]: any = await query(
+      `SELECT id, employee_id, principal, installment_count, start_month, status, notes,
+              issued_at, created_by, created_at, updated_at
+       FROM employee_loans
+       WHERE ${where.join(" AND ")}
+       ORDER BY start_month DESC, id DESC`,
+      params,
+    );
+    const base = asRows<LoanRow>(loanResult);
+    if (base.length > 0) {
+      const ids = base.map((l) => l.id);
+      const placeholders = ids.map(() => "?").join(",");
+      const [instResult]: any = await query(
+        `SELECT id, loan_id, installment_no, due_month, original_amount, payable_amount,
+                paid_amount, status, paid_at, notes, created_at, updated_at
+         FROM employee_loan_installments
+         WHERE loan_id IN (${placeholders})
+         ORDER BY loan_id, installment_no ASC`,
+        ids,
+      );
+      const installments = asRows<LoanInstallmentRow>(instResult);
+      const byLoan = new Map<number, LoanInstallmentRow[]>();
+      for (const row of installments) {
+        const list = byLoan.get(row.loan_id) || [];
+        list.push(row);
+        byLoan.set(row.loan_id, list);
+      }
+      loans = base.map((loan) => decorateLoan(loan, byLoan.get(loan.id) || []));
+    }
+  } catch {
+    loans = [];
   }
 
-  const [loanResult]: any = await query(
-    `SELECT id, employee_id, principal, installment_count, start_month, status, notes,
-            issued_at, created_by, created_at, updated_at
-     FROM employee_loans
-     WHERE ${where.join(" AND ")}
-     ORDER BY start_month DESC, id DESC`,
-    params,
-  );
-  const loans = asRows<LoanRow>(loanResult);
-  if (loans.length === 0) return [];
-
-  const ids = loans.map((l) => l.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const [instResult]: any = await query(
-    `SELECT id, loan_id, installment_no, due_month, original_amount, payable_amount,
-            paid_amount, status, paid_at, notes, created_at, updated_at
-     FROM employee_loan_installments
-     WHERE loan_id IN (${placeholders})
-     ORDER BY loan_id, installment_no ASC`,
-    ids,
-  );
-  const installments = asRows<LoanInstallmentRow>(instResult);
-  const byLoan = new Map<number, LoanInstallmentRow[]>();
-  for (const row of installments) {
-    const list = byLoan.get(row.loan_id) || [];
-    list.push(row);
-    byLoan.set(row.loan_id, list);
+  // Always merge legacy loan page rows so History never shows 0 when Loan page has data
+  if (opts.loanId == null) {
+    try {
+      const legacy = await fetchLoansFromLegacy({
+        employeeId: opts.employeeId,
+        year: opts.year,
+      });
+      const covered = new Set<string>();
+      for (const loan of loans) {
+        for (const inst of loan.installments || []) {
+          covered.add(`${Number(loan.employee_id)}|${inst.due_month}`);
+        }
+      }
+      for (const leg of legacy) {
+        const months = (leg.installments || []).map((i) => i.due_month);
+        if (months.length > 0 && months.every((m) => covered.has(`${Number(leg.employee_id)}|${m}`))) {
+          continue;
+        }
+        loans.push(leg);
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
-  return loans.map((loan) => {
-    const inst = byLoan.get(loan.id) || [];
-    const paidTotal = inst.reduce((s, r) => s + num(r.paid_amount), 0);
-    const remaining = inst.reduce((s, r) => {
-      const due = Math.max(0, num(r.payable_amount) - num(r.paid_amount));
-      return s + (String(r.status).toLowerCase() === "paid" ? 0 : due);
-    }, 0);
-    return {
-      ...loan,
-      principal: num(loan.principal),
-      installment_count: num(loan.installment_count),
-      installments: inst.map((r) => ({
-        ...r,
-        original_amount: num(r.original_amount),
-        payable_amount: num(r.payable_amount),
-        paid_amount: num(r.paid_amount),
-      })),
-      paid_total: paidTotal,
-      remaining_amount: remaining,
+  return loans;
+}
+
+/** Same source as overview cards — keeps table counts in sync. */
+export function buildActivitySummaryFromData(advances: AdvanceRow[], loans: LoanRow[]) {
+  const map = new Map<
+    number,
+    {
+      employee_id: number;
+      advance_count: number;
+      advance_total: number;
+      loan_count: number;
+      loan_principal: number;
+    }
+  >();
+
+  for (const a of advances) {
+    if (String(a.status || "").toLowerCase() === "cancelled") continue;
+    const id = Number(a.employee_id);
+    if (!Number.isFinite(id)) continue;
+    const cur = map.get(id) || {
+      employee_id: id,
+      advance_count: 0,
+      advance_total: 0,
+      loan_count: 0,
+      loan_principal: 0,
     };
-  });
+    cur.advance_count += 1;
+    cur.advance_total += num(a.amount);
+    map.set(id, cur);
+  }
+
+  for (const l of loans) {
+    const id = Number(l.employee_id);
+    if (!Number.isFinite(id)) continue;
+    const cur = map.get(id) || {
+      employee_id: id,
+      advance_count: 0,
+      advance_total: 0,
+      loan_count: 0,
+      loan_principal: 0,
+    };
+    cur.loan_count += 1;
+    cur.loan_principal += num(l.principal);
+    map.set(id, cur);
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.employee_id - b.employee_id);
 }
 
 export function buildYearOverview(advances: AdvanceRow[], loans: LoanRow[], year: string) {
@@ -175,7 +444,11 @@ export function buildYearOverview(advances: AdvanceRow[], loans: LoanRow[], year
   const advancesTakenCount = advanceActive.length;
   const advancesTakenTotal = advanceActive.reduce((s, a) => s + num(a.amount), 0);
 
-  const loansIssued = loans.filter((l) => String(l.start_month || "").startsWith(year));
+  // Count any loan that starts in year OR has installments in year
+  const loansIssued = loans.filter((l) => {
+    if (String(l.start_month || "").startsWith(year)) return true;
+    return (l.installments || []).some((i) => String(i.due_month || "").startsWith(year));
+  });
   const loansTakenCount = loansIssued.length;
   const loansTakenPrincipal = loansIssued.reduce((s, l) => s + num(l.principal), 0);
 

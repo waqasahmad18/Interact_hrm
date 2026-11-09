@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import {
+  buildActivitySummaryFromData,
   buildYearOverview,
   fetchAdvances,
-  fetchEmployeeActivitySummary,
   fetchLoansWithInstallments,
   reconcileLegacyFinancialHistory,
 } from "@/lib/employee-financial-history";
@@ -41,11 +41,14 @@ export async function GET(req: NextRequest) {
     const employeeId =
       employeeIdRaw && /^\d+$/.test(employeeIdRaw) ? Number(employeeIdRaw) : null;
 
-    // Keep history tables in sync with Advance/Loan entry pages
+    // Best-effort persist into history tables (never blocks reads)
     await reconcileLegacyFinancialHistory();
 
     if (employeeId == null) {
-      const summary = await fetchEmployeeActivitySummary(year);
+      const advances = await fetchAdvances({ year });
+      const loans = await fetchLoansWithInstallments({ year });
+      const overview = buildYearOverview(advances, loans, year);
+      const summary = buildActivitySummaryFromData(advances, loans);
       const names = await employeeNameMap(summary.map((s) => s.employee_id));
       const employees = summary.map((s) => {
         const info = names.get(s.employee_id);
@@ -55,10 +58,6 @@ export async function GET(req: NextRequest) {
           pseudonym: info?.pseudonym || null,
         };
       });
-
-      const advances = await fetchAdvances({ year });
-      const loans = await fetchLoansWithInstallments({ year });
-      const overview = buildYearOverview(advances, loans, year);
 
       return NextResponse.json({
         success: true,

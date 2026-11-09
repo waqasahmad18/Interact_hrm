@@ -214,6 +214,45 @@ export default function LoanManagementPage() {
 
 	const getEmployeeRecord = (id: number) => employees.find(e => e.id === id);
 
+	const statusSelectStyle = (status: string): React.CSSProperties => {
+		const s = String(status || "pending").toLowerCase();
+		if (s === "paid") {
+			return {
+				width: 110,
+				fontSize: 13,
+				padding: "6px 8px",
+				fontWeight: 700,
+				borderRadius: 8,
+				border: "1px solid #86efac",
+				background: "#dcfce7",
+				color: "#166534",
+			};
+		}
+		if (s === "stop") {
+			return {
+				width: 110,
+				fontSize: 13,
+				padding: "6px 8px",
+				fontWeight: 700,
+				borderRadius: 8,
+				border: "1px solid #fca5a5",
+				background: "#fee2e2",
+				color: "#b91c1c",
+			};
+		}
+		// pending (default) — yellow
+		return {
+			width: 110,
+			fontSize: 13,
+			padding: "6px 8px",
+			fontWeight: 700,
+			borderRadius: 8,
+			border: "1px solid #fde68a",
+			background: "#fef9c3",
+			color: "#a16207",
+		};
+	};
+
 	return (
 		<OptionalAdminShell>
 			<div className={styles.breakSummaryContainer} style={{ position: "relative", maxWidth: 1200, margin: "0 auto" }}>
@@ -397,7 +436,7 @@ export default function LoanManagementPage() {
 												value={(loan.status || "pending").toLowerCase()}
 												onChange={(e) => handleStatusChange(loan, e.target.value)}
 												className={styles.breakSummaryInput}
-												style={{ width: 100, fontSize: 13, padding: "6px 8px" }}
+												style={statusSelectStyle(loan.status)}
 											>
 												<option value="pending">Pending</option>
 												<option value="paid">Paid</option>
