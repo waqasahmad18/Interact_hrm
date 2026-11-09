@@ -503,13 +503,22 @@ export async function syncAdvanceLedger(opts: {
     );
     const rows = asRows<{ id: number }>(existing);
     if (rows.length > 0) {
+      // Re-saving amount from Advance page re-opens deduction (active).
+      // Do not touch rows already paid unless amount actually changes.
       await query(
-        `UPDATE employee_advances SET amount = ?, status = 'active', updated_at = NOW() WHERE id = ?`,
-        [opts.amount, rows[0].id],
+        `UPDATE employee_advances
+         SET amount = ?,
+             status = CASE
+               WHEN LOWER(status) = 'paid' AND amount = ? THEN status
+               ELSE 'active'
+             END,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [opts.amount, opts.amount, rows[0].id],
       );
       await query(
         `DELETE FROM employee_advances
-         WHERE employee_id = ? AND payroll_month = ? AND id <> ?`,
+         WHERE employee_id = ? AND payroll_month = ? AND id <> ? AND LOWER(status) <> 'paid'`,
         [opts.employeeId, opts.payrollMonth, rows[0].id],
       );
       return;
@@ -793,57 +802,67 @@ export async function markMonthDeductionsPaid(
 ): Promise<{ advance: boolean; loan: boolean }> {
   let advance = false;
   let loan = false;
-  if (!employeeId || !/^\d{4}-\d{2}$/.test(month)) return { advance, loan };
+  const empId = Number(employeeId);
+  if (!Number.isFinite(empId) || empId <= 0 || !/^\d{4}-\d{2}$/.test(month)) {
+    return { advance, loan };
+  }
 
+  // --- Advance (history ledger + legacy advance_salary) ---
   try {
     const [advRows]: any = await query(
-      `SELECT id, amount FROM employee_advances
+      `SELECT id FROM employee_advances
        WHERE employee_id = ? AND payroll_month = ? AND LOWER(status) NOT IN ('paid','cancelled')
-       ORDER BY id DESC LIMIT 1`,
-      [employeeId, month],
+       ORDER BY id DESC`,
+      [empId, month],
     );
-    const adv = asRows<{ id: number; amount: number }>(advRows);
+    const adv = asRows<{ id: number }>(advRows);
     if (adv.length > 0) {
       await query(
         `UPDATE employee_advances
-         SET status = 'paid', notes = COALESCE(notes, 'Marked paid from payroll'), updated_at = NOW()
-         WHERE id = ?`,
-        [adv[0].id],
+         SET status = 'paid',
+             notes = 'Marked paid from monthly payroll',
+             updated_at = NOW()
+         WHERE employee_id = ? AND payroll_month = ? AND LOWER(status) NOT IN ('paid','cancelled')`,
+        [empId, month],
       );
       advance = true;
     } else {
-      // Ensure ledger row exists from legacy then mark paid
       const [legacy]: any = await query(
         `SELECT advance_amount FROM advance_salary
-         WHERE employee_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ?
+         WHERE employee_id = ?
+           AND (DATE_FORMAT(created_at, '%Y-%m') = ? OR DATE_FORMAT(updated_at, '%Y-%m') = ?)
          ORDER BY id DESC LIMIT 1`,
-        [employeeId, month],
+        [empId, month, month],
       );
       const leg = asRows<{ advance_amount: number }>(legacy);
       if (leg.length > 0 && num(leg[0].advance_amount) > 0) {
         await syncAdvanceLedger({
-          employeeId,
+          employeeId: empId,
           payrollMonth: month,
           amount: num(leg[0].advance_amount),
         });
         await query(
           `UPDATE employee_advances
-           SET status = 'paid', updated_at = NOW()
+           SET status = 'paid',
+               notes = 'Marked paid from monthly payroll',
+               updated_at = NOW()
            WHERE employee_id = ? AND payroll_month = ? AND LOWER(status) <> 'cancelled'`,
-          [employeeId, month],
+          [empId, month],
         );
         advance = true;
       }
     }
   } catch {
-    /* ignore */
+    /* table may be missing on old env */
   }
 
+  // --- Loan installment (legacy + history) ---
   try {
+    let payable = 0;
     const [li]: any = await query(
       `SELECT original_amount, payable_this_month, paid_amount, status
        FROM loan_installments WHERE employee_id = ? AND month = ? LIMIT 1`,
-      [employeeId, month],
+      [empId, month],
     );
     const rows = asRows<{
       original_amount: number;
@@ -852,30 +871,91 @@ export async function markMonthDeductionsPaid(
       status: string;
     }>(li);
     if (rows.length > 0) {
-      const payable = num(rows[0].payable_this_month ?? rows[0].original_amount);
+      payable = num(rows[0].payable_this_month ?? rows[0].original_amount);
       await query(
         `UPDATE loan_installments
          SET status = 'paid', paid_amount = ?, updated_at = NOW()
          WHERE employee_id = ? AND month = ?`,
-        [payable, employeeId, month],
+        [payable, empId, month],
       );
-      await syncLoanInstallmentFromLegacy({
-        employeeId,
-        month,
-        payable,
-        status: "paid",
-        paidAmount: payable,
-      });
-      // If history installment missing, reconcile then mark
+      loan = true;
+    }
+
+    // Direct history installment update (does not depend on legacy row existing)
+    const [histInst]: any = await query(
+      `SELECT i.id, i.payable_amount, i.paid_amount, i.status
+       FROM employee_loan_installments i
+       INNER JOIN employee_loans l ON l.id = i.loan_id
+       WHERE l.employee_id = ? AND i.due_month = ?
+       ORDER BY i.id DESC LIMIT 1`,
+      [empId, month],
+    );
+    const hist = asRows<{
+      id: number;
+      payable_amount: number;
+      paid_amount: number;
+      status: string;
+    }>(histInst);
+    if (hist.length > 0) {
+      const st = String(hist[0].status || "").toLowerCase();
+      if (st !== "paid" && st !== "stopped") {
+        const pay = payable > 0 ? payable : num(hist[0].payable_amount);
+        await query(
+          `UPDATE employee_loan_installments
+           SET status = 'paid', paid_amount = ?, paid_at = NOW(),
+               notes = 'Marked paid from monthly payroll', updated_at = NOW()
+           WHERE id = ?`,
+          [pay, hist[0].id],
+        );
+        loan = true;
+        // Close loan master if no pending installments left
+        const [loanIdRows]: any = await query(
+          `SELECT loan_id FROM employee_loan_installments WHERE id = ?`,
+          [hist[0].id],
+        );
+        const loanId = asRows<{ loan_id: number }>(loanIdRows)[0]?.loan_id;
+        if (loanId) {
+          const [pending]: any = await query(
+            `SELECT COUNT(*) AS c FROM employee_loan_installments
+             WHERE loan_id = ? AND LOWER(status) = 'pending'`,
+            [loanId],
+          );
+          if (num(asRows<{ c: number }>(pending)[0]?.c) === 0) {
+            await query(
+              `UPDATE employee_loans SET status = 'closed', updated_at = NOW() WHERE id = ?`,
+              [loanId],
+            );
+          }
+        }
+      }
+    } else if (loan) {
+      // History row missing — reconcile from legacy then mark
       await reconcileLegacyFinancialHistory();
       await syncLoanInstallmentFromLegacy({
-        employeeId,
+        employeeId: empId,
+        month,
+        payable: payable > 0 ? payable : null,
+        status: "paid",
+        paidAmount: payable > 0 ? payable : null,
+      });
+    } else {
+      // No legacy row either — still try sync after reconcile
+      await reconcileLegacyFinancialHistory();
+      await syncLoanInstallmentFromLegacy({
+        employeeId: empId,
+        month,
+        status: "paid",
+      });
+    }
+
+    if (loan && payable > 0) {
+      await syncLoanInstallmentFromLegacy({
+        employeeId: empId,
         month,
         payable,
         status: "paid",
         paidAmount: payable,
       });
-      loan = true;
     }
   } catch {
     /* ignore */
@@ -887,12 +967,21 @@ export async function markMonthDeductionsPaid(
 export async function markMonthDeductionsPaidForAll(month: string): Promise<number> {
   if (!/^\d{4}-\d{2}$/.test(month)) return 0;
   const ids = new Set<number>();
+  const addIds = (rows: { employee_id: number }[]) => {
+    for (const r of rows) {
+      const id = Number(r.employee_id);
+      if (Number.isFinite(id) && id > 0) ids.add(id);
+    }
+  };
+
   try {
     const [a]: any = await query(
-      `SELECT DISTINCT employee_id FROM advance_salary WHERE DATE_FORMAT(created_at, '%Y-%m') = ?`,
-      [month],
+      `SELECT DISTINCT employee_id FROM advance_salary
+       WHERE DATE_FORMAT(created_at, '%Y-%m') = ?
+          OR DATE_FORMAT(updated_at, '%Y-%m') = ?`,
+      [month, month],
     );
-    for (const r of asRows<{ employee_id: number }>(a)) ids.add(Number(r.employee_id));
+    addIds(asRows<{ employee_id: number }>(a));
   } catch {
     /* ignore */
   }
@@ -901,7 +990,7 @@ export async function markMonthDeductionsPaidForAll(month: string): Promise<numb
       `SELECT DISTINCT employee_id FROM loan_installments WHERE month = ?`,
       [month],
     );
-    for (const r of asRows<{ employee_id: number }>(b)) ids.add(Number(r.employee_id));
+    addIds(asRows<{ employee_id: number }>(b));
   } catch {
     /* ignore */
   }
@@ -910,7 +999,19 @@ export async function markMonthDeductionsPaidForAll(month: string): Promise<numb
       `SELECT DISTINCT employee_id FROM employee_advances WHERE payroll_month = ?`,
       [month],
     );
-    for (const r of asRows<{ employee_id: number }>(c)) ids.add(Number(r.employee_id));
+    addIds(asRows<{ employee_id: number }>(c));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const [d]: any = await query(
+      `SELECT DISTINCT l.employee_id
+       FROM employee_loans l
+       INNER JOIN employee_loan_installments i ON i.loan_id = l.id
+       WHERE i.due_month = ?`,
+      [month],
+    );
+    addIds(asRows<{ employee_id: number }>(d));
   } catch {
     /* ignore */
   }

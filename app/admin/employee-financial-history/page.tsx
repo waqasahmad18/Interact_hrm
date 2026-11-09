@@ -87,8 +87,14 @@ function statusClass(status: string) {
   const s = String(status || "").toLowerCase();
   if (s === "paid" || s === "closed" || s === "cleared") return fh.statusPaid;
   if (s === "active" || s === "pending") return fh.statusActive;
-  if (s === "cancelled" || s === "stop") return fh.statusCancelled;
+  if (s === "cancelled" || s === "stop" || s === "stopped") return fh.statusCancelled;
   return "";
+}
+
+function formatStatus(status: string) {
+  const s = String(status || "").trim();
+  if (!s) return "--";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
 function fmtDate(v: string | null | undefined) {
@@ -463,7 +469,7 @@ export default function EmployeeFinancialHistoryPage() {
                         <td>{money(a.amount)}</td>
                         <td>
                           <span className={`${fh.statusPill} ${statusClass(a.status)}`}>
-                            {a.status}
+                            {formatStatus(a.status)}
                           </span>
                         </td>
                         <td>{a.notes || "--"}</td>
@@ -501,7 +507,7 @@ export default function EmployeeFinancialHistoryPage() {
                           Loan #{loan.id} · {loan.start_month} · {loan.installment_count}{" "}
                           installments{" "}
                           <span className={`${fh.statusPill} ${statusClass(loan.status)}`}>
-                            {loan.status}
+                            {formatStatus(loan.status)}
                           </span>
                         </div>
                         <div className={fh.loanMeta}>
@@ -542,7 +548,7 @@ export default function EmployeeFinancialHistoryPage() {
                                       <span
                                         className={`${fh.statusPill} ${statusClass(inst.status)}`}
                                       >
-                                        {inst.status}
+                                        {formatStatus(inst.status)}
                                       </span>
                                     </td>
                                     <td>{fmtDate(inst.paid_at)}</td>

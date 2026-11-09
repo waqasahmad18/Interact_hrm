@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         month,
         employee_id: employeeId,
         ...result,
-        message: "Marked paid for employee month",
+        message: `Advance + loan installment for ${month} marked Paid (Financial History)`,
       });
     }
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       success: true,
       month,
       employees_updated: count,
-      message: `Marked paid for ${count} employee(s) in ${month}`,
+      message: `${count} employee(s): ${month} Advance + Loan installment → Paid in Financial History`,
     });
   } catch (error: any) {
     return NextResponse.json(

@@ -1761,7 +1761,7 @@ export default function MonthlyAttendancePage() {
               if (!selectedMonth) return;
               if (
                 !window.confirm(
-                  `Final Salary ke liye ${selectedMonth} ki Loan/Advance deductions Paid mark karein?\n\nLoan page pe status green (Paid) ho jayega.`,
+                  `Final Salary confirm?\n\n${selectedMonth} ki Advance + Loan (is month ki installment) Financial History mein Paid (green) ho jayengi.\n\nJo amount payroll mein deduct ho chuka hai uska status Active/Pending se Paid ho jayega.`,
                 )
               ) {
                 return;
@@ -1777,19 +1777,12 @@ export default function MonthlyAttendancePage() {
                   window.alert(data.message || "Failed to mark paid");
                   return;
                 }
-                // Refresh deduction maps so Final Salary no longer re-deducts paid items
+                // Refresh maps — paid items drop out of Loan/Advance deduction
                 const maps = await fetchPayrollLoanAdvance(selectedMonth);
-                const combined = expandIdMap(maps.combined || {});
-                if (Object.keys(combined).length > 0) {
-                  setAdvanceSalaryMap(combined);
-                  setLoanSalaryMap({});
-                } else {
-                  setAdvanceSalaryMap(expandIdMap(maps.advances));
-                  setLoanSalaryMap(expandIdMap(maps.loans));
-                }
+                setAdvanceSalaryMap(expandIdMap(maps.advances || {}));
+                setLoanSalaryMap(expandIdMap(maps.loans || {}));
                 window.alert(
-                  data.message ||
-                    "Marked paid — Loan page pe status Paid (green) dikhega.",
+                  `${data.message || "Marked paid"}\n\nAb Employee Financial History → Advances = Paid, Loans → is month ki installment = Paid (green). Page refresh karein.`,
                 );
               } catch {
                 window.alert("Failed to mark paid");
