@@ -1228,8 +1228,15 @@ export default function MonthlyAttendancePage() {
     let cancelled = false;
     fetchPayrollLoanAdvance(selectedMonth).then((data) => {
       if (cancelled) return;
-      setAdvanceSalaryMap(expandIdMap(data.advances));
-      setLoanSalaryMap(expandIdMap(data.loans));
+      // Prefer server combined map (advance + loan already summed per employee)
+      const combined = expandIdMap(data.combined || {});
+      if (Object.keys(combined).length > 0) {
+        setAdvanceSalaryMap(combined);
+        setLoanSalaryMap({});
+      } else {
+        setAdvanceSalaryMap(expandIdMap(data.advances));
+        setLoanSalaryMap(expandIdMap(data.loans));
+      }
     });
     return () => {
       cancelled = true;
@@ -1738,23 +1745,9 @@ export default function MonthlyAttendancePage() {
             Search
           </button>
           <button
-            onClick={async () => {
-              // Snapshot current Final first, then mark Loan+Advance Paid in history/loan pages
+            onClick={() => {
+              // Export only — do not mark Loan/Advance paid (use Mark Final button for that)
               downloadExcel();
-              if (selectedMonth) {
-                try {
-                  await fetch("/api/employee-financial-history/mark-payroll-paid", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ month: selectedMonth }),
-                  });
-                  const data = await fetchPayrollLoanAdvance(selectedMonth);
-                  setAdvanceSalaryMap(expandIdMap(data.advances));
-                  setLoanSalaryMap(expandIdMap(data.loans));
-                } catch {
-                  /* export already done */
-                }
-              }
             }}
             className={styles.breakSummaryXLSButton}
           >
@@ -1786,8 +1779,14 @@ export default function MonthlyAttendancePage() {
                 }
                 // Refresh deduction maps so Final Salary no longer re-deducts paid items
                 const maps = await fetchPayrollLoanAdvance(selectedMonth);
-                setAdvanceSalaryMap(expandIdMap(maps.advances));
-                setLoanSalaryMap(expandIdMap(maps.loans));
+                const combined = expandIdMap(maps.combined || {});
+                if (Object.keys(combined).length > 0) {
+                  setAdvanceSalaryMap(combined);
+                  setLoanSalaryMap({});
+                } else {
+                  setAdvanceSalaryMap(expandIdMap(maps.advances));
+                  setLoanSalaryMap(expandIdMap(maps.loans));
+                }
                 window.alert(
                   data.message ||
                     "Marked paid — Loan page pe status Paid (green) dikhega.",
