@@ -189,6 +189,12 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "payroll",
   },
   {
+    permission: "payroll.financial_history",
+    name: "Financial History",
+    path: "/employee-dashboard/employee-financial-history",
+    group: "payroll",
+  },
+  {
     permission: "payroll.financial_requests.view",
     name: "Financial Requests",
     path: "/employee-dashboard/financial-requests",
@@ -344,6 +350,7 @@ export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
   "/admin/commissions": "/employee-dashboard/commissions",
   "/admin/advance": "/employee-dashboard/advance",
   "/admin/loan": "/employee-dashboard/loan",
+  "/admin/employee-financial-history": "/employee-dashboard/employee-financial-history",
   "/admin/system-control": "/employee-dashboard/system-control",
   "/admin/tickets": "/employee-dashboard/tickets",
   "/admin/employee-list": "/employee-dashboard/employee-list",

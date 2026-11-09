@@ -34,6 +34,7 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "payroll.monthly.view",
   "payroll.advance",
   "payroll.loan",
+  "payroll.financial_history",
   "people.employee_list.view",
   "portal.tickets.create",
   "portal.my_info.view",

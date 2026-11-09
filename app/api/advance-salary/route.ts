@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { syncAdvanceLedger } from "@/lib/employee-financial-history";
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
         `DELETE FROM advance_salary WHERE employee_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ?`,
         [employee_id, month]
       );
+      await syncAdvanceLedger({ employeeId: employee_id, payrollMonth: month, amount: null, clear: true });
       return NextResponse.json({ success: true, message: "Advance salary cleared." });
     }
 
@@ -71,6 +73,7 @@ export async function POST(req: NextRequest) {
          WHERE employee_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ? AND id <> ?`,
         [employee_id, month, rowId]
       );
+      await syncAdvanceLedger({ employeeId: employee_id, payrollMonth: month, amount: amountNum });
       return NextResponse.json({
         success: true,
         message: "Advance salary record updated successfully",
@@ -86,6 +89,7 @@ export async function POST(req: NextRequest) {
       [employee_id, employee_name, pseudonym || null, department, amountNum, createdAt]
     );
 
+    await syncAdvanceLedger({ employeeId: employee_id, payrollMonth: month, amount: amountNum });
     return NextResponse.json({
       success: true,
       message: "Advance salary record added successfully",
@@ -109,11 +113,17 @@ export async function DELETE(req: NextRequest) {
         `DELETE FROM advance_salary WHERE employee_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ?`,
         [employee_id, month]
       );
+      await syncAdvanceLedger({ employeeId: employee_id, payrollMonth: month, amount: null, clear: true });
     } else {
       await query(
         `DELETE FROM advance_salary WHERE employee_id = ?`,
         [employee_id]
       );
+      try {
+        await query(`DELETE FROM employee_advances WHERE employee_id = ?`, [employee_id]);
+      } catch {
+        /* migration may not be applied yet */
+      }
     }
     return NextResponse.json({ success: true, message: "Advance salary record removed." });
   } catch (error: any) {
