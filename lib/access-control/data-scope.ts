@@ -15,7 +15,11 @@ import {
   permissionImpliesDepartmentScope,
 } from "@/lib/org-role";
 import { basePermissionKey, permissionSetHas } from "@/lib/access-control/permission-scope";
-import { isFinanceDepartment, isHrDepartment } from "@/lib/access-control/hr-access";
+import {
+  isFinanceAccessRoleSlug,
+  isFinanceDepartment,
+  isHrDepartment,
+} from "@/lib/access-control/hr-access";
 
 export type ViewerDataScope = {
   mode: "all" | "department" | "team" | "self";
@@ -179,17 +183,9 @@ export async function resolveViewerDataScope(
   // the employee's job department chip is not Finance.
   try {
     const access = await resolveEmployeeAccessRoleSlug(eid);
-    const financeRole = (access.roleSlugs || []).some((slug) => {
-      const s = String(slug || "").trim().toLowerCase();
-      return (
-        s === "finance_manager" ||
-        s === "team_lead_finance" ||
-        s === "accountant_billing" ||
-        s === "mp_finance" ||
-        s.includes("finance_manager") ||
-        s.includes("team_lead_finance")
-      );
-    });
+    const financeRole = (access.roleSlugs || []).some((slug) =>
+      isFinanceAccessRoleSlug(slug),
+    );
     if (financeRole) return emptyScope(orgRole);
   } catch {
     /* fall through */

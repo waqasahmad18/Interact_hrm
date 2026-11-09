@@ -804,7 +804,16 @@ export function orgDeptChipLabel(departmentName: string | undefined | null): str
   ) {
     return "Medical Billing";
   }
-  if (t === "finance" || t === "accounts") return "Finance";
+  if (
+    t === "finance" ||
+    t === "accounts" ||
+    t === "account" ||
+    t.includes("finance") ||
+    t.includes("accounts") ||
+    (t.includes("account") && !t.includes("accounting software"))
+  ) {
+    return "Finance";
+  }
   return String(departmentName || "").trim() || null;
 }
 

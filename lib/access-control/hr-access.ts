@@ -93,6 +93,45 @@ export function isFinanceDepartment(departmentName: string | null | undefined): 
   return orgDeptChipLabel(departmentName) === "Finance";
 }
 
+/** System Control role slugs that unlock Finance payroll (Mark Paid, company-wide lists). */
+export function isFinanceAccessRoleSlug(slug: string | null | undefined): boolean {
+  const s = String(slug || "").trim().toLowerCase();
+  if (!s) return false;
+  return (
+    s === "finance_manager" ||
+    s === "team_lead_finance" ||
+    s === "accountant_billing" ||
+    s === "mp_finance" ||
+    s.includes("finance_manager") ||
+    s.includes("team_lead_finance") ||
+    (s.includes("accountant") && s.includes("bill"))
+  );
+}
+
+/**
+ * Who may use Finance Final Salary / Mark Loan-Advance Paid.
+ * Matches department chip, Finance Manager-style roles, or company-wide finance payroll perms.
+ */
+export function viewerHasFinancePayrollPowers(opts: {
+  departmentName?: string | null;
+  roleSlugs?: string[] | null;
+  permissions?: string[] | null;
+}): boolean {
+  if (isFinanceDepartment(opts.departmentName)) return true;
+  if ((opts.roleSlugs || []).some((s) => isFinanceAccessRoleSlug(s))) return true;
+  const perms = opts.permissions || [];
+  return perms.some((p) => {
+    const key = String(p || "").trim().toLowerCase();
+    return (
+      key === "payroll.loan@all_departments" ||
+      key === "payroll.advance@all_departments" ||
+      key === "payroll.monthly.edit@all_departments" ||
+      key === "payroll.monthly.view@all_departments" ||
+      key === "payroll.financial_history@all_departments"
+    );
+  });
+}
+
 function roleRank(role: unknown): number {
   const n = normalizeOrgRole(role);
   return ROLE_RANK[n] ?? 99;
@@ -140,18 +179,10 @@ export function mergeHrAccessPermissions(opts: {
   const slugsEarly = (opts.accessRoleSlugs || []).map((s) =>
     String(s || "").trim().toLowerCase(),
   );
-  const financeRoleSlug = slugsEarly.some(
-    (s) =>
-      s === "finance_manager" ||
-      s === "team_lead_finance" ||
-      s === "accountant_billing" ||
-      s === "mp_finance" ||
-      s.includes("finance_manager") ||
-      s.includes("team_lead_finance") ||
-      s.includes("accountant"),
-  );
-  const finance =
-    isFinanceDepartment(opts.departmentName) || financeRoleSlug;
+  const finance = viewerHasFinancePayrollPowers({
+    departmentName: opts.departmentName,
+    roleSlugs: slugsEarly,
+  });
 
   // Master switch: everyone → default employee dashboard (no role menus).
   // Exception: Finance staff / Finance Manager role still get payroll menus.

@@ -1233,12 +1233,20 @@ export default function MonthlyAttendancePage() {
   const pathname = usePathname() || "";
   const onEmployeePortal = pathname.includes("/employee-dashboard");
   const [viewerEmployeeId, setViewerEmployeeId] = React.useState("");
-  const [isFinanceViewer, setIsFinanceViewer] = React.useState(false);
+  /** pending = waiting for /me so we don't flash full admin payroll for Finance users */
+  const [financeGate, setFinanceGate] = React.useState<"pending" | "yes" | "no">(
+    "pending",
+  );
   /** Finance employee-dashboard: compact Final Salary view + Mark Paid */
-  const financePayrollView = onEmployeePortal && isFinanceViewer;
+  const financePayrollView = onEmployeePortal && financeGate === "yes";
   const showMarkPaidButton = financePayrollView;
 
   React.useEffect(() => {
+    if (!onEmployeePortal) {
+      setFinanceGate("no");
+      setViewerEmployeeId("");
+      return;
+    }
     let eid = "";
     try {
       eid = String(localStorage.getItem("employeeId") || "").trim();
@@ -1247,10 +1255,11 @@ export default function MonthlyAttendancePage() {
     }
     setViewerEmployeeId(/^\d+$/.test(eid) ? eid : "");
     if (!/^\d+$/.test(eid)) {
-      setIsFinanceViewer(false);
+      setFinanceGate("no");
       return;
     }
     let cancelled = false;
+    setFinanceGate("pending");
     fetch(`/api/access-control/me?employeeId=${encodeURIComponent(eid)}`, {
       cache: "no-store",
     })
@@ -1262,15 +1271,44 @@ export default function MonthlyAttendancePage() {
           data?.department_name ||
           data?.employee?.department_name ||
           "";
-        setIsFinanceViewer(orgDeptChipLabel(dept) === "Finance");
+        const slugs: string[] = Array.isArray(data?.role?.slugs)
+          ? data.role.slugs
+          : data?.role?.slug
+            ? [String(data.role.slug)]
+            : [];
+        const perms: string[] = Array.isArray(data?.permissions)
+          ? data.permissions
+          : [];
+        const financeDept = orgDeptChipLabel(dept) === "Finance";
+        const financeRole = slugs.some((slug) => {
+          const s = String(slug || "").trim().toLowerCase();
+          return (
+            s === "finance_manager" ||
+            s === "team_lead_finance" ||
+            s === "accountant_billing" ||
+            s === "mp_finance" ||
+            s.includes("finance_manager") ||
+            s.includes("team_lead_finance")
+          );
+        });
+        const financePerm = perms.some((p) => {
+          const key = String(p || "").trim().toLowerCase();
+          return (
+            key === "payroll.loan@all_departments" ||
+            key === "payroll.advance@all_departments" ||
+            key === "payroll.monthly.edit@all_departments" ||
+            key === "payroll.monthly.view@all_departments"
+          );
+        });
+        setFinanceGate(financeDept || financeRole || financePerm ? "yes" : "no");
       })
       .catch(() => {
-        if (!cancelled) setIsFinanceViewer(false);
+        if (!cancelled) setFinanceGate("no");
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onEmployeePortal]);
 
   const expandIdMap = React.useCallback((raw: Record<string, number>) => {
     const out: Record<string, number> = {};
@@ -1996,6 +2034,23 @@ export default function MonthlyAttendancePage() {
           </div>
         </div>
       ) : null;
+
+  if (onEmployeePortal && financeGate === "pending") {
+    return (
+      <OptionalAdminShell>
+        <div className={fh.page}>
+          <div className={fh.hero}>
+            <h1 className={fh.heroTitle}>Final Salary</h1>
+            <p className={fh.heroSub}>Loading your Finance payroll access…</p>
+          </div>
+          <div className={fh.panel} style={{ padding: "28px 20px", textAlign: "center", color: "#64748b" }}>
+            Please wait…
+          </div>
+        </div>
+        {popup}
+      </OptionalAdminShell>
+    );
+  }
 
   if (financePayrollView) {
     const deptOptions = Array.from(

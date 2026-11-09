@@ -1,54 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
-import { isFinanceDepartment } from "@/lib/access-control/hr-access";
-import { resolveEmployeeAccessRoleSlug } from "@/lib/access-control/store";
+import { viewerHasFinancePayrollPowers } from "@/lib/access-control/hr-access";
+import { getEmployeeAccessPayload } from "@/lib/access-control/store";
 import {
   markMonthDeductionsPaid,
   markMonthDeductionsPaidForAll,
   reconcileLegacyFinancialHistory,
 } from "@/lib/employee-financial-history";
 
-function asRows<T>(result: any): T[] {
-  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as T[];
-  if (Array.isArray(result)) return result as T[];
-  return [];
-}
-
-function isFinanceAccessRole(slugs: string[] | null | undefined): boolean {
-  return (slugs || []).some((slug) => {
-    const s = String(slug || "").trim().toLowerCase();
-    return (
-      s === "finance_manager" ||
-      s === "team_lead_finance" ||
-      s === "accountant_billing" ||
-      s === "mp_finance" ||
-      s.includes("finance_manager") ||
-      s.includes("team_lead_finance")
-    );
-  });
-}
-
-async function resolveViewerDepartment(viewerId: string): Promise<string | null> {
-  try {
-    const [rows]: any = await query(
-      `SELECT d.name AS department_name
-       FROM hrm_employees e
-       LEFT JOIN employee_jobs j ON j.employee_id = e.id
-       LEFT JOIN departments d ON d.id = j.department_id
-       WHERE e.id = ?
-       LIMIT 1`,
-      [Number(viewerId)],
-    );
-    const row = asRows<{ department_name?: string | null }>(rows)[0];
-    return row?.department_name ? String(row.department_name) : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * POST { month: "YYYY-MM", employee_id?: number, viewer_id?: number }
- * Finance department only — marks advance + loan installment Paid everywhere.
+ * Finance department / Finance Manager / finance payroll pack — marks advance + loan Paid.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -77,19 +38,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const deptName = await resolveViewerDepartment(viewerId);
-    let financeRole = false;
+    let allowed = false;
     try {
-      const access = await resolveEmployeeAccessRoleSlug(viewerId);
-      financeRole = isFinanceAccessRole(access.roleSlugs);
+      const access = await getEmployeeAccessPayload(viewerId);
+      allowed = viewerHasFinancePayrollPowers({
+        departmentName: access.departmentName,
+        roleSlugs: access.role?.slugs || [],
+        permissions: access.permissions || [],
+      });
     } catch {
-      financeRole = false;
+      allowed = false;
     }
-    if (!isFinanceDepartment(deptName) && !financeRole) {
+
+    if (!allowed) {
       return NextResponse.json(
         {
           success: false,
-          message: "Only Finance department / Finance Manager can mark Loan/Advance as Paid.",
+          message:
+            "Only Finance department / Finance Manager can mark Loan/Advance as Paid.",
         },
         { status: 403 },
       );
