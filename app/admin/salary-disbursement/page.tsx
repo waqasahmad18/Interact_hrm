@@ -8,7 +8,8 @@ import fh from "../employee-financial-history/financial-history.module.css";
 import finalizeModal from "../monthly-payroll/finalize-modal.module.css";
 import { FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 
-type BankFilter = "askari" | "other";
+type BankFilter = "all" | "askari" | "other";
+type BankGroup = "askari" | "other";
 
 type DisbursementRecord = {
   employee_id: number;
@@ -20,7 +21,7 @@ type DisbursementRecord = {
   department_name?: string;
   bank_name: string;
   account_number: string;
-  bank_group: BankFilter;
+  bank_group: BankGroup;
   amount: number;
   status: "paid" | "unpaid";
 };
@@ -74,7 +75,7 @@ export default function SalaryDisbursementPage() {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [bankFilter, setBankFilter] = useState<BankFilter>("askari");
+  const [bankFilter, setBankFilter] = useState<BankFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"" | "paid" | "unpaid">("");
   const [nameSearch, setNameSearch] = useState("");
   const [records, setRecords] = useState<DisbursementRecord[]>([]);
@@ -228,39 +229,55 @@ export default function SalaryDisbursementPage() {
       const amounts: Record<string, number> = {};
       for (const r of records) amounts[String(r.employee_id)] = Number(r.amount) || 0;
 
-      // Selected among current bank filter list (including those hidden by name/status search)
-      const selectedInBank = records
-        .filter((r) => selected.has(r.employee_id))
-        .map((r) => r.employee_id);
+      const groups: BankGroup[] =
+        bankFilter === "all" ? ["askari", "other"] : [bankFilter];
 
-      const res = await fetch("/api/salary-disbursement", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-employee-id": viewerId,
-          "x-hrm-employee-id": viewerId,
-        },
-        body: JSON.stringify({
-          month,
-          bank_group: bankFilter,
-          selected_ids: selectedInBank,
-          amounts,
-          viewer_id: Number(viewerId),
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setResult({
-          type: "error",
-          message: data.message || "Failed to update salary paid status.",
+      let paidCount = 0;
+      let unpaidCount = 0;
+      let paidAmount = 0;
+      const messages: string[] = [];
+
+      for (const group of groups) {
+        const inGroup = records.filter((r) => r.bank_group === group);
+        if (!inGroup.length) continue;
+        const selectedIds = inGroup
+          .filter((r) => selected.has(r.employee_id))
+          .map((r) => r.employee_id);
+
+        const res = await fetch("/api/salary-disbursement", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-employee-id": viewerId,
+            "x-hrm-employee-id": viewerId,
+          },
+          body: JSON.stringify({
+            month,
+            bank_group: group,
+            selected_ids: selectedIds,
+            amounts,
+            viewer_id: Number(viewerId),
+          }),
         });
-        return;
+        const data = await res.json();
+        if (!data.success) {
+          setResult({
+            type: "error",
+            message: data.message || "Failed to update salary paid status.",
+          });
+          return;
+        }
+        paidCount += Number(data.paid_count) || 0;
+        unpaidCount += Number(data.unpaid_count) || 0;
+        paidAmount += Number(data.paid_amount) || 0;
+        if (data.message) messages.push(String(data.message));
       }
+
       setResult({
         type: "success",
         message:
-          data.message ||
-          `Updated: ${data.paid_count || 0} Salary Paid (total ${money(Number(data.paid_amount) || 0)}).`,
+          messages.join(" ") ||
+          `Updated: ${paidCount} Salary Paid (total ${money(paidAmount)}), ${unpaidCount} Unpaid.`,
       });
       await load();
     } catch {
@@ -319,6 +336,7 @@ export default function SalaryDisbursementPage() {
                 onChange={(e) => setBankFilter(e.target.value as BankFilter)}
                 className={fh.select}
               >
+                <option value="all">All banks</option>
                 <option value="askari">Askari account holders</option>
                 <option value="other">Other banks</option>
               </select>
@@ -496,7 +514,13 @@ export default function SalaryDisbursementPage() {
                   ? result.type === "success"
                     ? "Statuses saved for this bank filter."
                     : "Please try again."
-                  : `${bankFilter === "askari" ? "Askari" : "Other banks"} · ${month}`}
+                  : `${
+                      bankFilter === "all"
+                        ? "All banks"
+                        : bankFilter === "askari"
+                          ? "Askari"
+                          : "Other banks"
+                    } · ${month}`}
               </p>
             </div>
             <div className={finalizeModal.body}>
