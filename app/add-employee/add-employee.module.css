@@ -135,7 +135,6 @@
   color: var(--brand-purple);
 }
 
-.closeBtn,
 .newEmployeeBtn {
   border: none;
   border-radius: 8px;
@@ -143,18 +142,6 @@
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
-}
-
-.closeBtn {
-  background: #edf2f7;
-  color: #334155;
-}
-
-.closeBtn:hover {
-  background: #e2e8f0;
-}
-
-.newEmployeeBtn {
   background: #fff;
   color: var(--brand-green);
   border: 1.5px solid #a7f3d0;
@@ -409,8 +396,28 @@
 
 .actionsLeft {
   display: flex;
+  gap: 12px;
   justify-content: flex-end;
   margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.closeBtn {
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: none;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--font-main);
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.22);
+}
+
+.closeBtn:hover {
+  background: #b91c1c;
 }
 
 .cancelBtn {
