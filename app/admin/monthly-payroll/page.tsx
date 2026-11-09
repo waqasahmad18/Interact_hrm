@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { fetchAdvanceSalary } from "./advanceSalaryUtils";
+import { fetchAdvanceSalary, fetchPayrollLoanAdvance } from "./advanceSalaryUtils";
 import { fetchLoanSalary } from "./loanSalaryUtils";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
@@ -1209,12 +1209,32 @@ export default function MonthlyAttendancePage() {
   const [defaultCtdByEmployee, setDefaultCtdByEmployee] = React.useState<Record<string, number>>({});
   const [advanceSalaryMap, setAdvanceSalaryMap] = React.useState<Record<string, number>>({});
   const [loanSalaryMap, setLoanSalaryMap] = React.useState<Record<string, number>>({});
-  // Fetch advance salary for selected month
+
+  const expandIdMap = React.useCallback((raw: Record<string, number>) => {
+    const out: Record<string, number> = {};
+    for (const [id, amount] of Object.entries(raw || {})) {
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt <= 0) continue;
+      for (const k of payrollIdKeys(id)) {
+        out[k] = Math.max(out[k] || 0, amt);
+      }
+    }
+    return out;
+  }, []);
+
+  // Fetch unpaid advance + loan for selected month (Loan/Advance = sum)
   React.useEffect(() => {
     if (!selectedMonth) return;
-    fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
-    fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
-  }, [selectedMonth]);
+    let cancelled = false;
+    fetchPayrollLoanAdvance(selectedMonth).then((data) => {
+      if (cancelled) return;
+      setAdvanceSalaryMap(expandIdMap(data.advances));
+      setLoanSalaryMap(expandIdMap(data.loans));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMonth, expandIdMap]);
 
   // Fetch all employees and their salary (amount, any component)
   React.useEffect(() => {
@@ -1592,8 +1612,8 @@ export default function MonthlyAttendancePage() {
 
     // Loan/Advance column = unpaid advance + unpaid loan installment for this month
     const empKey = String(employee.employeeId ?? "");
-    const adv = Number(advanceSalaryMap[empKey] ?? advanceSalaryMap[employee.employeeId] ?? 0);
-    const loan = Number(loanSalaryMap[empKey] ?? loanSalaryMap[employee.employeeId] ?? 0);
+    const adv = Number(lookupMoneyMap(advanceSalaryMap, empKey) ?? 0);
+    const loan = Number(lookupMoneyMap(loanSalaryMap, empKey) ?? 0);
     const loanAdvance =
       (Number.isFinite(adv) && adv > 0 ? adv : 0) +
       (Number.isFinite(loan) && loan > 0 ? loan : 0);
@@ -1728,8 +1748,9 @@ export default function MonthlyAttendancePage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ month: selectedMonth }),
                   });
-                  fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
-                  fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
+                  const data = await fetchPayrollLoanAdvance(selectedMonth);
+                  setAdvanceSalaryMap(expandIdMap(data.advances));
+                  setLoanSalaryMap(expandIdMap(data.loans));
                 } catch {
                   /* export already done */
                 }
@@ -1764,8 +1785,9 @@ export default function MonthlyAttendancePage() {
                   return;
                 }
                 // Refresh deduction maps so Final Salary no longer re-deducts paid items
-                fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
-                fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
+                const maps = await fetchPayrollLoanAdvance(selectedMonth);
+                setAdvanceSalaryMap(expandIdMap(maps.advances));
+                setLoanSalaryMap(expandIdMap(maps.loans));
                 window.alert(
                   data.message ||
                     "Marked paid — Loan page pe status Paid (green) dikhega.",
