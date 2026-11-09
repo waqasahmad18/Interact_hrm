@@ -1590,10 +1590,13 @@ export default function MonthlyAttendancePage() {
       ? (opts.ctd as number)
       : 0;
 
-    const adv = Number(advanceSalaryMap[employee.employeeId] ?? 0);
-    const loan = Number(loanSalaryMap[employee.employeeId] ?? 0);
+    // Loan/Advance column = unpaid advance + unpaid loan installment for this month
+    const empKey = String(employee.employeeId ?? "");
+    const adv = Number(advanceSalaryMap[empKey] ?? advanceSalaryMap[employee.employeeId] ?? 0);
+    const loan = Number(loanSalaryMap[empKey] ?? loanSalaryMap[employee.employeeId] ?? 0);
     const loanAdvance =
-      (Number.isFinite(adv) ? adv : 0) + (Number.isFinite(loan) ? loan : 0);
+      (Number.isFinite(adv) && adv > 0 ? adv : 0) +
+      (Number.isFinite(loan) && loan > 0 ? loan : 0);
 
     const totalDeductions =
       unpaidDaysSalary +
@@ -1716,7 +1719,8 @@ export default function MonthlyAttendancePage() {
           </button>
           <button
             onClick={async () => {
-              // Export = month finalization → auto-mark included loan/advance as paid
+              // Snapshot current Final first, then mark Loan+Advance Paid in history/loan pages
+              downloadExcel();
               if (selectedMonth) {
                 try {
                   await fetch("/api/employee-financial-history/mark-payroll-paid", {
@@ -1727,10 +1731,9 @@ export default function MonthlyAttendancePage() {
                   fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
                   fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
                 } catch {
-                  /* export still proceeds */
+                  /* export already done */
                 }
               }
-              downloadExcel();
             }}
             className={styles.breakSummaryXLSButton}
           >
