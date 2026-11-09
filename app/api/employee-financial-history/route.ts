@@ -5,6 +5,7 @@ import {
   fetchAdvances,
   fetchEmployeeActivitySummary,
   fetchLoansWithInstallments,
+  reconcileLegacyFinancialHistory,
 } from "@/lib/employee-financial-history";
 
 function yearOrCurrent(raw: string | null): string {
@@ -39,6 +40,9 @@ export async function GET(req: NextRequest) {
     const employeeIdRaw = searchParams.get("employee_id");
     const employeeId =
       employeeIdRaw && /^\d+$/.test(employeeIdRaw) ? Number(employeeIdRaw) : null;
+
+    // Keep history tables in sync with Advance/Loan entry pages
+    await reconcileLegacyFinancialHistory();
 
     if (employeeId == null) {
       const summary = await fetchEmployeeActivitySummary(year);

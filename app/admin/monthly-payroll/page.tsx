@@ -1714,8 +1714,62 @@ export default function MonthlyAttendancePage() {
           >
             Search
           </button>
-          <button onClick={downloadExcel} className={styles.breakSummaryXLSButton}>
+          <button
+            onClick={async () => {
+              // Export = month finalization → auto-mark included loan/advance as paid
+              if (selectedMonth) {
+                try {
+                  await fetch("/api/employee-financial-history/mark-payroll-paid", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ month: selectedMonth }),
+                  });
+                  fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
+                  fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
+                } catch {
+                  /* export still proceeds */
+                }
+              }
+              downloadExcel();
+            }}
+            className={styles.breakSummaryXLSButton}
+          >
             <FaFileExcel /> Export Excel
+          </button>
+          <button
+            type="button"
+            className={styles.breakSummaryXLSButton}
+            style={{ background: "linear-gradient(135deg, #611f69 0%, #4a1850 100%)" }}
+            onClick={async () => {
+              if (!selectedMonth) return;
+              if (
+                !window.confirm(
+                  `Mark all Loan/Advance deductions for ${selectedMonth} as Paid in Financial History?`,
+                )
+              ) {
+                return;
+              }
+              try {
+                const res = await fetch("/api/employee-financial-history/mark-payroll-paid", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ month: selectedMonth }),
+                });
+                const data = await res.json();
+                if (!data.success) {
+                  window.alert(data.message || "Failed to mark paid");
+                  return;
+                }
+                // Refresh deduction maps so Final Salary no longer re-deducts paid items
+                fetchAdvanceSalary(selectedMonth).then(setAdvanceSalaryMap);
+                fetchLoanSalary(selectedMonth).then(setLoanSalaryMap);
+                window.alert(data.message || "Marked paid");
+              } catch {
+                window.alert("Failed to mark paid");
+              }
+            }}
+          >
+            Mark Loan/Advance Paid
           </button>
         </div>
 
