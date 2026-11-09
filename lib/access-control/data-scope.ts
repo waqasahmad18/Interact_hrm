@@ -170,9 +170,29 @@ export async function resolveViewerDataScope(
     return emptyScope(orgRole);
   }
 
-  // Finance / Accounts — company-wide final salary + advance/loan for all employees
+  // Finance / Accounts department — company-wide final salary + advance/loan
   if (isFinanceDepartment(selfDeptName)) {
     return emptyScope(orgRole);
+  }
+
+  // Finance Manager (and related) System Control roles — company-wide even if
+  // the employee's job department chip is not Finance.
+  try {
+    const access = await resolveEmployeeAccessRoleSlug(eid);
+    const financeRole = (access.roleSlugs || []).some((slug) => {
+      const s = String(slug || "").trim().toLowerCase();
+      return (
+        s === "finance_manager" ||
+        s === "team_lead_finance" ||
+        s === "accountant_billing" ||
+        s === "mp_finance" ||
+        s.includes("finance_manager") ||
+        s.includes("team_lead_finance")
+      );
+    });
+    if (financeRole) return emptyScope(orgRole);
+  } catch {
+    /* fall through */
   }
 
   const perms = new Set(await loadViewerPermissionKeys(eid));

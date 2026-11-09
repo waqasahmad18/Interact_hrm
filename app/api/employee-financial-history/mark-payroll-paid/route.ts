@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { isFinanceDepartment } from "@/lib/access-control/hr-access";
+import { resolveEmployeeAccessRoleSlug } from "@/lib/access-control/store";
 import {
   markMonthDeductionsPaid,
   markMonthDeductionsPaidForAll,
@@ -11,6 +12,20 @@ function asRows<T>(result: any): T[] {
   if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as T[];
   if (Array.isArray(result)) return result as T[];
   return [];
+}
+
+function isFinanceAccessRole(slugs: string[] | null | undefined): boolean {
+  return (slugs || []).some((slug) => {
+    const s = String(slug || "").trim().toLowerCase();
+    return (
+      s === "finance_manager" ||
+      s === "team_lead_finance" ||
+      s === "accountant_billing" ||
+      s === "mp_finance" ||
+      s.includes("finance_manager") ||
+      s.includes("team_lead_finance")
+    );
+  });
 }
 
 async function resolveViewerDepartment(viewerId: string): Promise<string | null> {
@@ -63,11 +78,18 @@ export async function POST(req: NextRequest) {
     }
 
     const deptName = await resolveViewerDepartment(viewerId);
-    if (!isFinanceDepartment(deptName)) {
+    let financeRole = false;
+    try {
+      const access = await resolveEmployeeAccessRoleSlug(viewerId);
+      financeRole = isFinanceAccessRole(access.roleSlugs);
+    } catch {
+      financeRole = false;
+    }
+    if (!isFinanceDepartment(deptName) && !financeRole) {
       return NextResponse.json(
         {
           success: false,
-          message: "Only Finance department can mark Loan/Advance as Paid.",
+          message: "Only Finance department / Finance Manager can mark Loan/Advance as Paid.",
         },
         { status: 403 },
       );

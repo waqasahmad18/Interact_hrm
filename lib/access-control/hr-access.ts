@@ -137,10 +137,24 @@ export function mergeHrAccessPermissions(opts: {
   const headHint = detectDeptHeadHint(opts.firstName, opts.lastName);
   const deptHeadCeo = ceo || Boolean(headHint);
 
-  const finance = isFinanceDepartment(opts.departmentName);
+  const slugsEarly = (opts.accessRoleSlugs || []).map((s) =>
+    String(s || "").trim().toLowerCase(),
+  );
+  const financeRoleSlug = slugsEarly.some(
+    (s) =>
+      s === "finance_manager" ||
+      s === "team_lead_finance" ||
+      s === "accountant_billing" ||
+      s === "mp_finance" ||
+      s.includes("finance_manager") ||
+      s.includes("team_lead_finance") ||
+      s.includes("accountant"),
+  );
+  const finance =
+    isFinanceDepartment(opts.departmentName) || financeRoleSlug;
 
   // Master switch: everyone → default employee dashboard (no role menus).
-  // Exception: Finance staff still get payroll / advance / loan / history menus.
+  // Exception: Finance staff / Finance Manager role still get payroll menus.
   if (opts.allEmployeeDashboardEnabled) {
     const set = new Set<string>();
     for (const k of opts.permissions.filter(Boolean)) {
@@ -162,9 +176,7 @@ export function mergeHrAccessPermissions(opts: {
   const set = new Set(opts.permissions.filter(Boolean));
   const hr = isHrDepartment(opts.departmentName);
   const hrDefaultsOn = opts.hrDepartmentDefaultsEnabled !== false;
-  const slugs = (opts.accessRoleSlugs || []).map((s) =>
-    String(s || "").trim().toLowerCase()
-  );
+  const slugs = slugsEarly;
 
   if (finance) {
     for (const k of FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
