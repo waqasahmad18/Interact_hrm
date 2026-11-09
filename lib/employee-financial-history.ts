@@ -55,6 +55,12 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function nextYm(ym: string): string {
+  const [y, m] = String(ym).slice(0, 7).split("-").map(Number);
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function decorateLoan(loan: LoanRow, inst: LoanInstallmentRow[]): LoanRow {
   const paidTotal = inst.reduce((s, r) => s + num(r.paid_amount), 0);
   const remaining = inst.reduce((s, r) => {
@@ -616,12 +622,6 @@ export async function syncLoanInstallmentFromLegacy(opts: {
   } catch {
     // ignore
   }
-}
-
-function nextYm(ym: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 /**

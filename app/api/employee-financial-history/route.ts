@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
+        history_version: "legacy-merge-v2",
         year,
         employee_id: null,
         overview,
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      history_version: "legacy-merge-v2",
       year,
       employee_id: employeeId,
       employee_name: info?.name || `Employee #${employeeId}`,
