@@ -7,7 +7,8 @@ import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
-import { FaFileExcel } from "react-icons/fa";
+import { FaFileExcel, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
+import finalizeModal from "./finalize-modal.module.css";
 import * as XLSX from 'xlsx';
 import {
   getDateStringInTimeZone,
@@ -1209,6 +1210,11 @@ export default function MonthlyAttendancePage() {
   const [defaultCtdByEmployee, setDefaultCtdByEmployee] = React.useState<Record<string, number>>({});
   const [advanceSalaryMap, setAdvanceSalaryMap] = React.useState<Record<string, number>>({});
   const [loanSalaryMap, setLoanSalaryMap] = React.useState<Record<string, number>>({});
+  const [finalizeModalOpen, setFinalizeModalOpen] = React.useState(false);
+  const [finalizeBusy, setFinalizeBusy] = React.useState(false);
+  const [finalizeResult, setFinalizeResult] = React.useState<
+    null | { type: "success" | "error"; message: string }
+  >(null);
 
   const expandIdMap = React.useCallback((raw: Record<string, number>) => {
     const out: Record<string, number> = {};
@@ -1757,36 +1763,10 @@ export default function MonthlyAttendancePage() {
             type="button"
             className={styles.breakSummaryXLSButton}
             style={{ background: "linear-gradient(135deg, #611f69 0%, #4a1850 100%)" }}
-            onClick={async () => {
+            onClick={() => {
               if (!selectedMonth) return;
-              if (
-                !window.confirm(
-                  `Final Salary confirm?\n\n${selectedMonth} ki Advance + Loan (is month ki installment) Financial History mein Paid (green) ho jayengi.\n\nJo amount payroll mein deduct ho chuka hai uska status Active/Pending se Paid ho jayega.`,
-                )
-              ) {
-                return;
-              }
-              try {
-                const res = await fetch("/api/employee-financial-history/mark-payroll-paid", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ month: selectedMonth }),
-                });
-                const data = await res.json();
-                if (!data.success) {
-                  window.alert(data.message || "Failed to mark paid");
-                  return;
-                }
-                // Refresh maps — paid items drop out of Loan/Advance deduction
-                const maps = await fetchPayrollLoanAdvance(selectedMonth);
-                setAdvanceSalaryMap(expandIdMap(maps.advances || {}));
-                setLoanSalaryMap(expandIdMap(maps.loans || {}));
-                window.alert(
-                  `${data.message || "Marked paid"}\n\nAb Employee Financial History → Advances = Paid, Loans → is month ki installment = Paid (green). Page refresh karein.`,
-                );
-              } catch {
-                window.alert("Failed to mark paid");
-              }
+              setFinalizeResult(null);
+              setFinalizeModalOpen(true);
             }}
           >
             Mark Final Loan/Advance Paid
@@ -2022,6 +2002,163 @@ export default function MonthlyAttendancePage() {
           </div>
         </div>
       </div>
+
+      {finalizeModalOpen ? (
+        <div
+          className={finalizeModal.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="finalize-payroll-title"
+          onClick={() => {
+            if (!finalizeBusy) setFinalizeModalOpen(false);
+          }}
+        >
+          <div
+            className={finalizeModal.card}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={finalizeModal.header}>
+              <div className={finalizeModal.iconWrap}>
+                {finalizeResult?.type === "success" ? (
+                  <FaCheckCircle />
+                ) : finalizeResult?.type === "error" ? (
+                  <FaExclamationTriangle />
+                ) : (
+                  <FaCheckCircle />
+                )}
+              </div>
+              <h3 id="finalize-payroll-title" className={finalizeModal.title}>
+                {finalizeResult?.type === "success"
+                  ? "Marked as Paid"
+                  : finalizeResult?.type === "error"
+                    ? "Could Not Update"
+                    : "Confirm Final Salary"}
+              </h3>
+              <p className={finalizeModal.subtitle}>
+                {finalizeResult
+                  ? finalizeResult.type === "success"
+                    ? "Statuses are updated in Employee Financial History."
+                    : "Please try again in a moment."
+                  : "Lock this month’s advance and loan deductions after Final Salary."}
+              </p>
+            </div>
+
+            <div className={finalizeModal.body}>
+              {!finalizeResult ? (
+                <>
+                  <div className={finalizeModal.monthPill}>
+                    Payroll month: {selectedMonth}
+                    {monthInfo.label ? ` · ${monthInfo.label}` : ""}
+                  </div>
+                  <ul className={finalizeModal.list}>
+                    <li>
+                      <span className={finalizeModal.bullet} />
+                      <span>
+                        Advances for this month will change from <strong>Active</strong> to{" "}
+                        <strong>Paid</strong> (green).
+                      </span>
+                    </li>
+                    <li>
+                      <span className={finalizeModal.bullet} />
+                      <span>
+                        This month’s loan installment will change from <strong>Pending</strong> to{" "}
+                        <strong>Paid</strong> (green).
+                      </span>
+                    </li>
+                    <li>
+                      <span className={finalizeModal.bullet} />
+                      <span>
+                        Amounts already deducted in Monthly Payroll will no longer be re-deducted.
+                      </span>
+                    </li>
+                  </ul>
+                  <p className={finalizeModal.note}>
+                    Use this only after Final Salary is ready for {selectedMonth}. You can review the
+                    result under Employee Financial History → Advances / Loans.
+                  </p>
+                </>
+              ) : finalizeResult.type === "success" ? (
+                <p className={finalizeModal.successBox}>{finalizeResult.message}</p>
+              ) : (
+                <p className={finalizeModal.errorBox}>{finalizeResult.message}</p>
+              )}
+            </div>
+
+            <div className={finalizeModal.actions}>
+              {!finalizeResult ? (
+                <>
+                  <button
+                    type="button"
+                    className={finalizeModal.btnGhost}
+                    disabled={finalizeBusy}
+                    onClick={() => setFinalizeModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={finalizeModal.btnPrimary}
+                    disabled={finalizeBusy}
+                    onClick={async () => {
+                      if (!selectedMonth) return;
+                      setFinalizeBusy(true);
+                      try {
+                        const res = await fetch(
+                          "/api/employee-financial-history/mark-payroll-paid",
+                          {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ month: selectedMonth }),
+                          },
+                        );
+                        const data = await res.json();
+                        if (!data.success) {
+                          setFinalizeResult({
+                            type: "error",
+                            message: data.message || "Failed to mark advance and loan as paid.",
+                          });
+                          return;
+                        }
+                        const maps = await fetchPayrollLoanAdvance(selectedMonth);
+                        setAdvanceSalaryMap(expandIdMap(maps.advances || {}));
+                        setLoanSalaryMap(expandIdMap(maps.loans || {}));
+                        setFinalizeResult({
+                          type: "success",
+                          message:
+                            data.message ||
+                            `Advance and loan installment for ${selectedMonth} are now Paid in Financial History. Refresh that page to see green Paid status.`,
+                        });
+                      } catch {
+                        setFinalizeResult({
+                          type: "error",
+                          message: "Failed to mark advance and loan as paid. Please try again.",
+                        });
+                      } finally {
+                        setFinalizeBusy(false);
+                      }
+                    }}
+                  >
+                    {finalizeBusy ? "Updating…" : "Confirm & Mark Paid"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={
+                    finalizeResult.type === "success"
+                      ? finalizeModal.btnSuccess
+                      : finalizeModal.btnPrimary
+                  }
+                  onClick={() => setFinalizeModalOpen(false)}
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {popup}
     </OptionalAdminShell>
   );
