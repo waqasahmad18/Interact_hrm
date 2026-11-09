@@ -118,6 +118,7 @@ const ALL_SCOPE_LABEL_BY_KEY: Record<string, string> = {
   "payroll.advance": "Advance (all departments)",
   "payroll.loan": "Loan (all departments)",
   "payroll.financial_history": "Financial history (all departments)",
+  "payroll.salary_disbursement": "Salary disbursement (all departments)",
   "payroll.financial_requests.view": "Financial request inbox (all departments)",
   "people.employee_list.view": "View all employee lists",
   "people.employee.add": "Add employee (any department)",

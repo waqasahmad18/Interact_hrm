@@ -734,6 +734,7 @@ const UPSERT_KEYS: Record<string, string[]> = {
   hrm_saved_logins: ["device_key", "login_id"],
   hrm_tardy_notes: ["attendance_id"],
   monthly_payroll_adjustments: ["employee_id", "month"],
+  salary_disbursements: ["employee_id", "month"],
   monthly_attendance_status_overrides: ["employee_id", "attendance_date"],
   employee_leave_allowances: ["employee_id"],
   company_calendar_days: ["date"],

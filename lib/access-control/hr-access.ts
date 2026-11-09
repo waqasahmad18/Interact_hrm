@@ -51,6 +51,7 @@ export const FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "payroll.advance@all_departments",
   "payroll.loan@all_departments",
   "payroll.financial_history@all_departments",
+  "payroll.salary_disbursement@all_departments",
   "people.employee_list.view@all_departments",
   "portal.tickets.create",
   "portal.my_info.view",
@@ -127,7 +128,9 @@ export function viewerHasFinancePayrollPowers(opts: {
       key === "payroll.advance@all_departments" ||
       key === "payroll.monthly.edit@all_departments" ||
       key === "payroll.monthly.view@all_departments" ||
-      key === "payroll.financial_history@all_departments"
+      key === "payroll.financial_history@all_departments" ||
+      key === "payroll.salary_disbursement@all_departments" ||
+      key === "payroll.salary_disbursement"
     );
   });
 }
