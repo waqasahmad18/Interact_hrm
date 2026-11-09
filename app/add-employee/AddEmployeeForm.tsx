@@ -873,38 +873,46 @@ export default function AddEmployeeForm({
       status: createLogin ? 'active' : 'disabled',
       role: role || 'Officer'
     };
-    // Removed unused payload and reference to finalEmployeeId
-    const editIdentifier = String(employeeId || editEmployeeId || '').trim();
+    // Once Personal Details created an employee in this form session, later
+    // saves on this tab must UPDATE that row — never INSERT another ID.
+    const editIdentifier = String(employeeId || editEmployeeId || "").trim();
+    const updatingExisting = Boolean(editIdentifier);
     const editTargetPayload = /^\d+$/.test(editIdentifier)
       ? { id: Number(editIdentifier) }
-      : { employee_code: editIdentifier };
+      : editIdentifier
+        ? { employee_code: editIdentifier }
+        : {};
 
-    let hrmRes = await fetch('/api/hrm_employees', {
-      method: isEdit ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isEdit ? { ...hrmPayload, ...editTargetPayload } : hrmPayload)
+    let hrmRes = await fetch("/api/hrm_employees", {
+      method: updatingExisting ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        updatingExisting ? { ...hrmPayload, ...editTargetPayload } : hrmPayload,
+      ),
     });
     let hrmData = await hrmRes.json();
     if (!hrmData.success) {
       if (hrmData.error) {
-        toastError('Save failed: ' + hrmData.error);
+        toastError("Save failed: " + hrmData.error);
       } else {
-        toastError('Save failed: Unknown');
+        toastError("Save failed: Unknown");
       }
       return;
     }
     const savedId = String(
-      (!isEdit && hrmData.id ? hrmData.id : employeeId || editEmployeeId) || "",
+      (hrmData.id ? hrmData.id : employeeId || editEmployeeId) || "",
     );
-    if (!isEdit && hrmData.id) {
-      setEmployeeId(hrmData.id.toString());
+    if (hrmData.id) {
+      setEmployeeId(String(hrmData.id));
+    } else if (editIdentifier && /^\d+$/.test(editIdentifier)) {
+      setEmployeeId(editIdentifier);
     }
     if (savedId && orgRoleNeedsDepartmentConfirm(role)) {
       const ok = await saveReportingManager(savedId);
       if (!ok) return;
     }
-    toastSuccess(isEdit ? 'Employee updated.' : 'Employee saved.');
-    setActiveTab('Contact Details');
+    toastSuccess(updatingExisting ? "Employee updated." : "Employee saved.");
+    setActiveTab("Contact Details");
   }
 
   return (
