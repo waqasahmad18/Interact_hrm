@@ -33,10 +33,16 @@ export default function AddEmployeeForm({
   edit = false,
   employeeId: editEmployeeId = null,
   onSaved,
+  onClose,
+  onRequestNew,
 }: {
   edit?: boolean;
   employeeId?: string | null;
   onSaved?: () => void;
+  /** Leave the form (modal close / back to employee list). */
+  onClose?: () => void;
+  /** Remount a blank Add Employee form (parent should bump `key`). */
+  onRequestNew?: () => void;
 }) {
   // Departments state for dropdown
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
@@ -944,29 +950,61 @@ export default function AddEmployeeForm({
                 <p className={styles.subheading}>
                   {activeTab} — complete the fields below and save to continue onboarding.
                 </p>
+                {!isEdit && employeeId ? (
+                  <p className={styles.sessionHint}>
+                    Updating employee ID <strong>{employeeId}</strong>. Further Personal Details
+                    saves update this record. Close when done, or start a new form for another hire.
+                  </p>
+                ) : null}
               </div>
-              {!isEdit && (
-                <div className={styles.importActions}>
-                  <button type="button" className={styles.templateBtn} onClick={downloadImportTemplate}>
-                    Download Template
-                  </button>
+              <div className={styles.headerActions}>
+                {!isEdit && (
+                  <div className={styles.importActions}>
+                    <button type="button" className={styles.templateBtn} onClick={downloadImportTemplate}>
+                      Download Template
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.importBtn}
+                      disabled={importing}
+                      onClick={() => importInputRef.current?.click()}
+                    >
+                      {importing ? "Importing…" : "Import XLS"}
+                    </button>
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      style={{ display: "none" }}
+                      onChange={handleImportFile}
+                    />
+                  </div>
+                )}
+                {!isEdit && employeeId && onRequestNew ? (
                   <button
                     type="button"
-                    className={styles.importBtn}
-                    disabled={importing}
-                    onClick={() => importInputRef.current?.click()}
+                    className={styles.newEmployeeBtn}
+                    onClick={() => {
+                      if (
+                        typeof window !== "undefined" &&
+                        !window.confirm(
+                          "Start a blank form for a new employee? Unsaved tab changes on this form will be lost.",
+                        )
+                      ) {
+                        return;
+                      }
+                      onRequestNew();
+                    }}
                   >
-                    {importing ? "Importing…" : "Import XLS"}
+                    New Employee
                   </button>
-                  <input
-                    ref={importInputRef}
-                    type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    style={{ display: "none" }}
-                    onChange={handleImportFile}
-                  />
-                </div>
-              )}
+                ) : null}
+                {onClose ? (
+                  <button type="button" className={styles.closeBtn} onClick={onClose}>
+                    Close
+                  </button>
+                ) : null}
+              </div>
             </div>
             {!isEdit && importSummary ? <pre className={styles.importResult}>{importSummary}</pre> : null}
           </header>

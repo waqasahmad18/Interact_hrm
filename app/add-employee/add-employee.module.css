@@ -107,11 +107,61 @@
   flex-wrap: wrap;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .importActions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.sessionHint {
+  margin: 10px 0 0;
+  max-width: 42rem;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.sessionHint strong {
+  color: var(--brand-purple);
+}
+
+.closeBtn,
+.newEmployeeBtn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.closeBtn {
+  background: #edf2f7;
+  color: #334155;
+}
+
+.closeBtn:hover {
+  background: #e2e8f0;
+}
+
+.newEmployeeBtn {
+  background: #fff;
+  color: var(--brand-green);
+  border: 1.5px solid #a7f3d0;
+}
+
+.newEmployeeBtn:hover {
+  background: #ecfdf5;
 }
 
 .templateBtn,

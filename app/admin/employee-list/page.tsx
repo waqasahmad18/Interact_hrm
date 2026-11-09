@@ -1133,32 +1133,16 @@ export default function EmployeeListStyledPage() {
               <AddEmployeeForm
                 edit={true}
                 employeeId={String(selectedEmployee.id)}
+                onClose={() => {
+                  setModalOpen(false);
+                  setSelectedEmployee(null);
+                }}
                 onSaved={() => {
                   setModalOpen(false);
                   setSelectedEmployee(null);
                   refreshEmployees();
                 }}
               />
-
-              <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
-                <button
-                  style={{
-                    background: "#EDF2F7",
-                    color: "#0052CC",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "8px 18px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    setModalOpen(false);
-                    setSelectedEmployee(null);
-                  }}
-                >
-                  Close
-                </button>
-              </div>
             </div>
           ) : null}
         </Modal>
