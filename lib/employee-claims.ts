@@ -438,6 +438,13 @@ export async function createClaim(input: {
     year: claimYear,
     claimType,
   });
+
+  try {
+    await syncEmployeeClaimsToPayrollAdjustment(employeeId, payrollMonth);
+  } catch (err) {
+    console.warn("[claims] payroll sync after create failed:", err);
+  }
+
   return { claim, balance: nextBalance };
 }
 
@@ -493,7 +500,85 @@ export async function updateClaimStatus(input: {
 
   const claim = await getClaimById(id);
   if (!claim) throw new Error("Claim not found");
+
+  const month =
+    claim.payroll_month ||
+    (claim.claim_date ? claim.claim_date.slice(0, 7) : "");
+  if (month) {
+    try {
+      await syncEmployeeClaimsToPayrollAdjustment(claim.employee_id, month);
+    } catch (err) {
+      console.warn("[claims] payroll sync after status update failed:", err);
+    }
+  }
+
   return claim;
+}
+
+/** Approved/paid claim totals keyed by employee_id for a payroll month (YYYY-MM). */
+export async function sumApprovedClaimsByPayrollMonth(
+  month: string,
+): Promise<Record<string, number>> {
+  await ensureClaimsTables();
+  const m = String(month || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(m)) return {};
+  const [rows]: any = await query(
+    `SELECT employee_id, COALESCE(SUM(amount), 0) AS total
+     FROM employee_claims
+     WHERE payroll_month = ?
+       AND status IN ('approved', 'paid')
+     GROUP BY employee_id`,
+    [m],
+  );
+  const out: Record<string, number> = {};
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const id = String(r.employee_id ?? "").trim();
+    const total = money(r.total);
+    if (id && total > 0) out[id] = total;
+  }
+  return out;
+}
+
+/**
+ * Push ledger total into monthly_payroll_adjustments.medical_claims so Monthly
+ * Payroll Claims column + final-salary compute pick it up for that employee/month.
+ */
+export async function syncEmployeeClaimsToPayrollAdjustment(
+  employeeId: number,
+  month: string,
+): Promise<number> {
+  const eid = Number(employeeId);
+  const m = String(month || "").trim();
+  if (!Number.isFinite(eid) || eid <= 0 || !/^\d{4}-\d{2}$/.test(m)) return 0;
+
+  const sums = await sumApprovedClaimsByPayrollMonth(m);
+  const total = sums[String(eid)] ?? 0;
+
+  try {
+    const [existingRows]: any = await query(
+      `SELECT ctd, fuel_allowance, unpaid_days FROM monthly_payroll_adjustments
+       WHERE employee_id = ? AND month = ? LIMIT 1`,
+      [String(eid), m],
+    );
+    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    await query(
+      `INSERT INTO monthly_payroll_adjustments
+         (employee_id, month, ctd, fuel_allowance, unpaid_days, medical_claims)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE medical_claims = VALUES(medical_claims)`,
+      [
+        String(eid),
+        m,
+        existing?.ctd ?? null,
+        existing?.fuel_allowance ?? null,
+        existing?.unpaid_days ?? null,
+        total > 0 ? total : 0,
+      ],
+    );
+  } catch (err) {
+    console.warn("[claims] payroll adjustment sync failed:", err);
+  }
+  return total;
 }
 
 export async function companyClaimsSummary(year?: string): Promise<{

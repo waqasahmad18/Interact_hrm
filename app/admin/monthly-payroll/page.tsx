@@ -2531,7 +2531,7 @@ export default function MonthlyAttendancePage() {
                           onChange={(e) => setClaimsAmount(empId, e.target.value)}
                           onBlur={(e) => saveClaimsAmount(empId, e.target.value)}
                           style={fuelInputStyle}
-                          title="Claims — added to Gross Salary; saved for this month"
+                          title="Claims — auto from Claims page (approved/paid this month); editable override still saves"
                         />
                       </td>
                       <td style={{ color: '#007a5a', fontWeight: 700 }}>{formatWithCommas(row.grossSalary)}</td>
