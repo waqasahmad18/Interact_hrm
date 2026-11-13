@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
 import fh from "../employee-financial-history/financial-history.module.css";
 import { MEDICAL_PACKAGES } from "@/lib/medical-package";
@@ -99,6 +99,10 @@ export default function ClaimsPage() {
   const [typeFilter, setTypeFilter] = useState("");
 
   const [formEmployeeId, setFormEmployeeId] = useState("");
+  const [empPickerOpen, setEmpPickerOpen] = useState(false);
+  const [empPickerQuery, setEmpPickerQuery] = useState("");
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const empPickerRef = useRef<HTMLDivElement | null>(null);
   const [formAmount, setFormAmount] = useState("");
   const [formDate, setFormDate] = useState(todayIso);
   const [formType, setFormType] = useState("medical");
@@ -111,10 +115,10 @@ export default function ClaimsPage() {
   const [toast, setToast] = useState("");
 
   const loadEmployees = useCallback(async () => {
+    setEmployeesLoading(true);
     try {
-      const res = await fetch("/api/hrm_employees?limit=5000", {
-        cache: "no-store",
-      });
+      // Same source as Advance / Loan — /api/hrm_employees is single-lookup only.
+      const res = await fetch("/api/employee-list", { cache: "no-store" });
       const data = await res.json();
       const list = Array.isArray(data?.employees)
         ? data.employees
@@ -123,7 +127,9 @@ export default function ClaimsPage() {
           : [];
       setEmployees(list as Employee[]);
     } catch {
-      /* ignore */
+      setEmployees([]);
+    } finally {
+      setEmployeesLoading(false);
     }
   }, []);
 
@@ -192,14 +198,16 @@ export default function ClaimsPage() {
     void loadBalance(formEmployeeId, formType);
   }, [formEmployeeId, formType, loadBalance]);
 
-  const departments = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of employees) {
-      const d = String(e.department_name || "").trim();
-      if (d) set.add(d);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [employees]);
+  useEffect(() => {
+    if (!empPickerOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!empPickerRef.current?.contains(e.target as Node)) {
+        setEmpPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [empPickerOpen]);
 
   const filteredClaims = useMemo(() => {
     const q = nameSearch.trim().toLowerCase();
@@ -224,6 +232,40 @@ export default function ClaimsPage() {
       fullName(a).localeCompare(fullName(b)),
     );
   }, [employees]);
+
+  const selectedEmployee = useMemo(
+    () => employeeOptions.find((e) => String(e.id) === formEmployeeId) || null,
+    [employeeOptions, formEmployeeId],
+  );
+
+  const filteredEmployeeOptions = useMemo(() => {
+    const q = empPickerQuery.trim().toLowerCase();
+    if (!q) return employeeOptions;
+    return employeeOptions.filter((e) => {
+      const blob = [
+        fullName(e),
+        e.pseudonym,
+        e.department_name,
+        String(e.id),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [employeeOptions, empPickerQuery]);
+
+  function pickEmployee(emp: Employee) {
+    setFormEmployeeId(String(emp.id));
+    setEmpPickerQuery("");
+    setEmpPickerOpen(false);
+  }
+
+  function clearEmployee() {
+    setFormEmployeeId("");
+    setEmpPickerQuery("");
+    setBalance(null);
+  }
 
   async function onSaveClaim(e: React.FormEvent) {
     e.preventDefault();
@@ -345,24 +387,124 @@ export default function ClaimsPage() {
                 alignItems: "end",
               }}
             >
-              <label className={fh.field}>
+              <div className={fh.field} ref={empPickerRef} style={{ position: "relative" }}>
                 <span className={fh.label}>Employee</span>
-                <select
-                  className={fh.select}
-                  value={formEmployeeId}
-                  onChange={(e) => setFormEmployeeId(e.target.value)}
-                  required
-                >
-                  <option value="">Select employee…</option>
-                  {employeeOptions.map((e) => (
-                    <option key={e.id} value={String(e.id)}>
-                      {fullName(e) || `Employee ${e.id}`}
-                      {e.pseudonym ? ` (${e.pseudonym})` : ""}
-                      {e.department_name ? ` — ${e.department_name}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <input
+                  className={fh.input}
+                  value={
+                    empPickerOpen
+                      ? empPickerQuery
+                      : selectedEmployee
+                        ? `${fullName(selectedEmployee) || `Employee ${selectedEmployee.id}`}${
+                            selectedEmployee.pseudonym
+                              ? ` (${selectedEmployee.pseudonym})`
+                              : ""
+                          }`
+                        : empPickerQuery
+                  }
+                  onChange={(e) => {
+                    setEmpPickerQuery(e.target.value);
+                    setEmpPickerOpen(true);
+                    if (formEmployeeId) setFormEmployeeId("");
+                  }}
+                  onFocus={() => {
+                    setEmpPickerOpen(true);
+                    if (selectedEmployee) setEmpPickerQuery("");
+                  }}
+                  placeholder={
+                    employeesLoading
+                      ? "Loading employees…"
+                      : "Search by name or pseudo…"
+                  }
+                  autoComplete="off"
+                  required={!formEmployeeId}
+                />
+                {formEmployeeId ? (
+                  <button
+                    type="button"
+                    onClick={clearEmployee}
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      top: 30,
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "#64748b",
+                      fontSize: 14,
+                      lineHeight: 1,
+                    }}
+                    aria-label="Clear employee"
+                  >
+                    ×
+                  </button>
+                ) : null}
+                {empPickerOpen ? (
+                  <div
+                    role="listbox"
+                    style={{
+                      position: "absolute",
+                      zIndex: 40,
+                      left: 0,
+                      right: 0,
+                      top: "100%",
+                      marginTop: 4,
+                      maxHeight: 280,
+                      overflowY: "auto",
+                      background: "#fff",
+                      border: "1px solid #d4d4d8",
+                      borderRadius: 8,
+                      boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                    }}
+                  >
+                    {employeesLoading ? (
+                      <div style={{ padding: "10px 12px", color: "#64748b" }}>
+                        Loading employees…
+                      </div>
+                    ) : filteredEmployeeOptions.length === 0 ? (
+                      <div style={{ padding: "10px 12px", color: "#64748b" }}>
+                        {employees.length === 0
+                          ? "No employees found"
+                          : "No match — try name or pseudo"}
+                      </div>
+                    ) : (
+                      filteredEmployeeOptions.slice(0, 80).map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          role="option"
+                          onClick={() => pickEmployee(e)}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "8px 12px",
+                            border: "none",
+                            borderBottom: "1px solid #f1f5f9",
+                            background:
+                              String(e.id) === formEmployeeId ? "#f3e8ff" : "#fff",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>
+                            {fullName(e) || `Employee ${e.id}`}
+                            {e.pseudonym ? (
+                              <span style={{ fontWeight: 500, color: "#611f69" }}>
+                                {" "}
+                                · {e.pseudonym}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                            ID {e.id}
+                            {e.department_name ? ` · ${e.department_name}` : ""}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : null}
+              </div>
               <label className={fh.field}>
                 <span className={fh.label}>Type</span>
                 <select
@@ -635,7 +777,6 @@ export default function ClaimsPage() {
               </tbody>
             </table>
           </div>
-          {departments.length ? null : null}
         </div>
       </div>
     </LayoutDashboard>
