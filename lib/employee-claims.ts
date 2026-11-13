@@ -522,19 +522,29 @@ export async function sumApprovedClaimsByPayrollMonth(
   await ensureClaimsTables();
   const m = String(month || "").trim();
   if (!/^\d{4}-\d{2}$/.test(m)) return {};
-  const [rows]: any = await query(
-    `SELECT employee_id, COALESCE(SUM(amount), 0) AS total
+
+  // Prefer payroll_month; also accept claim_date prefix so older/partial rows count.
+  // Sum in JS (not SQL GROUP BY) for mysql + mongo adapter compatibility.
+  const result: any = await query(
+    `SELECT employee_id, amount, status, payroll_month, claim_date
      FROM employee_claims
-     WHERE payroll_month = ?
-       AND status IN ('approved', 'paid')
-     GROUP BY employee_id`,
-    [m],
+     WHERE status IN ('approved', 'paid')`,
   );
+  const rows: any[] = Array.isArray(result?.[0])
+    ? result[0]
+    : Array.isArray(result)
+      ? result
+      : [];
   const out: Record<string, number> = {};
-  for (const r of Array.isArray(rows) ? rows : []) {
+  for (const r of rows) {
     const id = String(r.employee_id ?? "").trim();
-    const total = money(r.total);
-    if (id && total > 0) out[id] = total;
+    if (!id) continue;
+    const st = normalizeClaimStatus(r.status);
+    if (st !== "approved" && st !== "paid") continue;
+    const pm = String(r.payroll_month || "").trim();
+    const cd = String(r.claim_date || "").slice(0, 7);
+    if (pm !== m && cd !== m) continue;
+    out[id] = Math.round(((out[id] || 0) + money(r.amount)) * 100) / 100;
   }
   return out;
 }
@@ -555,12 +565,17 @@ export async function syncEmployeeClaimsToPayrollAdjustment(
   const total = sums[String(eid)] ?? 0;
 
   try {
-    const [existingRows]: any = await query(
+    const existingResult: any = await query(
       `SELECT ctd, fuel_allowance, unpaid_days FROM monthly_payroll_adjustments
-       WHERE employee_id = ? AND month = ? LIMIT 1`,
+       WHERE CAST(employee_id AS CHAR) = ? AND month = ? LIMIT 1`,
       [String(eid), m],
     );
-    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    const existingRows: any[] = Array.isArray(existingResult?.[0])
+      ? existingResult[0]
+      : Array.isArray(existingResult)
+        ? existingResult
+        : [];
+    const existing = existingRows[0] || null;
     await query(
       `INSERT INTO monthly_payroll_adjustments
          (employee_id, month, ctd, fuel_allowance, unpaid_days, medical_claims)
@@ -572,7 +587,7 @@ export async function syncEmployeeClaimsToPayrollAdjustment(
         existing?.ctd ?? null,
         existing?.fuel_allowance ?? null,
         existing?.unpaid_days ?? null,
-        total > 0 ? total : 0,
+        total,
       ],
     );
   } catch (err) {
