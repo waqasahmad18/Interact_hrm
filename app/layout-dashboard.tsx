@@ -91,6 +91,7 @@ const sidebarLinks = [
 					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
 					{ name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
 					{ name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
+					{ name: "Claims", path: "/admin/claims", icon: <FaFileAlt /> },
 					{ name: "Financial History", path: "/admin/employee-financial-history", icon: <FaFileAlt /> },
 					{ name: "Request Inbox", path: "/admin/financial-requests", icon: <FaClipboardList /> },
 				]

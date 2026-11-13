@@ -83,6 +83,8 @@ const PERM_HINTS: Record<string, string> = {
   "payroll.commissions": "Access commission calculation and payout screens.",
   "payroll.advance": "Process salary advance requests.",
   "payroll.loan": "Manage employee loan schedules and deductions.",
+  "payroll.claims":
+    "Add and manage employee medical/travel claims and view remaining allowance.",
   "payroll.financial_history":
     "View complete employee advance/loan history, installments, and yearly totals.",
   "payroll.salary_disbursement":
@@ -317,6 +319,7 @@ export const FEATURE_MODULES = withPermissionHints([
       { key: "payroll.commissions", label: "Commissions" },
       { key: "payroll.advance", label: "Advance" },
       { key: "payroll.loan", label: "Loan" },
+      { key: "payroll.claims", label: "Claims" },
       { key: "payroll.financial_history", label: "Financial history" },
       { key: "payroll.salary_disbursement", label: "Salary disbursement" },
       { key: "payroll.financial_requests.view", label: "Financial request inbox" },
@@ -500,6 +503,7 @@ const HR_ROLE_OPS = [
   "payroll.daily.edit",
   "payroll.advance",
   "payroll.loan",
+  "payroll.claims",
   "payroll.financial_history",
   "ops.tickets.view",
 ];

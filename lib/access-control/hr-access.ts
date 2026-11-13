@@ -34,6 +34,7 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "payroll.monthly.view",
   "payroll.advance",
   "payroll.loan",
+  "payroll.claims",
   "payroll.financial_history",
   "people.employee_list.view",
   "portal.tickets.create",
@@ -50,6 +51,7 @@ export const FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "payroll.monthly.edit@all_departments",
   "payroll.advance@all_departments",
   "payroll.loan@all_departments",
+  "payroll.claims@all_departments",
   "payroll.financial_history@all_departments",
   "payroll.salary_disbursement@all_departments",
   "people.employee_list.view@all_departments",
@@ -126,6 +128,7 @@ export function viewerHasFinancePayrollPowers(opts: {
     return (
       key === "payroll.loan@all_departments" ||
       key === "payroll.advance@all_departments" ||
+      key === "payroll.claims@all_departments" ||
       key === "payroll.monthly.edit@all_departments" ||
       key === "payroll.monthly.view@all_departments" ||
       key === "payroll.financial_history@all_departments" ||
