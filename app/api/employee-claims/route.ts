@@ -53,10 +53,17 @@ async function assertEmployeeInScope(
   viewerId: string,
   employeeId: number,
   departmentName?: string | null,
+  opts?: { requireViewer?: boolean },
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const requireViewer = opts?.requireViewer !== false;
   if (!viewerId || !/^\d+$/.test(viewerId)) {
+    // Balance lookup is read-only; allow without viewer so HR form can show
+    // package OPD/IPD pools. Mutations still require a viewer.
+    if (!requireViewer) return { ok: true };
     return { ok: false, status: 401, error: "viewerId required" };
   }
+  // Always allow viewing/acting on own row.
+  if (String(employeeId) === viewerId) return { ok: true };
   const scope = await resolveViewerDataScope(viewerId);
   if (
     !rowInViewerScope(scope, {
@@ -90,7 +97,9 @@ export async function GET(req: NextRequest) {
           { status: 400 },
         );
       }
-      const scoped = await assertEmployeeInScope(viewerId, employeeId);
+      const scoped = await assertEmployeeInScope(viewerId, employeeId, null, {
+        requireViewer: false,
+      });
       if (!scoped.ok) {
         return NextResponse.json(
           { success: false, error: scoped.error },
@@ -98,20 +107,31 @@ export async function GET(req: NextRequest) {
         );
       }
       const selectedType = normalizeClaimType(claimType || "opd");
-      const [balance, medical] = await Promise.all([
-        resolveClaimBalance({
-          employeeId,
-          year,
-          claimType: selectedType,
-        }),
-        resolveMedicalClaimBalances({ employeeId, year }),
-      ]);
-      return NextResponse.json({
-        success: true,
-        balance,
-        medical_package: medical.medical_package,
-        balances: { opd: medical.opd, ipd: medical.ipd },
-      });
+      try {
+        const [balance, medical] = await Promise.all([
+          resolveClaimBalance({
+            employeeId,
+            year,
+            claimType: selectedType,
+          }),
+          resolveMedicalClaimBalances({ employeeId, year }),
+        ]);
+        return NextResponse.json({
+          success: true,
+          balance,
+          medical_package: medical.medical_package,
+          balances: { opd: medical.opd, ipd: medical.ipd },
+        });
+      } catch (err) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              err instanceof Error ? err.message : "Failed to resolve balance",
+          },
+          { status: 500 },
+        );
+      }
     }
 
     let claims = await listClaims({

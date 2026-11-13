@@ -157,14 +157,20 @@ async function ensureClaimsTables(): Promise<void> {
 export async function getEmployeeMedicalPackage(
   employeeId: number,
 ): Promise<MedicalPackageId | null> {
-  const [rows]: any = await query(
-    `SELECT medical_package FROM employee_salaries
-     WHERE employee_id = ?
-     ORDER BY id DESC LIMIT 1`,
-    [employeeId],
-  );
-  const list = Array.isArray(rows) ? rows : [];
-  return normalizeMedicalPackage(list[0]?.medical_package);
+  try {
+    const [rows]: any = await query(
+      `SELECT medical_package FROM employee_salaries
+       WHERE employee_id = ?
+       ORDER BY id DESC LIMIT 1`,
+      [employeeId],
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    return normalizeMedicalPackage(list[0]?.medical_package);
+  } catch (err) {
+    // Column may be missing if migration 049 not applied yet — OPD still works.
+    console.warn("[claims] medical_package lookup failed:", err);
+    return null;
+  }
 }
 
 async function getEntitlementOverride(

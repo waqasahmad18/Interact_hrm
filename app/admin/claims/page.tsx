@@ -118,6 +118,7 @@ export default function ClaimsPage() {
   const [medicalBalances, setMedicalBalances] = useState<MedicalBalances | null>(
     null,
   );
+  const [balanceError, setBalanceError] = useState("");
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -169,37 +170,49 @@ export default function ClaimsPage() {
     if (!/^\d+$/.test(employeeId)) {
       setBalance(null);
       setMedicalBalances(null);
+      setBalanceError("");
       return;
     }
     setBalanceLoading(true);
+    setBalanceError("");
     try {
       const vid = viewerId();
       const q = new URLSearchParams({
         balance: "1",
         employee_id: employeeId,
-        year,
+        year: year || String(new Date().getFullYear()),
         claim_type: claimType || "opd",
-        viewerId: vid,
       });
+      if (vid) q.set("viewerId", vid);
+      const headers: Record<string, string> = {};
+      if (vid) headers["x-employee-id"] = vid;
       const res = await fetch(`/api/employee-claims?${q}`, {
         cache: "no-store",
-        headers: { "x-employee-id": vid },
+        headers,
       });
-      const data = await res.json();
-      if (data.success) {
-        setBalance(data.balance || null);
-        setMedicalBalances(
-          data.balances?.opd && data.balances?.ipd
-            ? { opd: data.balances.opd, ipd: data.balances.ipd }
-            : null,
-        );
+      const data = await res.json().catch(() => ({}));
+      if (data.success && data.balances?.opd && data.balances?.ipd) {
+        setBalance(data.balance || data.balances.opd);
+        setMedicalBalances({
+          opd: data.balances.opd,
+          ipd: data.balances.ipd,
+        });
+        setBalanceError("");
+      } else if (data.success && data.balance) {
+        setBalance(data.balance);
+        setMedicalBalances(null);
+        setBalanceError("");
       } else {
         setBalance(null);
         setMedicalBalances(null);
+        setBalanceError(
+          data.error || `Balance failed (${res.status || "network"})`,
+        );
       }
-    } catch {
+    } catch (e) {
       setBalance(null);
       setMedicalBalances(null);
+      setBalanceError(e instanceof Error ? e.message : "Balance failed");
     } finally {
       setBalanceLoading(false);
     }
@@ -285,6 +298,7 @@ export default function ClaimsPage() {
     setEmpPickerQuery("");
     setBalance(null);
     setMedicalBalances(null);
+    setBalanceError("");
   }
 
   function claimTypeLabel(t: string) {
@@ -361,9 +375,13 @@ export default function ClaimsPage() {
     }
   }
 
-  const pkgLabel = balance?.medical_package
-    ? MEDICAL_PACKAGES.find((p) => p.id === balance.medical_package)?.label ||
-      balance.medical_package
+  const activePkg =
+    medicalBalances?.ipd?.medical_package ||
+    medicalBalances?.opd?.medical_package ||
+    balance?.medical_package ||
+    null;
+  const pkgLabel = activePkg
+    ? MEDICAL_PACKAGES.find((p) => p.id === activePkg)?.label || activePkg
     : "—";
 
   return (
@@ -538,13 +556,11 @@ export default function ClaimsPage() {
                 <span className={fh.label}>Type</span>
                 <select
                   className={fh.select}
-                  value={formType}
+                  value={formType === "ipd" ? "ipd" : "opd"}
                   onChange={(e) => setFormType(e.target.value)}
                 >
-                  <option value="opd">OPD (medicine / pharmacy)</option>
-                  <option value="ipd">IPD (hospital admit)</option>
-                  <option value="travel">Travel</option>
-                  <option value="other">Other</option>
+                  <option value="opd">OPD</option>
+                  <option value="ipd">IPD</option>
                 </select>
               </label>
               <label className={fh.field}>
@@ -698,7 +714,11 @@ export default function ClaimsPage() {
                           </strong>
                         </>
                       )
-                      : "Balance unavailable"}
+                      : (
+                        <span style={{ color: "#b91c1c" }}>
+                          {balanceError || "Balance unavailable"}
+                        </span>
+                      )}
               </div>
             </div>
           ) : null}
@@ -753,9 +773,6 @@ export default function ClaimsPage() {
                 <option value="">All</option>
                 <option value="opd">OPD</option>
                 <option value="ipd">IPD</option>
-                <option value="medical">Medical (legacy)</option>
-                <option value="travel">Travel</option>
-                <option value="other">Other</option>
               </select>
             </label>
             <button type="button" className={fh.clearBtn} onClick={() => void loadClaims()}>
