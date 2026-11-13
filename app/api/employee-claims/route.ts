@@ -9,6 +9,7 @@ import {
   normalizeClaimStatus,
   normalizeClaimType,
   resolveClaimBalance,
+  resolveMedicalClaimBalances,
   type EmployeeClaim,
 } from "@/lib/employee-claims";
 
@@ -96,12 +97,21 @@ export async function GET(req: NextRequest) {
           { status: scoped.status },
         );
       }
-      const balance = await resolveClaimBalance({
-        employeeId,
-        year,
-        claimType: normalizeClaimType(claimType || "medical"),
+      const selectedType = normalizeClaimType(claimType || "opd");
+      const [balance, medical] = await Promise.all([
+        resolveClaimBalance({
+          employeeId,
+          year,
+          claimType: selectedType,
+        }),
+        resolveMedicalClaimBalances({ employeeId, year }),
+      ]);
+      return NextResponse.json({
+        success: true,
+        balance,
+        medical_package: medical.medical_package,
+        balances: { opd: medical.opd, ipd: medical.ipd },
       });
-      return NextResponse.json({ success: true, balance });
     }
 
     let claims = await listClaims({

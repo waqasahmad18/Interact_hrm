@@ -1,11 +1,13 @@
 import { query } from "@/lib/db";
 import {
-  medicalDeductionForPackage,
+  medicalIpdEntitlementForPackage,
+  medicalOpdEntitlement,
   normalizeMedicalPackage,
   type MedicalPackageId,
 } from "@/lib/medical-package";
 
-export type ClaimType = "medical" | "travel" | "other";
+/** opd = pharmacy/medicine; ipd = hospital admit; medical = legacy alias of opd. */
+export type ClaimType = "opd" | "ipd" | "medical" | "travel" | "other";
 export type ClaimStatus =
   | "pending"
   | "approved"
@@ -42,7 +44,7 @@ export type ClaimBalance = {
   claim_type: ClaimType;
   medical_package: MedicalPackageId | null;
   entitlement: number;
-  entitlement_source: "package" | "override" | "none";
+  entitlement_source: "package" | "override" | "none" | "policy";
   used: number;
   pending: number;
   remaining: number;
@@ -66,8 +68,18 @@ export function normalizeClaimType(raw: unknown): ClaimType {
   const v = String(raw ?? "")
     .trim()
     .toLowerCase();
+  if (v === "ipd") return "ipd";
   if (v === "travel" || v === "other") return v;
-  return "medical";
+  if (v === "medical") return "medical";
+  return "opd";
+}
+
+/** Pool key used for entitlement / usage (legacy medical → opd). */
+export function claimBalancePool(type: ClaimType): "opd" | "ipd" | "travel" | "other" {
+  if (type === "ipd") return "ipd";
+  if (type === "travel") return "travel";
+  if (type === "other") return "other";
+  return "opd";
 }
 
 export function normalizeClaimStatus(raw: unknown): ClaimStatus {
@@ -86,11 +98,16 @@ export function normalizeClaimStatus(raw: unknown): ClaimStatus {
   return "approved";
 }
 
-/** Yearly medical claim pool = package monthly deduction × 12. */
+/** @deprecated Use medicalOpdEntitlement / medicalIpdEntitlementForPackage. */
 export function yearlyEntitlementFromPackage(
   pkg: MedicalPackageId | null | undefined,
 ): number {
-  return medicalDeductionForPackage(pkg) * 12;
+  return medicalIpdEntitlementForPackage(pkg);
+}
+
+function usageTypesForPool(pool: "opd" | "ipd" | "travel" | "other"): string[] {
+  if (pool === "opd") return ["opd", "medical"];
+  return [pool];
 }
 
 async function ensureClaimsTables(): Promise<void> {
@@ -173,30 +190,38 @@ export async function resolveClaimBalance(input: {
 }): Promise<ClaimBalance> {
   await ensureClaimsTables();
   const year = yearOrCurrent(input.year);
-  const claimType = normalizeClaimType(input.claimType || "medical");
+  const claimType = normalizeClaimType(input.claimType || "opd");
+  const pool = claimBalancePool(claimType);
   const employeeId = Number(input.employeeId);
 
-  const override = await getEntitlementOverride(employeeId, year, claimType);
-  const pkg =
-    claimType === "medical"
-      ? await getEmployeeMedicalPackage(employeeId)
-      : null;
+  const override = await getEntitlementOverride(
+    employeeId,
+    year,
+    pool === "opd" ? "opd" : claimType,
+  );
+  const pkg = await getEmployeeMedicalPackage(employeeId);
 
   let entitlement = 0;
   let entitlement_source: ClaimBalance["entitlement_source"] = "none";
   if (override != null) {
     entitlement = override;
     entitlement_source = "override";
-  } else if (claimType === "medical") {
-    entitlement = yearlyEntitlementFromPackage(pkg);
+  } else if (pool === "opd") {
+    // All employees get fixed OPD pool (150k), independent of package.
+    entitlement = medicalOpdEntitlement();
+    entitlement_source = "policy";
+  } else if (pool === "ipd") {
+    entitlement = medicalIpdEntitlementForPackage(pkg);
     entitlement_source = pkg ? "package" : "none";
   }
 
+  const types = usageTypesForPool(pool);
+  const placeholders = types.map(() => "?").join(",");
   const [rows]: any = await query(
     `SELECT status, amount FROM employee_claims
-     WHERE employee_id = ? AND claim_year = ? AND claim_type = ?
+     WHERE employee_id = ? AND claim_year = ? AND claim_type IN (${placeholders})
        AND status NOT IN ('cancelled','rejected')`,
-    [employeeId, year, claimType],
+    [employeeId, year, ...types],
   );
   const list = Array.isArray(rows) ? rows : [];
   let used = 0;
@@ -213,7 +238,7 @@ export async function resolveClaimBalance(input: {
   return {
     employee_id: employeeId,
     year,
-    claim_type: claimType,
+    claim_type: pool === "opd" ? "opd" : claimType,
     medical_package: pkg,
     entitlement,
     entitlement_source,
@@ -221,6 +246,37 @@ export async function resolveClaimBalance(input: {
     pending: Math.round(pending * 100) / 100,
     remaining,
     claims_count: list.length,
+  };
+}
+
+/** OPD + IPD balances for an employee (package-aware). */
+export async function resolveMedicalClaimBalances(input: {
+  employeeId: number;
+  year?: string;
+}): Promise<{
+  year: string;
+  medical_package: MedicalPackageId | null;
+  opd: ClaimBalance;
+  ipd: ClaimBalance;
+}> {
+  const year = yearOrCurrent(input.year);
+  const [opd, ipd] = await Promise.all([
+    resolveClaimBalance({
+      employeeId: input.employeeId,
+      year,
+      claimType: "opd",
+    }),
+    resolveClaimBalance({
+      employeeId: input.employeeId,
+      year,
+      claimType: "ipd",
+    }),
+  ]);
+  return {
+    year,
+    medical_package: opd.medical_package ?? ipd.medical_package,
+    opd,
+    ipd,
   };
 }
 
@@ -319,7 +375,7 @@ export async function createClaim(input: {
     throw new Error("claim_date must be YYYY-MM-DD");
   }
   const claimYear = claimDate.slice(0, 4);
-  const claimType = normalizeClaimType(input.claimType || "medical");
+  const claimType = normalizeClaimType(input.claimType || "opd");
   const status = normalizeClaimStatus(input.status || "approved");
 
   const balance = await resolveClaimBalance({

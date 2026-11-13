@@ -43,6 +43,11 @@ type ClaimBalance = {
   claims_count: number;
 };
 
+type MedicalBalances = {
+  opd: ClaimBalance;
+  ipd: ClaimBalance;
+};
+
 type Summary = {
   year: string;
   total_claims: number;
@@ -105,11 +110,14 @@ export default function ClaimsPage() {
   const empPickerRef = useRef<HTMLDivElement | null>(null);
   const [formAmount, setFormAmount] = useState("");
   const [formDate, setFormDate] = useState(todayIso);
-  const [formType, setFormType] = useState("medical");
+  const [formType, setFormType] = useState("opd");
   const [formTitle, setFormTitle] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formStatus, setFormStatus] = useState("approved");
   const [balance, setBalance] = useState<ClaimBalance | null>(null);
+  const [medicalBalances, setMedicalBalances] = useState<MedicalBalances | null>(
+    null,
+  );
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -160,6 +168,7 @@ export default function ClaimsPage() {
   const loadBalance = useCallback(async (employeeId: string, claimType: string) => {
     if (!/^\d+$/.test(employeeId)) {
       setBalance(null);
+      setMedicalBalances(null);
       return;
     }
     setBalanceLoading(true);
@@ -169,7 +178,7 @@ export default function ClaimsPage() {
         balance: "1",
         employee_id: employeeId,
         year,
-        claim_type: claimType || "medical",
+        claim_type: claimType || "opd",
         viewerId: vid,
       });
       const res = await fetch(`/api/employee-claims?${q}`, {
@@ -177,10 +186,20 @@ export default function ClaimsPage() {
         headers: { "x-employee-id": vid },
       });
       const data = await res.json();
-      if (data.success) setBalance(data.balance);
-      else setBalance(null);
+      if (data.success) {
+        setBalance(data.balance || null);
+        setMedicalBalances(
+          data.balances?.opd && data.balances?.ipd
+            ? { opd: data.balances.opd, ipd: data.balances.ipd }
+            : null,
+        );
+      } else {
+        setBalance(null);
+        setMedicalBalances(null);
+      }
     } catch {
       setBalance(null);
+      setMedicalBalances(null);
     } finally {
       setBalanceLoading(false);
     }
@@ -265,6 +284,16 @@ export default function ClaimsPage() {
     setFormEmployeeId("");
     setEmpPickerQuery("");
     setBalance(null);
+    setMedicalBalances(null);
+  }
+
+  function claimTypeLabel(t: string) {
+    const v = String(t || "").toLowerCase();
+    if (v === "opd" || v === "medical") return "OPD";
+    if (v === "ipd") return "IPD";
+    if (v === "travel") return "Travel";
+    if (v === "other") return "Other";
+    return t || "—";
   }
 
   async function onSaveClaim(e: React.FormEvent) {
@@ -343,9 +372,9 @@ export default function ClaimsPage() {
         <div className={fh.hero}>
           <h1 className={fh.heroTitle}>Claims</h1>
           <p className={fh.heroSub}>
-            HR can add an employee claim in one step. Remaining medical balance
-            comes from package entitlement (Silver/Gold/Platinum × 12 months)
-            minus approved claims this year.
+            OPD 150k for every employee. IPD by package: Silver 30k · Gold 40k ·
+            Platinum 50k. Remaining = entitlement minus approved/paid claims this
+            year.
           </p>
         </div>
 
@@ -512,7 +541,8 @@ export default function ClaimsPage() {
                   value={formType}
                   onChange={(e) => setFormType(e.target.value)}
                 >
-                  <option value="medical">Medical</option>
+                  <option value="opd">OPD (medicine / pharmacy)</option>
+                  <option value="ipd">IPD (hospital admit)</option>
                   <option value="travel">Travel</option>
                   <option value="other">Other</option>
                 </select>
@@ -602,30 +632,73 @@ export default function ClaimsPage() {
               <div className={fh.selectedText}>
                 {balanceLoading
                   ? "Loading balance…"
-                  : balance
+                  : medicalBalances
                     ? (
                       <>
                         Package <strong>{pkgLabel}</strong>
-                        {" · "}Entitlement <strong>{money(balance.entitlement)}</strong>
-                        {" · "}Used <strong>{money(balance.used)}</strong>
-                        {balance.pending > 0 ? (
+                        {" · "}OPD remaining{" "}
+                        <strong
+                          style={{
+                            color:
+                              medicalBalances.opd.remaining <= 0
+                                ? "#b91c1c"
+                                : "#15803d",
+                          }}
+                        >
+                          {money(medicalBalances.opd.remaining)}
+                        </strong>
+                        <span style={{ opacity: 0.75 }}>
+                          {" "}
+                          / {money(medicalBalances.opd.entitlement)}
+                        </span>
+                        {" · "}IPD remaining{" "}
+                        <strong
+                          style={{
+                            color:
+                              medicalBalances.ipd.remaining <= 0
+                                ? "#b91c1c"
+                                : "#15803d",
+                          }}
+                        >
+                          {money(medicalBalances.ipd.remaining)}
+                        </strong>
+                        <span style={{ opacity: 0.75 }}>
+                          {" "}
+                          / {money(medicalBalances.ipd.entitlement)}
+                        </span>
+                        {formType === "opd" || formType === "ipd" ? (
                           <>
-                            {" · "}Pending <strong>{money(balance.pending)}</strong>
+                            {" · "}Selected {claimTypeLabel(formType)} used{" "}
+                            <strong>{money(balance?.used ?? 0)}</strong>
                           </>
                         ) : null}
-                        {" · "}Remaining{" "}
-                        <strong style={{ color: balance.remaining <= 0 ? "#b91c1c" : "#15803d" }}>
-                          {money(balance.remaining)}
-                        </strong>
-                        {balance.entitlement_source === "none" ? (
+                        {!medicalBalances.ipd.medical_package &&
+                        formType === "ipd" ? (
                           <span style={{ fontWeight: 500, opacity: 0.85 }}>
                             {" "}
-                            (no medical package — set package on salary or entitlement will stay 0)
+                            (no package on salary — IPD entitlement is 0)
                           </span>
                         ) : null}
                       </>
                     )
-                    : "Balance unavailable"}
+                    : balance
+                      ? (
+                        <>
+                          Package <strong>{pkgLabel}</strong>
+                          {" · "}Entitlement{" "}
+                          <strong>{money(balance.entitlement)}</strong>
+                          {" · "}Remaining{" "}
+                          <strong
+                            style={{
+                              color:
+                                balance.remaining <= 0 ? "#b91c1c" : "#15803d",
+                            }}
+                          >
+                            {money(balance.remaining)}
+                          </strong>
+                        </>
+                      )
+                      : "Balance unavailable"}
               </div>
             </div>
           ) : null}
@@ -678,7 +751,9 @@ export default function ClaimsPage() {
                 onChange={(e) => setTypeFilter(e.target.value)}
               >
                 <option value="">All</option>
-                <option value="medical">Medical</option>
+                <option value="opd">OPD</option>
+                <option value="ipd">IPD</option>
+                <option value="medical">Medical (legacy)</option>
                 <option value="travel">Travel</option>
                 <option value="other">Other</option>
               </select>
@@ -724,7 +799,7 @@ export default function ClaimsPage() {
                         ) : null}
                       </td>
                       <td>{c.department_name || "—"}</td>
-                      <td style={{ textTransform: "capitalize" }}>{c.claim_type}</td>
+                      <td>{claimTypeLabel(c.claim_type)}</td>
                       <td>{c.title || "—"}</td>
                       <td>{money(c.amount)}</td>
                       <td>
