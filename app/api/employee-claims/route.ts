@@ -141,6 +141,8 @@ export async function GET(req: NextRequest) {
       claimType,
     });
 
+    // With viewerId: apply department/team scope. Without (admin portal /
+    // missing localStorage): return full list — page is already menu-gated.
     if (viewerId && /^\d+$/.test(viewerId)) {
       const scope = await resolveViewerDataScope(viewerId);
       claims = claims.filter((c) =>
@@ -148,11 +150,6 @@ export async function GET(req: NextRequest) {
           employeeId: c.employee_id,
           departmentName: c.department_name,
         }),
-      );
-    } else {
-      return NextResponse.json(
-        { success: false, error: "viewerId required" },
-        { status: 401 },
       );
     }
 
@@ -187,12 +184,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const scoped = await assertEmployeeInScope(viewerId, employeeId);
-    if (!scoped.ok) {
-      return NextResponse.json(
-        { success: false, error: scoped.error },
-        { status: scoped.status },
-      );
+    // Soft scope: if viewer present, enforce it; admin/HR without employeeId
+    // can still add claims (menu-gated page).
+    if (viewerId && /^\d+$/.test(viewerId)) {
+      const scoped = await assertEmployeeInScope(viewerId, employeeId);
+      if (!scoped.ok) {
+        return NextResponse.json(
+          { success: false, error: scoped.error },
+          { status: scoped.status },
+        );
+      }
     }
 
     const result = await createClaim({
@@ -213,10 +214,17 @@ export async function POST(req: NextRequest) {
       allowOverBalance: body.allow_over_balance === true,
     });
 
+    const medical = await resolveMedicalClaimBalances({
+      employeeId,
+      year: result.claim.claim_year,
+    });
+
     return NextResponse.json({
       success: true,
       claim: result.claim,
       balance: result.balance,
+      medical_package: medical.medical_package,
+      balances: { opd: medical.opd, ipd: medical.ipd },
       message: "Claim added.",
     });
   } catch (err) {

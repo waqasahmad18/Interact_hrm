@@ -79,17 +79,48 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function viewerId(): string {
+function readStoredViewerId(): string {
   if (typeof window === "undefined") return "";
   try {
-    return (
-      localStorage.getItem("hrmEmployeeId") ||
-      localStorage.getItem("employeeId") ||
-      ""
-    );
+    const candidates = [
+      localStorage.getItem("employeeId"),
+      localStorage.getItem("hrmEmployeeId"),
+      localStorage.getItem("loginId"),
+    ];
+    for (const raw of candidates) {
+      const id = String(raw || "").trim();
+      if (/^\d+$/.test(id)) return id;
+    }
   } catch {
-    return "";
+    /* ignore */
   }
+  return "";
+}
+
+async function resolveViewerId(): Promise<string> {
+  const direct = readStoredViewerId();
+  if (direct) return direct;
+  try {
+    const loginId = String(localStorage.getItem("loginId") || "").trim();
+    if (!loginId) return "";
+    const res = await fetch(
+      `/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`,
+      { cache: "no-store" },
+    );
+    const data = await res.json();
+    const empId = String(data?.employee?.id || data?.employee?.employee_id || "").trim();
+    if (/^\d+$/.test(empId)) {
+      try {
+        localStorage.setItem("employeeId", empId);
+      } catch {
+        /* ignore */
+      }
+      return empId;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "";
 }
 
 export default function ClaimsPage() {
@@ -122,6 +153,11 @@ export default function ClaimsPage() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [viewerEmployeeId, setViewerEmployeeId] = useState("");
+
+  useEffect(() => {
+    void resolveViewerId().then((id) => setViewerEmployeeId(id));
+  }, []);
 
   const loadEmployees = useCallback(async () => {
     setEmployeesLoading(true);
@@ -146,13 +182,20 @@ export default function ClaimsPage() {
     setLoading(true);
     setError("");
     try {
-      const vid = viewerId();
-      const q = new URLSearchParams({ year, viewerId: vid });
+      const vid = viewerEmployeeId || (await resolveViewerId());
+      if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
+      const q = new URLSearchParams({ year });
+      if (vid) q.set("viewerId", vid);
       if (statusFilter) q.set("status", statusFilter);
       if (typeFilter) q.set("claim_type", typeFilter);
+      const headers: Record<string, string> = {};
+      if (vid) {
+        headers["x-employee-id"] = vid;
+        headers["x-hrm-employee-id"] = vid;
+      }
       const res = await fetch(`/api/employee-claims?${q}`, {
         cache: "no-store",
-        headers: { "x-employee-id": vid },
+        headers,
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to load");
@@ -164,7 +207,7 @@ export default function ClaimsPage() {
     } finally {
       setLoading(false);
     }
-  }, [year, statusFilter, typeFilter]);
+  }, [year, statusFilter, typeFilter, viewerEmployeeId]);
 
   const loadBalance = useCallback(async (employeeId: string, claimType: string) => {
     if (!/^\d+$/.test(employeeId)) {
@@ -176,7 +219,8 @@ export default function ClaimsPage() {
     setBalanceLoading(true);
     setBalanceError("");
     try {
-      const vid = viewerId();
+      const vid = viewerEmployeeId || (await resolveViewerId());
+      if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
       const q = new URLSearchParams({
         balance: "1",
         employee_id: employeeId,
@@ -185,7 +229,10 @@ export default function ClaimsPage() {
       });
       if (vid) q.set("viewerId", vid);
       const headers: Record<string, string> = {};
-      if (vid) headers["x-employee-id"] = vid;
+      if (vid) {
+        headers["x-employee-id"] = vid;
+        headers["x-hrm-employee-id"] = vid;
+      }
       const res = await fetch(`/api/employee-claims?${q}`, {
         cache: "no-store",
         headers,
@@ -216,7 +263,7 @@ export default function ClaimsPage() {
     } finally {
       setBalanceLoading(false);
     }
-  }, [year]);
+  }, [year, viewerEmployeeId]);
 
   useEffect(() => {
     void loadEmployees();
@@ -324,21 +371,27 @@ export default function ClaimsPage() {
     setSaving(true);
     setToast("");
     try {
+      const vid = viewerEmployeeId || (await resolveViewerId());
+      if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (vid) {
+        headers["x-employee-id"] = vid;
+        headers["x-hrm-employee-id"] = vid;
+      }
       const res = await fetch("/api/employee-claims", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-employee-id": viewerId(),
-        },
+        headers,
         body: JSON.stringify({
           employee_id: Number(formEmployeeId),
           amount,
           claim_date: formDate,
-          claim_type: formType,
+          claim_type: formType === "ipd" ? "ipd" : "opd",
           title: formTitle || null,
           notes: formNotes || null,
           status: formStatus,
-          viewerId: viewerId(),
+          viewerId: vid || undefined,
         }),
       });
       const data = await res.json();
@@ -347,8 +400,16 @@ export default function ClaimsPage() {
       setFormAmount("");
       setFormTitle("");
       setFormNotes("");
-      if (data.balance) setBalance(data.balance);
+      if (data.balances?.opd && data.balances?.ipd) {
+        setMedicalBalances({ opd: data.balances.opd, ipd: data.balances.ipd });
+        setBalance(
+          formType === "ipd" ? data.balances.ipd : data.balances.opd,
+        );
+      } else if (data.balance) {
+        setBalance(data.balance);
+      }
       await loadClaims();
+      await loadBalance(formEmployeeId, formType);
     } catch (err) {
       setToast(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -358,18 +419,27 @@ export default function ClaimsPage() {
 
   async function setClaimStatus(id: number, status: string) {
     try {
+      const vid = viewerEmployeeId || (await resolveViewerId());
+      if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (vid) {
+        headers["x-employee-id"] = vid;
+        headers["x-hrm-employee-id"] = vid;
+      }
       const res = await fetch(`/api/employee-claims/${id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-employee-id": viewerId(),
-        },
-        body: JSON.stringify({ status, viewerId: viewerId() }),
+        headers,
+        body: JSON.stringify({
+          status,
+          viewerId: vid || undefined,
+        }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Update failed");
       await loadClaims();
-      if (formEmployeeId) void loadBalance(formEmployeeId, formType);
+      if (formEmployeeId) await loadBalance(formEmployeeId, formType);
     } catch (err) {
       setToast(err instanceof Error ? err.message : "Update failed");
     }

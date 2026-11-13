@@ -40,13 +40,6 @@ export async function PATCH(
         "",
     ).trim();
 
-    if (!viewerRaw || !/^\d+$/.test(viewerRaw)) {
-      return NextResponse.json(
-        { success: false, error: "viewerId required" },
-        { status: 401 },
-      );
-    }
-
     const existing = await getClaimById(id);
     if (!existing) {
       return NextResponse.json(
@@ -55,24 +48,28 @@ export async function PATCH(
       );
     }
 
-    const scope = await resolveViewerDataScope(viewerRaw);
-    if (
-      !rowInViewerScope(scope, {
-        employeeId: existing.employee_id,
-        departmentName: existing.department_name,
-      })
-    ) {
-      return NextResponse.json(
-        { success: false, error: "Out of scope" },
-        { status: 403 },
-      );
+    if (viewerRaw && /^\d+$/.test(viewerRaw)) {
+      if (String(existing.employee_id) !== viewerRaw) {
+        const scope = await resolveViewerDataScope(viewerRaw);
+        if (
+          !rowInViewerScope(scope, {
+            employeeId: existing.employee_id,
+            departmentName: existing.department_name,
+          })
+        ) {
+          return NextResponse.json(
+            { success: false, error: "Out of scope" },
+            { status: 403 },
+          );
+        }
+      }
     }
 
     const claim = await updateClaimStatus({
       id,
       status: normalizeClaimStatus(body.status),
       notes: body.notes != null ? String(body.notes) : null,
-      approvedByEmployeeId: Number(viewerRaw),
+      approvedByEmployeeId: /^\d+$/.test(viewerRaw) ? Number(viewerRaw) : null,
     });
 
     return NextResponse.json({ success: true, claim });
