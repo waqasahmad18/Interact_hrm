@@ -241,6 +241,10 @@ export default function ClaimsPage() {
   const [bulkPaying, setBulkPaying] = useState(false);
   /** Finance bulk action: paid | unpaid (unpaid = revert paid → approved). */
   const [bulkAction, setBulkAction] = useState<"paid" | "unpaid">("paid");
+  /** Admin bulk review: approve or reject pending claims. */
+  const [reviewAction, setReviewAction] = useState<"approved" | "rejected">(
+    "approved",
+  );
   const roleReady = isFinanceViewer !== null;
   const showFinance = isFinanceViewer === true;
 
@@ -576,22 +580,14 @@ export default function ClaimsPage() {
     }
   }
 
-  async function applyBulkPaymentAction() {
-    const nextStatus = bulkAction === "paid" ? "paid" : "unpaid";
-    const ids = selectedIds.filter((id) =>
-      claims.some((c) => {
-        if (c.id !== id) return false;
-        return bulkAction === "paid"
-          ? canBulkMarkPaid(c.status)
-          : canBulkMarkUnpaid(c.status);
-      }),
-    );
+  async function applyBulkStatusUpdate(
+    nextStatus: string,
+    ids: number[],
+    emptyToast: string,
+    label: string,
+  ) {
     if (!ids.length) {
-      setToast(
-        bulkAction === "paid"
-          ? "Select Approved/Unpaid rows, then Apply"
-          : "Select Paid (or Approved) rows, then Apply",
-      );
+      setToast(emptyToast);
       return;
     }
     try {
@@ -618,7 +614,6 @@ export default function ClaimsPage() {
       if (!data.success) throw new Error(data.error || "Bulk update failed");
       const ok = Number(data.updated_count || 0);
       const fail = Number(data.failed_count || 0);
-      const label = bulkAction === "paid" ? "paid" : "unpaid";
       if (ok > 0 && fail === 0) {
         setToast(`${ok} claim${ok === 1 ? "" : "s"} marked as ${label}`);
       } else if (ok > 0) {
@@ -630,6 +625,7 @@ export default function ClaimsPage() {
             : "Bulk update failed",
         );
       }
+      setSelectedIds([]);
       await loadClaims();
       if (formEmployeeId) await loadBalance(formEmployeeId, formType);
     } catch (err) {
@@ -637,6 +633,48 @@ export default function ClaimsPage() {
     } finally {
       setBulkPaying(false);
     }
+  }
+
+  async function applyBulkPaymentAction() {
+    const nextStatus = bulkAction === "paid" ? "paid" : "unpaid";
+    const ids = selectedIds.filter((id) =>
+      claims.some((c) => {
+        if (c.id !== id) return false;
+        return bulkAction === "paid"
+          ? canBulkMarkPaid(c.status)
+          : canBulkMarkUnpaid(c.status);
+      }),
+    );
+    await applyBulkStatusUpdate(
+      nextStatus,
+      ids,
+      bulkAction === "paid"
+        ? "Select Approved/Unpaid rows, then Apply"
+        : "Select Paid (or Approved) rows, then Apply",
+      bulkAction === "paid" ? "paid" : "unpaid",
+    );
+  }
+
+  async function applyBulkReviewAction() {
+    const ids = selectedIds.filter((id) =>
+      claims.some((c) => {
+        if (c.id !== id) return false;
+        if (reviewAction === "approved") return c.status === "pending";
+        return (
+          c.status === "pending" ||
+          c.status === "approved" ||
+          c.status === "unpaid"
+        );
+      }),
+    );
+    await applyBulkStatusUpdate(
+      reviewAction,
+      ids,
+      reviewAction === "approved"
+        ? "Select Pending rows, then Apply"
+        : "Select Pending/Approved rows, then Apply",
+      reviewAction === "approved" ? "approved" : "rejected",
+    );
   }
 
   function toggleSelectClaim(id: number, checked: boolean) {
@@ -688,7 +726,7 @@ export default function ClaimsPage() {
     () => claims.filter((c) => c.status === "pending").length,
     [claims],
   );
-  const bulkTargetIds = useMemo(
+  const financeBulkTargetIds = useMemo(
     () =>
       visibleClaims
         .filter((c) =>
@@ -699,13 +737,37 @@ export default function ClaimsPage() {
         .map((c) => c.id),
     [visibleClaims, bulkAction],
   );
+  const reviewBulkTargetIds = useMemo(
+    () =>
+      visibleClaims
+        .filter((c) => {
+          if (reviewAction === "approved") return c.status === "pending";
+          return (
+            c.status === "pending" ||
+            c.status === "approved" ||
+            c.status === "unpaid"
+          );
+        })
+        .map((c) => c.id),
+    [visibleClaims, reviewAction],
+  );
+  const bulkTargetIds = showFinance ? financeBulkTargetIds : reviewBulkTargetIds;
   /** All rows that show a checkbox — header selects these together. */
   const selectableIds = useMemo(
     () =>
-      visibleClaims
-        .filter((c) => isPayableStatus(c.status) || c.status === "paid")
-        .map((c) => c.id),
-    [visibleClaims],
+      showFinance
+        ? visibleClaims
+            .filter((c) => isPayableStatus(c.status) || c.status === "paid")
+            .map((c) => c.id)
+        : visibleClaims
+            .filter(
+              (c) =>
+                c.status === "pending" ||
+                c.status === "approved" ||
+                c.status === "unpaid",
+            )
+            .map((c) => c.id),
+    [showFinance, visibleClaims],
   );
   const allSelectableSelected =
     selectableIds.length > 0 &&
@@ -720,11 +782,19 @@ export default function ClaimsPage() {
     const set = new Set(selectedIds);
     return visibleClaims.filter((c) => {
       if (!set.has(c.id)) return false;
-      return bulkAction === "paid"
-        ? canBulkMarkPaid(c.status)
-        : canBulkMarkUnpaid(c.status);
+      if (showFinance) {
+        return bulkAction === "paid"
+          ? canBulkMarkPaid(c.status)
+          : canBulkMarkUnpaid(c.status);
+      }
+      if (reviewAction === "approved") return c.status === "pending";
+      return (
+        c.status === "pending" ||
+        c.status === "approved" ||
+        c.status === "unpaid"
+      );
     });
-  }, [selectedIds, visibleClaims, bulkAction]);
+  }, [selectedIds, visibleClaims, showFinance, bulkAction, reviewAction]);
   const selectedBulkCount = selectedForBulk.length;
   const selectedBulkAmount = useMemo(
     () => selectedForBulk.reduce((sum, c) => sum + Number(c.amount || 0), 0),
@@ -1197,18 +1267,10 @@ export default function ClaimsPage() {
 
           {error ? <p className={fh.error}>{error}</p> : null}
 
-          {!showFinance && pendingCount > 0 ? (
-            <div className={fh.bulkBar}>
-              <div className={fh.selectedText}>
-                {pendingCount} pending — approve to send to Finance
-              </div>
-            </div>
-          ) : null}
-
-          {showFinance ? (
-            <div className={fh.bulkBar}>
-              <div className={fh.selectedText}>
-                {selectedBulkCount > 0
+          <div className={fh.bulkBar}>
+            <div className={fh.selectedText}>
+              {showFinance
+                ? selectedBulkCount > 0
                   ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)} → ${
                       bulkAction === "paid" ? "Paid" : "Unpaid"
                     }`
@@ -1220,33 +1282,51 @@ export default function ClaimsPage() {
                       ? bulkAction === "paid"
                         ? `${bulkTargetIds.length} ready — select, then Apply Paid`
                         : `${bulkTargetIds.length} can mark unpaid — select, then Apply`
+                      : "No claims available for this action"
+                : selectedBulkCount > 0
+                  ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)} → ${
+                      reviewAction === "approved" ? "Approved" : "Rejected"
+                    }`
+                  : anySelectedCount > 0
+                    ? reviewAction === "approved"
+                      ? "Selected rows are not Pending — pick Mark as Rejected, or select Pending"
+                      : "Select Pending/Approved rows to reject"
+                    : bulkTargetIds.length > 0
+                      ? reviewAction === "approved"
+                        ? `${bulkTargetIds.length} pending — select, then Apply Approve`
+                        : `${bulkTargetIds.length} can reject — select, then Apply`
                       : "No claims available for this action"}
-              </div>
-              <div className={fh.bulkActions}>
-                {bulkTargetIds.length > 0 ? (
-                  <button
-                    type="button"
-                    className={fh.ghostBtn}
-                    disabled={bulkPaying}
-                    onClick={() => toggleSelectAllForBulk(!allBulkTargetsSelected)}
-                  >
-                    {allBulkTargetsSelected
-                      ? "Clear selection"
-                      : bulkAction === "paid"
+            </div>
+            <div className={fh.bulkActions}>
+              {bulkTargetIds.length > 0 ? (
+                <button
+                  type="button"
+                  className={fh.ghostBtn}
+                  disabled={bulkPaying}
+                  onClick={() => toggleSelectAllForBulk(!allBulkTargetsSelected)}
+                >
+                  {allBulkTargetsSelected
+                    ? "Clear selection"
+                    : showFinance
+                      ? bulkAction === "paid"
                         ? "Select all ready"
-                        : "Select all for unpaid"}
-                  </button>
-                ) : null}
-                {anySelectedCount > 0 ? (
-                  <button
-                    type="button"
-                    className={fh.ghostBtn}
-                    disabled={bulkPaying}
-                    onClick={() => setSelectedIds([])}
-                  >
-                    Clear
-                  </button>
-                ) : null}
+                        : "Select all for unpaid"
+                      : reviewAction === "approved"
+                        ? "Select all pending"
+                        : "Select all for reject"}
+                </button>
+              ) : null}
+              {anySelectedCount > 0 ? (
+                <button
+                  type="button"
+                  className={fh.ghostBtn}
+                  disabled={bulkPaying}
+                  onClick={() => setSelectedIds([])}
+                >
+                  Clear
+                </button>
+              ) : null}
+              {showFinance ? (
                 <select
                   className={fh.bulkSelect}
                   value={bulkAction}
@@ -1259,44 +1339,67 @@ export default function ClaimsPage() {
                   <option value="paid">Mark as Paid</option>
                   <option value="unpaid">Mark as Unpaid</option>
                 </select>
-                <button
-                  type="button"
-                  className={
-                    bulkAction === "paid" ? fh.primaryBtn : fh.primaryBtnDark
-                  }
-                  style={{
-                    opacity: applyEnabled ? 1 : 0.55,
-                    cursor: applyEnabled ? "pointer" : "not-allowed",
+              ) : (
+                <select
+                  className={fh.bulkSelect}
+                  value={reviewAction}
+                  disabled={bulkPaying}
+                  onChange={(e) => {
+                    setReviewAction(
+                      e.target.value === "rejected" ? "rejected" : "approved",
+                    );
                   }}
-                  disabled={!applyEnabled}
-                  onClick={() => void applyBulkPaymentAction()}
+                  aria-label="Review action"
                 >
-                  {bulkPaying
-                    ? "Saving…"
-                    : selectedBulkCount > 0
-                      ? `Apply ${selectedBulkCount}`
-                      : "Apply"}
-                </button>
-              </div>
+                  <option value="approved">Mark as Approved</option>
+                  <option value="rejected">Mark as Rejected</option>
+                </select>
+              )}
+              <button
+                type="button"
+                className={
+                  showFinance
+                    ? bulkAction === "paid"
+                      ? fh.primaryBtn
+                      : fh.primaryBtnDark
+                    : reviewAction === "approved"
+                      ? fh.primaryBtn
+                      : fh.primaryBtnDark
+                }
+                style={{
+                  opacity: applyEnabled ? 1 : 0.55,
+                  cursor: applyEnabled ? "pointer" : "not-allowed",
+                }}
+                disabled={!applyEnabled}
+                onClick={() =>
+                  void (showFinance
+                    ? applyBulkPaymentAction()
+                    : applyBulkReviewAction())
+                }
+              >
+                {bulkPaying
+                  ? "Saving…"
+                  : selectedBulkCount > 0
+                    ? `Apply ${selectedBulkCount}`
+                    : "Apply"}
+              </button>
             </div>
-          ) : null}
+          </div>
 
           <div className={fh.tableWrap}>
             <table className={fh.table}>
               <thead>
                 <tr>
-                  {showFinance ? (
-                    <th style={{ width: 44 }}>
-                      <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        aria-label="Select all rows"
-                        checked={allSelectableSelected}
-                        disabled={selectableIds.length === 0 || bulkPaying}
-                        onChange={(e) => toggleSelectAllRows(e.target.checked)}
-                      />
-                    </th>
-                  ) : null}
+                  <th style={{ width: 44 }}>
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      aria-label="Select all rows"
+                      checked={allSelectableSelected}
+                      disabled={selectableIds.length === 0 || bulkPaying}
+                      onChange={(e) => toggleSelectAllRows(e.target.checked)}
+                    />
+                  </th>
                   <th>Date</th>
                   <th>Employee</th>
                   <th>Pseudo</th>
@@ -1311,7 +1414,7 @@ export default function ClaimsPage() {
               <tbody>
                 {visibleClaims.length === 0 ? (
                   <tr>
-                    <td colSpan={showFinance ? 9 : 9} className={fh.empty}>
+                    <td colSpan={showFinance ? 9 : 10} className={fh.empty}>
                       {loading
                         ? "Loading…"
                         : showFinance
@@ -1321,32 +1424,32 @@ export default function ClaimsPage() {
                   </tr>
                 ) : (
                   visibleClaims.map((c) => {
-                    const canSelect =
-                      showFinance &&
-                      (isPayableStatus(c.status) || c.status === "paid");
+                    const canSelect = showFinance
+                      ? isPayableStatus(c.status) || c.status === "paid"
+                      : c.status === "pending" ||
+                        c.status === "approved" ||
+                        c.status === "unpaid";
                     const isSelected = selectedIds.includes(c.id);
                     return (
                     <tr
                       key={c.id}
                       className={isSelected ? fh.rowSelected : undefined}
                     >
-                      {showFinance ? (
-                        <td>
-                          {canSelect ? (
-                            <input
-                              type="checkbox"
-                              aria-label={`Select claim ${c.id}`}
-                              checked={isSelected}
-                              disabled={bulkPaying}
-                              onChange={(e) =>
-                                toggleSelectClaim(c.id, e.target.checked)
-                              }
-                            />
-                          ) : (
-                            <span style={{ color: "#cbd5e1" }}>—</span>
-                          )}
-                        </td>
-                      ) : null}
+                      <td>
+                        {canSelect ? (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select claim ${c.id}`}
+                            checked={isSelected}
+                            disabled={bulkPaying}
+                            onChange={(e) =>
+                              toggleSelectClaim(c.id, e.target.checked)
+                            }
+                          />
+                        ) : (
+                          <span style={{ color: "#cbd5e1" }}>—</span>
+                        )}
+                      </td>
                       <td>{c.claim_date}</td>
                       <td>
                         <strong>
