@@ -97,7 +97,23 @@ export function useBiometricGate(
   }, [employeeId, employeeName]);
 
   React.useEffect(() => {
-    void refreshStatus();
+    // Defer biometric status so clock/attendance APIs win first paint on reload.
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+      void refreshStatus();
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(run, { timeout: 1800 });
+    } else {
+      timeoutId = setTimeout(run, 400);
+    }
+    return () => {
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [refreshStatus]);
 
   // Idle-preload models after enroll status is known so Break/Clock open faster.

@@ -403,8 +403,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
     if (breakIntervalId) clearInterval(breakIntervalId);
     if (prayerBreakIntervalId) clearInterval(prayerBreakIntervalId);
     
-    // Sync clock state from backend
-    // Custom sync to always use server timezone for timer
+    // Clock first — break/prayer/meeting syncs staggered so reload isn't an API storm.
     forceSyncClockState(
       employeeId,
       setIsClockedIn,
@@ -433,21 +432,20 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
       setLoadingAttendance,
       setIntervalId
     );
-    
-    // Sync break state from backend
-    forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
 
-    // Sync prayer break state from backend
-    forceSyncPrayerBreakState(
-      employeeId,
-      setIsPrayerOn,
-      setPrayerBreakTimer,
-      setLoadingPrayerBreak,
-      setPrayerBreakIntervalId,
-      setPrayerStart
-    );
-    refreshmentWidget.forceSync();
-    meetingWidget.forceSync();
+    const secondarySyncId = window.setTimeout(() => {
+      forceSyncBreakState(employeeId, setIsOnBreak, setBreakTimer, setLoadingBreak, setBreakIntervalId);
+      forceSyncPrayerBreakState(
+        employeeId,
+        setIsPrayerOn,
+        setPrayerBreakTimer,
+        setLoadingPrayerBreak,
+        setPrayerBreakIntervalId,
+        setPrayerStart
+      );
+      refreshmentWidget.forceSync();
+      meetingWidget.forceSync();
+    }, 180);
     
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -472,6 +470,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
     document.addEventListener('visibilitychange', handleVisibility);
     
     return () => {
+      window.clearTimeout(secondarySyncId);
       document.removeEventListener('visibilitychange', handleVisibility);
       clearClockSyncInterval(employeeId);
       if (breakIntervalId) clearInterval(breakIntervalId);

@@ -25,13 +25,25 @@ import {
 import { normalizeAttendanceStatus } from "../../lib/attendance-status";
 import { useRouter } from "next/navigation";
 import React from "react";
-import {
-  employeeDisplayNameFromRecord,
-  sanitizeEmployeeDisplayName,
-} from "@/lib/employee-login-lookup";
-import { markEmployeePortal } from "@/lib/access-control/employee-shell";
+import { sanitizeEmployeeDisplayName } from "@/lib/employee-login-lookup";
+import dynamic from "next/dynamic";
 import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 import { useEmployeeSession } from "./employee-session-context";
+
+/** Clock chunk loads with the home page — no layout portal / empty flash. */
+const ClockBreakPrayerWidget = dynamic(
+  () =>
+    import("../components/ClockBreakPrayer").then((m) => m.ClockBreakPrayerWidget),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-hidden
+        style={{ minHeight: 56, borderRadius: 12, background: "rgba(148,163,184,0.12)" }}
+      />
+    ),
+  },
+);
 
 type AttendanceRow = {
   id?: number;
@@ -309,74 +321,44 @@ export default function EmployeeDashboardPage() {
     if (empId) setTicketSeenMap(loadTicketSeenMap(empId));
   }, [setEmployeeId, setEmployeeName]);
 
-  // Resolve real first+last name ASAP (HRM id or email login both)
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const loginId = localStorage.getItem("loginId") || "";
-    const empId = localStorage.getItem("employeeId") || "";
-    if (!loginId && !empId) return;
-
-    let cancelled = false;
-    const urls: string[] = [];
-    if (empId && /^\d+$/.test(empId)) {
-      urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(empId)}`);
-    }
-    if (loginId.includes("@")) {
-      urls.push(`/api/hrm_employees?email=${encodeURIComponent(loginId)}`);
-    } else if (/^\d+$/.test(loginId)) {
-      urls.push(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`);
-    } else if (loginId) {
-      urls.push(`/api/hrm_employees?username=${encodeURIComponent(loginId)}`);
-    }
-
-    void Promise.all(urls.map((u) => fetch(u, { cache: "no-store" }).then((r) => r.json()).catch(() => null)))
-      .then((results) => {
-        if (cancelled) return;
-        const data = results.find((d) => d?.success && d.employee);
-        if (!data?.employee) return;
-        const name = sanitizeEmployeeDisplayName(
-          employeeDisplayNameFromRecord(data.employee),
-          "Employee",
-        );
-        const id = String(data.employee.id || data.employee.employee_id || empId).trim();
-        setEmployeeName(name);
-        if (id && /^\d+$/.test(id)) setEmployeeId(id);
-        markEmployeePortal(id, name);
-        try {
-          localStorage.setItem("employeeName", name);
-        } catch {
-          /* ignore */
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setEmployeeId, setEmployeeName]);
+  // Identity comes from layout EmployeeSessionProvider — no duplicate /hrm_employees.
 
   React.useEffect(() => {
     if (!employeeId) return;
     let cancelled = false;
-    void Promise.all([
-      fetch(`/api/employee_contacts?employeeId=${encodeURIComponent(employeeId)}`, {
-        cache: "no-store",
-      }).then((r) => r.json()),
-      fetchShellBranding().catch(() => null),
-    ]).then(([contactData, branding]) => {
-      if (cancelled) return;
-      const c = contactData?.success ? contactData.contact : null;
-      const city = [c?.city, c?.country].filter(Boolean).join(", ");
-      setProfileContact({
-        email: c?.email_work || c?.email_other || "",
-        phone: c?.phone_mobile || c?.phone_work || c?.phone_home || "",
-        location: city || "—",
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      void Promise.all([
+        fetch(`/api/employee_contacts?employeeId=${encodeURIComponent(employeeId)}`, {
+          cache: "no-store",
+        }).then((r) => r.json()),
+        fetchShellBranding().catch(() => null),
+      ]).then(([contactData, branding]) => {
+        if (cancelled) return;
+        const c = contactData?.success ? contactData.contact : null;
+        const city = [c?.city, c?.country].filter(Boolean).join(", ");
+        setProfileContact({
+          email: c?.email_work || c?.email_other || "",
+          phone: c?.phone_mobile || c?.phone_work || c?.phone_home || "",
+          location: city || "—",
+        });
+        if (branding?.employeeAvatars?.[employeeId]) {
+          setProfilePhoto(branding.employeeAvatars[employeeId]);
+        }
       });
-      if (branding?.employeeAvatars?.[employeeId]) {
-        setProfilePhoto(branding.employeeAvatars[employeeId]);
-      }
-    });
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(load, { timeout: 2500 });
+    } else {
+      timeoutId = setTimeout(load, 700);
+    }
     return () => {
       cancelled = true;
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [employeeId]);
 
@@ -1081,6 +1063,16 @@ export default function EmployeeDashboardPage() {
     };
   }, [eventsCal.year, fetchEvents]);
 
+  const todayClock =
+    employeeId && /^\d+$/.test(employeeId) ? (
+      <ClockBreakPrayerWidget
+        key="emp-clock-widget"
+        employeeId={employeeId}
+        employeeName={employeeName || "Employee"}
+        variant="todayStatus"
+      />
+    ) : null;
+
   return (
     <DashboardHomeView
       employeeId={employeeId}
@@ -1104,6 +1096,7 @@ export default function EmployeeDashboardPage() {
       inboxPendingCount={inboxPendingCount}
       openTicketInbox={() => router.push("/employee-dashboard/tickets")}
       onNavigate={(path) => router.push(path)}
+      todayClock={todayClock}
     />
   );
 }

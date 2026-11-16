@@ -1,6 +1,5 @@
 "use client";
 import React from "react";
-import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -33,18 +32,16 @@ import { EmployeeProfileMenu } from "./components/EmployeeProfileMenu";
 import { MedicalPackageBadge } from "./components/MedicalPackageBadge";
 import { InteractGlobeLogo } from "./components/InteractGlobeLogo";
 import { syncInteractGuardBind } from "./sync-interact-guard";
-import { GuardPresenceFaceHost } from "./GuardPresenceFaceHost";
 import {
   normalizeMedicalPackage,
   type MedicalPackageId,
 } from "@/lib/medical-package";
 import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 
-/** Heavy clock/biometric UI — load only when dashboard home needs it. */
-const ClockBreakPrayerWidget = dynamic(
+/** Guard face challenge host — keep off the first-paint JS graph. */
+const GuardPresenceFaceHost = dynamic(
   () =>
-    import("../components/ClockBreakPrayer").then((m) => m.ClockBreakPrayerWidget),
-  // No green Clock In skeleton — that flash on reload looked like a real button.
+    import("./GuardPresenceFaceHost").then((m) => m.GuardPresenceFaceHost),
   { ssr: false, loading: () => null },
 );
 
@@ -301,19 +298,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   const [employeePseudonym, setEmployeePseudonym] = React.useState<string>("");
   const [heroDateTime, setHeroDateTime] = React.useState(formatHeroDateTime);
   const isDashboardHome = pathname === "/employee-dashboard";
-  const [todayStatusRoot, setTodayStatusRoot] = React.useState<HTMLElement | null>(null);
   const [accessTabs, setAccessTabs] = React.useState<NavTab[]>([]);
 
   React.useEffect(() => {
     const id = window.setInterval(() => setHeroDateTime(formatHeroDateTime()), 30_000);
     return () => window.clearInterval(id);
   }, []);
-
-  // Warm clock widget chunk as soon as we know we're on home (before portal mounts).
-  React.useEffect(() => {
-    if (!isDashboardHome) return;
-    void import("../components/ClockBreakPrayer");
-  }, [isDashboardHome]);
 
   // Prefetch common routes after first paint — don't contend with clock/menu APIs.
   React.useEffect(() => {
@@ -350,26 +340,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   }, [router]);
 
   React.useLayoutEffect(() => {
-    if (!isDashboardHome) {
-      setTodayStatusRoot(null);
-      return;
-    }
-    let cancelled = false;
-    const sync = () => {
-      if (cancelled) return;
-      const el = document.getElementById("emp-today-status-root");
-      if (el) setTodayStatusRoot((prev) => (prev === el ? prev : el));
-    };
-    sync();
-    const obs = new MutationObserver(sync);
-    obs.observe(document.body, { childList: true, subtree: true });
-    return () => {
-      cancelled = true;
-      obs.disconnect();
-    };
-  }, [isDashboardHome]);
-
-  React.useLayoutEffect(() => {
     const loginId = localStorage.getItem("loginId");
     if (!loginId) {
       window.location.href = "/auth";
@@ -380,8 +350,13 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       localStorage.getItem("employeeName"),
       "",
     );
-    setEmployeeId(cachedId || loginId);
+    const cachedPseudo = String(localStorage.getItem("employeePseudonym") || "").trim();
+    // Prefer numeric employeeId so home clock mounts immediately on refresh.
+    setEmployeeId(
+      cachedId && /^\d+$/.test(cachedId) ? cachedId : loginId,
+    );
     if (cachedName) setEmployeeName(cachedName);
+    if (cachedPseudo) setEmployeePseudonym(cachedPseudo);
   }, []);
 
   React.useEffect(() => {
@@ -389,22 +364,22 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     const loginId = localStorage.getItem("loginId");
     if (!loginId) return;
 
+    const cachedId = localStorage.getItem("employeeId") || "";
     let apiUrl = "/api/hrm_employees?";
-    if (loginId.includes("@")) {
+    if (cachedId && /^\d+$/.test(cachedId)) {
+      apiUrl += `employeeId=${encodeURIComponent(cachedId)}`;
+    } else if (loginId.includes("@")) {
       apiUrl += `email=${encodeURIComponent(loginId)}`;
     } else if (/^\d+$/.test(loginId)) {
       apiUrl += `employeeId=${encodeURIComponent(loginId)}`;
     } else {
       apiUrl += `username=${encodeURIComponent(loginId)}`;
     }
-    Promise.all([
-      fetch(apiUrl).then((res) => res.json()).catch(() => ({ success: false })),
-      fetch(`/api/hrm_employees?employeeId=${encodeURIComponent(loginId)}`)
-        .then((res) => res.json())
-        .catch(() => ({ success: false })),
-    ])
-      .then(([data1, data2]) => {
-        const data = data1.success ? data1 : data2;
+
+    // Single identity fetch (was dual Promise.all on every reload).
+    fetch(apiUrl, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
         if (data.success && data.employee) {
           const trimmedName = sanitizeEmployeeDisplayName(
             employeeDisplayNameFromRecord(data.employee),
@@ -423,11 +398,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           } catch {
             /* ignore */
           }
-          void syncInteractGuardBind({
-            employeeId: empId,
-            employeeName: trimmedName,
-            pseudonym: pseudo || null,
-          });
         } else {
           setEmployeeName((prev) => sanitizeEmployeeDisplayName(prev, "Employee"));
         }
@@ -437,30 +407,43 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       });
   }, []);
 
-  // Medical package badge (Silver / Gold / Platinum) next to employee name.
+  // Medical package badge — defer so clock/menu APIs win first paint.
   React.useEffect(() => {
     if (!employeeId || !/^\d+$/.test(employeeId)) {
       setMedicalPackage(null);
       return;
     }
     let cancelled = false;
-    fetch(`/api/employee_salaries?employeeId=${encodeURIComponent(employeeId)}`, {
-      cache: "no-store",
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        setMedicalPackage(normalizeMedicalPackage(data?.salary?.medical_package));
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      fetch(`/api/employee_salaries?employeeId=${encodeURIComponent(employeeId)}`, {
+        cache: "no-store",
       })
-      .catch(() => {
-        if (!cancelled) setMedicalPackage(null);
-      });
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled) return;
+          setMedicalPackage(normalizeMedicalPackage(data?.salary?.medical_package));
+        })
+        .catch(() => {
+          if (!cancelled) setMedicalPackage(null);
+        });
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(load, { timeout: 3000 });
+    } else {
+      timeoutId = setTimeout(load, 900);
+    }
     return () => {
       cancelled = true;
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [employeeId]);
 
-  // Keep Interact Guard agent bound to this logged-in employee (auto id/name/pseudo).
+  // Keep Interact Guard agent bound — defer first push so it doesn't fight clock APIs.
   React.useEffect(() => {
     if (!employeeId || !/^\d+$/.test(employeeId)) return;
     const push = () => {
@@ -471,9 +454,12 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
           employeePseudonym || localStorage.getItem("employeePseudonym") || null,
       });
     };
-    push();
+    const timeoutId = window.setTimeout(push, 1200);
     const id = window.setInterval(push, 60_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(id);
+    };
   }, [employeeId, employeeName, employeePseudonym]);
 
   // Paint cached permission links immediately (no empty sidebar flash), then refresh.
@@ -584,16 +570,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     .slice(0, 2)
     .toUpperCase();
 
-  const clockWidget =
-    employeeId && isDashboardHome ? (
-      <ClockBreakPrayerWidget
-        key="emp-clock-widget"
-        employeeId={employeeId}
-        employeeName={employeeName || "Employee"}
-        variant="todayStatus"
-      />
-    ) : null;
-
   return (
     <EmployeeShellProvider>
     <EmployeeSessionProvider
@@ -703,10 +679,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
             </div>
           </div>
         )}
-
-        {employeeId && isDashboardHome && todayStatusRoot
-          ? createPortal(clockWidget, todayStatusRoot)
-          : null}
 
         <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
         {employeeId && /^\d+$/.test(employeeId) ? (

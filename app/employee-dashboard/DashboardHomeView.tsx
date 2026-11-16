@@ -16,10 +16,15 @@ import {
   type TicketThreadMessage,
 } from "../../lib/ticket-thread";
 import type { TicketCategory } from "../../lib/ticket-catalog";
-import { TardyNoteWidget } from "../components/TardyNoteWidget";
+import dynamic from "next/dynamic";
 import { HeroProfileAvatar } from "./components/HeroProfileAvatar";
 import { SERVER_TIMEZONE } from "../../lib/timezone";
 import styles from "./employee-dashboard.module.css";
+
+const TardyNoteWidget = dynamic(
+  () => import("../components/TardyNoteWidget").then((m) => m.TardyNoteWidget),
+  { ssr: false, loading: () => null },
+);
 
 type TicketWidgetRow = {
   id: number;
@@ -168,6 +173,8 @@ export type DashboardHomeViewProps = {
   inboxPendingCount?: number;
   openTicketInbox?: () => void;
   onNavigate: (path: string) => void;
+  /** Clock/Break controls rendered inline (avoids layout portal flash). */
+  todayClock?: React.ReactNode;
 };
 
 export default function DashboardHomeView(props: DashboardHomeViewProps) {
@@ -193,6 +200,7 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     inboxPendingCount = 0,
     openTicketInbox,
     onNavigate,
+    todayClock,
   } = props;
 
   const profileInitials = (employeeName || "E")
@@ -212,7 +220,7 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
             <h2 className={styles.cardTitle}>Today&apos;s Status</h2>
             <LiveClock />
             <p className={styles.clockedInLabel}>{clockedInLabel}</p>
-            <div id="emp-today-status-root" className={styles.todayActions} />
+            <div className={styles.todayActions}>{todayClock}</div>
           </article>
 
           <article className={`${styles.card} ${styles.attendanceCard}`}>
