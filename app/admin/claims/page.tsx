@@ -648,62 +648,80 @@ export default function ClaimsPage() {
   return (
     <LayoutDashboard>
       <div className={fh.page}>
-        <div className={fh.hero}>
-          <h1 className={fh.heroTitle}>
-            {isFinanceViewer ? "Claims payment" : "Claims"}
-          </h1>
-          <p className={fh.heroSub}>
-            {isFinanceViewer
-              ? "Select approved claims (checkbox), then Mark as Paid at the top — pay several employees in one go."
-              : "OPD 150k for every employee. IPD by package: Silver 30k · Gold 40k · Platinum 50k. Remaining = entitlement minus approved/paid claims this year."}
-          </p>
-        </div>
+        <header className={fh.topBar}>
+          <div className={fh.topLeft}>
+            <p className={fh.eyebrow}>
+              <span className={fh.eyebrowDot} aria-hidden />
+              Interact · Payroll
+            </p>
+            <h1 className={fh.heroTitle}>
+              {isFinanceViewer ? "Claims payment" : "Claims"}
+            </h1>
+            <p className={fh.heroSub}>
+              {isFinanceViewer
+                ? "Select claims, choose Paid or Unpaid, then apply in one step."
+                : "OPD 150k · IPD Silver 30k / Gold 40k / Platinum 50k — remaining updates as you add claims."}
+            </p>
+          </div>
+          <div className={fh.topRight}>
+            <label className={fh.yearChip}>
+              <span>Year</span>
+              <input
+                value={year}
+                onChange={(e) =>
+                  setYear(e.target.value.replace(/[^\d]/g, "").slice(0, 4))
+                }
+                aria-label="Claim year"
+              />
+            </label>
+          </div>
+        </header>
 
-        <div className={fh.cards}>
+        <div className={fh.metricStrip}>
           {isFinanceViewer ? (
             <>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Ready to pay (Approved)</div>
-                <div className={fh.cardValue}>{readyToPayCount}</div>
+              <div className={`${fh.metric} ${fh.metricAccent}`}>
+                <div className={fh.metricLabel}>Ready to pay</div>
+                <div className={fh.metricValue}>{readyToPayCount}</div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Pending</div>
-                <div className={fh.cardValue}>{pendingCount}</div>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Pending</div>
+                <div className={fh.metricValue}>{pendingCount}</div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Approved amount</div>
-                <div className={fh.cardValue}>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Approved amount</div>
+                <div className={fh.metricValue}>
                   {money(summary?.total_approved_amount ?? 0)}
                 </div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Pending amount</div>
-                <div className={fh.cardValue}>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Pending amount</div>
+                <div className={fh.metricValue}>
                   {money(summary?.total_pending_amount ?? 0)}
                 </div>
               </div>
             </>
           ) : (
             <>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Claims ({year})</div>
-                <div className={fh.cardValue}>{summary?.total_claims ?? 0}</div>
+              <div className={`${fh.metric} ${fh.metricAccent}`}>
+                <div className={fh.metricLabel}>Claims</div>
+                <div className={fh.metricValue}>{summary?.total_claims ?? 0}</div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Approved amount</div>
-                <div className={fh.cardValue}>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Approved</div>
+                <div className={fh.metricValue}>
                   {money(summary?.total_approved_amount ?? 0)}
                 </div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Pending amount</div>
-                <div className={fh.cardValue}>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Pending</div>
+                <div className={fh.metricValue}>
                   {money(summary?.total_pending_amount ?? 0)}
                 </div>
               </div>
-              <div className={fh.card}>
-                <div className={fh.cardLabel}>Employees</div>
-                <div className={fh.cardValue}>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Employees</div>
+                <div className={fh.metricValue}>
                   {summary?.employees_with_claims ?? 0}
                 </div>
               </div>
@@ -713,16 +731,17 @@ export default function ClaimsPage() {
 
         {!isFinanceViewer ? (
         <div className={fh.panel}>
-          <h2 className={fh.panelTitle}>Add claim</h2>
+          <div className={fh.panelHead}>
+            <div className={fh.panelHeadLeft}>
+              <h2 className={fh.panelTitle}>Add claim</h2>
+              <p className={fh.panelHint}>
+                Search employee, set amount & status, then save
+              </p>
+            </div>
+          </div>
+          <div className={fh.panelBody}>
           <form onSubmit={onSaveClaim}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(220px, 1.4fr) repeat(4, minmax(110px, 1fr))",
-                gap: 12,
-                alignItems: "end",
-              }}
-            >
+            <div className={fh.formGrid}>
               <div className={fh.field} ref={empPickerRef} style={{ position: "relative" }}>
                 <span className={fh.label}>Employee</span>
                 <input
@@ -759,17 +778,7 @@ export default function ClaimsPage() {
                   <button
                     type="button"
                     onClick={clearEmployee}
-                    style={{
-                      position: "absolute",
-                      right: 8,
-                      top: 30,
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      color: "#64748b",
-                      fontSize: 14,
-                      lineHeight: 1,
-                    }}
+                    className={fh.clearEmpBtn}
                     aria-label="Clear employee"
                   >
                     ×
@@ -870,15 +879,7 @@ export default function ClaimsPage() {
               </label>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr auto",
-                gap: 12,
-                marginTop: 12,
-                alignItems: "end",
-              }}
-            >
+            <div className={fh.formGridSecondary}>
               <label className={fh.field}>
                 <span className={fh.label}>Title / reason</span>
                 <input
@@ -904,7 +905,7 @@ export default function ClaimsPage() {
           </form>
 
           {formEmployeeId ? (
-            <div className={fh.selectedBar} style={{ marginTop: 14 }}>
+            <div className={fh.selectedBar}>
               <div className={fh.selectedText}>
                 {balanceLoading
                   ? "Loading balance…"
@@ -974,32 +975,37 @@ export default function ClaimsPage() {
                         </>
                       )
                       : (
-                        <span style={{ color: "#b91c1c" }}>
+                        <span className={fh.balanceBad}>
                           {balanceError || "Balance unavailable"}
                         </span>
                       )}
               </div>
             </div>
           ) : null}
-
+          </div>
         </div>
         ) : null}
 
         {toast ? <p className={fh.toast}>{toast}</p> : null}
 
         <div className={fh.panel}>
-          <h2 className={fh.panelTitle}>
-            {isFinanceViewer ? "Claims to pay" : "Claims list"}
-          </h2>
-          <div className={fh.filters} style={{ gridTemplateColumns: "110px 1fr 140px 140px auto" }}>
-            <label className={fh.field}>
-              <span className={fh.label}>Year</span>
-              <input
-                className={fh.input}
-                value={year}
-                onChange={(e) => setYear(e.target.value.replace(/[^\d]/g, "").slice(0, 4))}
-              />
-            </label>
+          <div className={fh.panelHead}>
+            <div className={fh.panelHeadLeft}>
+              <h2 className={fh.panelTitle}>
+                {isFinanceViewer ? "Claims to pay" : "Claims list"}
+              </h2>
+              <p className={fh.panelHint}>
+                {isFinanceViewer
+                  ? "Filter, select, then mark Paid or Unpaid"
+                  : "Search and manage employee medical claims"}
+              </p>
+            </div>
+            <button type="button" className={fh.clearBtn} onClick={() => void loadClaims()}>
+              {loading ? "…" : "Refresh"}
+            </button>
+          </div>
+          <div className={fh.panelBody}>
+          <div className={fh.filters}>
             <label className={fh.field}>
               <span className={fh.label}>Search</span>
               <input
@@ -1037,29 +1043,25 @@ export default function ClaimsPage() {
                 <option value="ipd">IPD</option>
               </select>
             </label>
-            <button type="button" className={fh.clearBtn} onClick={() => void loadClaims()}>
-              {loading ? "…" : "Refresh"}
-            </button>
+            <div />
           </div>
 
-          {error ? (
-            <p style={{ color: "#b91c1c", fontWeight: 600 }}>{error}</p>
-          ) : null}
+          {error ? <p className={fh.error}>{error}</p> : null}
 
           {isFinanceViewer ? (
-            <div className={fh.selectedBar} style={{ marginTop: 12 }}>
+            <div className={fh.bulkBar}>
               <div className={fh.selectedText}>
                 {selectedBulkCount > 0
                   ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)}`
                   : bulkTargetIds.length > 0
                     ? bulkAction === "paid"
-                      ? `${bulkTargetIds.length} approved ready — select rows to mark paid`
-                      : `${bulkTargetIds.length} paid — select rows to mark unpaid`
+                      ? `${bulkTargetIds.length} approved ready — select to mark paid`
+                      : `${bulkTargetIds.length} paid — select to mark unpaid`
                     : bulkAction === "paid"
                       ? "No approved claims ready to pay"
                       : "No paid claims to mark unpaid"}
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div className={fh.bulkActions}>
                 {bulkTargetIds.length > 0 ? (
                   <button
                     type="button"
@@ -1085,7 +1087,7 @@ export default function ClaimsPage() {
                   </button>
                 ) : null}
                 <select
-                  className={fh.select}
+                  className={fh.bulkSelect}
                   value={bulkAction}
                   disabled={bulkPaying}
                   onChange={(e) => {
@@ -1093,7 +1095,6 @@ export default function ClaimsPage() {
                     setBulkAction(next);
                     setSelectedIds([]);
                   }}
-                  style={{ width: 160, height: 36 }}
                   aria-label="Payment action"
                 >
                   <option value="paid">Mark as Paid</option>
@@ -1101,15 +1102,11 @@ export default function ClaimsPage() {
                 </select>
                 <button
                   type="button"
-                  className={fh.primaryBtn}
+                  className={
+                    bulkAction === "paid" ? fh.primaryBtn : fh.primaryBtnDark
+                  }
                   style={{
-                    background:
-                      selectedBulkCount > 0
-                        ? bulkAction === "paid"
-                          ? "#0d9488"
-                          : "#111827"
-                        : undefined,
-                    opacity: selectedBulkCount > 0 ? 1 : 0.55,
+                    opacity: selectedBulkCount > 0 ? 1 : 0.5,
                     cursor: selectedBulkCount > 0 ? "pointer" : "not-allowed",
                   }}
                   disabled={bulkPaying || selectedBulkCount === 0}
@@ -1118,16 +1115,14 @@ export default function ClaimsPage() {
                   {bulkPaying
                     ? "Saving…"
                     : selectedBulkCount > 0
-                      ? `Apply ${selectedBulkCount} as ${
-                          bulkAction === "paid" ? "Paid" : "Unpaid"
-                        }`
+                      ? `Apply ${selectedBulkCount}`
                       : "Apply"}
                 </button>
               </div>
             </div>
           ) : null}
 
-          <div className={fh.tableWrap} style={{ marginTop: isFinanceViewer ? 0 : 12 }}>
+          <div className={fh.tableWrap}>
             <table className={fh.table}>
               <thead>
                 <tr>
@@ -1288,6 +1283,7 @@ export default function ClaimsPage() {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       </div>
