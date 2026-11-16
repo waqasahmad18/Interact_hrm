@@ -36,6 +36,11 @@ import {
   type ApprovedLeavesMap,
 } from "../../../lib/leave-duration";
 import {
+  employeeIdKeys,
+  lookupByEmployeeId,
+  setForEmployeeIdKeys,
+} from "@/lib/employee-id-keys";
+import {
   aggregateDayPunches,
   classifyDayAttendance,
   excessLateMinutesFromRaw,
@@ -646,11 +651,13 @@ export default function MonthlyAttendancePage() {
                     if (reason) notesByAtt[String(attId)] = reason;
                     return;
                   }
-                  if (!map[eid]) map[eid] = {};
-                  map[eid][dk] = status;
-                  if (reason) {
-                    if (!notes[eid]) notes[eid] = {};
-                    notes[eid][dk] = reason;
+                  for (const idKey of employeeIdKeys(eid)) {
+                    if (!map[idKey]) map[idKey] = {};
+                    map[idKey][dk] = status;
+                    if (reason) {
+                      if (!notes[idKey]) notes[idKey] = {};
+                      notes[idKey][dk] = reason;
+                    }
                   }
                 },
               );
@@ -1029,7 +1036,7 @@ export default function MonthlyAttendancePage() {
       const session = statusOverridesByAttendanceId[String(att)];
       return session ? normalizeAttendanceStatus(session) : null;
     }
-    const v = statusOverrides[String(employeeId)]?.[dateKey];
+    const v = lookupByEmployeeId(statusOverrides, employeeId)?.[dateKey];
     return v ? normalizeAttendanceStatus(v) : null;
   }
 
@@ -1330,8 +1337,17 @@ export default function MonthlyAttendancePage() {
             10,
           ) || 0;
       } else if (dayRecords.length === 0) {
-        const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, null);
-        dayDeduction = parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
+        const emptyOverride = overrideStatusFor(employee.employeeId, day.dateKey);
+        if (emptyOverride) {
+          dayDeduction =
+            parseInt(
+              String(deductionForAttendanceStatus(emptyOverride, 0)).replace(/%/g, ""),
+              10,
+            ) || 0;
+        } else {
+          const { deduction } = emptyWorkingDayStatus(day.dateKey, workingDay, null);
+          dayDeduction = parseInt(String(deduction).replace(/%/g, ""), 10) || 0;
+        }
       } else {
         // Has records, use meta deduction
         if (meta?.deduction) {
@@ -2027,28 +2043,35 @@ export default function MonthlyAttendancePage() {
       if (!record.employee_id) return;
       const empId = String(record.employee_id);
       // Admin Staff punch-only: Tungsten punches only — never apply 1st/2nd half / tardy rules
-      if (PUNCH_ONLY_EMPLOYEE_IDS.has(empId)) return;
-      if (!map[empId]) {
-        map[empId] = {
-          employeeId: empId,
-          employeeName: record.employee_name || "-",
-          pseudonym: record.pseudonym || "-",
-          departmentName: record.department_name || "-",
-          gender: record.gender || "",
-          byDate: {},
-          dateMeta: {},
-        };
-      }
-      if (!map[empId].gender && record.gender) {
-        map[empId].gender = record.gender;
+      if (employeeIdKeys(empId).some((k) => PUNCH_ONLY_EMPLOYEE_IDS.has(k))) return;
+      const bucket =
+        lookupByEmployeeId(map, empId) ||
+        (() => {
+          const fresh: MonthlyAttendanceEmployeeRow = {
+            employeeId: empId,
+            employeeName: record.employee_name || "-",
+            pseudonym: record.pseudonym || "-",
+            departmentName: record.department_name || "-",
+            gender: record.gender || "",
+            byDate: {},
+            dateMeta: {},
+          };
+          setForEmployeeIdKeys(map, empId, fresh);
+          return fresh;
+        })();
+      if (!bucket.gender && record.gender) {
+        bucket.gender = record.gender;
       }
       const dateKey = getRecordDateKey(record);
       if (!dateKey) return;
-      if (!map[empId].byDate[dateKey]) map[empId].byDate[dateKey] = [];
-      map[empId].byDate[dateKey].push(record);
+      if (!bucket.byDate[dateKey]) bucket.byDate[dateKey] = [];
+      bucket.byDate[dateKey].push(record);
     });
 
+    const seenEmployees = new Set<object>();
     Object.values(map).forEach((employee) => {
+      if (seenEmployees.has(employee)) return;
+      seenEmployees.add(employee);
       Object.keys(employee.byDate).forEach((dateKey) => {
         employee.byDate[dateKey].sort(compareAttendanceRows);
       });
@@ -2111,7 +2134,9 @@ export default function MonthlyAttendancePage() {
       });
     });
 
-    return Object.values(map).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+    return [...seenEmployees]
+      .map((e) => e as MonthlyAttendanceEmployeeRow)
+      .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
   }, [
     attendance,
     showingImported,

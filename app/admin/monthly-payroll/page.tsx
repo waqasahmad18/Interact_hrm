@@ -42,6 +42,11 @@ import {
   type MedicalPackageId,
 } from "@/lib/medical-package";
 import { monthlySalaryTaxFromGross } from "@/lib/pakistan-salary-tax";
+import {
+  employeeIdKeys,
+  lookupByEmployeeId,
+  setForEmployeeIdKeys,
+} from "@/lib/employee-id-keys";
 
 // ...existing code...
 
@@ -268,16 +273,9 @@ export default function MonthlyAttendancePage() {
     return Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
-  /** Normalize "097" / 97 / "97" so Allowances defaults match payroll rows. */
+  /** Normalize "097" / 97 / "97" so Allowances / attendance / leave maps match. */
   function payrollIdKeys(raw: string | number | undefined | null): string[] {
-    const s = String(raw ?? "").trim();
-    if (!s) return [];
-    const keys = [s];
-    if (/^\d+$/.test(s)) {
-      const n = String(Number(s));
-      if (n !== s) keys.push(n);
-    }
-    return keys;
+    return employeeIdKeys(raw);
   }
 
   function lookupMoneyMap(
@@ -806,13 +804,17 @@ export default function MonthlyAttendancePage() {
                 sessionFill.push({ eid, dk, status });
                 return;
               }
-              if (!map[eid]) map[eid] = {};
-              map[eid][dk] = status;
+              for (const idKey of employeeIdKeys(eid)) {
+                if (!map[idKey]) map[idKey] = {};
+                map[idKey][dk] = status;
+              }
             },
           );
           sessionFill.forEach(({ eid, dk, status }) => {
-            if (!map[eid]) map[eid] = {};
-            if (!map[eid][dk]) map[eid][dk] = status;
+            for (const idKey of employeeIdKeys(eid)) {
+              if (!map[idKey]) map[idKey] = {};
+              if (!map[idKey][dk]) map[idKey][dk] = status;
+            }
           });
         }
         setStatusOverrides(map);
@@ -927,7 +929,7 @@ export default function MonthlyAttendancePage() {
       const meta = employee.dateMeta?.[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
       const leaveKind = approvedLeaveOnDay(approvedLeavesMap, empId, day.dateKey);
-      const override = statusOverrides[empId]?.[day.dateKey];
+      const override = lookupByEmployeeId(statusOverrides, empId)?.[day.dateKey];
 
       let dayDeduction = 0;
       if (leaveKind || override === "Leave") {
@@ -1435,24 +1437,40 @@ export default function MonthlyAttendancePage() {
     attendance.forEach((record: any) => {
       if (!record.employee_id) return;
       const empId = String(record.employee_id);
-      if (!attMap[empId]) {
-        attMap[empId] = {
-          byDate: {},
-          dateMeta: {},
-          gender: record.gender || "",
-          attendanceRecord: record,
-        };
-      }
-      if (!attMap[empId].gender && record.gender) {
-        attMap[empId].gender = record.gender;
+      const bucket =
+        lookupByEmployeeId(attMap, empId) ||
+        (() => {
+          const fresh = {
+            byDate: {} as Record<string, any[]>,
+            dateMeta: {} as Record<
+              string,
+              {
+                runningLate: number | string;
+                statusLabel: string;
+                statusColor: string;
+                deduction: string;
+              }
+            >,
+            gender: record.gender || "",
+            attendanceRecord: record,
+          };
+          setForEmployeeIdKeys(attMap, empId, fresh);
+          return fresh;
+        })();
+      if (!bucket.gender && record.gender) {
+        bucket.gender = record.gender;
       }
       const dateKey = getRecordDateKey(record);
       if (!dateKey) return;
-      if (!attMap[empId].byDate[dateKey]) attMap[empId].byDate[dateKey] = [];
-      attMap[empId].byDate[dateKey].push(record);
+      if (!bucket.byDate[dateKey]) bucket.byDate[dateKey] = [];
+      bucket.byDate[dateKey].push(record);
     });
 
-    Object.entries(attMap).forEach(([empId, employee]) => {
+    const seenAtt = new Set<object>();
+    Object.values(attMap).forEach((employee) => {
+      if (seenAtt.has(employee)) return;
+      seenAtt.add(employee);
+
       Object.keys(employee.byDate).forEach((dateKey) => {
         employee.byDate[dateKey].sort(compareAttendanceRows);
       });
@@ -1472,7 +1490,10 @@ export default function MonthlyAttendancePage() {
         });
 
         const autoStatusLabel = normalizeAttendanceStatus(dayStatus.statusLabel);
-        const override = statusOverrides[empId]?.[dateKey];
+        const override = lookupByEmployeeId(
+          statusOverrides,
+          employee.attendanceRecord?.employee_id,
+        )?.[dateKey];
         const isManual = Boolean(override);
         const statusLabel = override || autoStatusLabel;
         let deduction = "";
@@ -1509,11 +1530,11 @@ export default function MonthlyAttendancePage() {
 
     return allEmployees.map((emp) => {
       const empId = String(emp.id || emp.employee_id);
-      const att = attMap[empId];
-      const basicSalary = salaryMap[empId];
-      const allowOT = allowOvertimeMap[empId] === true;
+      const att = lookupByEmployeeId(attMap, empId);
+      const basicSalary = lookupByEmployeeId(salaryMap, empId);
+      const allowOT = lookupByEmployeeId(allowOvertimeMap, empId) === true;
       const paidHoursPerDay =
-        paidHoursPerDayMap[empId] ??
+        lookupByEmployeeId(paidHoursPerDayMap, empId) ??
         getPaidHoursPerDayFromProfile(emp.working_hours);
       return {
         employeeId: empId,
