@@ -662,6 +662,24 @@ export default function ClaimsPage() {
     });
   }, [filteredClaims]);
 
+  const adminReviewQueue = useMemo(() => {
+    // Admin: pending first (to approve), then approved/unpaid, then paid.
+    const rank = (s: string) => {
+      const v = String(s || "").toLowerCase();
+      if (v === "pending") return 0;
+      if (v === "approved" || v === "unpaid") return 1;
+      if (v === "paid") return 2;
+      return 3;
+    };
+    return [...filteredClaims].sort((a, b) => {
+      const rd = rank(a.status) - rank(b.status);
+      if (rd !== 0) return rd;
+      return String(b.claim_date).localeCompare(String(a.claim_date));
+    });
+  }, [filteredClaims]);
+
+  const visibleClaims = showFinance ? financeQueue : adminReviewQueue;
+
   const readyToPayCount = useMemo(
     () => claims.filter((c) => isPayableStatus(c.status)).length,
     [claims],
@@ -672,22 +690,22 @@ export default function ClaimsPage() {
   );
   const bulkTargetIds = useMemo(
     () =>
-      (showFinance ? financeQueue : filteredClaims)
+      visibleClaims
         .filter((c) =>
           bulkAction === "paid"
             ? canBulkMarkPaid(c.status)
             : canBulkMarkUnpaid(c.status),
         )
         .map((c) => c.id),
-    [showFinance, financeQueue, filteredClaims, bulkAction],
+    [visibleClaims, bulkAction],
   );
   /** All rows that show a checkbox — header selects these together. */
   const selectableIds = useMemo(
     () =>
-      (showFinance ? financeQueue : filteredClaims)
+      visibleClaims
         .filter((c) => isPayableStatus(c.status) || c.status === "paid")
         .map((c) => c.id),
-    [showFinance, financeQueue, filteredClaims],
+    [visibleClaims],
   );
   const allSelectableSelected =
     selectableIds.length > 0 &&
@@ -700,19 +718,13 @@ export default function ClaimsPage() {
     bulkTargetIds.every((id) => selectedIds.includes(id));
   const selectedForBulk = useMemo(() => {
     const set = new Set(selectedIds);
-    return (showFinance ? financeQueue : filteredClaims).filter((c) => {
+    return visibleClaims.filter((c) => {
       if (!set.has(c.id)) return false;
       return bulkAction === "paid"
         ? canBulkMarkPaid(c.status)
         : canBulkMarkUnpaid(c.status);
     });
-  }, [
-    selectedIds,
-    showFinance,
-    financeQueue,
-    filteredClaims,
-    bulkAction,
-  ]);
+  }, [selectedIds, visibleClaims, bulkAction]);
   const selectedBulkCount = selectedForBulk.length;
   const selectedBulkAmount = useMemo(
     () => selectedForBulk.reduce((sum, c) => sum + Number(c.amount || 0), 0),
@@ -759,14 +771,14 @@ export default function ClaimsPage() {
                 ? "Claims"
                 : showFinance
                   ? "Claims payment"
-                  : "Claims"}
+                  : "Claims management"}
             </h1>
             <p className={fh.heroSub}>
               {!roleReady
                 ? "Loading your claims view…"
                 : showFinance
                   ? "Select claims, choose Paid or Unpaid, then apply in one step."
-                  : "OPD 150k · IPD Silver 30k / Gold 40k / Platinum 50k — remaining updates as you add claims."}
+                  : "Add claims, approve or reject — Finance marks Paid in one step."}
             </p>
           </div>
           <div className={fh.topRight}>
@@ -834,25 +846,23 @@ export default function ClaimsPage() {
           ) : (
             <>
               <div className={`${fh.metric} ${fh.metricAccent}`}>
-                <div className={fh.metricLabel}>Claims</div>
-                <div className={fh.metricValue}>{summary?.total_claims ?? 0}</div>
+                <div className={fh.metricLabel}>Pending</div>
+                <div className={fh.metricValue}>{pendingCount}</div>
               </div>
               <div className={fh.metric}>
-                <div className={fh.metricLabel}>Approved</div>
+                <div className={fh.metricLabel}>Ready for finance</div>
+                <div className={fh.metricValue}>{readyToPayCount}</div>
+              </div>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Approved amount</div>
                 <div className={fh.metricValue}>
                   {money(summary?.total_approved_amount ?? 0)}
                 </div>
               </div>
               <div className={fh.metric}>
-                <div className={fh.metricLabel}>Pending</div>
+                <div className={fh.metricLabel}>Pending amount</div>
                 <div className={fh.metricValue}>
                   {money(summary?.total_pending_amount ?? 0)}
-                </div>
-              </div>
-              <div className={fh.metric}>
-                <div className={fh.metricLabel}>Employees</div>
-                <div className={fh.metricValue}>
-                  {summary?.employees_with_claims ?? 0}
                 </div>
               </div>
             </>
@@ -865,7 +875,8 @@ export default function ClaimsPage() {
             <div className={fh.panelHeadLeft}>
               <h2 className={fh.panelTitle}>Add claim</h2>
               <p className={fh.panelHint}>
-                Search employee, set amount & status, then save
+                Search employee, set amount & status, then save — OPD 150k · IPD
+                Silver 30k / Gold 40k / Platinum 50k
               </p>
             </div>
           </div>
@@ -1129,12 +1140,12 @@ export default function ClaimsPage() {
           <div className={fh.panelHead}>
             <div className={fh.panelHeadLeft}>
               <h2 className={fh.panelTitle}>
-                {showFinance ? "Claims to pay" : "Claims list"}
+                {showFinance ? "Claims to pay" : "Claims to review"}
               </h2>
               <p className={fh.panelHint}>
                 {showFinance
                   ? "Filter, select, then mark Paid or Unpaid"
-                  : "Search and manage employee medical claims"}
+                  : "Filter, approve or reject — then Finance marks paid"}
               </p>
             </div>
             <button type="button" className={fh.clearBtn} onClick={() => void loadClaims()}>
@@ -1185,6 +1196,14 @@ export default function ClaimsPage() {
           </div>
 
           {error ? <p className={fh.error}>{error}</p> : null}
+
+          {!showFinance && pendingCount > 0 ? (
+            <div className={fh.bulkBar}>
+              <div className={fh.selectedText}>
+                {pendingCount} pending — approve to send to Finance
+              </div>
+            </div>
+          ) : null}
 
           {showFinance ? (
             <div className={fh.bulkBar}>
@@ -1290,7 +1309,7 @@ export default function ClaimsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(showFinance ? financeQueue : filteredClaims).length === 0 ? (
+                {visibleClaims.length === 0 ? (
                   <tr>
                     <td colSpan={showFinance ? 9 : 9} className={fh.empty}>
                       {loading
@@ -1301,7 +1320,7 @@ export default function ClaimsPage() {
                     </td>
                   </tr>
                 ) : (
-                  (showFinance ? financeQueue : filteredClaims).map((c) => {
+                  visibleClaims.map((c) => {
                     const canSelect =
                       showFinance &&
                       (isPayableStatus(c.status) || c.status === "paid");
@@ -1377,11 +1396,11 @@ export default function ClaimsPage() {
                               {c.status === "pending" ? (
                                 <button
                                   type="button"
-                                  className={fh.clearBtn}
-                                  style={{ height: 32, padding: "0 10px", fontSize: 12 }}
+                                  className={fh.actionApprove}
+                                  disabled={payingId === c.id}
                                   onClick={() => void setClaimStatus(c.id, "approved")}
                                 >
-                                  Approve
+                                  {payingId === c.id ? "Saving…" : "Approve"}
                                 </button>
                               ) : null}
                               {/* Mark paid is Finance-only — HR/Admin approve/reject only */}
@@ -1393,13 +1412,8 @@ export default function ClaimsPage() {
                               c.status !== "paid" ? (
                                 <button
                                   type="button"
-                                  className={fh.clearBtn}
-                                  style={{
-                                    height: 32,
-                                    padding: "0 10px",
-                                    fontSize: 12,
-                                    color: "#b91c1c",
-                                  }}
+                                  className={fh.actionReject}
+                                  disabled={payingId === c.id}
                                   onClick={() => void setClaimStatus(c.id, "rejected")}
                                 >
                                   Reject
