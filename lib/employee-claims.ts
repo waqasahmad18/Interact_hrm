@@ -287,6 +287,11 @@ export async function resolveMedicalClaimBalances(input: {
 }
 
 function mapClaimRow(r: any): EmployeeClaim {
+  const nameFromJoin = String(r.employee_name || r.emp_full_name || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const pseudo = r.emp_pseudonym ?? r.pseudonym ?? null;
+  const dept = r.emp_department_name ?? r.department_name ?? null;
   return {
     id: Number(r.id),
     employee_id: Number(r.employee_id),
@@ -309,9 +314,84 @@ function mapClaimRow(r: any): EmployeeClaim {
     payroll_month: r.payroll_month ?? null,
     created_at: String(r.created_at || ""),
     updated_at: String(r.updated_at || ""),
-    employee_name: r.employee_name || undefined,
-    pseudonym: r.pseudonym ?? null,
-    department_name: r.department_name ?? null,
+    employee_name: nameFromJoin || undefined,
+    pseudonym: pseudo != null && String(pseudo).trim() ? String(pseudo).trim() : null,
+    department_name:
+      dept != null && String(dept).trim() ? String(dept).trim() : null,
+  };
+}
+
+async function loadEmployeeMetaByIds(
+  ids: number[],
+): Promise<
+  Record<
+    string,
+    { employee_name: string; pseudonym: string | null; department_name: string | null }
+  >
+> {
+  const uniq = [...new Set(ids.filter((n) => Number.isFinite(n) && n > 0))];
+  if (!uniq.length) return {};
+  const placeholders = uniq.map(() => "?").join(",");
+  try {
+    // Same shape as /api/employee-list (pseudonym column = pseudo name; no middle_name).
+    const result: any = await query(
+      `SELECT e.id,
+          TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))) AS employee_name,
+          e.pseudonym AS emp_pseudonym,
+          d.name AS emp_department_name
+       FROM hrm_employees e
+       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+       LEFT JOIN departments d ON j.department_id = d.id
+       WHERE e.id IN (${placeholders})`,
+      uniq,
+    );
+    const rows: any[] = Array.isArray(result?.[0])
+      ? result[0]
+      : Array.isArray(result)
+        ? result
+        : [];
+    const out: Record<
+      string,
+      { employee_name: string; pseudonym: string | null; department_name: string | null }
+    > = {};
+    for (const r of rows) {
+      const id = String(r.id ?? "").trim();
+      if (!id) continue;
+      out[id] = {
+        employee_name: String(r.employee_name || "")
+          .replace(/\s+/g, " ")
+          .trim(),
+        pseudonym:
+          r.emp_pseudonym != null && String(r.emp_pseudonym).trim()
+            ? String(r.emp_pseudonym).trim()
+            : null,
+        department_name:
+          r.emp_department_name != null && String(r.emp_department_name).trim()
+            ? String(r.emp_department_name).trim()
+            : null,
+      };
+    }
+    return out;
+  } catch (err) {
+    console.warn("[claims] employee meta lookup failed:", err);
+    return {};
+  }
+}
+
+function applyEmployeeMeta(
+  claim: EmployeeClaim,
+  meta: Record<
+    string,
+    { employee_name: string; pseudonym: string | null; department_name: string | null }
+  >,
+): EmployeeClaim {
+  const m = meta[String(claim.employee_id)];
+  if (!m) return claim;
+  return {
+    ...claim,
+    employee_name: m.employee_name || claim.employee_name,
+    pseudonym: m.pseudonym ?? claim.pseudonym,
+    department_name: m.department_name ?? claim.department_name,
   };
 }
 
@@ -324,15 +404,20 @@ export async function listClaims(input?: {
   await ensureClaimsTables();
   const year = yearOrCurrent(input?.year);
   const params: any[] = [year];
+  // Explicit claim columns + aliased employee fields (avoid c.* / middle_name issues).
   let sql = `
-    SELECT c.*,
-      TRIM(CONCAT(COALESCE(e.first_name,''),' ',COALESCE(e.middle_name,''),' ',COALESCE(e.last_name,''))) AS employee_name,
-      e.pseudonym,
-      d.name AS department_name
+    SELECT
+      c.id, c.employee_id, c.claim_year, c.claim_type, c.title, c.amount,
+      c.claim_date, c.status, c.notes, c.receipt_path, c.created_by,
+      c.created_by_employee_id, c.approved_by_employee_id, c.approved_at,
+      c.payroll_month, c.created_at, c.updated_at,
+      TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))) AS emp_full_name,
+      e.pseudonym AS emp_pseudonym,
+      d.name AS emp_department_name
     FROM employee_claims c
     LEFT JOIN hrm_employees e ON e.id = c.employee_id
-    LEFT JOIN employee_jobs j ON j.employee_id = e.id
-    LEFT JOIN departments d ON d.id = j.department_id
+    LEFT JOIN employee_jobs j ON e.id = j.employee_id
+    LEFT JOIN departments d ON j.department_id = d.id
     WHERE c.claim_year = ?
   `;
   if (input?.employeeId != null && Number.isFinite(input.employeeId)) {
@@ -349,8 +434,22 @@ export async function listClaims(input?: {
   }
   sql += ` ORDER BY c.claim_date DESC, c.id DESC`;
 
-  const [rows]: any = await query(sql, params);
-  return (Array.isArray(rows) ? rows : []).map(mapClaimRow);
+  const result: any = await query(sql, params);
+  const rows: any[] = Array.isArray(result?.[0])
+    ? result[0]
+    : Array.isArray(result)
+      ? result
+      : [];
+  let claims = rows.map(mapClaimRow);
+
+  const missing = claims.filter(
+    (c) => !c.employee_name || !c.department_name || c.pseudonym == null,
+  );
+  if (missing.length) {
+    const meta = await loadEmployeeMetaByIds(missing.map((c) => c.employee_id));
+    claims = claims.map((c) => applyEmployeeMeta(c, meta));
+  }
+  return claims;
 }
 
 export async function createClaim(input: {
@@ -450,21 +549,34 @@ export async function createClaim(input: {
 
 export async function getClaimById(id: number): Promise<EmployeeClaim | null> {
   await ensureClaimsTables();
-  const [rows]: any = await query(
-    `SELECT c.*,
-      TRIM(CONCAT(COALESCE(e.first_name,''),' ',COALESCE(e.middle_name,''),' ',COALESCE(e.last_name,''))) AS employee_name,
-      e.pseudonym,
-      d.name AS department_name
+  const result: any = await query(
+    `SELECT
+      c.id, c.employee_id, c.claim_year, c.claim_type, c.title, c.amount,
+      c.claim_date, c.status, c.notes, c.receipt_path, c.created_by,
+      c.created_by_employee_id, c.approved_by_employee_id, c.approved_at,
+      c.payroll_month, c.created_at, c.updated_at,
+      TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))) AS emp_full_name,
+      e.pseudonym AS emp_pseudonym,
+      d.name AS emp_department_name
      FROM employee_claims c
      LEFT JOIN hrm_employees e ON e.id = c.employee_id
-     LEFT JOIN employee_jobs j ON j.employee_id = e.id
-     LEFT JOIN departments d ON d.id = j.department_id
+     LEFT JOIN employee_jobs j ON e.id = j.employee_id
+     LEFT JOIN departments d ON j.department_id = d.id
      WHERE c.id = ? LIMIT 1`,
     [Number(id)],
   );
-  const list = Array.isArray(rows) ? rows : [];
+  const list: any[] = Array.isArray(result?.[0])
+    ? result[0]
+    : Array.isArray(result)
+      ? result
+      : [];
   if (!list.length) return null;
-  return mapClaimRow(list[0]);
+  let claim = mapClaimRow(list[0]);
+  if (!claim.employee_name || !claim.department_name || claim.pseudonym == null) {
+    const meta = await loadEmployeeMetaByIds([claim.employee_id]);
+    claim = applyEmployeeMeta(claim, meta);
+  }
+  return claim;
 }
 
 export async function updateClaimStatus(input: {
