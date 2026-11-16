@@ -149,7 +149,11 @@ import {
   punchOnlyPinForId,
 } from "../../../lib/punch-only-employees";
 
-/** Admin dept / punch-only roster may show T.Punch without HRM clock-in. */
+/**
+ * Who may appear as a "punch-only" employee card with no HRM clock-in rows.
+ * Admin dept / punch-only roster only. Normal staff cards still come from attendance.
+ * (ZK T.Punch on Absent days is enabled separately via includeZkOnlyDays=true.)
+ */
 function allowsPunchWithoutClockIn(
   employeeId: string | number | null | undefined,
   departmentName: string | null | undefined,
@@ -1476,6 +1480,7 @@ export default function MonthlyAttendancePage() {
     const allRecords = attendance.filter(
       (record: any) => String(record.employee_id) === empId,
     );
+    // All employees: invent ZK-only T.Punch rows; status stays HRM clock-in/out based.
     return buildEmployeeReportSessions(
       employeeMatchKeys(employee),
       allRecords,
@@ -1485,7 +1490,7 @@ export default function MonthlyAttendancePage() {
       zkFrom,
       zkTo,
       shiftResolverForEmployee(empId),
-      allowsPunchWithoutClockIn(empId, employee.departmentName),
+      true,
     );
   }
 
@@ -1601,20 +1606,13 @@ export default function MonthlyAttendancePage() {
 
     const employeeSessions =
       pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
-    const allowNoClock = allowsPunchWithoutClockIn(
-      employee.employeeId,
-      employee.departmentName,
-    );
 
     monthInfo.days.forEach((day) => {
       const dayRecords = employee.byDate[day.dateKey] || [];
       const meta = employee.dateMeta[day.dateKey];
       const workingDay = isWorkingDay(day.dateKey);
-      const daySessions = employeeSessions.filter((s) => {
-        if (s.sessionDate !== day.dateKey) return false;
-        if (allowNoClock) return true;
-        return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
-      });
+      // Show ZK-only sessions too; status still from HRM / leave / Absent fallback.
+      const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
 
       if (daySessions.length === 0 && dayRecords.length === 0) {
         const leaveKind = approvedLeaveOnDay(
@@ -1654,8 +1652,31 @@ export default function MonthlyAttendancePage() {
         // handled above when no sessions and no records
       }
 
+      const leaveKindSession = approvedLeaveOnDay(
+        approvedLeavesMap,
+        employee.employeeId,
+        day.dateKey,
+      );
+      const leaveAttSession = leaveKindSession
+        ? attendanceFromApprovedLeaveDay(leaveKindSession)
+        : null;
+      // No HRM clock-in meta → Absent (or leave/off). Punches do not change status.
+      const emptySessionFallback = emptyWorkingDayStatus(
+        day.dateKey,
+        workingDay,
+        leaveKindSession,
+      );
+
       sessionsToExport.forEach(({ session, record }, sessionIndex) => {
-        const statusLabel = normalizeAttendanceStatus(meta?.statusLabel || "");
+        const statusLabel = normalizeAttendanceStatus(
+          leaveAttSession?.statusLabel ||
+            meta?.statusLabel ||
+            emptySessionFallback.statusLabel,
+        );
+        const deduction =
+          leaveAttSession?.deduction ||
+          meta?.deduction ||
+          emptySessionFallback.deduction;
         dataRows.push({
           cells: [
             day.weekday,
@@ -1672,7 +1693,7 @@ export default function MonthlyAttendancePage() {
               ? statusCellText(statusLabel, meta?.lateMinutes)
               : statusLabel,
             tardyNoteForCell(employee.employeeId, day.dateKey, statusLabel, record?.id, dayRecords),
-            meta?.deduction || "",
+            deduction,
           ],
           status: statusLabel,
         });
@@ -1917,21 +1938,13 @@ export default function MonthlyAttendancePage() {
     } else {
       const employeeSessions =
         pairedSessions ?? sessionsByEmployeeId.get(String(employee.employeeId)) ?? [];
-      const allowNoClock = allowsPunchWithoutClockIn(
-        employee.employeeId,
-        employee.departmentName,
-      );
 
       monthInfo.days.forEach((day) => {
         if (!isWorkingDay(day.dateKey)) return;
 
         const dayRecords = employee.byDate[day.dateKey] || [];
         const meta = employee.dateMeta[day.dateKey];
-        const daySessions = employeeSessions.filter((s) => {
-          if (s.sessionDate !== day.dateKey) return false;
-          if (allowNoClock) return true;
-          return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
-        });
+        const daySessions = employeeSessions.filter((s) => s.sessionDate === day.dateKey);
 
         if (dayRecords.length === 0 && daySessions.length === 0) {
           const leaveKind = approvedLeaveOnDay(
@@ -1962,9 +1975,13 @@ export default function MonthlyAttendancePage() {
           day.dateKey,
         );
         const leaveAtt = leaveKind ? attendanceFromApprovedLeaveDay(leaveKind) : null;
-        const exportStatus = leaveAtt?.statusLabel || meta?.statusLabel || "On Time";
+        const emptyFallback = emptyWorkingDayStatus(day.dateKey, true, leaveKind);
+        // ZK punches never invent "On Time" — status from HRM / leave / Absent only.
+        const exportStatus =
+          leaveAtt?.statusLabel || meta?.statusLabel || emptyFallback.statusLabel;
         if (!shouldIncludeInDeductionSummary(exportStatus)) return;
-        const deduction = leaveAtt?.deduction || meta?.deduction || "";
+        const deduction =
+          leaveAtt?.deduction || meta?.deduction || emptyFallback.deduction;
         const tardyCount = meta?.runningLate ?? "";
         const sessionsToExport = getDaySessionRows(day.dateKey, dayRecords, daySessions);
 
@@ -2330,6 +2347,7 @@ export default function MonthlyAttendancePage() {
       const allRecords = recordsByEmployeeId.get(empId) || [];
       out.set(
         String(emp.employeeId),
+        // All employees: invent ZK-only T.Punch rows; status stays HRM clock-in/out based.
         buildEmployeeReportSessions(
           employeeMatchKeys(emp),
           allRecords,
@@ -2339,7 +2357,7 @@ export default function MonthlyAttendancePage() {
           zkFrom,
           zkTo,
           shiftResolverForEmployee(empId),
-          allowsPunchWithoutClockIn(empId, emp.departmentName),
+          true,
         ),
       );
     });
@@ -2661,16 +2679,11 @@ export default function MonthlyAttendancePage() {
                           const meta = rowCtx.meta;
                           const workingDay = isWorkingDay(day.dateKey);
                           const employeeSessions = sessionsByEmployeeId.get(String(employee.employeeId)) || [];
-                          const allowNoClock = allowsPunchWithoutClockIn(
-                            employee.employeeId,
-                            employee.departmentName,
+                          // All employees: keep ZK-only sessions (shift first/last T.Punch).
+                          // Status still depends on HRM clock-in/out only (Absent if none).
+                          const daySessions = employeeSessions.filter(
+                            (s) => s.sessionDate === day.dateKey,
                           );
-                          // Non-Admin: ignore ZK-only sessions (no Clock In) — those days are Absent.
-                          const daySessions = employeeSessions.filter((s) => {
-                            if (s.sessionDate !== day.dateKey) return false;
-                            if (allowNoClock) return true;
-                            return Boolean(s.hrmClockIn && s.hrmClockIn !== "-");
-                          });
 
                           if (daySessions.length === 0 && dayRecords.length === 0) {
                             const leaveKind = approvedLeaveOnDay(
@@ -2727,15 +2740,23 @@ export default function MonthlyAttendancePage() {
                           const leaveAttDay = leaveKindDay
                             ? attendanceFromApprovedLeaveDay(leaveKindDay)
                             : null;
+                          const emptyFallback = emptyWorkingDayStatus(
+                            day.dateKey,
+                            workingDay,
+                            leaveKindDay,
+                          );
                           const dayLevelOverride = overrideStatusFor(
                             employee.employeeId,
                             day.dateKey,
                           );
+                          // Status: leave → HRM meta → Absent/Off. Punches never change it.
                           const dayAutoStatus = leaveAttDay
                             ? leaveAttDay.statusLabel
-                            : normalizeAttendanceStatus(
-                                meta?.autoStatusLabel || meta?.statusLabel || "-",
-                              );
+                            : meta?.autoStatusLabel || meta?.statusLabel
+                              ? normalizeAttendanceStatus(
+                                  meta.autoStatusLabel || meta.statusLabel || "-",
+                                )
+                              : emptyFallback.statusLabel;
                           const sessionsToShow = getDaySessionRows(
                             day.dateKey,
                             dayRecords,
@@ -2762,7 +2783,7 @@ export default function MonthlyAttendancePage() {
                                 )
                               : leaveAttDay
                                 ? leaveAttDay.deduction
-                                : meta?.deduction || "";
+                                : meta?.deduction || emptyFallback.deduction;
                             const statusIsManual = Boolean(effectiveOverride);
                             return (
                               <tr

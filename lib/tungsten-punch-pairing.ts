@@ -1158,8 +1158,9 @@ export function buildEmployeeReportSessions(
   zkDateTo?: string,
   resolveShift?: EmployeeShiftResolver,
   /**
-   * When true, invent T.Punch rows for days with ZK punches but no HRM clock-in.
-   * Admin / punch-only staff only — never for normal employees.
+   * When true, invent T.Punch rows for days with ZK punches but no HRM clock-in
+   * (forgot clock-in). Status still comes from HRM only — this only fills T.Punch
+   * first/last per shift (including midnight). Monthly Attendance enables for all.
    */
   includeZkOnlyDays: boolean = false,
 ): EmployeeReportSession[] {
@@ -1230,8 +1231,8 @@ export function buildEmployeeReportSessions(
     (sessionDate) => getShift(sessionDate),
   );
 
-  // Normal employees: T.Punch only beside real Clock In sessions.
-  // Admin punch-only may also show ZK-only days (no HRM clock-in).
+  // When false: T.Punch only beside real Clock In sessions.
+  // When true: also show ZK-only days (no HRM clock-in) — display only, not status.
   if (!includeZkOnlyDays) return paired;
 
   const from = zkDateFrom || "0000-01-01";
