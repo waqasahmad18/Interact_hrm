@@ -69,10 +69,42 @@ const fullName = (emp?: Partial<Employee> | null) =>
 
 function statusClass(status: string) {
   const s = String(status || "").toLowerCase();
-  if (s === "paid" || s === "approved") return fh.statusPaid;
+  if (s === "paid") return fh.statusPaid;
+  if (s === "approved") return fh.statusPaid;
   if (s === "pending") return fh.statusActive;
   if (s === "rejected" || s === "cancelled") return fh.statusCancelled;
   return "";
+}
+
+function statusLabel(status: string) {
+  const s = String(status || "").toLowerCase();
+  if (s === "paid") return "Paid";
+  if (s === "approved") return "Approved";
+  if (s === "pending") return "Pending";
+  if (s === "rejected") return "Rejected";
+  if (s === "cancelled") return "Cancelled";
+  return status || "—";
+}
+
+function detectFinanceAccess(payload: any): boolean {
+  const perms: string[] = Array.isArray(payload?.permissions)
+    ? payload.permissions.map((p: unknown) => String(p || "").toLowerCase())
+    : [];
+  const slugs: string[] = [
+    ...(Array.isArray(payload?.roleSlugs) ? payload.roleSlugs : []),
+    ...(Array.isArray(payload?.role_slugs) ? payload.role_slugs : []),
+    payload?.roleSlug,
+    payload?.role_slug,
+  ]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase());
+  const dept = String(
+    payload?.departmentName || payload?.department_name || "",
+  ).toLowerCase();
+  if (perms.some((p) => p.includes("salary_disbursement"))) return true;
+  if (slugs.some((s) => s.includes("finance"))) return true;
+  if (/finance|accounts/.test(dept)) return true;
+  return false;
 }
 
 function todayIso() {
@@ -154,9 +186,25 @@ export default function ClaimsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [viewerEmployeeId, setViewerEmployeeId] = useState("");
+  const [isFinanceViewer, setIsFinanceViewer] = useState(false);
+  const [payingId, setPayingId] = useState<number | null>(null);
 
   useEffect(() => {
-    void resolveViewerId().then((id) => setViewerEmployeeId(id));
+    void (async () => {
+      const id = await resolveViewerId();
+      setViewerEmployeeId(id);
+      if (!id) return;
+      try {
+        const res = await fetch(
+          `/api/access-control/me?employeeId=${encodeURIComponent(id)}`,
+          { cache: "no-store" },
+        );
+        const data = await res.json();
+        if (data?.success) setIsFinanceViewer(detectFinanceAccess(data));
+      } catch {
+        /* keep HR-style page */
+      }
+    })();
   }, []);
 
   const loadEmployees = useCallback(async () => {
@@ -419,6 +467,7 @@ export default function ClaimsPage() {
 
   async function setClaimStatus(id: number, status: string) {
     try {
+      if (status === "paid") setPayingId(id);
       const vid = viewerEmployeeId || (await resolveViewerId());
       if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
       const headers: Record<string, string> = {
@@ -438,12 +487,40 @@ export default function ClaimsPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Update failed");
+      if (status === "paid") setToast("Marked as paid");
       await loadClaims();
       if (formEmployeeId) await loadBalance(formEmployeeId, formType);
     } catch (err) {
       setToast(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setPayingId(null);
     }
   }
+
+  const financeQueue = useMemo(() => {
+    // Finance default list: pending + approved (ready / waiting), then paid.
+    const rank = (s: string) => {
+      const v = String(s || "").toLowerCase();
+      if (v === "approved") return 0;
+      if (v === "pending") return 1;
+      if (v === "paid") return 2;
+      return 3;
+    };
+    return [...filteredClaims].sort((a, b) => {
+      const rd = rank(a.status) - rank(b.status);
+      if (rd !== 0) return rd;
+      return String(b.claim_date).localeCompare(String(a.claim_date));
+    });
+  }, [filteredClaims]);
+
+  const readyToPayCount = useMemo(
+    () => claims.filter((c) => c.status === "approved").length,
+    [claims],
+  );
+  const pendingCount = useMemo(
+    () => claims.filter((c) => c.status === "pending").length,
+    [claims],
+  );
 
   const activePkg =
     medicalBalances?.ipd?.medical_package ||
@@ -458,39 +535,69 @@ export default function ClaimsPage() {
     <LayoutDashboard>
       <div className={fh.page}>
         <div className={fh.hero}>
-          <h1 className={fh.heroTitle}>Claims</h1>
+          <h1 className={fh.heroTitle}>
+            {isFinanceViewer ? "Claims payment" : "Claims"}
+          </h1>
           <p className={fh.heroSub}>
-            OPD 150k for every employee. IPD by package: Silver 30k · Gold 40k ·
-            Platinum 50k. Remaining = entitlement minus approved/paid claims this
-            year.
+            {isFinanceViewer
+              ? "All pending and approved employee claims. After payment, press Mark as Paid for that employee."
+              : "OPD 150k for every employee. IPD by package: Silver 30k · Gold 40k · Platinum 50k. Remaining = entitlement minus approved/paid claims this year."}
           </p>
         </div>
 
         <div className={fh.cards}>
-          <div className={fh.card}>
-            <div className={fh.cardLabel}>Claims ({year})</div>
-            <div className={fh.cardValue}>{summary?.total_claims ?? 0}</div>
-          </div>
-          <div className={fh.card}>
-            <div className={fh.cardLabel}>Approved amount</div>
-            <div className={fh.cardValue}>
-              {money(summary?.total_approved_amount ?? 0)}
-            </div>
-          </div>
-          <div className={fh.card}>
-            <div className={fh.cardLabel}>Pending amount</div>
-            <div className={fh.cardValue}>
-              {money(summary?.total_pending_amount ?? 0)}
-            </div>
-          </div>
-          <div className={fh.card}>
-            <div className={fh.cardLabel}>Employees</div>
-            <div className={fh.cardValue}>
-              {summary?.employees_with_claims ?? 0}
-            </div>
-          </div>
+          {isFinanceViewer ? (
+            <>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Ready to pay (Approved)</div>
+                <div className={fh.cardValue}>{readyToPayCount}</div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Pending</div>
+                <div className={fh.cardValue}>{pendingCount}</div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Approved amount</div>
+                <div className={fh.cardValue}>
+                  {money(summary?.total_approved_amount ?? 0)}
+                </div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Pending amount</div>
+                <div className={fh.cardValue}>
+                  {money(summary?.total_pending_amount ?? 0)}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Claims ({year})</div>
+                <div className={fh.cardValue}>{summary?.total_claims ?? 0}</div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Approved amount</div>
+                <div className={fh.cardValue}>
+                  {money(summary?.total_approved_amount ?? 0)}
+                </div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Pending amount</div>
+                <div className={fh.cardValue}>
+                  {money(summary?.total_pending_amount ?? 0)}
+                </div>
+              </div>
+              <div className={fh.card}>
+                <div className={fh.cardLabel}>Employees</div>
+                <div className={fh.cardValue}>
+                  {summary?.employees_with_claims ?? 0}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
+        {!isFinanceViewer ? (
         <div className={fh.panel}>
           <h2 style={{ margin: "0 0 12px", fontSize: "1.05rem" }}>
             Add claim
@@ -793,14 +900,19 @@ export default function ClaimsPage() {
             </div>
           ) : null}
 
-          {toast ? (
-            <p style={{ margin: "10px 0 0", color: "#3b0764", fontWeight: 600 }}>
-              {toast}
-            </p>
-          ) : null}
         </div>
+        ) : null}
+
+        {toast ? (
+          <p style={{ margin: "0 0 12px", color: "#3b0764", fontWeight: 600 }}>
+            {toast}
+          </p>
+        ) : null}
 
         <div className={fh.panel}>
+          <h2 style={{ margin: "0 0 12px", fontSize: "1.05rem" }}>
+            {isFinanceViewer ? "Claims to pay" : "Claims list"}
+          </h2>
           <div className={fh.filters} style={{ gridTemplateColumns: "110px 1fr 140px 140px auto" }}>
             <label className={fh.field}>
               <span className={fh.label}>Year</span>
@@ -830,7 +942,9 @@ export default function ClaimsPage() {
                 <option value="approved">Approved</option>
                 <option value="pending">Pending</option>
                 <option value="paid">Paid</option>
-                <option value="rejected">Rejected</option>
+                {!isFinanceViewer ? (
+                  <option value="rejected">Rejected</option>
+                ) : null}
               </select>
             </label>
             <label className={fh.field}>
@@ -860,77 +974,116 @@ export default function ClaimsPage() {
                 <tr>
                   <th>Date</th>
                   <th>Employee</th>
+                  <th>Pseudo</th>
                   <th>Dept</th>
                   <th>Type</th>
-                  <th>Title</th>
+                  {!isFinanceViewer ? <th>Title</th> : null}
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredClaims.length === 0 ? (
+                {(isFinanceViewer ? financeQueue : filteredClaims).length === 0 ? (
                   <tr>
-                    <td colSpan={8} className={fh.empty}>
-                      {loading ? "Loading…" : "No claims yet. Add one above."}
+                    <td colSpan={isFinanceViewer ? 8 : 9} className={fh.empty}>
+                      {loading
+                        ? "Loading…"
+                        : isFinanceViewer
+                          ? "No pending or approved claims to pay."
+                          : "No claims yet. Add one above."}
                     </td>
                   </tr>
                 ) : (
-                  filteredClaims.map((c) => (
+                  (isFinanceViewer ? financeQueue : filteredClaims).map((c) => (
                     <tr key={c.id}>
                       <td>{c.claim_date}</td>
                       <td>
-                        <strong>{c.employee_name || `Employee ${c.employee_id}`}</strong>
-                        {c.pseudonym ? (
-                          <div style={{ fontSize: 12, color: "#64748b" }}>{c.pseudonym}</div>
-                        ) : null}
+                        <strong>
+                          {c.employee_name || `Employee ${c.employee_id}`}
+                        </strong>
                       </td>
+                      <td>{c.pseudonym || "—"}</td>
                       <td>{c.department_name || "—"}</td>
                       <td>{claimTypeLabel(c.claim_type)}</td>
-                      <td>{c.title || "—"}</td>
-                      <td>{money(c.amount)}</td>
+                      {!isFinanceViewer ? <td>{c.title || "—"}</td> : null}
+                      <td>
+                        <strong>{money(c.amount)}</strong>
+                      </td>
                       <td>
                         <span className={`${fh.statusPill} ${statusClass(c.status)}`}>
-                          {c.status}
+                          {statusLabel(c.status)}
                         </span>
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {c.status === "pending" ? (
-                            <button
-                              type="button"
-                              className={fh.clearBtn}
-                              style={{ height: 32, padding: "0 10px", fontSize: 12 }}
-                              onClick={() => void setClaimStatus(c.id, "approved")}
-                            >
-                              Approve
-                            </button>
-                          ) : null}
-                          {c.status === "approved" ? (
-                            <button
-                              type="button"
-                              className={fh.clearBtn}
-                              style={{ height: 32, padding: "0 10px", fontSize: 12 }}
-                              onClick={() => void setClaimStatus(c.id, "paid")}
-                            >
-                              Mark paid
-                            </button>
-                          ) : null}
-                          {c.status !== "rejected" && c.status !== "cancelled" ? (
-                            <button
-                              type="button"
-                              className={fh.clearBtn}
-                              style={{
-                                height: 32,
-                                padding: "0 10px",
-                                fontSize: 12,
-                                color: "#b91c1c",
-                              }}
-                              onClick={() => void setClaimStatus(c.id, "rejected")}
-                            >
-                              Reject
-                            </button>
-                          ) : null}
+                          {isFinanceViewer ? (
+                            c.status === "approved" ? (
+                              <button
+                                type="button"
+                                className={fh.clearBtn}
+                                style={{
+                                  height: 34,
+                                  padding: "0 12px",
+                                  fontSize: 13,
+                                  background: "#15803d",
+                                  color: "#fff",
+                                  borderColor: "#15803d",
+                                  fontWeight: 700,
+                                }}
+                                disabled={payingId === c.id}
+                                onClick={() => void setClaimStatus(c.id, "paid")}
+                              >
+                                {payingId === c.id ? "Saving…" : "Mark as Paid"}
+                              </button>
+                            ) : c.status === "pending" ? (
+                              <span style={{ fontSize: 12, color: "#64748b" }}>
+                                Waiting for approval
+                              </span>
+                            ) : c.status === "paid" ? (
+                              <span style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                                Paid
+                              </span>
+                            ) : null
+                          ) : (
+                            <>
+                              {c.status === "pending" ? (
+                                <button
+                                  type="button"
+                                  className={fh.clearBtn}
+                                  style={{ height: 32, padding: "0 10px", fontSize: 12 }}
+                                  onClick={() => void setClaimStatus(c.id, "approved")}
+                                >
+                                  Approve
+                                </button>
+                              ) : null}
+                              {c.status === "approved" ? (
+                                <button
+                                  type="button"
+                                  className={fh.clearBtn}
+                                  style={{ height: 32, padding: "0 10px", fontSize: 12 }}
+                                  onClick={() => void setClaimStatus(c.id, "paid")}
+                                >
+                                  Mark paid
+                                </button>
+                              ) : null}
+                              {c.status !== "rejected" && c.status !== "cancelled" ? (
+                                <button
+                                  type="button"
+                                  className={fh.clearBtn}
+                                  style={{
+                                    height: 32,
+                                    padding: "0 10px",
+                                    fontSize: 12,
+                                    color: "#b91c1c",
+                                  }}
+                                  onClick={() => void setClaimStatus(c.id, "rejected")}
+                                >
+                                  Reject
+                                </button>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

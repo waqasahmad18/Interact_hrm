@@ -84,7 +84,7 @@ const PERM_HINTS: Record<string, string> = {
   "payroll.advance": "Process salary advance requests.",
   "payroll.loan": "Manage employee loan schedules and deductions.",
   "payroll.claims":
-    "Add and manage employee medical/travel claims and view remaining allowance.",
+    "HR adds claims; Finance sees approved/pending claims and marks them Paid after payment.",
   "payroll.financial_history":
     "View complete employee advance/loan history, installments, and yearly totals.",
   "payroll.salary_disbursement":
