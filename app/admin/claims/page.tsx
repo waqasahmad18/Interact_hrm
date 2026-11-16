@@ -93,6 +93,17 @@ function isPayableStatus(status: string) {
   return s === "approved" || s === "unpaid";
 }
 
+/** Rows that Mark as Paid can update. */
+function canBulkMarkPaid(status: string) {
+  return isPayableStatus(status);
+}
+
+/** Rows that Mark as Unpaid can update (Paid → Unpaid; Approved also allowed). */
+function canBulkMarkUnpaid(status: string) {
+  const s = String(status || "").toLowerCase();
+  return s === "paid" || s === "approved";
+}
+
 function detectFinanceAccess(payload: any): boolean {
   const perms: string[] = Array.isArray(payload?.permissions)
     ? payload.permissions.map((p: unknown) => String(p || "").toLowerCase())
@@ -526,15 +537,16 @@ export default function ClaimsPage() {
     const ids = selectedIds.filter((id) =>
       claims.some((c) => {
         if (c.id !== id) return false;
-        if (bulkAction === "paid") return isPayableStatus(c.status);
-        return c.status === "paid";
+        return bulkAction === "paid"
+          ? canBulkMarkPaid(c.status)
+          : canBulkMarkUnpaid(c.status);
       }),
     );
     if (!ids.length) {
       setToast(
         bulkAction === "paid"
-          ? "Select one or more Approved/Unpaid claims first"
-          : "Select one or more Paid claims first",
+          ? "Select Approved/Unpaid rows, then Apply"
+          : "Select Paid (or Approved) rows, then Apply",
       );
       return;
     }
@@ -619,8 +631,8 @@ export default function ClaimsPage() {
       (isFinanceViewer ? financeQueue : filteredClaims)
         .filter((c) =>
           bulkAction === "paid"
-            ? isPayableStatus(c.status)
-            : c.status === "paid",
+            ? canBulkMarkPaid(c.status)
+            : canBulkMarkUnpaid(c.status),
         )
         .map((c) => c.id),
     [isFinanceViewer, financeQueue, filteredClaims, bulkAction],
@@ -633,8 +645,8 @@ export default function ClaimsPage() {
     return (isFinanceViewer ? financeQueue : filteredClaims).filter((c) => {
       if (!set.has(c.id)) return false;
       return bulkAction === "paid"
-        ? isPayableStatus(c.status)
-        : c.status === "paid";
+        ? canBulkMarkPaid(c.status)
+        : canBulkMarkUnpaid(c.status);
     });
   }, [
     selectedIds,
@@ -648,6 +660,8 @@ export default function ClaimsPage() {
     () => selectedForBulk.reduce((sum, c) => sum + Number(c.amount || 0), 0),
     [selectedForBulk],
   );
+  const anySelectedCount = selectedIds.length;
+  const applyEnabled = selectedBulkCount > 0 && !bulkPaying;
 
   function toggleSelectAllForBulk(checked: boolean) {
     setSelectedIds(checked ? [...bulkTargetIds] : []);
@@ -1070,14 +1084,18 @@ export default function ClaimsPage() {
             <div className={fh.bulkBar}>
               <div className={fh.selectedText}>
                 {selectedBulkCount > 0
-                  ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)}`
-                  : bulkTargetIds.length > 0
+                  ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)} → ${
+                      bulkAction === "paid" ? "Paid" : "Unpaid"
+                    }`
+                  : anySelectedCount > 0
                     ? bulkAction === "paid"
-                      ? `${bulkTargetIds.length} ready — select to mark paid`
-                      : `${bulkTargetIds.length} paid — select to mark unpaid`
-                    : bulkAction === "paid"
-                      ? "No claims ready to mark paid"
-                      : "No paid claims to mark unpaid"}
+                      ? "Selected rows are already Paid — pick Mark as Unpaid, or select Approved/Unpaid"
+                      : "Select Paid or Approved rows to mark Unpaid"
+                    : bulkTargetIds.length > 0
+                      ? bulkAction === "paid"
+                        ? `${bulkTargetIds.length} ready — select, then Apply Paid`
+                        : `${bulkTargetIds.length} can mark unpaid — select, then Apply`
+                      : "No claims available for this action"}
               </div>
               <div className={fh.bulkActions}>
                 {bulkTargetIds.length > 0 ? (
@@ -1091,10 +1109,10 @@ export default function ClaimsPage() {
                       ? "Clear selection"
                       : bulkAction === "paid"
                         ? "Select all ready"
-                        : "Select all paid"}
+                        : "Select all for unpaid"}
                   </button>
                 ) : null}
-                {selectedBulkCount > 0 ? (
+                {anySelectedCount > 0 ? (
                   <button
                     type="button"
                     className={fh.ghostBtn}
@@ -1122,10 +1140,10 @@ export default function ClaimsPage() {
                     bulkAction === "paid" ? fh.primaryBtn : fh.primaryBtnDark
                   }
                   style={{
-                    opacity: selectedBulkCount > 0 ? 1 : 0.5,
-                    cursor: selectedBulkCount > 0 ? "pointer" : "not-allowed",
+                    opacity: applyEnabled ? 1 : 0.55,
+                    cursor: applyEnabled ? "pointer" : "not-allowed",
                   }}
-                  disabled={bulkPaying || selectedBulkCount === 0}
+                  disabled={!applyEnabled}
                   onClick={() => void applyBulkPaymentAction()}
                 >
                   {bulkPaying
