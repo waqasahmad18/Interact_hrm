@@ -637,6 +637,20 @@ export default function ClaimsPage() {
         .map((c) => c.id),
     [isFinanceViewer, financeQueue, filteredClaims, bulkAction],
   );
+  /** All rows that show a checkbox — header selects these together. */
+  const selectableIds = useMemo(
+    () =>
+      (isFinanceViewer ? financeQueue : filteredClaims)
+        .filter((c) => isPayableStatus(c.status) || c.status === "paid")
+        .map((c) => c.id),
+    [isFinanceViewer, financeQueue, filteredClaims],
+  );
+  const allSelectableSelected =
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.includes(id));
+  const someSelectableSelected =
+    selectableIds.some((id) => selectedIds.includes(id)) &&
+    !allSelectableSelected;
   const allBulkTargetsSelected =
     bulkTargetIds.length > 0 &&
     bulkTargetIds.every((id) => selectedIds.includes(id));
@@ -662,9 +676,20 @@ export default function ClaimsPage() {
   );
   const anySelectedCount = selectedIds.length;
   const applyEnabled = selectedBulkCount > 0 && !bulkPaying;
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelectableSelected;
+    }
+  }, [someSelectableSelected]);
 
   function toggleSelectAllForBulk(checked: boolean) {
     setSelectedIds(checked ? [...bulkTargetIds] : []);
+  }
+
+  function toggleSelectAllRows(checked: boolean) {
+    setSelectedIds(checked ? [...selectableIds] : []);
   }
 
   const activePkg =
@@ -678,7 +703,7 @@ export default function ClaimsPage() {
 
   return (
     <LayoutDashboard>
-      <div className={fh.page}>
+      <div className={`${fh.page} claimsPageCritical`}>
         <header className={fh.topBar}>
           <div className={fh.topLeft}>
             <p className={fh.eyebrow}>
@@ -1163,15 +1188,12 @@ export default function ClaimsPage() {
                   {isFinanceViewer ? (
                     <th style={{ width: 44 }}>
                       <input
+                        ref={selectAllRef}
                         type="checkbox"
-                        aria-label={
-                          bulkAction === "paid"
-                            ? "Select all ready to pay"
-                            : "Select all paid"
-                        }
-                        checked={allBulkTargetsSelected}
-                        disabled={bulkTargetIds.length === 0 || bulkPaying}
-                        onChange={(e) => toggleSelectAllForBulk(e.target.checked)}
+                        aria-label="Select all rows"
+                        checked={allSelectableSelected}
+                        disabled={selectableIds.length === 0 || bulkPaying}
+                        onChange={(e) => toggleSelectAllRows(e.target.checked)}
                       />
                     </th>
                   ) : null}
