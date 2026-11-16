@@ -190,6 +190,8 @@ export default function ClaimsPage() {
   const [payingId, setPayingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkPaying, setBulkPaying] = useState(false);
+  /** Finance bulk action: paid | unpaid (unpaid = revert paid → approved). */
+  const [bulkAction, setBulkAction] = useState<"paid" | "unpaid">("paid");
 
   useEffect(() => {
     void (async () => {
@@ -474,9 +476,13 @@ export default function ClaimsPage() {
     }
   }
 
-  async function setClaimStatus(id: number, status: string) {
+  async function setClaimStatus(
+    id: number,
+    status: string,
+    opts?: { successToast?: string },
+  ) {
     try {
-      if (status === "paid") setPayingId(id);
+      if (status === "paid" || opts?.successToast) setPayingId(id);
       const vid = viewerEmployeeId || (await resolveViewerId());
       if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
       const headers: Record<string, string> = {
@@ -496,7 +502,8 @@ export default function ClaimsPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Update failed");
-      if (status === "paid") setToast("Marked as paid");
+      if (opts?.successToast) setToast(opts.successToast);
+      else if (status === "paid") setToast("Marked as paid");
       await loadClaims();
       if (formEmployeeId) await loadBalance(formEmployeeId, formType);
     } catch (err) {
@@ -506,12 +513,18 @@ export default function ClaimsPage() {
     }
   }
 
-  async function markSelectedAsPaid() {
+  async function applyBulkPaymentAction() {
+    const needStatus = bulkAction === "paid" ? "approved" : "paid";
+    const nextStatus = bulkAction === "paid" ? "paid" : "approved";
     const ids = selectedIds.filter((id) =>
-      claims.some((c) => c.id === id && c.status === "approved"),
+      claims.some((c) => c.id === id && c.status === needStatus),
     );
     if (!ids.length) {
-      setToast("Select one or more Approved claims first");
+      setToast(
+        bulkAction === "paid"
+          ? "Select one or more Approved claims first"
+          : "Select one or more Paid claims first",
+      );
       return;
     }
     try {
@@ -530,7 +543,7 @@ export default function ClaimsPage() {
         headers,
         body: JSON.stringify({
           ids,
-          status: "paid",
+          status: nextStatus,
           viewerId: vid || undefined,
         }),
       });
@@ -538,10 +551,11 @@ export default function ClaimsPage() {
       if (!data.success) throw new Error(data.error || "Bulk update failed");
       const ok = Number(data.updated_count || 0);
       const fail = Number(data.failed_count || 0);
+      const label = bulkAction === "paid" ? "paid" : "unpaid";
       if (ok > 0 && fail === 0) {
-        setToast(`${ok} claim${ok === 1 ? "" : "s"} marked as paid`);
+        setToast(`${ok} claim${ok === 1 ? "" : "s"} marked as ${label}`);
       } else if (ok > 0) {
-        setToast(`${ok} paid, ${fail} failed`);
+        setToast(`${ok} ${label}, ${fail} failed`);
       } else {
         throw new Error(
           Array.isArray(data.failed) && data.failed[0]?.error
@@ -589,28 +603,37 @@ export default function ClaimsPage() {
     () => claims.filter((c) => c.status === "pending").length,
     [claims],
   );
-  const approvedVisibleIds = useMemo(
+  const bulkTargetStatus = bulkAction === "paid" ? "approved" : "paid";
+  const bulkTargetIds = useMemo(
     () =>
       (isFinanceViewer ? financeQueue : filteredClaims)
-        .filter((c) => c.status === "approved")
+        .filter((c) => c.status === bulkTargetStatus)
         .map((c) => c.id),
-    [isFinanceViewer, financeQueue, filteredClaims],
+    [isFinanceViewer, financeQueue, filteredClaims, bulkTargetStatus],
   );
-  const allApprovedSelected =
-    approvedVisibleIds.length > 0 &&
-    approvedVisibleIds.every((id) => selectedIds.includes(id));
-  const selectedApprovedCount = selectedIds.filter((id) =>
-    approvedVisibleIds.includes(id),
-  ).length;
-  const selectedApprovedAmount = useMemo(() => {
+  const allBulkTargetsSelected =
+    bulkTargetIds.length > 0 &&
+    bulkTargetIds.every((id) => selectedIds.includes(id));
+  const selectedForBulk = useMemo(() => {
     const set = new Set(selectedIds);
-    return (isFinanceViewer ? financeQueue : filteredClaims)
-      .filter((c) => set.has(c.id) && c.status === "approved")
-      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
-  }, [selectedIds, isFinanceViewer, financeQueue, filteredClaims]);
+    return (isFinanceViewer ? financeQueue : filteredClaims).filter(
+      (c) => set.has(c.id) && c.status === bulkTargetStatus,
+    );
+  }, [
+    selectedIds,
+    isFinanceViewer,
+    financeQueue,
+    filteredClaims,
+    bulkTargetStatus,
+  ]);
+  const selectedBulkCount = selectedForBulk.length;
+  const selectedBulkAmount = useMemo(
+    () => selectedForBulk.reduce((sum, c) => sum + Number(c.amount || 0), 0),
+    [selectedForBulk],
+  );
 
-  function toggleSelectAllApproved(checked: boolean) {
-    setSelectedIds(checked ? [...approvedVisibleIds] : []);
+  function toggleSelectAllForBulk(checked: boolean) {
+    setSelectedIds(checked ? [...bulkTargetIds] : []);
   }
 
   const activePkg =
@@ -1063,24 +1086,32 @@ export default function ClaimsPage() {
           {isFinanceViewer ? (
             <div className={fh.selectedBar} style={{ marginTop: 12 }}>
               <div className={fh.selectedText}>
-                {selectedApprovedCount > 0
-                  ? `${selectedApprovedCount} selected · ${money(selectedApprovedAmount)}`
-                  : approvedVisibleIds.length > 0
-                    ? `${approvedVisibleIds.length} approved ready — select rows to pay together`
-                    : "No approved claims ready to pay"}
+                {selectedBulkCount > 0
+                  ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)}`
+                  : bulkTargetIds.length > 0
+                    ? bulkAction === "paid"
+                      ? `${bulkTargetIds.length} approved ready — select rows to mark paid`
+                      : `${bulkTargetIds.length} paid — select rows to mark unpaid`
+                    : bulkAction === "paid"
+                      ? "No approved claims ready to pay"
+                      : "No paid claims to mark unpaid"}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                {approvedVisibleIds.length > 0 ? (
+                {bulkTargetIds.length > 0 ? (
                   <button
                     type="button"
                     className={fh.ghostBtn}
                     disabled={bulkPaying}
-                    onClick={() => toggleSelectAllApproved(!allApprovedSelected)}
+                    onClick={() => toggleSelectAllForBulk(!allBulkTargetsSelected)}
                   >
-                    {allApprovedSelected ? "Clear selection" : "Select all approved"}
+                    {allBulkTargetsSelected
+                      ? "Clear selection"
+                      : bulkAction === "paid"
+                        ? "Select all approved"
+                        : "Select all paid"}
                   </button>
                 ) : null}
-                {selectedApprovedCount > 0 ? (
+                {selectedBulkCount > 0 ? (
                   <button
                     type="button"
                     className={fh.ghostBtn}
@@ -1090,22 +1121,44 @@ export default function ClaimsPage() {
                     Clear
                   </button>
                 ) : null}
+                <select
+                  className={fh.select}
+                  value={bulkAction}
+                  disabled={bulkPaying}
+                  onChange={(e) => {
+                    const next = e.target.value === "unpaid" ? "unpaid" : "paid";
+                    setBulkAction(next);
+                    setSelectedIds([]);
+                  }}
+                  style={{ width: 160, height: 36 }}
+                  aria-label="Payment action"
+                >
+                  <option value="paid">Mark as Paid</option>
+                  <option value="unpaid">Mark as Unpaid</option>
+                </select>
                 <button
                   type="button"
                   className={fh.primaryBtn}
                   style={{
-                    background: selectedApprovedCount > 0 ? "#15803d" : undefined,
-                    opacity: selectedApprovedCount > 0 ? 1 : 0.55,
-                    cursor: selectedApprovedCount > 0 ? "pointer" : "not-allowed",
+                    background:
+                      selectedBulkCount > 0
+                        ? bulkAction === "paid"
+                          ? "#15803d"
+                          : "#b45309"
+                        : undefined,
+                    opacity: selectedBulkCount > 0 ? 1 : 0.55,
+                    cursor: selectedBulkCount > 0 ? "pointer" : "not-allowed",
                   }}
-                  disabled={bulkPaying || selectedApprovedCount === 0}
-                  onClick={() => void markSelectedAsPaid()}
+                  disabled={bulkPaying || selectedBulkCount === 0}
+                  onClick={() => void applyBulkPaymentAction()}
                 >
                   {bulkPaying
-                    ? "Marking…"
-                    : selectedApprovedCount > 0
-                      ? `Mark ${selectedApprovedCount} as Paid`
-                      : "Mark as Paid"}
+                    ? "Saving…"
+                    : selectedBulkCount > 0
+                      ? `Apply ${selectedBulkCount} as ${
+                          bulkAction === "paid" ? "Paid" : "Unpaid"
+                        }`
+                      : "Apply"}
                 </button>
               </div>
             </div>
@@ -1119,10 +1172,14 @@ export default function ClaimsPage() {
                     <th style={{ width: 44 }}>
                       <input
                         type="checkbox"
-                        aria-label="Select all approved"
-                        checked={allApprovedSelected}
-                        disabled={approvedVisibleIds.length === 0 || bulkPaying}
-                        onChange={(e) => toggleSelectAllApproved(e.target.checked)}
+                        aria-label={
+                          bulkAction === "paid"
+                            ? "Select all approved"
+                            : "Select all paid"
+                        }
+                        checked={allBulkTargetsSelected}
+                        disabled={bulkTargetIds.length === 0 || bulkPaying}
+                        onChange={(e) => toggleSelectAllForBulk(e.target.checked)}
                       />
                     </th>
                   ) : null}
@@ -1150,7 +1207,10 @@ export default function ClaimsPage() {
                   </tr>
                 ) : (
                   (isFinanceViewer ? financeQueue : filteredClaims).map((c) => {
-                    const canSelect = isFinanceViewer && c.status === "approved";
+                    const canSelect =
+                      isFinanceViewer &&
+                      (c.status === "approved" || c.status === "paid") &&
+                      c.status === bulkTargetStatus;
                     const isSelected = selectedIds.includes(c.id);
                     return (
                     <tr
@@ -1222,9 +1282,27 @@ export default function ClaimsPage() {
                                 Waiting for approval
                               </span>
                             ) : c.status === "paid" ? (
-                              <span style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
-                                Paid
-                              </span>
+                              <button
+                                type="button"
+                                className={fh.clearBtn}
+                                style={{
+                                  height: 34,
+                                  padding: "0 12px",
+                                  fontSize: 13,
+                                  background: "#b45309",
+                                  color: "#fff",
+                                  borderColor: "#b45309",
+                                  fontWeight: 700,
+                                }}
+                                disabled={payingId === c.id || bulkPaying}
+                                onClick={() =>
+                                  void setClaimStatus(c.id, "approved", {
+                                    successToast: "Marked as unpaid",
+                                  })
+                                }
+                              >
+                                {payingId === c.id ? "Saving…" : "Mark as Unpaid"}
+                              </button>
                             ) : null
                           ) : (
                             <>
