@@ -4,7 +4,9 @@ import {
   rowInViewerScope,
 } from "@/lib/access-control/data-scope";
 import {
+  bulkUpdateClaimStatus,
   createClaim,
+  getClaimById,
   listClaims,
   normalizeClaimStatus,
   normalizeClaimType,
@@ -164,6 +166,88 @@ export async function GET(req: NextRequest) {
       {
         success: false,
         error: err instanceof Error ? err.message : "Failed to load claims",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+/** Bulk status update — finance Mark selected as Paid. */
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = (await req.json()) as Record<string, unknown>;
+    const viewerId = viewerIdFrom(req, body);
+    const rawIds = Array.isArray(body.ids)
+      ? body.ids
+      : Array.isArray(body.claim_ids)
+        ? body.claim_ids
+        : [];
+    const ids = rawIds
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    if (!ids.length) {
+      return NextResponse.json(
+        { success: false, error: "ids required" },
+        { status: 400 },
+      );
+    }
+    if (body.status == null || String(body.status).trim() === "") {
+      return NextResponse.json(
+        { success: false, error: "status required" },
+        { status: 400 },
+      );
+    }
+    const status = normalizeClaimStatus(body.status);
+    if (ids.length > 100) {
+      return NextResponse.json(
+        { success: false, error: "Max 100 claims per bulk update" },
+        { status: 400 },
+      );
+    }
+
+    const allowed: number[] = [];
+    const denied: { id: number; error: string }[] = [];
+
+    for (const id of ids) {
+      const existing = await getClaimById(id);
+      if (!existing) {
+        denied.push({ id, error: "Claim not found" });
+        continue;
+      }
+      if (viewerId && /^\d+$/.test(viewerId)) {
+        const scoped = await assertEmployeeInScope(
+          viewerId,
+          existing.employee_id,
+          existing.department_name,
+        );
+        if (!scoped.ok) {
+          denied.push({ id, error: scoped.error });
+          continue;
+        }
+      }
+      allowed.push(id);
+    }
+
+    const result = await bulkUpdateClaimStatus({
+      ids: allowed,
+      status,
+      notes: body.notes != null ? String(body.notes) : null,
+      approvedByEmployeeId: /^\d+$/.test(viewerId) ? Number(viewerId) : null,
+    });
+
+    return NextResponse.json({
+      success: true,
+      updated: result.updated,
+      failed: [...denied, ...result.failed],
+      updated_count: result.updated.length,
+      failed_count: denied.length + result.failed.length,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "Bulk update failed",
       },
       { status: 500 },
     );

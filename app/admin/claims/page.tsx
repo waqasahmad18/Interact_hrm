@@ -188,6 +188,8 @@ export default function ClaimsPage() {
   const [viewerEmployeeId, setViewerEmployeeId] = useState("");
   const [isFinanceViewer, setIsFinanceViewer] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkPaying, setBulkPaying] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -249,9 +251,11 @@ export default function ClaimsPage() {
       if (!data.success) throw new Error(data.error || "Failed to load");
       setClaims(Array.isArray(data.claims) ? data.claims : []);
       setSummary(data.summary || null);
+      setSelectedIds([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load claims");
       setClaims([]);
+      setSelectedIds([]);
     } finally {
       setLoading(false);
     }
@@ -497,6 +501,65 @@ export default function ClaimsPage() {
     }
   }
 
+  async function markSelectedAsPaid() {
+    const ids = selectedIds.filter((id) =>
+      claims.some((c) => c.id === id && c.status === "approved"),
+    );
+    if (!ids.length) {
+      setToast("Select one or more Approved claims first");
+      return;
+    }
+    try {
+      setBulkPaying(true);
+      const vid = viewerEmployeeId || (await resolveViewerId());
+      if (vid && vid !== viewerEmployeeId) setViewerEmployeeId(vid);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (vid) {
+        headers["x-employee-id"] = vid;
+        headers["x-hrm-employee-id"] = vid;
+      }
+      const res = await fetch("/api/employee-claims", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          ids,
+          status: "paid",
+          viewerId: vid || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Bulk update failed");
+      const ok = Number(data.updated_count || 0);
+      const fail = Number(data.failed_count || 0);
+      if (ok > 0 && fail === 0) {
+        setToast(`${ok} claim${ok === 1 ? "" : "s"} marked as paid`);
+      } else if (ok > 0) {
+        setToast(`${ok} paid, ${fail} failed`);
+      } else {
+        throw new Error(
+          Array.isArray(data.failed) && data.failed[0]?.error
+            ? String(data.failed[0].error)
+            : "Bulk update failed",
+        );
+      }
+      await loadClaims();
+      if (formEmployeeId) await loadBalance(formEmployeeId, formType);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Bulk update failed");
+    } finally {
+      setBulkPaying(false);
+    }
+  }
+
+  function toggleSelectClaim(id: number, checked: boolean) {
+    setSelectedIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  }
+
   const financeQueue = useMemo(() => {
     // Finance default list: pending + approved (ready / waiting), then paid.
     const rank = (s: string) => {
@@ -521,6 +584,29 @@ export default function ClaimsPage() {
     () => claims.filter((c) => c.status === "pending").length,
     [claims],
   );
+  const approvedVisibleIds = useMemo(
+    () =>
+      (isFinanceViewer ? financeQueue : filteredClaims)
+        .filter((c) => c.status === "approved")
+        .map((c) => c.id),
+    [isFinanceViewer, financeQueue, filteredClaims],
+  );
+  const allApprovedSelected =
+    approvedVisibleIds.length > 0 &&
+    approvedVisibleIds.every((id) => selectedIds.includes(id));
+  const selectedApprovedCount = selectedIds.filter((id) =>
+    approvedVisibleIds.includes(id),
+  ).length;
+  const selectedApprovedAmount = useMemo(() => {
+    const set = new Set(selectedIds);
+    return (isFinanceViewer ? financeQueue : filteredClaims)
+      .filter((c) => set.has(c.id) && c.status === "approved")
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  }, [selectedIds, isFinanceViewer, financeQueue, filteredClaims]);
+
+  function toggleSelectAllApproved(checked: boolean) {
+    setSelectedIds(checked ? [...approvedVisibleIds] : []);
+  }
 
   const activePkg =
     medicalBalances?.ipd?.medical_package ||
@@ -540,7 +626,7 @@ export default function ClaimsPage() {
           </h1>
           <p className={fh.heroSub}>
             {isFinanceViewer
-              ? "All pending and approved employee claims. After payment, press Mark as Paid for that employee."
+              ? "Select approved claims (checkbox), then Mark as Paid at the top — pay several employees in one go."
               : "OPD 150k for every employee. IPD by package: Silver 30k · Gold 40k · Platinum 50k. Remaining = entitlement minus approved/paid claims this year."}
           </p>
         </div>
@@ -968,10 +1054,72 @@ export default function ClaimsPage() {
             <p style={{ color: "#b91c1c", fontWeight: 600 }}>{error}</p>
           ) : null}
 
-          <div className={fh.tableWrap} style={{ marginTop: 12 }}>
+          {isFinanceViewer ? (
+            <div className={fh.selectedBar} style={{ marginTop: 12 }}>
+              <div className={fh.selectedText}>
+                {selectedApprovedCount > 0
+                  ? `${selectedApprovedCount} selected · ${money(selectedApprovedAmount)}`
+                  : approvedVisibleIds.length > 0
+                    ? `${approvedVisibleIds.length} approved ready — select rows to pay together`
+                    : "No approved claims ready to pay"}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {approvedVisibleIds.length > 0 ? (
+                  <button
+                    type="button"
+                    className={fh.ghostBtn}
+                    disabled={bulkPaying}
+                    onClick={() => toggleSelectAllApproved(!allApprovedSelected)}
+                  >
+                    {allApprovedSelected ? "Clear selection" : "Select all approved"}
+                  </button>
+                ) : null}
+                {selectedApprovedCount > 0 ? (
+                  <button
+                    type="button"
+                    className={fh.ghostBtn}
+                    disabled={bulkPaying}
+                    onClick={() => setSelectedIds([])}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={fh.primaryBtn}
+                  style={{
+                    background: selectedApprovedCount > 0 ? "#15803d" : undefined,
+                    opacity: selectedApprovedCount > 0 ? 1 : 0.55,
+                    cursor: selectedApprovedCount > 0 ? "pointer" : "not-allowed",
+                  }}
+                  disabled={bulkPaying || selectedApprovedCount === 0}
+                  onClick={() => void markSelectedAsPaid()}
+                >
+                  {bulkPaying
+                    ? "Marking…"
+                    : selectedApprovedCount > 0
+                      ? `Mark ${selectedApprovedCount} as Paid`
+                      : "Mark as Paid"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className={fh.tableWrap} style={{ marginTop: isFinanceViewer ? 0 : 12 }}>
             <table className={fh.table}>
               <thead>
                 <tr>
+                  {isFinanceViewer ? (
+                    <th style={{ width: 44 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all approved"
+                        checked={allApprovedSelected}
+                        disabled={approvedVisibleIds.length === 0 || bulkPaying}
+                        onChange={(e) => toggleSelectAllApproved(e.target.checked)}
+                      />
+                    </th>
+                  ) : null}
                   <th>Date</th>
                   <th>Employee</th>
                   <th>Pseudo</th>
@@ -986,7 +1134,7 @@ export default function ClaimsPage() {
               <tbody>
                 {(isFinanceViewer ? financeQueue : filteredClaims).length === 0 ? (
                   <tr>
-                    <td colSpan={isFinanceViewer ? 8 : 9} className={fh.empty}>
+                    <td colSpan={isFinanceViewer ? 9 : 9} className={fh.empty}>
                       {loading
                         ? "Loading…"
                         : isFinanceViewer
@@ -995,8 +1143,35 @@ export default function ClaimsPage() {
                     </td>
                   </tr>
                 ) : (
-                  (isFinanceViewer ? financeQueue : filteredClaims).map((c) => (
-                    <tr key={c.id}>
+                  (isFinanceViewer ? financeQueue : filteredClaims).map((c) => {
+                    const canSelect = isFinanceViewer && c.status === "approved";
+                    const isSelected = selectedIds.includes(c.id);
+                    return (
+                    <tr
+                      key={c.id}
+                      style={
+                        isSelected
+                          ? { background: "rgba(21, 128, 61, 0.06)" }
+                          : undefined
+                      }
+                    >
+                      {isFinanceViewer ? (
+                        <td>
+                          {canSelect ? (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select claim ${c.id}`}
+                              checked={isSelected}
+                              disabled={bulkPaying}
+                              onChange={(e) =>
+                                toggleSelectClaim(c.id, e.target.checked)
+                              }
+                            />
+                          ) : (
+                            <span style={{ color: "#cbd5e1" }}>—</span>
+                          )}
+                        </td>
+                      ) : null}
                       <td>{c.claim_date}</td>
                       <td>
                         <strong>
@@ -1031,7 +1206,7 @@ export default function ClaimsPage() {
                                   borderColor: "#15803d",
                                   fontWeight: 700,
                                 }}
-                                disabled={payingId === c.id}
+                                disabled={payingId === c.id || bulkPaying}
                                 onClick={() => void setClaimStatus(c.id, "paid")}
                               >
                                 {payingId === c.id ? "Saving…" : "Mark as Paid"}
@@ -1087,7 +1262,8 @@ export default function ClaimsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -627,6 +627,41 @@ export async function updateClaimStatus(input: {
   return claim;
 }
 
+/** Bulk status update (e.g. finance Mark as Paid for several approved claims). */
+export async function bulkUpdateClaimStatus(input: {
+  ids: number[];
+  status: ClaimStatus;
+  notes?: string | null;
+  approvedByEmployeeId?: number | null;
+}): Promise<{ updated: EmployeeClaim[]; failed: { id: number; error: string }[] }> {
+  const ids = Array.from(
+    new Set(
+      (input.ids || [])
+        .map((n) => Number(n))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  );
+  const updated: EmployeeClaim[] = [];
+  const failed: { id: number; error: string }[] = [];
+  for (const id of ids) {
+    try {
+      const claim = await updateClaimStatus({
+        id,
+        status: input.status,
+        notes: input.notes,
+        approvedByEmployeeId: input.approvedByEmployeeId,
+      });
+      updated.push(claim);
+    } catch (err) {
+      failed.push({
+        id,
+        error: err instanceof Error ? err.message : "Update failed",
+      });
+    }
+  }
+  return { updated, failed };
+}
+
 function toYearMonth(raw: unknown): string {
   if (raw == null || raw === "") return "";
   if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
