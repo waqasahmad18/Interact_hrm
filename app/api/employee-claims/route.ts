@@ -3,6 +3,8 @@ import {
   resolveViewerDataScope,
   rowInViewerScope,
 } from "@/lib/access-control/data-scope";
+import { viewerHasFinancePayrollPowers } from "@/lib/access-control/hr-access";
+import { getEmployeeAccessPayload } from "@/lib/access-control/store";
 import {
   bulkUpdateClaimStatus,
   createClaim,
@@ -14,6 +16,20 @@ import {
   resolveMedicalClaimBalances,
   type EmployeeClaim,
 } from "@/lib/employee-claims";
+
+async function viewerCanMarkPaid(viewerId: string): Promise<boolean> {
+  if (!viewerId || !/^\d+$/.test(viewerId)) return false;
+  try {
+    const access = await getEmployeeAccessPayload(viewerId);
+    return viewerHasFinancePayrollPowers({
+      departmentName: access.departmentName,
+      roleSlugs: access.role?.slugs || [access.role?.slug].filter(Boolean),
+      permissions: access.permissions,
+    });
+  } catch {
+    return false;
+  }
+}
 
 function summaryFromClaims(year: string, claims: EmployeeClaim[]) {
   const emp = new Set<number>();
@@ -206,6 +222,16 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    if (status === "paid") {
+      const ok = await viewerCanMarkPaid(viewerId);
+      if (!ok) {
+        return NextResponse.json(
+          { success: false, error: "Only Finance can mark claims as paid" },
+          { status: 403 },
+        );
+      }
+    }
+
     const allowed: number[] = [];
     const denied: { id: number; error: string }[] = [];
 
@@ -280,6 +306,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const createStatus = normalizeClaimStatus(
+      body.status != null && String(body.status).trim() !== ""
+        ? body.status
+        : "pending",
+    );
+    if (createStatus === "paid") {
+      const ok = await viewerCanMarkPaid(viewerId);
+      if (!ok) {
+        return NextResponse.json(
+          { success: false, error: "Only Finance can mark claims as paid" },
+          { status: 403 },
+        );
+      }
+    }
+
     const result = await createClaim({
       employeeId,
       amount,
@@ -287,11 +328,7 @@ export async function POST(req: NextRequest) {
       claimType: normalizeClaimType(body.claim_type ?? body.claimType),
       title: body.title != null ? String(body.title) : null,
       notes: body.notes != null ? String(body.notes) : null,
-      status: normalizeClaimStatus(
-        body.status != null && String(body.status).trim() !== ""
-          ? body.status
-          : "pending",
-      ),
+      status: createStatus,
       createdBy:
         body.created_by != null
           ? String(body.created_by)

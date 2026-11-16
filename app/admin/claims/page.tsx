@@ -865,7 +865,6 @@ export default function ClaimsPage() {
                   <option value="">Select status</option>
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
-                  <option value="paid">Paid</option>
                 </select>
               </label>
             </div>
@@ -1239,17 +1238,15 @@ export default function ClaimsPage() {
                                   Approve
                                 </button>
                               ) : null}
+                              {/* Mark paid is Finance-only — HR/Admin approve/reject only */}
                               {c.status === "approved" ? (
-                                <button
-                                  type="button"
-                                  className={fh.clearBtn}
-                                  style={{ height: 32, padding: "0 10px", fontSize: 12 }}
-                                  onClick={() => void setClaimStatus(c.id, "paid")}
-                                >
-                                  Mark paid
-                                </button>
+                                <span style={{ fontSize: 12, color: "#64748b" }}>
+                                  Waiting for Finance
+                                </span>
                               ) : null}
-                              {c.status !== "rejected" && c.status !== "cancelled" ? (
+                              {c.status !== "rejected" &&
+                              c.status !== "cancelled" &&
+                              c.status !== "paid" ? (
                                 <button
                                   type="button"
                                   className={fh.clearBtn}
