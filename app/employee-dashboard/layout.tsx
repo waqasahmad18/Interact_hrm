@@ -41,44 +41,11 @@ import {
 import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
-function ClockWidgetSkeleton() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 12,
-        alignItems: "stretch",
-        minHeight: 72,
-      }}
-      aria-busy
-      aria-label="Loading clock controls"
-    >
-      <button
-        type="button"
-        disabled
-        style={{
-          background: "#27ae60",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          padding: "8px 18px",
-          fontSize: "1rem",
-          fontWeight: 600,
-          opacity: 0.55,
-          cursor: "wait",
-        }}
-      >
-        Clock In
-      </button>
-    </div>
-  );
-}
-
 const ClockBreakPrayerWidget = dynamic(
   () =>
     import("../components/ClockBreakPrayer").then((m) => m.ClockBreakPrayerWidget),
-  { ssr: false, loading: () => <ClockWidgetSkeleton /> },
+  // No green Clock In skeleton — that flash on reload looked like a real button.
+  { ssr: false, loading: () => null },
 );
 
 function greetingLabel() {

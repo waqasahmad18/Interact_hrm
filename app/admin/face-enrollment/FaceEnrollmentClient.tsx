@@ -120,6 +120,25 @@ export default function FaceEnrollmentAdminPage() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [employeePickerOpen]);
 
+  const applyEmployeeRows = React.useCallback((rows: EmployeeVerificationRow[]) => {
+    setEmployeeRows(rows);
+    // Reuse verification list for the picker — avoids a second full /api/employee-list fetch.
+    setEmployees(
+      rows.map((r) => {
+        const parts = String(r.name || "")
+          .trim()
+          .split(/\s+/);
+        return {
+          id: r.id,
+          first_name: parts[0] || r.name,
+          last_name: parts.slice(1).join(" ") || undefined,
+          pseudonym: r.pseudonym || undefined,
+          employee_code: r.employee_code || undefined,
+        };
+      }),
+    );
+  }, []);
+
   const loadEmployeeList = React.useCallback(async () => {
     setListLoading(true);
     setListError(null);
@@ -127,7 +146,7 @@ export default function FaceEnrollmentAdminPage() {
       const res = await fetch("/api/admin/face-enrollment/employees", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
-        setEmployeeRows(data.employees || []);
+        applyEmployeeRows(data.employees || []);
         setGlobalFaceEnabled(Boolean(data.globalEnabled ?? true));
       } else {
         setListError(data.error || "Could not load employee list.");
@@ -137,7 +156,7 @@ export default function FaceEnrollmentAdminPage() {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [applyEmployeeRows]);
 
   const refreshServiceStatus = React.useCallback(async () => {
     try {
@@ -151,23 +170,48 @@ export default function FaceEnrollmentAdminPage() {
     }
   }, []);
 
+  const ensureModels = React.useCallback(async () => {
+    try {
+      await ensureFaceModelsLoaded();
+      setModelsReady(true);
+      return true;
+    } catch {
+      setError(
+        "Face engine failed to load. Run npm run face:setup, then refresh this page.",
+      );
+      return false;
+    }
+  }, []);
+
   React.useEffect(() => {
-    Promise.all([
-      fetch("/api/employee-list").then((r) => r.json()),
-      refreshServiceStatus(),
-      loadEmployeeList(),
-      ensureFaceModelsLoaded()
-        .then(() => setModelsReady(true))
-        .catch(() =>
-          setError("Face engine failed to load. Run npm run face:setup, then refresh this page.")
-        ),
-    ])
-      .then(([empData]) => {
-        if (empData.success) setEmployees(empData.employees || []);
-      })
-      .catch(() => setError("Failed to load page data"))
-      .finally(() => setLoading(false));
-  }, [loadEmployeeList, refreshServiceStatus]);
+    let cancelled = false;
+    (async () => {
+      try {
+        // Paint UI as soon as list + status return — do NOT wait for face models.
+        await Promise.all([refreshServiceStatus(), loadEmployeeList()]);
+      } catch {
+        if (!cancelled) setError("Failed to load page data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    const startModels = () => {
+      if (cancelled) return;
+      void ensureModels();
+    };
+    const canIdle =
+      typeof window !== "undefined" && "requestIdleCallback" in window;
+    const idleId = canIdle
+      ? window.requestIdleCallback(startModels, { timeout: 2500 })
+      : window.setTimeout(startModels, 600);
+
+    return () => {
+      cancelled = true;
+      if (canIdle) window.cancelIdleCallback(idleId as number);
+      else window.clearTimeout(idleId as number);
+    };
+  }, [loadEmployeeList, refreshServiceStatus, ensureModels]);
 
   const handleVerificationToggle = async (row: EmployeeVerificationRow) => {
     const next = !row.face_verification_enabled;
@@ -398,8 +442,11 @@ export default function FaceEnrollmentAdminPage() {
     }
 
     if (!modelsReady) {
-      setError("Face engine is still loading. Wait a moment and try again.");
-      return false;
+      setBusy(true);
+      setMessage("Loading face engine…");
+      const ok = await ensureModels();
+      setBusy(false);
+      if (!ok) return false;
     }
 
     setBusy(true);
@@ -501,9 +548,16 @@ export default function FaceEnrollmentAdminPage() {
       return;
     }
     const video = videoRef.current;
-    if (!video || !modelsReady) {
-      setError("Face engine is still loading. Wait a moment and try again.");
+    if (!video) {
+      setError("Camera preview not ready. Click Restart camera.");
       return;
+    }
+    if (!modelsReady) {
+      setBusy(true);
+      setMessage("Loading face engine…");
+      const ok = await ensureModels();
+      setBusy(false);
+      if (!ok) return;
     }
 
     setBusy(true);
