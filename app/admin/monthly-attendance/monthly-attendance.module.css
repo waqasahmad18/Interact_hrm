@@ -458,14 +458,14 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f1f5f9;
-  color: #64748b;
+  background: #0b1220;
+  color: #ffffff;
   text-align: left;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 11px 14px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #0b1220;
   font-weight: 700;
 }
 
