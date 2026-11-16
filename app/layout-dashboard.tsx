@@ -266,7 +266,10 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						aria-hidden
 					/>
 				)}
-				<aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
+				{/* Desktop: left-edge hover dock — slides sidebar in/out; page stays full width */}
+				<div className={styles.sidebarDock}>
+					<div className={styles.sidebarRail} aria-hidden title="Hover to open menu" />
+					<aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
 					<nav className={styles.nav}>
 						{navGroups.map((group, idx) => (
 							<div key={group.group}>
@@ -568,6 +571,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						))}
 					</nav>
 				</aside>
+				</div>
 				<div
 					className={`${styles.contentArea} ${isTimePage ? styles.contentAreaTimePage : ""}`}
 				>

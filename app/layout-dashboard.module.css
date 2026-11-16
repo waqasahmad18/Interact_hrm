@@ -120,13 +120,14 @@
 }
 
 .topBarSidebarSlot {
-  width: var(--sidebar-width);
+  width: auto;
+  min-width: 72px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-right: 1px solid var(--topbar-border);
-  padding: 4px 10px;
+  padding: 4px 14px;
   box-sizing: border-box;
   position: relative;
   background: rgba(255, 255, 255, 0.35);
@@ -261,27 +262,83 @@
   min-height: auto;
 }
 
-/* ── Sidebar ────────────────────────────────────────────────── */
+/* ── Sidebar (desktop: hover slide-in; page stays full width) ─ */
+.sidebarDock {
+  position: fixed;
+  left: 0;
+  top: var(--topbar-height);
+  bottom: 0;
+  width: 16px;
+  z-index: 999;
+  overflow: visible;
+}
+
+/* Expand hit-area while open so cursor can move into the menu */
+.sidebarDock:hover,
+.sidebarDock:focus-within {
+  width: var(--sidebar-width);
+}
+
+.sidebarRail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  z-index: 2;
+  cursor: pointer;
+  background: transparent;
+}
+
+.sidebarRail::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 0 6px 6px 0;
+  background: linear-gradient(180deg, #2dd4bf 0%, #14b8a6 55%, #0d9488 100%);
+  opacity: 0.55;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.sidebarDock:hover .sidebarRail::after,
+.sidebarRail:hover::after {
+  opacity: 1;
+  width: 4px;
+}
+
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: linear-gradient(180deg, #0b1220 0%, #111827 55%, #0f172a 100%);
   border-right: 1px solid var(--sidebar-border);
-  box-shadow: var(--shadow-sidebar);
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   padding: 8px 0 0;
   margin: 0;
-  position: sticky;
+  position: absolute;
+  left: 0;
   top: 0;
-  align-self: flex-start;
-  height: calc(100vh - var(--topbar-height));
-  max-height: calc(100vh - var(--topbar-height));
+  bottom: 0;
+  height: 100%;
+  max-height: none;
   min-height: 0;
   overflow: hidden;
   color: var(--nav-text);
-  transition: transform 0.15s ease;
+  z-index: 1;
+  transform: translateX(-100%);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* Hover dock → slide sidebar in smoothly */
+.sidebarDock:hover .sidebar,
+.sidebarDock:focus-within .sidebar {
+  transform: translateX(0);
 }
 
 .sidebarHeader {
@@ -608,6 +665,15 @@
     display: none;
   }
 
+  /* Mobile: hamburger toggle only (no hover dock) */
+  .sidebarDock {
+    display: contents;
+  }
+
+  .sidebarRail {
+    display: none;
+  }
+
   .sidebar {
     position: fixed;
     top: 52px;
@@ -623,8 +689,13 @@
     overflow: hidden;
   }
 
+  .sidebarDock:hover .sidebar,
+  .sidebarDock:focus-within .sidebar {
+    transform: translateX(-100%);
+  }
+
   .sidebarOpen {
-    transform: translateX(0);
+    transform: translateX(0) !important;
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.35);
   }
 
