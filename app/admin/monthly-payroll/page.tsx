@@ -400,7 +400,8 @@ export default function MonthlyAttendancePage() {
 
   function getClaimsForEmployee(employee: { employeeId?: string }) {
     const empId = String(employee.employeeId ?? "");
-    return claimsByEmployee[empId] ?? 0;
+    const n = Number(lookupMoneyMap(claimsByEmployee, empId) ?? 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
   function getMedicalDedcForEmployee(employee: { employeeId?: string }) {
@@ -992,6 +993,7 @@ export default function MonthlyAttendancePage() {
           "Employee Name": emp.employeeName,
           Pseudonym: emp.pseudonym,
           Department: emp.departmentName,
+          Claims: row.medicalClaims || 0,
           Advance: row.advanceDeduction,
           Loan: row.loanDeduction,
           "Final Salary": row.finalSalary,
@@ -1809,9 +1811,11 @@ export default function MonthlyAttendancePage() {
   const financeSummary = React.useMemo(() => {
     let advanceTotal = 0;
     let loanTotal = 0;
+    let claimsTotal = 0;
     let finalTotal = 0;
     let withAdvance = 0;
     let withLoan = 0;
+    let withClaims = 0;
     for (const employee of filteredEmployees) {
       const empId = employee.employeeId;
       const taxManual = taxEditedRef.current.has(String(empId));
@@ -1829,17 +1833,21 @@ export default function MonthlyAttendancePage() {
       });
       advanceTotal += row.advanceDeduction || 0;
       loanTotal += row.loanDeduction || 0;
+      claimsTotal += row.medicalClaims || 0;
       finalTotal += row.finalSalary || 0;
       if ((row.advanceDeduction || 0) > 0) withAdvance += 1;
       if ((row.loanDeduction || 0) > 0) withLoan += 1;
+      if ((row.medicalClaims || 0) > 0) withClaims += 1;
     }
     return {
       employees: filteredEmployees.length,
       advanceTotal,
       loanTotal,
+      claimsTotal,
       finalTotal,
       withAdvance,
       withLoan,
+      withClaims,
     };
   }, [
     filteredEmployees,
@@ -2137,8 +2145,9 @@ export default function MonthlyAttendancePage() {
           <div className={fh.hero}>
             <h1 className={fh.heroTitle}>Final Salary (Finance)</h1>
             <p className={fh.heroSub}>
-              Company-wide Final Salary with Advance and Loan for the selected month. Filter by
-              name, pseudo name, or department — then mark Loan/Advance Paid after recovery.
+              Company-wide Final Salary with Claims, Advance, and Loan for the selected month.
+              Filter by name, pseudo name, or department — then mark Loan/Advance Paid after
+              recovery.
             </p>
           </div>
 
@@ -2201,6 +2210,11 @@ export default function MonthlyAttendancePage() {
               <div className={fh.cardMeta}>{monthInfo.label || selectedMonth}</div>
             </div>
             <div className={fh.card}>
+              <div className={fh.cardLabel}>Claims this month</div>
+              <div className={fh.cardValue}>{formatWithCommas(financeSummary.claimsTotal)}</div>
+              <div className={fh.cardMeta}>{financeSummary.withClaims} employee(s)</div>
+            </div>
+            <div className={fh.card}>
               <div className={fh.cardLabel}>Advance this month</div>
               <div className={fh.cardValue}>{formatWithCommas(financeSummary.advanceTotal)}</div>
               <div className={fh.cardMeta}>{financeSummary.withAdvance} employee(s)</div>
@@ -2259,6 +2273,7 @@ export default function MonthlyAttendancePage() {
                     <th>Employee</th>
                     <th>P.Name</th>
                     <th>Department</th>
+                    <th>Claims</th>
                     <th>Advance</th>
                     <th>Loan</th>
                     <th>Final Salary</th>
@@ -2281,6 +2296,7 @@ export default function MonthlyAttendancePage() {
                         medicalClaims: getClaimsForEmployee(employee),
                         medicalDedc: getMedicalDedcForEmployee(employee),
                       });
+                      const claimsVal = Number(row.medicalClaims || 0);
                       return (
                         <tr key={employee.employeeId}>
                           <td>{employee.employeeId}</td>
@@ -2301,6 +2317,14 @@ export default function MonthlyAttendancePage() {
                           </td>
                           <td>{employee.pseudonym || "--"}</td>
                           <td>{employee.departmentName || "--"}</td>
+                          <td
+                            style={{
+                              color: claimsVal > 0 ? "#007a5a" : undefined,
+                              fontWeight: claimsVal > 0 ? 600 : undefined,
+                            }}
+                          >
+                            {claimsVal > 0 ? formatWithCommas(claimsVal) : "--"}
+                          </td>
                           <td style={{ color: "#dc2626", fontWeight: 600 }}>
                             {formatWithCommas(row.advanceDeduction)}
                           </td>
@@ -2315,7 +2339,7 @@ export default function MonthlyAttendancePage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <div className={fh.empty}>
                           No employees match the current filters for {selectedMonth}.
                         </div>
