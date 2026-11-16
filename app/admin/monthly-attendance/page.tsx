@@ -2605,7 +2605,10 @@ export default function MonthlyAttendancePage() {
                   deferredSearchName,
                 );
                 return (
-                <div key={employee.employeeId} className={styles.empCard}>
+                <div
+                  key={employee.employeeId}
+                  className={`${styles.empCard}${isExpanded ? ` ${styles.empCardExpanded}` : ""}`}
+                >
                   <div
                     className={styles.empCardHead}
                     style={{ marginBottom: isExpanded ? 8 : 0 }}
