@@ -53,7 +53,8 @@ body {
  * Claims first-paint safety net (globals load with root layout).
  * Prevents unstyled flash before claims.module.css arrives on reload.
  */
-.claimsPageCritical {
+.claimsPageCritical,
+.loanPageCritical {
   max-width: 1280px;
   width: 100%;
   margin: 0 auto;
@@ -63,7 +64,8 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-.claimsPageCritical label select {
+.claimsPageCritical label select,
+.loanPageCritical label select {
   -webkit-appearance: none;
   appearance: none;
   min-height: 42px;
@@ -81,7 +83,9 @@ body {
 }
 
 .claimsPageCritical label select.yearSelect,
-.claimsPageCritical .yearSelect {
+.claimsPageCritical .yearSelect,
+.loanPageCritical label select.yearSelect,
+.loanPageCritical .yearSelect {
   min-height: 0;
   min-width: 78px;
   border: none;
