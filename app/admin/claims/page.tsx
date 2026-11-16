@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LayoutDashboard from "../../layout-dashboard";
-import fh from "../employee-financial-history/financial-history.module.css";
+import fh from "./claims.module.css";
 import { MEDICAL_PACKAGES } from "@/lib/medical-package";
 
 type Employee = {
@@ -713,9 +713,7 @@ export default function ClaimsPage() {
 
         {!isFinanceViewer ? (
         <div className={fh.panel}>
-          <h2 style={{ margin: "0 0 12px", fontSize: "1.05rem" }}>
-            Add claim
-          </h2>
+          <h2 className={fh.panelTitle}>Add claim</h2>
           <form onSubmit={onSaveClaim}>
             <div
               style={{
@@ -778,29 +776,13 @@ export default function ClaimsPage() {
                   </button>
                 ) : null}
                 {empPickerOpen ? (
-                  <div
-                    role="listbox"
-                    style={{
-                      position: "absolute",
-                      zIndex: 40,
-                      left: 0,
-                      right: 0,
-                      top: "100%",
-                      marginTop: 4,
-                      maxHeight: 280,
-                      overflowY: "auto",
-                      background: "#fff",
-                      border: "1px solid #d4d4d8",
-                      borderRadius: 8,
-                      boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-                    }}
-                  >
+                  <div role="listbox" className={fh.pickerMenu}>
                     {employeesLoading ? (
-                      <div style={{ padding: "10px 12px", color: "#64748b" }}>
+                      <div className={fh.muted} style={{ padding: "10px 12px" }}>
                         Loading employees…
                       </div>
                     ) : filteredEmployeeOptions.length === 0 ? (
-                      <div style={{ padding: "10px 12px", color: "#64748b" }}>
+                      <div className={fh.muted} style={{ padding: "10px 12px" }}>
                         {employees.length === 0
                           ? "No employees found"
                           : "No match — try name or pseudo"}
@@ -811,29 +793,25 @@ export default function ClaimsPage() {
                           key={e.id}
                           type="button"
                           role="option"
+                          className={fh.pickerItem}
                           onClick={() => pickEmployee(e)}
                           style={{
-                            display: "block",
-                            width: "100%",
-                            textAlign: "left",
-                            padding: "8px 12px",
-                            border: "none",
-                            borderBottom: "1px solid #f1f5f9",
                             background:
-                              String(e.id) === formEmployeeId ? "#f3e8ff" : "#fff",
-                            cursor: "pointer",
+                              String(e.id) === formEmployeeId
+                                ? "#f0fdfa"
+                                : undefined,
                           }}
                         >
                           <div style={{ fontWeight: 600 }}>
                             {fullName(e) || `Employee ${e.id}`}
                             {e.pseudonym ? (
-                              <span style={{ fontWeight: 500, color: "#611f69" }}>
+                              <span className={fh.pickerPseudo}>
                                 {" "}
                                 · {e.pseudonym}
                               </span>
                             ) : null}
                           </div>
-                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                          <div className={fh.muted}>
                             ID {e.id}
                             {e.department_name ? ` · ${e.department_name}` : ""}
                           </div>
@@ -919,17 +897,7 @@ export default function ClaimsPage() {
                   placeholder="Optional"
                 />
               </label>
-              <button
-                type="submit"
-                className={fh.clearBtn}
-                disabled={saving}
-                style={{
-                  background: "#611f69",
-                  color: "#fff",
-                  borderColor: "#611f69",
-                  minWidth: 120,
-                }}
-              >
+              <button type="submit" className={fh.addBtn} disabled={saving}>
                 {saving ? "Saving…" : "Add claim"}
               </button>
             </div>
@@ -946,12 +914,11 @@ export default function ClaimsPage() {
                         Package <strong>{pkgLabel}</strong>
                         {" · "}OPD remaining{" "}
                         <strong
-                          style={{
-                            color:
-                              medicalBalances.opd.remaining <= 0
-                                ? "#b91c1c"
-                                : "#15803d",
-                          }}
+                          className={
+                            medicalBalances.opd.remaining <= 0
+                              ? fh.balanceBad
+                              : fh.balanceOk
+                          }
                         >
                           {money(medicalBalances.opd.remaining)}
                         </strong>
@@ -961,12 +928,11 @@ export default function ClaimsPage() {
                         </span>
                         {" · "}IPD remaining{" "}
                         <strong
-                          style={{
-                            color:
-                              medicalBalances.ipd.remaining <= 0
-                                ? "#b91c1c"
-                                : "#15803d",
-                          }}
+                          className={
+                            medicalBalances.ipd.remaining <= 0
+                              ? fh.balanceBad
+                              : fh.balanceOk
+                          }
                         >
                           {money(medicalBalances.ipd.remaining)}
                         </strong>
@@ -997,10 +963,11 @@ export default function ClaimsPage() {
                           <strong>{money(balance.entitlement)}</strong>
                           {" · "}Remaining{" "}
                           <strong
-                            style={{
-                              color:
-                                balance.remaining <= 0 ? "#b91c1c" : "#15803d",
-                            }}
+                            className={
+                              balance.remaining <= 0
+                                ? fh.balanceBad
+                                : fh.balanceOk
+                            }
                           >
                             {money(balance.remaining)}
                           </strong>
@@ -1018,14 +985,10 @@ export default function ClaimsPage() {
         </div>
         ) : null}
 
-        {toast ? (
-          <p style={{ margin: "0 0 12px", color: "#3b0764", fontWeight: 600 }}>
-            {toast}
-          </p>
-        ) : null}
+        {toast ? <p className={fh.toast}>{toast}</p> : null}
 
         <div className={fh.panel}>
-          <h2 style={{ margin: "0 0 12px", fontSize: "1.05rem" }}>
+          <h2 className={fh.panelTitle}>
             {isFinanceViewer ? "Claims to pay" : "Claims list"}
           </h2>
           <div className={fh.filters} style={{ gridTemplateColumns: "110px 1fr 140px 140px auto" }}>
@@ -1143,8 +1106,8 @@ export default function ClaimsPage() {
                     background:
                       selectedBulkCount > 0
                         ? bulkAction === "paid"
-                          ? "#15803d"
-                          : "#b45309"
+                          ? "#0d9488"
+                          : "#111827"
                         : undefined,
                     opacity: selectedBulkCount > 0 ? 1 : 0.55,
                     cursor: selectedBulkCount > 0 ? "pointer" : "not-allowed",
@@ -1215,11 +1178,7 @@ export default function ClaimsPage() {
                     return (
                     <tr
                       key={c.id}
-                      style={
-                        isSelected
-                          ? { background: "rgba(21, 128, 61, 0.06)" }
-                          : undefined
-                      }
+                      className={isSelected ? fh.rowSelected : undefined}
                     >
                       {isFinanceViewer ? (
                         <td>
@@ -1262,38 +1221,20 @@ export default function ClaimsPage() {
                             c.status === "approved" ? (
                               <button
                                 type="button"
-                                className={fh.clearBtn}
-                                style={{
-                                  height: 34,
-                                  padding: "0 12px",
-                                  fontSize: 13,
-                                  background: "#15803d",
-                                  color: "#fff",
-                                  borderColor: "#15803d",
-                                  fontWeight: 700,
-                                }}
+                                className={fh.actionPaid}
                                 disabled={payingId === c.id || bulkPaying}
                                 onClick={() => void setClaimStatus(c.id, "paid")}
                               >
                                 {payingId === c.id ? "Saving…" : "Mark as Paid"}
                               </button>
                             ) : c.status === "pending" ? (
-                              <span style={{ fontSize: 12, color: "#64748b" }}>
+                              <span className={fh.muted}>
                                 Waiting for approval
                               </span>
                             ) : c.status === "paid" ? (
                               <button
                                 type="button"
-                                className={fh.clearBtn}
-                                style={{
-                                  height: 34,
-                                  padding: "0 12px",
-                                  fontSize: 13,
-                                  background: "#b45309",
-                                  color: "#fff",
-                                  borderColor: "#b45309",
-                                  fontWeight: 700,
-                                }}
+                                className={fh.actionUnpaid}
                                 disabled={payingId === c.id || bulkPaying}
                                 onClick={() =>
                                   void setClaimStatus(c.id, "approved", {
@@ -1318,9 +1259,7 @@ export default function ClaimsPage() {
                               ) : null}
                               {/* Mark paid is Finance-only — HR/Admin approve/reject only */}
                               {c.status === "approved" ? (
-                                <span style={{ fontSize: 12, color: "#64748b" }}>
-                                  Waiting for Finance
-                                </span>
+                                <span className={fh.muted}>Waiting for Finance</span>
                               ) : null}
                               {c.status !== "rejected" &&
                               c.status !== "cancelled" &&
