@@ -71,6 +71,7 @@ function statusClass(status: string) {
   const s = String(status || "").toLowerCase();
   if (s === "paid") return fh.statusPaid;
   if (s === "approved") return fh.statusPaid;
+  if (s === "unpaid") return fh.statusUnpaid;
   if (s === "pending") return fh.statusActive;
   if (s === "rejected" || s === "cancelled") return fh.statusCancelled;
   return "";
@@ -80,10 +81,16 @@ function statusLabel(status: string) {
   const s = String(status || "").toLowerCase();
   if (s === "paid") return "Paid";
   if (s === "approved") return "Approved";
+  if (s === "unpaid") return "Unpaid";
   if (s === "pending") return "Pending";
   if (s === "rejected") return "Rejected";
   if (s === "cancelled") return "Cancelled";
   return status || "—";
+}
+
+function isPayableStatus(status: string) {
+  const s = String(status || "").toLowerCase();
+  return s === "approved" || s === "unpaid";
 }
 
 function detectFinanceAccess(payload: any): boolean {
@@ -504,6 +511,7 @@ export default function ClaimsPage() {
       if (!data.success) throw new Error(data.error || "Update failed");
       if (opts?.successToast) setToast(opts.successToast);
       else if (status === "paid") setToast("Marked as paid");
+      else if (status === "unpaid") setToast("Marked as unpaid");
       await loadClaims();
       if (formEmployeeId) await loadBalance(formEmployeeId, formType);
     } catch (err) {
@@ -514,15 +522,18 @@ export default function ClaimsPage() {
   }
 
   async function applyBulkPaymentAction() {
-    const needStatus = bulkAction === "paid" ? "approved" : "paid";
-    const nextStatus = bulkAction === "paid" ? "paid" : "approved";
+    const nextStatus = bulkAction === "paid" ? "paid" : "unpaid";
     const ids = selectedIds.filter((id) =>
-      claims.some((c) => c.id === id && c.status === needStatus),
+      claims.some((c) => {
+        if (c.id !== id) return false;
+        if (bulkAction === "paid") return isPayableStatus(c.status);
+        return c.status === "paid";
+      }),
     );
     if (!ids.length) {
       setToast(
         bulkAction === "paid"
-          ? "Select one or more Approved claims first"
+          ? "Select one or more Approved/Unpaid claims first"
           : "Select one or more Paid claims first",
       );
       return;
@@ -580,10 +591,10 @@ export default function ClaimsPage() {
   }
 
   const financeQueue = useMemo(() => {
-    // Finance default list: pending + approved (ready / waiting), then paid.
+    // Finance: payable first (approved/unpaid), then pending, then paid.
     const rank = (s: string) => {
       const v = String(s || "").toLowerCase();
-      if (v === "approved") return 0;
+      if (v === "approved" || v === "unpaid") return 0;
       if (v === "pending") return 1;
       if (v === "paid") return 2;
       return 3;
@@ -596,35 +607,41 @@ export default function ClaimsPage() {
   }, [filteredClaims]);
 
   const readyToPayCount = useMemo(
-    () => claims.filter((c) => c.status === "approved").length,
+    () => claims.filter((c) => isPayableStatus(c.status)).length,
     [claims],
   );
   const pendingCount = useMemo(
     () => claims.filter((c) => c.status === "pending").length,
     [claims],
   );
-  const bulkTargetStatus = bulkAction === "paid" ? "approved" : "paid";
   const bulkTargetIds = useMemo(
     () =>
       (isFinanceViewer ? financeQueue : filteredClaims)
-        .filter((c) => c.status === bulkTargetStatus)
+        .filter((c) =>
+          bulkAction === "paid"
+            ? isPayableStatus(c.status)
+            : c.status === "paid",
+        )
         .map((c) => c.id),
-    [isFinanceViewer, financeQueue, filteredClaims, bulkTargetStatus],
+    [isFinanceViewer, financeQueue, filteredClaims, bulkAction],
   );
   const allBulkTargetsSelected =
     bulkTargetIds.length > 0 &&
     bulkTargetIds.every((id) => selectedIds.includes(id));
   const selectedForBulk = useMemo(() => {
     const set = new Set(selectedIds);
-    return (isFinanceViewer ? financeQueue : filteredClaims).filter(
-      (c) => set.has(c.id) && c.status === bulkTargetStatus,
-    );
+    return (isFinanceViewer ? financeQueue : filteredClaims).filter((c) => {
+      if (!set.has(c.id)) return false;
+      return bulkAction === "paid"
+        ? isPayableStatus(c.status)
+        : c.status === "paid";
+    });
   }, [
     selectedIds,
     isFinanceViewer,
     financeQueue,
     filteredClaims,
-    bulkTargetStatus,
+    bulkAction,
   ]);
   const selectedBulkCount = selectedForBulk.length;
   const selectedBulkAmount = useMemo(
@@ -1024,6 +1041,7 @@ export default function ClaimsPage() {
               >
                 <option value="">All</option>
                 <option value="approved">Approved</option>
+                <option value="unpaid">Unpaid</option>
                 <option value="pending">Pending</option>
                 <option value="paid">Paid</option>
                 {!isFinanceViewer ? (
@@ -1055,10 +1073,10 @@ export default function ClaimsPage() {
                   ? `${selectedBulkCount} selected · ${money(selectedBulkAmount)}`
                   : bulkTargetIds.length > 0
                     ? bulkAction === "paid"
-                      ? `${bulkTargetIds.length} approved ready — select to mark paid`
+                      ? `${bulkTargetIds.length} ready — select to mark paid`
                       : `${bulkTargetIds.length} paid — select to mark unpaid`
                     : bulkAction === "paid"
-                      ? "No approved claims ready to pay"
+                      ? "No claims ready to mark paid"
                       : "No paid claims to mark unpaid"}
               </div>
               <div className={fh.bulkActions}>
@@ -1072,7 +1090,7 @@ export default function ClaimsPage() {
                     {allBulkTargetsSelected
                       ? "Clear selection"
                       : bulkAction === "paid"
-                        ? "Select all approved"
+                        ? "Select all ready"
                         : "Select all paid"}
                   </button>
                 ) : null}
@@ -1091,9 +1109,7 @@ export default function ClaimsPage() {
                   value={bulkAction}
                   disabled={bulkPaying}
                   onChange={(e) => {
-                    const next = e.target.value === "unpaid" ? "unpaid" : "paid";
-                    setBulkAction(next);
-                    setSelectedIds([]);
+                    setBulkAction(e.target.value === "unpaid" ? "unpaid" : "paid");
                   }}
                   aria-label="Payment action"
                 >
@@ -1132,7 +1148,7 @@ export default function ClaimsPage() {
                         type="checkbox"
                         aria-label={
                           bulkAction === "paid"
-                            ? "Select all approved"
+                            ? "Select all ready to pay"
                             : "Select all paid"
                         }
                         checked={allBulkTargetsSelected}
@@ -1167,8 +1183,7 @@ export default function ClaimsPage() {
                   (isFinanceViewer ? financeQueue : filteredClaims).map((c) => {
                     const canSelect =
                       isFinanceViewer &&
-                      (c.status === "approved" || c.status === "paid") &&
-                      c.status === bulkTargetStatus;
+                      (isPayableStatus(c.status) || c.status === "paid");
                     const isSelected = selectedIds.includes(c.id);
                     return (
                     <tr
@@ -1213,7 +1228,7 @@ export default function ClaimsPage() {
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           {isFinanceViewer ? (
-                            c.status === "approved" ? (
+                            isPayableStatus(c.status) ? (
                               <button
                                 type="button"
                                 className={fh.actionPaid}
@@ -1231,11 +1246,7 @@ export default function ClaimsPage() {
                                 type="button"
                                 className={fh.actionUnpaid}
                                 disabled={payingId === c.id || bulkPaying}
-                                onClick={() =>
-                                  void setClaimStatus(c.id, "approved", {
-                                    successToast: "Marked as unpaid",
-                                  })
-                                }
+                                onClick={() => void setClaimStatus(c.id, "unpaid")}
                               >
                                 {payingId === c.id ? "Saving…" : "Mark as Unpaid"}
                               </button>
@@ -1253,7 +1264,7 @@ export default function ClaimsPage() {
                                 </button>
                               ) : null}
                               {/* Mark paid is Finance-only — HR/Admin approve/reject only */}
-                              {c.status === "approved" ? (
+                              {isPayableStatus(c.status) ? (
                                 <span className={fh.muted}>Waiting for Finance</span>
                               ) : null}
                               {c.status !== "rejected" &&

@@ -259,10 +259,12 @@
 .input,
 .select {
   width: 100%;
-  padding: 11px 12px;
+  min-height: 42px;
+  padding: 10px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 11px;
   font-size: 14px;
+  line-height: 1.35;
   background: #fff;
   color: var(--ig-ink);
   box-sizing: border-box;
@@ -372,15 +374,19 @@
 }
 
 .bulkSelect {
-  height: 36px;
-  min-width: 150px;
+  box-sizing: border-box;
+  min-height: 40px;
+  min-width: 168px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #fff;
+  color: #111827;
+  padding: 8px 12px;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
 }
 
 .bulkSelect option {
@@ -388,6 +394,8 @@
 }
 
 .ghostBtn {
+  box-sizing: border-box;
+  min-height: 40px;
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -395,6 +403,9 @@
   color: #fff;
   font-weight: 600;
   font-size: 13px;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 
@@ -418,6 +429,8 @@
 }
 
 .primaryBtn {
+  box-sizing: border-box;
+  min-height: 40px;
   padding: 8px 14px;
   border-radius: 10px;
   border: none;
@@ -425,6 +438,10 @@
   color: #fff;
   font-weight: 700;
   font-size: 13px;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
@@ -433,6 +450,8 @@
 }
 
 .primaryBtnDark {
+  box-sizing: border-box;
+  min-height: 40px;
   padding: 8px 14px;
   border-radius: 10px;
   border: none;
@@ -440,6 +459,10 @@
   color: var(--ig-black);
   font-weight: 700;
   font-size: 13px;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
@@ -524,26 +547,34 @@
 
 /* —— Actions / status —— */
 .actionPaid {
-  height: 32px;
-  padding: 0 12px;
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 6px 12px;
   font-size: 12px;
+  line-height: 1.35;
   border-radius: 8px;
   border: none;
   background: linear-gradient(135deg, #14b8a6, #0d9488);
   color: #fff;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 
 .actionUnpaid {
-  height: 32px;
-  padding: 0 12px;
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 6px 12px;
   font-size: 12px;
+  line-height: 1.35;
   border-radius: 8px;
   border: none;
   background: var(--ig-black);
   color: #fff;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 
@@ -570,6 +601,11 @@
 .statusCleared {
   background: #ecfdf5;
   color: #047857;
+}
+
+.statusUnpaid {
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .statusCancelled,

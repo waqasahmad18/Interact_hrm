@@ -11,6 +11,7 @@ export type ClaimType = "opd" | "ipd" | "medical" | "travel" | "other";
 export type ClaimStatus =
   | "pending"
   | "approved"
+  | "unpaid"
   | "rejected"
   | "paid"
   | "cancelled";
@@ -51,7 +52,7 @@ export type ClaimBalance = {
   claims_count: number;
 };
 
-const COUNTS_AS_USED: ClaimStatus[] = ["approved", "paid"];
+const COUNTS_AS_USED: ClaimStatus[] = ["approved", "unpaid", "paid"];
 const COUNTS_AS_PENDING: ClaimStatus[] = ["pending"];
 
 function money(n: unknown): number {
@@ -89,6 +90,7 @@ export function normalizeClaimStatus(raw: unknown): ClaimStatus {
   if (
     v === "pending" ||
     v === "approved" ||
+    v === "unpaid" ||
     v === "rejected" ||
     v === "paid" ||
     v === "cancelled"
@@ -500,7 +502,7 @@ export async function createClaim(input: {
   }
 
   const approvedAt =
-    status === "approved" || status === "paid"
+    status === "approved" || status === "paid" || status === "unpaid"
       ? new Date().toISOString().slice(0, 19).replace("T", " ")
       : null;
   const payrollMonth = claimDate.slice(0, 7);
@@ -589,7 +591,7 @@ export async function updateClaimStatus(input: {
   const id = Number(input.id);
   const status = normalizeClaimStatus(input.status);
   const approvedAt =
-    status === "approved" || status === "paid"
+    status === "approved" || status === "paid" || status === "unpaid"
       ? new Date().toISOString().slice(0, 19).replace("T", " ")
       : null;
 
@@ -689,7 +691,8 @@ export async function sumApprovedClaimsByPayrollMonth(
   const claims = await listClaims({ year });
   const out: Record<string, number> = {};
   for (const c of claims) {
-    if (c.status !== "approved" && c.status !== "paid") continue;
+    if (c.status !== "approved" && c.status !== "unpaid" && c.status !== "paid")
+      continue;
     const pm =
       toYearMonth(c.payroll_month) || toYearMonth(c.claim_date);
     if (pm !== m) continue;
@@ -760,7 +763,7 @@ export async function companyClaimsSummary(year?: string): Promise<{
     `SELECT
        COUNT(*) AS total_claims,
        COUNT(DISTINCT employee_id) AS employees_with_claims,
-       COALESCE(SUM(CASE WHEN status IN ('approved','paid') THEN amount ELSE 0 END),0) AS total_approved_amount,
+       COALESCE(SUM(CASE WHEN status IN ('approved','unpaid','paid') THEN amount ELSE 0 END),0) AS total_approved_amount,
        COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END),0) AS total_pending_amount
      FROM employee_claims
      WHERE claim_year = ? AND status <> 'cancelled'`,

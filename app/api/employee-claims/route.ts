@@ -38,7 +38,7 @@ function summaryFromClaims(year: string, claims: EmployeeClaim[]) {
   for (const c of claims) {
     if (c.status === "cancelled") continue;
     emp.add(c.employee_id);
-    if (c.status === "approved" || c.status === "paid") {
+    if (c.status === "approved" || c.status === "unpaid" || c.status === "paid") {
       total_approved_amount += c.amount;
     } else if (c.status === "pending") {
       total_pending_amount += c.amount;
