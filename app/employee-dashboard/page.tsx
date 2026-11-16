@@ -30,6 +30,7 @@ import {
   sanitizeEmployeeDisplayName,
 } from "@/lib/employee-login-lookup";
 import { markEmployeePortal } from "@/lib/access-control/employee-shell";
+import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 import { useEmployeeSession } from "./employee-session-context";
 
 type AttendanceRow = {
@@ -448,10 +449,7 @@ export default function EmployeeDashboardPage() {
       return;
     }
     let cancelled = false;
-    fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
-      cache: "no-store",
-    })
-      .then((r) => r.json())
+    fetchAccessControlMe(employeeId)
       .then((data) => {
         if (cancelled || !data?.success) return;
         const perms = Array.isArray(data.permissions) ? data.permissions : [];

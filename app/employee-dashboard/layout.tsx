@@ -38,17 +38,47 @@ import {
   normalizeMedicalPackage,
   type MedicalPackageId,
 } from "@/lib/medical-package";
-import {
-  ensureFaceModelsLoaded,
-  prefetchFaceModelAssets,
-  preloadFaceRuntime,
-} from "@/lib/face-client-engine";
+import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 
 /** Heavy clock/biometric UI — load only when dashboard home needs it. */
+function ClockWidgetSkeleton() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 12,
+        alignItems: "stretch",
+        minHeight: 72,
+      }}
+      aria-busy
+      aria-label="Loading clock controls"
+    >
+      <button
+        type="button"
+        disabled
+        style={{
+          background: "#27ae60",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 18px",
+          fontSize: "1rem",
+          fontWeight: 600,
+          opacity: 0.55,
+          cursor: "wait",
+        }}
+      >
+        Clock In
+      </button>
+    </div>
+  );
+}
+
 const ClockBreakPrayerWidget = dynamic(
   () =>
     import("../components/ClockBreakPrayer").then((m) => m.ClockBreakPrayerWidget),
-  { ssr: false }
+  { ssr: false, loading: () => <ClockWidgetSkeleton /> },
 );
 
 function greetingLabel() {
@@ -312,21 +342,44 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
     return () => window.clearInterval(id);
   }, []);
 
-  // Warm face models while employee uses dashboard — idle Guard check skips cold download.
+  // Warm clock widget chunk as soon as we know we're on home (before portal mounts).
   React.useEffect(() => {
-    preloadFaceRuntime();
-    prefetchFaceModelAssets();
-    void ensureFaceModelsLoaded().catch(() => undefined);
-  }, []);
+    if (!isDashboardHome) return;
+    void import("../components/ClockBreakPrayer");
+  }, [isDashboardHome]);
 
+  // Prefetch common routes after first paint — don't contend with clock/menu APIs.
   React.useEffect(() => {
-    for (const path of PREFETCH_PATHS) {
-      try {
-        router.prefetch(path);
-      } catch {
-        /* ignore */
+    const idle =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? (
+            window as Window & {
+              requestIdleCallback: (
+                cb: () => void,
+                opts?: { timeout: number },
+              ) => number;
+            }
+          ).requestIdleCallback
+        : null;
+    const run = () => {
+      for (const path of PREFETCH_PATHS) {
+        try {
+          router.prefetch(path);
+        } catch {
+          /* ignore */
+        }
       }
-    }
+    };
+    const id = idle ? idle(run, { timeout: 4000 }) : window.setTimeout(run, 1500);
+    return () => {
+      if (idle && typeof id === "number") {
+        (
+          window as Window & { cancelIdleCallback?: (id: number) => void }
+        ).cancelIdleCallback?.(id);
+      } else {
+        window.clearTimeout(id as number);
+      }
+    };
   }, [router]);
 
   React.useLayoutEffect(() => {
@@ -473,29 +526,22 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       return;
     }
     let cancelled = false;
-    fetch(`/api/access-control/me?employeeId=${encodeURIComponent(employeeId)}`, {
-      cache: "no-store",
-    })
-      .then((r) => r.json())
+    fetchAccessControlMe(employeeId)
       .then((data) => {
         if (cancelled || !data?.success) return;
         const menu = Array.isArray(data.menu) ? data.menu : [];
         const perms = Array.isArray(data.permissions) ? data.permissions : [];
-        const tabs = buildAccessTabsFromPayload(menu, perms);
+        const tabs = buildAccessTabsFromPayload(
+          menu as MenuItem[],
+          perms as string[],
+        );
         setAccessTabs(tabs);
         writeAccessMenuCache(
           employeeId,
-          menu,
-          perms,
-          String(data.role?.slug || ""),
+          menu as MenuItem[],
+          perms as string[],
+          String((data as { role?: { slug?: string } }).role?.slug || ""),
         );
-        for (const t of tabs) {
-          try {
-            router.prefetch(t.path);
-          } catch {
-            /* ignore */
-          }
-        }
       })
       .catch(() => {
         // Keep cached tabs on network error — don't wipe sidebar.

@@ -29,6 +29,8 @@ export function GuardPresenceFaceHost({
     if (!employeeId || !/^\d+$/.test(employeeId)) return;
 
     let cancelled = false;
+    let intervalId: number | undefined;
+    let startId: number | undefined;
     const tick = async () => {
       if (cancelled || busyRef.current) return;
       try {
@@ -51,11 +53,27 @@ export function GuardPresenceFaceHost({
       }
     };
 
-    void tick();
-    const id = window.setInterval(tick, 800);
+    // Defer Guard polling so clock/menu/attendance APIs win the first paint.
+    const start = () => {
+      if (cancelled) return;
+      void tick();
+      intervalId = window.setInterval(tick, 2500);
+    };
+    const canIdle =
+      typeof window !== "undefined" && "requestIdleCallback" in window;
+    if (canIdle) {
+      startId = window.requestIdleCallback(start, { timeout: 4000 });
+    } else {
+      startId = window.setTimeout(start, 2500);
+    }
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      if (canIdle) {
+        window.cancelIdleCallback(startId as number);
+      } else if (startId !== undefined) {
+        window.clearTimeout(startId);
+      }
+      if (intervalId !== undefined) window.clearInterval(intervalId);
     };
   }, [employeeId, employeeName]);
 

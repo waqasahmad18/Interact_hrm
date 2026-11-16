@@ -376,18 +376,15 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
     [handleVerifyOpen, handleVerifyClose]
   );
 
-  const { runWithVerify, gateModal, bioStatusLoading } = useBiometricGate(
+  const { runWithVerify, gateModal } = useBiometricGate(
     employeeId,
     employeeName,
     biometricGateOptions
   );
 
-  // Buttons are only disabled during the quick bio-status fetch. We deliberately
-  // do NOT block on full face-model load: on a remote server the weights take a
-  // few seconds to download, and the verify modal already loads them in parallel
-  // with the camera. Blocking here left buttons stuck on "Preparing…" for too
-  // long.
-  const verifyPreparing = bioStatusLoading;
+  // Never pass bioStatusLoading into button disabled/labels — buttons must show
+  // immediately. runWithVerify toasts if status is still loading; verify modal
+  // loads face models in parallel with the camera.
 
   const isBiometricGateError = (error: unknown) =>
     String(error || "").toLowerCase().includes("face verification");
@@ -838,15 +835,14 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
           <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "#27ae60", marginBottom: 10 }}>Clock In</div>
         )}
         {isSlack && isClockedIn && <span className={slackStyles.clockRing} aria-hidden />}
-        {(!loadingAttendance || isTodayStatus) && (
-          <>
+        <>
             <button
               onClick={
                 isClockedIn
                   ? handleClockOut
                   : () => runWithVerify("clock_in", (token) => handleClockIn(token))
               }
-              disabled={clockActionPending || verifyPreparing || (isTodayStatus && loadingAttendance)}
+              disabled={clockActionPending}
               className={isSlack ? `${slackStyles.btn} ${isClockedIn ? slackStyles.btnClockOut : slackStyles.btnClockIn}` : undefined}
               style={isSlack ? undefined : {
                 background: isClockedIn ? "#e74c3c" : "#27ae60",
@@ -856,13 +852,13 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
                 padding: "8px 18px",
                 fontSize: "1rem",
                 fontWeight: 600,
-                cursor: clockActionPending || verifyPreparing ? "not-allowed" : "pointer",
-                opacity: clockActionPending || verifyPreparing ? 0.6 : 1,
+                cursor: clockActionPending ? "not-allowed" : "pointer",
+                opacity: clockActionPending ? 0.6 : 1,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                 transition: "background 0.2s"
               }}
             >
-              {verifyPreparing ? "Preparing…" : isClockedIn ? "Clock Out" : "Clock In"}
+              {isClockedIn ? "Clock Out" : "Clock In"}
             </button>
             {isClockedIn && (
               isSlack ? (
@@ -879,8 +875,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
                 </div>
               )
             )}
-          </>
-        )}
+        </>
       </div>
 
       {/* Break Widget */}
@@ -913,7 +908,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
                 ? () => runWithVerify("break_end", (token) => handleBreakEnd(token))
                 : () => runWithVerify("break_start", (token) => handleBreakStart(token))
             }
-            disabled={isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending || verifyPreparing}
+            disabled={isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending}
             className={isSlack ? `${slackStyles.btn} ${isOnBreak ? slackStyles.btnBreakEnd : slackStyles.btnBreak}` : undefined}
             style={isSlack ? undefined : {
               background: isOnBreak ? "#e74c3c" : "#e67e22",
@@ -923,13 +918,13 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
               padding: "8px 18px",
               fontSize: "1rem",
               fontWeight: 600,
-              cursor: isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending || verifyPreparing ? "not-allowed" : "pointer",
-              opacity: isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending || verifyPreparing ? 0.6 : 1,
+              cursor: isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending ? "not-allowed" : "pointer",
+              opacity: isPrayerOn || refreshmentWidget.isOn || meetingWidget.isOn || breakActionPending ? 0.6 : 1,
               boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
               transition: "background 0.2s"
             }}
           >
-            {verifyPreparing ? "Preparing…" : isOnBreak ? "End Break" : "Start Break"}
+            {isOnBreak ? "End Break" : "Start Break"}
           </button>
           {isOnBreak && !isSlack ? (
             <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(230,126,34,0.10)", padding: "8px 12px", minWidth: 120 }}>
@@ -965,7 +960,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
           onPrayerStateChanged={syncPrayerBreakFromServer}
           disabled={isOnBreak || refreshmentWidget.isOn || meetingWidget.isOn}
           runWithVerify={runWithVerify}
-          bioStatusLoading={verifyPreparing}
+          bioStatusLoading={false}
           onClearServerPrayerInterval={() => clearPrayerBreakSyncInterval(employeeId)}
           variant={variant}
         />
@@ -989,7 +984,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
           notifyDataChanged={notifyRefreshmentDataChanged}
           disabled={isOnBreak || isPrayerOn || meetingWidget.isOn}
           runWithVerify={runWithVerify}
-          bioStatusLoading={verifyPreparing}
+          bioStatusLoading={false}
           onClearServerBreakInterval={refreshmentWidget.clearServerInterval}
           variant={variant}
         />
@@ -1013,7 +1008,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
           notifyDataChanged={notifyMeetingDataChanged}
           disabled={isOnBreak || isPrayerOn || refreshmentWidget.isOn}
           runWithVerify={runWithVerify}
-          bioStatusLoading={verifyPreparing}
+          bioStatusLoading={false}
           onClearServerBreakInterval={meetingWidget.clearServerInterval}
           variant={variant}
         />
