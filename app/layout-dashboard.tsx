@@ -4,7 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import styles from "./layout-dashboard.module.css";
 import "./globals.css";
 import "./dashboard/nexatech-theme.module.css";
-import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaDollarSign, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
+import { FaTachometerAlt, FaUserShield, FaCalendarAlt, FaClock, FaUserPlus, FaIdBadge, FaListAlt, FaClipboardList, FaBuilding, FaCog, FaUser, FaChartBar, FaKey, FaCalendarCheck, FaEdit, FaCoffee, FaFileAlt, FaWallet, FaChartLine, FaCreditCard, FaHandshake, FaNotesMedical, FaExchangeAlt, FaTicketAlt, FaFolderOpen, FaDesktop, FaImages } from "react-icons/fa";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
@@ -86,13 +86,13 @@ const sidebarLinks = [
 			},
 			{
 				name: "Payroll",
-				icon: <FaDollarSign />,
+				icon: <FaWallet />,
 				dropdown: [
 					{ name: "Monthly Payroll", path: "/admin/monthly-payroll", icon: <FaFileAlt /> },
-					{ name: "Commissions", path: "/admin/commissions", icon: <FaDollarSign /> },
-					{ name: "Advance", path: "/admin/advance", icon: <FaDollarSign /> },
-					{ name: "Loan", path: "/admin/loan", icon: <FaDollarSign /> },
-					{ name: "Claims", path: "/admin/claims", icon: <FaFileAlt /> },
+					{ name: "Commissions", path: "/admin/commissions", icon: <FaChartLine /> },
+					{ name: "Advance", path: "/admin/advance", icon: <FaCreditCard /> },
+					{ name: "Loan", path: "/admin/loan", icon: <FaHandshake /> },
+					{ name: "Claims", path: "/admin/claims", icon: <FaNotesMedical /> },
 					{ name: "Financial History", path: "/admin/employee-financial-history", icon: <FaFileAlt /> },
 					{ name: "Request Inbox", path: "/admin/financial-requests", icon: <FaClipboardList /> },
 				]

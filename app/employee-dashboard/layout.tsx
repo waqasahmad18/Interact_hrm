@@ -17,7 +17,12 @@ import {
   FaTicketAlt,
   FaClipboardList,
   FaCalendarAlt,
-  FaDollarSign,
+  FaWallet,
+  FaChartLine,
+  FaCreditCard,
+  FaHandshake,
+  FaNotesMedical,
+  FaLandmark,
   FaCog,
   FaCoffee,
   FaFileAlt,
@@ -216,15 +221,12 @@ function iconForPath(path: string, name: string): React.ReactNode {
   }
   if (path.includes("break") || path.includes("prayer")) return <FaCoffee />;
   if (path.includes("ticket") || name.includes("Ticket")) return <FaTicketAlt />;
-  if (
-    path.includes("payroll") ||
-    path.includes("commission") ||
-    path.includes("advance") ||
-    path.includes("loan") ||
-    path.includes("financial")
-  ) {
-    return <FaDollarSign />;
-  }
+  if (path.includes("commission")) return <FaChartLine />;
+  if (path.includes("advance")) return <FaCreditCard />;
+  if (path.includes("loan")) return <FaHandshake />;
+  if (path.includes("claims")) return <FaNotesMedical />;
+  if (path.includes("payroll")) return <FaWallet />;
+  if (path.includes("financial")) return <FaLandmark />;
   if (path.includes("system-control")) return <FaCog />;
   if (path.includes("credential") || path.includes("face-enrollment")) return <FaKey />;
   if (path.includes("files") || path.includes("formats")) return <FaFileAlt />;
