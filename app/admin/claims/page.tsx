@@ -112,6 +112,28 @@ function statusLabel(status: string) {
   return status || "—";
 }
 
+/** HR column: Pending / Approved / Rejected (payment states fold into Approved). */
+function hrStatusOf(status: string): { label: string; className: string } {
+  const s = String(status || "").toLowerCase();
+  if (s === "pending") return { label: "Pending", className: fh.statusActive };
+  if (s === "rejected") return { label: "Rejected", className: fh.statusCancelled };
+  if (s === "cancelled") return { label: "Cancelled", className: fh.statusCancelled };
+  if (s === "approved" || s === "unpaid" || s === "paid") {
+    return { label: "Approved", className: fh.statusPaid };
+  }
+  return { label: statusLabel(status), className: statusClass(status) };
+}
+
+/** Finance column: Paid / Unpaid / — */
+function financeStatusOf(status: string): { label: string; className: string } {
+  const s = String(status || "").toLowerCase();
+  if (s === "paid") return { label: "Paid", className: fh.statusPaid };
+  if (s === "unpaid" || s === "approved") {
+    return { label: "Unpaid", className: fh.statusUnpaid };
+  }
+  return { label: "—", className: "" };
+}
+
 function isPayableStatus(status: string) {
   const s = String(status || "").toLowerCase();
   return s === "approved" || s === "unpaid";
@@ -940,7 +962,7 @@ export default function ClaimsPage() {
         </div>
 
         {roleReady && !showFinance ? (
-        <div className={fh.panel}>
+        <div className={`${fh.panel} ${fh.panelOverflow}`}>
           <div className={fh.panelHead}>
             <div className={fh.panelHeadLeft}>
               <h2 className={fh.panelTitle}>Add claim</h2>
@@ -953,7 +975,11 @@ export default function ClaimsPage() {
           <div className={fh.panelBody}>
           <form onSubmit={onSaveClaim}>
             <div className={fh.formGrid}>
-              <div className={fh.field} ref={empPickerRef} style={{ position: "relative" }}>
+              <div
+                className={fh.field}
+                ref={empPickerRef}
+                style={{ position: "relative", zIndex: empPickerOpen ? 90 : 1 }}
+              >
                 <span className={fh.label}>Employee</span>
                 <input
                   className={fh.input}
@@ -1407,14 +1433,15 @@ export default function ClaimsPage() {
                   <th>Type</th>
                   {!showFinance ? <th>Title</th> : null}
                   <th>Amount</th>
-                  <th>Status</th>
+                  <th>HR status</th>
+                  <th>Finance</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleClaims.length === 0 ? (
                   <tr>
-                    <td colSpan={showFinance ? 9 : 10} className={fh.empty}>
+                    <td colSpan={showFinance ? 10 : 11} className={fh.empty}>
                       {loading
                         ? "Loading…"
                         : showFinance
@@ -1430,6 +1457,8 @@ export default function ClaimsPage() {
                         c.status === "approved" ||
                         c.status === "unpaid";
                     const isSelected = selectedIds.includes(c.id);
+                    const hr = hrStatusOf(c.status);
+                    const fin = financeStatusOf(c.status);
                     return (
                     <tr
                       key={c.id}
@@ -1464,9 +1493,18 @@ export default function ClaimsPage() {
                         <strong>{money(c.amount)}</strong>
                       </td>
                       <td>
-                        <span className={`${fh.statusPill} ${statusClass(c.status)}`}>
-                          {statusLabel(c.status)}
+                        <span className={`${fh.statusPill} ${hr.className}`}>
+                          {hr.label}
                         </span>
+                      </td>
+                      <td>
+                        {fin.label === "—" ? (
+                          <span className={fh.muted}>—</span>
+                        ) : (
+                          <span className={`${fh.statusPill} ${fin.className}`}>
+                            {fin.label}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

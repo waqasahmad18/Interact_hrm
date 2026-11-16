@@ -205,6 +205,17 @@
   overflow: hidden;
 }
 
+/* Add-claim panel: let employee dropdown paint above the next section */
+.panelOverflow {
+  overflow: visible;
+  position: relative;
+  z-index: 20;
+}
+
+.panelOverflow .panelHead {
+  border-radius: 18px 18px 0 0;
+}
+
 .panelHead {
   display: flex;
   align-items: center;
@@ -744,16 +755,16 @@
 
 .pickerMenu {
   position: absolute;
-  z-index: 30;
+  z-index: 80;
   left: 0;
   right: 0;
   top: calc(100% + 4px);
-  max-height: 240px;
+  max-height: 280px;
   overflow: auto;
   background: #fff;
   border: 1px solid var(--ig-line);
   border-radius: 12px;
-  box-shadow: 0 14px 32px rgba(11, 18, 32, 0.14);
+  box-shadow: 0 14px 32px rgba(11, 18, 32, 0.18);
 }
 
 .pickerItem {
