@@ -9,6 +9,7 @@ import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { EmployeeAvatar } from "./components/EmployeeAvatar";
 import { AdminProfileMenu } from "./components/AdminProfileMenu";
 import { ShellImageUpload } from "./components/ShellImageUpload";
+import { InteractGlobeLogo } from "./employee-dashboard/components/InteractGlobeLogo";
 import {
 	fetchShellBranding,
 	removeCompanyLogo,
@@ -266,10 +267,17 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 						aria-hidden
 					/>
 				)}
-				{/* Desktop: left-edge hover dock — slides sidebar in/out; page stays full width */}
+				{/* Desktop: left-edge hover dock — slide in/out + content width reflow */}
 				<div className={styles.sidebarDock}>
 					<div className={styles.sidebarRail} aria-hidden title="Hover to open menu" />
 					<aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
+					<div className={styles.sidebarHeader}>
+						<InteractGlobeLogo className={styles.sidebarGlobe} />
+						<div className={styles.sidebarBrandText}>
+							<span className={styles.sidebarBrandName}>INTERACT</span>
+							<span className={styles.sidebarBrandSub}>GLOBAL</span>
+						</div>
+					</div>
 					<nav className={styles.nav}>
 						{navGroups.map((group, idx) => (
 							<div key={group.group}>

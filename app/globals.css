@@ -78,6 +78,19 @@ body {
   cursor: pointer;
 }
 
+.claimsPageCritical label select.yearSelect,
+.claimsPageCritical .yearSelect {
+  min-height: 0;
+  min-width: 78px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  background-position: right 4px center;
+  padding: 4px 24px 4px 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
 /* Hide Next.js development indicator */
 #__next-build-watcher,
 nextjs-portal {

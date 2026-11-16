@@ -528,7 +528,21 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   }, [accessTabs]);
 
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [navPeek, setNavPeek] = React.useState(false);
+  const [isDesktopNav, setIsDesktopNav] = React.useState(true);
   const [employeeAvatar, setEmployeeAvatar] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 901px)");
+    const sync = () => setIsDesktopNav(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const sidebarVisible = isDesktopNav ? navPeek : sidebarOpen;
+  const contentPushed = isDesktopNav && navPeek;
 
   React.useEffect(() => {
     if (!employeeId) return;
@@ -579,7 +593,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
       setEmployeeName={setEmployeeName}
     >
     <div className={`${styles.layout} ${empStyles.noTopbar} ${empStyles.modernShell}`}>
-      {sidebarOpen ? (
+      {sidebarOpen && !isDesktopNav ? (
         <div
           className={styles.sidebarOverlay}
           onClick={() => setSidebarOpen(false)}
@@ -587,39 +601,56 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         />
       ) : null}
 
-      <aside
-        className={`${styles.sidebar} ${empStyles.sidebarFull} ${empStyles.sidebarPdf} ${sidebarOpen ? styles.sidebarOpen : ""}`}
+      <div
+        className={`${empStyles.sidebarDock} ${sidebarVisible ? empStyles.sidebarDockOpen : ""}`}
+        onMouseEnter={() => {
+          if (isDesktopNav) setNavPeek(true);
+        }}
+        onMouseLeave={() => {
+          if (isDesktopNav) setNavPeek(false);
+        }}
       >
-        <div className={empStyles.sidebarBrand}>
-          <InteractGlobeLogo className={empStyles.sidebarGlobe} />
-          <div className={empStyles.sidebarBrandText}>
-            <span className={empStyles.sidebarBrandName}>INTERACT</span>
-            <span className={empStyles.sidebarBrandSub}>GLOBAL</span>
-          </div>
-        </div>
-
-        <React.Suspense
-          fallback={
-            <nav className={`${styles.nav} ${styles.navEmployee} ${empStyles.sidebarNav}`}>
-              {employeeTabs.map((tab, idx) => (
-                <Link
-                  key={tab.path || idx}
-                  href={tab.path}
-                  prefetch
-                  className={`${styles.navItem} ${empStyles.navItemPdf}`}
-                >
-                  <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
-                  <span className={empStyles.navLabelPdf}>{tab.name}</span>
-                </Link>
-              ))}
-            </nav>
-          }
+        <div className={empStyles.sidebarRail} aria-hidden title="Hover to open menu" />
+        <aside
+          className={`${styles.sidebar} ${empStyles.sidebarFull} ${empStyles.sidebarPdf} ${empStyles.sidebarSlide} ${
+            sidebarVisible ? empStyles.sidebarSlideIn : ""
+          } ${sidebarOpen && !isDesktopNav ? styles.sidebarOpen : ""}`}
         >
-          <EmployeeSidebarNav tabs={employeeTabs} />
-        </React.Suspense>
-      </aside>
+          <div className={empStyles.sidebarBrand}>
+            <InteractGlobeLogo className={empStyles.sidebarGlobe} />
+            <div className={empStyles.sidebarBrandText}>
+              <span className={empStyles.sidebarBrandName}>INTERACT</span>
+              <span className={empStyles.sidebarBrandSub}>GLOBAL</span>
+            </div>
+          </div>
 
-      <div className={`${styles.contentArea} ${empStyles.contentFull} ${empStyles.contentModern}`}>
+          <React.Suspense
+            fallback={
+              <nav className={`${styles.nav} ${styles.navEmployee} ${empStyles.sidebarNav}`}>
+                {employeeTabs.map((tab, idx) => (
+                  <Link
+                    key={tab.path || idx}
+                    href={tab.path}
+                    prefetch
+                    className={`${styles.navItem} ${empStyles.navItemPdf}`}
+                  >
+                    <span className={`${styles.navIcon} ${empStyles.navIconPdf}`}>{tab.icon}</span>
+                    <span className={empStyles.navLabelPdf}>{tab.name}</span>
+                  </Link>
+                ))}
+              </nav>
+            }
+          >
+            <EmployeeSidebarNav tabs={employeeTabs} />
+          </React.Suspense>
+        </aside>
+      </div>
+
+      <div
+        className={`${styles.contentArea} ${empStyles.contentFull} ${empStyles.contentModern} ${
+          contentPushed ? empStyles.contentPushed : ""
+        }`}
+      >
         {isDashboardHome ? (
           <div className={empStyles.heroStrip}>
             <div className={empStyles.heroStripInner}>

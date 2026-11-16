@@ -4,6 +4,30 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import LayoutDashboard from "../../layout-dashboard";
 import fh from "./claims.module.css";
 import { MEDICAL_PACKAGES } from "@/lib/medical-package";
+import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
+
+const FINANCE_VIEW_CACHE_KEY = "hrm.claims.financeViewer";
+const CURRENT_YEAR = String(new Date().getFullYear());
+
+function readFinanceViewerCache(): boolean | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = sessionStorage.getItem(FINANCE_VIEW_CACHE_KEY);
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writeFinanceViewerCache(value: boolean) {
+  try {
+    sessionStorage.setItem(FINANCE_VIEW_CACHE_KEY, value ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
 
 type Employee = {
   id: number;
@@ -174,7 +198,11 @@ async function resolveViewerId(): Promise<string> {
 }
 
 export default function ClaimsPage() {
-  const [year, setYear] = useState(() => String(new Date().getFullYear()));
+  const [year, setYear] = useState(CURRENT_YEAR);
+  const yearOptions = useMemo(() => {
+    const y = Number(CURRENT_YEAR);
+    return [y - 3, y - 2, y - 1, y, y + 1].map(String);
+  }, []);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -204,29 +232,45 @@ export default function ClaimsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [viewerEmployeeId, setViewerEmployeeId] = useState("");
-  const [isFinanceViewer, setIsFinanceViewer] = useState(false);
+  /** null = role not resolved yet (avoid admin→finance flash). */
+  const [isFinanceViewer, setIsFinanceViewer] = useState<boolean | null>(() =>
+    readFinanceViewerCache(),
+  );
   const [payingId, setPayingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkPaying, setBulkPaying] = useState(false);
   /** Finance bulk action: paid | unpaid (unpaid = revert paid → approved). */
   const [bulkAction, setBulkAction] = useState<"paid" | "unpaid">("paid");
+  const roleReady = isFinanceViewer !== null;
+  const showFinance = isFinanceViewer === true;
 
   useEffect(() => {
     void (async () => {
       const id = await resolveViewerId();
       setViewerEmployeeId(id);
-      if (!id) return;
+      if (!id) {
+        setIsFinanceViewer(false);
+        writeFinanceViewerCache(false);
+        return;
+      }
       try {
-        const res = await fetch(
-          `/api/access-control/me?employeeId=${encodeURIComponent(id)}`,
-          { cache: "no-store" },
-        );
-        const data = await res.json();
-        if (data?.success) setIsFinanceViewer(detectFinanceAccess(data));
+        const data = await fetchAccessControlMe(id);
+        if (data?.success) {
+          const finance = detectFinanceAccess(data);
+          setIsFinanceViewer(finance);
+          writeFinanceViewerCache(finance);
+        } else if (isFinanceViewer === null) {
+          setIsFinanceViewer(false);
+          writeFinanceViewerCache(false);
+        }
       } catch {
-        /* keep HR-style page */
+        if (isFinanceViewer === null) {
+          setIsFinanceViewer(false);
+          writeFinanceViewerCache(false);
+        }
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolve once on mount
   }, []);
 
   const loadEmployees = useCallback(async () => {
@@ -628,22 +672,22 @@ export default function ClaimsPage() {
   );
   const bulkTargetIds = useMemo(
     () =>
-      (isFinanceViewer ? financeQueue : filteredClaims)
+      (showFinance ? financeQueue : filteredClaims)
         .filter((c) =>
           bulkAction === "paid"
             ? canBulkMarkPaid(c.status)
             : canBulkMarkUnpaid(c.status),
         )
         .map((c) => c.id),
-    [isFinanceViewer, financeQueue, filteredClaims, bulkAction],
+    [showFinance, financeQueue, filteredClaims, bulkAction],
   );
   /** All rows that show a checkbox — header selects these together. */
   const selectableIds = useMemo(
     () =>
-      (isFinanceViewer ? financeQueue : filteredClaims)
+      (showFinance ? financeQueue : filteredClaims)
         .filter((c) => isPayableStatus(c.status) || c.status === "paid")
         .map((c) => c.id),
-    [isFinanceViewer, financeQueue, filteredClaims],
+    [showFinance, financeQueue, filteredClaims],
   );
   const allSelectableSelected =
     selectableIds.length > 0 &&
@@ -656,7 +700,7 @@ export default function ClaimsPage() {
     bulkTargetIds.every((id) => selectedIds.includes(id));
   const selectedForBulk = useMemo(() => {
     const set = new Set(selectedIds);
-    return (isFinanceViewer ? financeQueue : filteredClaims).filter((c) => {
+    return (showFinance ? financeQueue : filteredClaims).filter((c) => {
       if (!set.has(c.id)) return false;
       return bulkAction === "paid"
         ? canBulkMarkPaid(c.status)
@@ -664,7 +708,7 @@ export default function ClaimsPage() {
     });
   }, [
     selectedIds,
-    isFinanceViewer,
+    showFinance,
     financeQueue,
     filteredClaims,
     bulkAction,
@@ -711,30 +755,60 @@ export default function ClaimsPage() {
               Interact Claims
             </p>
             <h1 className={fh.heroTitle}>
-              {isFinanceViewer ? "Claims payment" : "Claims"}
+              {!roleReady
+                ? "Claims"
+                : showFinance
+                  ? "Claims payment"
+                  : "Claims"}
             </h1>
             <p className={fh.heroSub}>
-              {isFinanceViewer
-                ? "Select claims, choose Paid or Unpaid, then apply in one step."
-                : "OPD 150k · IPD Silver 30k / Gold 40k / Platinum 50k — remaining updates as you add claims."}
+              {!roleReady
+                ? "Loading your claims view…"
+                : showFinance
+                  ? "Select claims, choose Paid or Unpaid, then apply in one step."
+                  : "OPD 150k · IPD Silver 30k / Gold 40k / Platinum 50k — remaining updates as you add claims."}
             </p>
           </div>
           <div className={fh.topRight}>
             <label className={fh.yearChip}>
               <span>Year</span>
-              <input
+              <select
+                className={fh.yearSelect}
                 value={year}
-                onChange={(e) =>
-                  setYear(e.target.value.replace(/[^\d]/g, "").slice(0, 4))
-                }
+                onChange={(e) => setYear(e.target.value)}
                 aria-label="Claim year"
-              />
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
         </header>
 
         <div className={fh.metricStrip}>
-          {isFinanceViewer ? (
+          {!roleReady ? (
+            <>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>Loading</div>
+                <div className={fh.metricValue}>…</div>
+              </div>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>—</div>
+                <div className={fh.metricValue}>—</div>
+              </div>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>—</div>
+                <div className={fh.metricValue}>—</div>
+              </div>
+              <div className={fh.metric}>
+                <div className={fh.metricLabel}>—</div>
+                <div className={fh.metricValue}>—</div>
+              </div>
+            </>
+          ) : showFinance ? (
             <>
               <div className={`${fh.metric} ${fh.metricAccent}`}>
                 <div className={fh.metricLabel}>Ready to pay</div>
@@ -785,7 +859,7 @@ export default function ClaimsPage() {
           )}
         </div>
 
-        {!isFinanceViewer ? (
+        {roleReady && !showFinance ? (
         <div className={fh.panel}>
           <div className={fh.panelHead}>
             <div className={fh.panelHeadLeft}>
@@ -1044,14 +1118,21 @@ export default function ClaimsPage() {
 
         {toast ? <p className={fh.toast}>{toast}</p> : null}
 
+        {!roleReady ? (
+          <div className={fh.panel}>
+            <div className={fh.panelBody}>
+              <p className={fh.loading}>Loading claims…</p>
+            </div>
+          </div>
+        ) : (
         <div className={fh.panel}>
           <div className={fh.panelHead}>
             <div className={fh.panelHeadLeft}>
               <h2 className={fh.panelTitle}>
-                {isFinanceViewer ? "Claims to pay" : "Claims list"}
+                {showFinance ? "Claims to pay" : "Claims list"}
               </h2>
               <p className={fh.panelHint}>
-                {isFinanceViewer
+                {showFinance
                   ? "Filter, select, then mark Paid or Unpaid"
                   : "Search and manage employee medical claims"}
               </p>
@@ -1083,7 +1164,7 @@ export default function ClaimsPage() {
                 <option value="unpaid">Unpaid</option>
                 <option value="pending">Pending</option>
                 <option value="paid">Paid</option>
-                {!isFinanceViewer ? (
+                {roleReady && !showFinance ? (
                   <option value="rejected">Rejected</option>
                 ) : null}
               </select>
@@ -1105,7 +1186,7 @@ export default function ClaimsPage() {
 
           {error ? <p className={fh.error}>{error}</p> : null}
 
-          {isFinanceViewer ? (
+          {showFinance ? (
             <div className={fh.bulkBar}>
               <div className={fh.selectedText}>
                 {selectedBulkCount > 0
@@ -1185,7 +1266,7 @@ export default function ClaimsPage() {
             <table className={fh.table}>
               <thead>
                 <tr>
-                  {isFinanceViewer ? (
+                  {showFinance ? (
                     <th style={{ width: 44 }}>
                       <input
                         ref={selectAllRef}
@@ -1202,27 +1283,27 @@ export default function ClaimsPage() {
                   <th>Pseudo</th>
                   <th>Dept</th>
                   <th>Type</th>
-                  {!isFinanceViewer ? <th>Title</th> : null}
+                  {!showFinance ? <th>Title</th> : null}
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {(isFinanceViewer ? financeQueue : filteredClaims).length === 0 ? (
+                {(showFinance ? financeQueue : filteredClaims).length === 0 ? (
                   <tr>
-                    <td colSpan={isFinanceViewer ? 9 : 9} className={fh.empty}>
+                    <td colSpan={showFinance ? 9 : 9} className={fh.empty}>
                       {loading
                         ? "Loading…"
-                        : isFinanceViewer
+                        : showFinance
                           ? "No pending or approved claims to pay."
                           : "No claims yet. Add one above."}
                     </td>
                   </tr>
                 ) : (
-                  (isFinanceViewer ? financeQueue : filteredClaims).map((c) => {
+                  (showFinance ? financeQueue : filteredClaims).map((c) => {
                     const canSelect =
-                      isFinanceViewer &&
+                      showFinance &&
                       (isPayableStatus(c.status) || c.status === "paid");
                     const isSelected = selectedIds.includes(c.id);
                     return (
@@ -1230,7 +1311,7 @@ export default function ClaimsPage() {
                       key={c.id}
                       className={isSelected ? fh.rowSelected : undefined}
                     >
-                      {isFinanceViewer ? (
+                      {showFinance ? (
                         <td>
                           {canSelect ? (
                             <input
@@ -1256,7 +1337,7 @@ export default function ClaimsPage() {
                       <td>{c.pseudonym || "—"}</td>
                       <td>{c.department_name || "—"}</td>
                       <td>{claimTypeLabel(c.claim_type)}</td>
-                      {!isFinanceViewer ? <td>{c.title || "—"}</td> : null}
+                      {!showFinance ? <td>{c.title || "—"}</td> : null}
                       <td>
                         <strong>{money(c.amount)}</strong>
                       </td>
@@ -1267,7 +1348,7 @@ export default function ClaimsPage() {
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {isFinanceViewer ? (
+                          {showFinance ? (
                             isPayableStatus(c.status) ? (
                               <button
                                 type="button"
@@ -1337,6 +1418,7 @@ export default function ClaimsPage() {
           </div>
           </div>
         </div>
+        )}
       </div>
     </LayoutDashboard>
   );

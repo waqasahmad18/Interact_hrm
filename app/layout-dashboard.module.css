@@ -244,6 +244,8 @@
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
+  margin-left: 0;
+  transition: margin-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .main {
@@ -262,7 +264,7 @@
   min-height: auto;
 }
 
-/* ── Sidebar (desktop: hover slide-in; page stays full width) ─ */
+/* ── Sidebar (desktop: hover slide-in + content width reflow) ─ */
 .sidebarDock {
   position: fixed;
   left: 0;
@@ -277,6 +279,14 @@
 .sidebarDock:hover,
 .sidebarDock:focus-within {
   width: var(--sidebar-width);
+}
+
+/* When dock is open, push main content so page width re-adjusts */
+@media (min-width: 1025px) {
+  .layout:has(.sidebarDock:hover) .contentArea,
+  .layout:has(.sidebarDock:focus-within) .contentArea {
+    margin-left: var(--sidebar-width);
+  }
 }
 
 .sidebarRail {
@@ -312,7 +322,7 @@
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
-  background: linear-gradient(180deg, #0b1220 0%, #111827 55%, #0f172a 100%);
+  background: #0b1220;
   border-right: 1px solid var(--sidebar-border);
   box-shadow: 8px 0 32px rgba(0, 0, 0, 0.28);
   display: flex;
@@ -320,22 +330,27 @@
   align-items: flex-start;
   padding: 8px 0 0;
   margin: 0;
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  height: 100%;
+  position: relative;
+  height: auto;
   max-height: none;
   min-height: 0;
   overflow: hidden;
   color: var(--nav-text);
   z-index: 1;
+}
+
+/* Off-canvas + slide only inside the hover dock (admin + employee) */
+.sidebarDock .sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  height: 100%;
   transform: translateX(-100%);
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
-/* Hover dock → slide sidebar in smoothly */
 .sidebarDock:hover .sidebar,
 .sidebarDock:focus-within .sidebar {
   transform: translateX(0);
@@ -343,13 +358,52 @@
 
 .sidebarHeader {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
-  padding: 14px 16px 16px;
+  padding: 16px 16px 14px;
   border-bottom: 1px solid var(--sidebar-border);
   margin-bottom: 6px;
-  background: linear-gradient(180deg, rgba(20, 184, 166, 0.08) 0%, transparent 100%);
+  background: #0b1220;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.sidebarGlobe {
+  width: 72px;
+  height: 72px;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sidebarBrandText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.1;
+}
+
+.sidebarBrandName {
+  font-family: Georgia, "Times New Roman", Times, serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #e8e8e8;
+  text-transform: uppercase;
+}
+
+.sidebarBrandSub {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: #5ce1e6;
+  text-transform: uppercase;
 }
 
 .sidebarLogo {
