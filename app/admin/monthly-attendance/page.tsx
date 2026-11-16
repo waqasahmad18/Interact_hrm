@@ -2,7 +2,7 @@
 
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
-import styles from "../../break-summary/break-summary.module.css";
+import styles from "./monthly-attendance.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { FaFileExcel } from "react-icons/fa";
@@ -2446,92 +2446,156 @@ export default function MonthlyAttendancePage() {
     return `${h}h ${m}m`;
   }
 
+  const expandedCount = useMemo(
+    () =>
+      attendanceByEmployee.reduce(
+        (n, e) => n + (expandedEmployeeIds[e.employeeId] ? 1 : 0),
+        0,
+      ),
+    [attendanceByEmployee, expandedEmployeeIds],
+  );
+  const workingDaysCount = getTotalWorkingDays(monthInfo);
+
   return (
     <OptionalAdminShell>
-      <div className={styles.breakSummaryContainer}>
-        <div style={{ marginBottom: 20 }}>
-          <h1 className={styles.pageTitle}>
-            Monthly Attendance {monthInfo.label && `- ${monthInfo.label}`}
-          </h1>
-          <p style={{ color: "#64748b", fontSize: "0.9rem", marginTop: 4 }}>
-            View and manage all employee attendance records
-          </p>
-          {showingImported && (
-            <p style={{ color: "#611f69", fontSize: "0.85rem", marginTop: 8, fontWeight: 600 }}>
-              Showing imported Excel data for {monthInfo.label} (sheet values as-is)
+      <div className={styles.page}>
+        <header className={styles.topBar}>
+          <div className={styles.topLeft}>
+            <p className={styles.eyebrow}>
+              <span className={styles.eyebrowDot} aria-hidden />
+              Interact Attendance
             </p>
-          )}
+            <h1 className={styles.heroTitle}>
+              Monthly attendance
+              {monthInfo.label ? ` — ${monthInfo.label}` : ""}
+            </h1>
+            <p className={styles.heroSub}>
+              Review clock-in/out, shift punches, status, and deductions for the selected month.
+            </p>
+            {showingImported ? (
+              <p className={styles.importBanner}>
+                Showing imported Excel data for {monthInfo.label} (sheet values as-is)
+              </p>
+            ) : null}
+          </div>
+          <div className={styles.topRight}>
+            <label className={styles.monthChip}>
+              <span>Month</span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                aria-label="Attendance month"
+              />
+            </label>
+            <button type="button" className={styles.secondaryBtn} onClick={fetchAttendance}>
+              {loading ? "…" : "Refresh"}
+            </button>
+          </div>
+        </header>
+
+        <div className={styles.metricStrip}>
+          <div className={`${styles.metric} ${styles.metricAccent}`}>
+            <div className={styles.metricLabel}>Employees</div>
+            <div className={styles.metricValue}>{attendanceByEmployee.length}</div>
+          </div>
+          <div className={styles.metric}>
+            <div className={styles.metricLabel}>Working days</div>
+            <div className={styles.metricValue}>{workingDaysCount}</div>
+          </div>
+          <div className={styles.metric}>
+            <div className={styles.metricLabel}>Expanded</div>
+            <div className={styles.metricValue}>{expandedCount}</div>
+          </div>
+          <div className={styles.metric}>
+            <div className={styles.metricLabel}>Departments</div>
+            <div className={styles.metricValue}>
+              {selectedDepartment ? 1 : departments.length}
+            </div>
+          </div>
         </div>
 
-        <div className={styles.breakSummaryFilters}>
-          <input
-            type="text"
-            placeholder="Search by name or pseudo name..."
-            value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-            className={styles.breakSummaryInput}
-          />
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className={styles.breakSummaryInput}
-          >
-            <option value="">All Departments</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.name || dept.department_name}>
-                {dept.name || dept.department_name}
-              </option>
-            ))}
-          </select>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>Month:</label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className={styles.breakSummaryDate}
-              style={{ minWidth: '160px' }}
-            />
+        <div className={styles.panel}>
+          <div className={styles.panelHead}>
+            <div className={styles.panelHeadLeft}>
+              <h2 className={styles.panelTitle}>Filters &amp; exports</h2>
+              <p className={styles.panelHint}>
+                Search by name, filter department, then export Excel or deduction summary
+              </p>
+            </div>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={() => {
+                setSearchName("");
+                setSelectedDepartment("");
+              }}
+            >
+              Clear filters
+            </button>
           </div>
-          <button
-            onClick={fetchAttendance}
-            className={styles.breakSummaryXLSButton}
-          >
-            Search
-          </button>
-          <button onClick={downloadExcel} className={styles.breakSummaryXLSButton}>
-            <FaFileExcel /> Export Excel
-          </button>
-          <button
-            onClick={handleImportClick}
-            className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`}
-          >
-            <FaFileExcel /> Import Excel
-          </button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleImportFile}
-            style={{ display: "none" }}
-          />
-          <button
-            onClick={downloadDeductionSummary}
-            className={styles.breakSummaryXLSButton}
-            style={{ background: "linear-gradient(135deg, #C53030 0%, #9B2C2C 100%)", boxShadow: "0 4px 14px rgba(197, 48, 48, 0.22)" }}
-          >
-            <FaFileExcel /> Deduction Summary
-          </button>
+          <div className={styles.panelBody}>
+            <div className={styles.filters}>
+              <label className={styles.field}>
+                <span className={styles.label}>Search</span>
+                <input
+                  type="text"
+                  placeholder="Name, pseudo or ID…"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  className={styles.input}
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Department</span>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  className={styles.select}
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.name || dept.department_name}>
+                      {dept.name || dept.department_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className={styles.actions}>
+                <button type="button" onClick={fetchAttendance} className={styles.primaryBtn}>
+                  Search
+                </button>
+                <button type="button" onClick={downloadExcel} className={styles.secondaryBtn}>
+                  <FaFileExcel /> Export Excel
+                </button>
+                <button type="button" onClick={handleImportClick} className={styles.secondaryBtn}>
+                  <FaFileExcel /> Import Excel
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleImportFile}
+                  style={{ display: "none" }}
+                />
+                <button
+                  type="button"
+                  onClick={downloadDeductionSummary}
+                  className={styles.dangerBtn}
+                >
+                  <FaFileExcel /> Deduction Summary
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading ? (
-          <div style={{ padding: 20, color: "#64748b", textAlign: "center" }}>
-            Loading attendance records...
-          </div>
+          <div className={styles.loading}>Loading attendance records…</div>
         ) : (
-          <div style={{ display: "grid", gap: 20, width: "100%" }}>
+          <div className={styles.list}>
             {attendanceByEmployee.length === 0 ? (
-              <div className={styles.breakSummaryNoRecords}>No attendance records found</div>
+              <div className={styles.empty}>No attendance records found</div>
             ) : (
               attendanceByEmployee.map((employee) => {
                 const isExpanded = Boolean(expandedEmployeeIds[employee.employeeId]);
@@ -2541,20 +2605,11 @@ export default function MonthlyAttendancePage() {
                   deferredSearchName,
                 );
                 return (
-                <div
-                  key={employee.employeeId}
-                  style={{
-                    background: "#fff",
-                    borderRadius: 16,
-                    border: "1px solid #e8edf3",
-                    boxShadow: "0 8px 32px rgba(97, 31, 105, 0.08)",
-                    padding: 16,
-                    width: "100%",
-                    boxSizing: "border-box",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: isExpanded ? 8 : 0 }}>
+                <div key={employee.employeeId} className={styles.empCard}>
+                  <div
+                    className={styles.empCardHead}
+                    style={{ marginBottom: isExpanded ? 8 : 0 }}
+                  >
                     <div>
                       <EmployeeTableNameCell
                         name={employee.employeeName}
@@ -2569,25 +2624,24 @@ export default function MonthlyAttendancePage() {
                           })
                         }
                       />
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, paddingLeft: 44 }}>
+                      <div className={styles.empMeta}>
                         {employee.pseudonym} · {employee.departmentName}
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 700, color: "#611f69", fontSize: "1rem" }}>Emp. ID {employee.employeeId}</div>
+                    <div className={styles.empActions}>
+                      <div className={styles.empId}>Emp. ID {employee.employeeId}</div>
                       <button
                         type="button"
                         title={isExpanded ? "Hide month table" : "Show month table"}
-                        className={styles.breakSummaryXLSButton}
-                        style={{ padding: "6px 12px", fontSize: 12, background: isExpanded ? "#64748b" : undefined }}
+                        className={`${styles.ghostBtn} ${isExpanded ? styles.ghostBtnActive : ""}`}
                         onClick={() => toggleEmployeeExpanded(employee.employeeId)}
                       >
                         {isExpanded ? "Hide details" : "View details"}
                       </button>
                       <button
+                        type="button"
                         title="Export this employee's month record as XLS"
-                        className={styles.breakSummaryXLSButton}
-                        style={{ padding: "6px 12px", fontSize: 12 }}
+                        className={styles.ghostBtn}
                         onClick={() => downloadEmployeeExcel(employee)}
                       >
                         <FaFileExcel /> Export XLS
@@ -2595,8 +2649,8 @@ export default function MonthlyAttendancePage() {
                     </div>
                   </div>
                   {isExpanded ? (
-                  <div className={styles.breakSummaryTableWrapper}>
-                    <table className={styles.breakSummaryTable} style={{ minWidth: 1200 }}>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
                       <thead>
                         <tr>
                           <th>Day</th>
@@ -2902,7 +2956,7 @@ export default function MonthlyAttendancePage() {
                     </table>
                   </div>
                   ) : (
-                    <p style={{ margin: "8px 0 0", fontSize: 12, color: "#94a3b8", paddingLeft: 4 }}>
+                    <p className={styles.hint}>
                       Click <strong>View details</strong> to load this employee&apos;s month table.
                     </p>
                   )}
