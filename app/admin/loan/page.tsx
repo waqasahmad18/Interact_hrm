@@ -30,11 +30,27 @@ type LoanRecord = {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-const money = (n: number) =>
-  Number(n || 0).toLocaleString(undefined, {
+const safeNum = (n: unknown, fallback = 0) => {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : fallback;
+};
+
+const money = (n: unknown) =>
+  safeNum(n).toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+
+/** Paid column: never show NaN; if Paid status but amount missing, use payable. */
+function displayPaidAmount(loan: LoanRecord) {
+  const paid = safeNum(loan.paid_amount, NaN);
+  if (Number.isFinite(paid) && paid > 0) return paid;
+  const st = String(loan.status || "").toLowerCase();
+  if (st === "paid") {
+    return safeNum(loan.payable_this_month ?? loan.original_amount);
+  }
+  return Number.isFinite(paid) ? paid : 0;
+}
 
 export default function LoanManagementPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -260,9 +276,9 @@ export default function LoanManagementPage() {
     let paidCount = 0;
     for (const loan of filteredLoans) {
       const st = String(loan.status || "pending").toLowerCase();
-      const p = Number(loan.payable_this_month ?? loan.original_amount) || 0;
+      const p = safeNum(loan.payable_this_month ?? loan.original_amount);
       payable += p;
-      paid += Number(loan.paid_amount) || 0;
+      paid += displayPaidAmount(loan);
       if (st === "paid") paidCount += 1;
       else if (st === "pending") pending += 1;
     }
@@ -630,7 +646,7 @@ export default function LoanManagementPage() {
                             style={{ width: 110, padding: "6px 8px" }}
                           />
                         </td>
-                        <td>{money(loan.paid_amount)}</td>
+                        <td>{money(displayPaidAmount(loan))}</td>
                         <td>
                           <select
                             value={(loan.status || "pending").toLowerCase()}

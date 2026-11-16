@@ -176,7 +176,7 @@ export default function ClaimsPage() {
   const [formType, setFormType] = useState("opd");
   const [formTitle, setFormTitle] = useState("");
   const [formNotes, setFormNotes] = useState("");
-  const [formStatus, setFormStatus] = useState("approved");
+  const [formStatus, setFormStatus] = useState("");
   const [balance, setBalance] = useState<ClaimBalance | null>(null);
   const [medicalBalances, setMedicalBalances] = useState<MedicalBalances | null>(
     null,
@@ -420,6 +420,10 @@ export default function ClaimsPage() {
       setToast("Enter a valid amount");
       return;
     }
+    if (!formStatus) {
+      setToast("Select a status");
+      return;
+    }
     setSaving(true);
     setToast("");
     try {
@@ -452,6 +456,7 @@ export default function ClaimsPage() {
       setFormAmount("");
       setFormTitle("");
       setFormNotes("");
+      setFormStatus("");
       if (data.balances?.opd && data.balances?.ipd) {
         setMedicalBalances({ opd: data.balances.opd, ipd: data.balances.ipd });
         setBalance(
@@ -855,9 +860,11 @@ export default function ClaimsPage() {
                   className={fh.select}
                   value={formStatus}
                   onChange={(e) => setFormStatus(e.target.value)}
+                  required
                 >
-                  <option value="approved">Approved</option>
+                  <option value="">Select status</option>
                   <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
                   <option value="paid">Paid</option>
                 </select>
               </label>

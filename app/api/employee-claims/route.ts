@@ -287,7 +287,11 @@ export async function POST(req: NextRequest) {
       claimType: normalizeClaimType(body.claim_type ?? body.claimType),
       title: body.title != null ? String(body.title) : null,
       notes: body.notes != null ? String(body.notes) : null,
-      status: normalizeClaimStatus(body.status || "approved"),
+      status: normalizeClaimStatus(
+        body.status != null && String(body.status).trim() !== ""
+          ? body.status
+          : "pending",
+      ),
       createdBy:
         body.created_by != null
           ? String(body.created_by)
