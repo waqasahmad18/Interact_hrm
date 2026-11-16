@@ -515,6 +515,20 @@ export async function updateClaimStatus(input: {
   return claim;
 }
 
+function toYearMonth(raw: unknown): string {
+  if (raw == null || raw === "") return "";
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return `${raw.getFullYear()}-${String(raw.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return "";
+}
+
 /** Approved/paid claim totals keyed by employee_id for a payroll month (YYYY-MM). */
 export async function sumApprovedClaimsByPayrollMonth(
   month: string,
@@ -523,28 +537,18 @@ export async function sumApprovedClaimsByPayrollMonth(
   const m = String(month || "").trim();
   if (!/^\d{4}-\d{2}$/.test(m)) return {};
 
-  // Prefer payroll_month; also accept claim_date prefix so older/partial rows count.
-  // Sum in JS (not SQL GROUP BY) for mysql + mongo adapter compatibility.
-  const result: any = await query(
-    `SELECT employee_id, amount, status, payroll_month, claim_date
-     FROM employee_claims
-     WHERE status IN ('approved', 'paid')`,
-  );
-  const rows: any[] = Array.isArray(result?.[0])
-    ? result[0]
-    : Array.isArray(result)
-      ? result
-      : [];
+  // Reuse listClaims (same path as Claims page) for driver-safe row shaping.
+  const year = m.slice(0, 4);
+  const claims = await listClaims({ year });
   const out: Record<string, number> = {};
-  for (const r of rows) {
-    const id = String(r.employee_id ?? "").trim();
+  for (const c of claims) {
+    if (c.status !== "approved" && c.status !== "paid") continue;
+    const pm =
+      toYearMonth(c.payroll_month) || toYearMonth(c.claim_date);
+    if (pm !== m) continue;
+    const id = String(c.employee_id ?? "").trim();
     if (!id) continue;
-    const st = normalizeClaimStatus(r.status);
-    if (st !== "approved" && st !== "paid") continue;
-    const pm = String(r.payroll_month || "").trim();
-    const cd = String(r.claim_date || "").slice(0, 7);
-    if (pm !== m && cd !== m) continue;
-    out[id] = Math.round(((out[id] || 0) + money(r.amount)) * 100) / 100;
+    out[id] = Math.round(((out[id] || 0) + money(c.amount)) * 100) / 100;
   }
   return out;
 }
