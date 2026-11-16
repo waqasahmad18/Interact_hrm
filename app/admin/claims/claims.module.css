@@ -378,19 +378,28 @@
   min-height: 40px;
   min-width: 168px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: #fff;
-  color: #111827;
+  border: 1px solid #0f766e;
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  color: #fff;
   padding: 8px 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.35;
   display: inline-flex;
   align-items: center;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35);
+  cursor: pointer;
+}
+
+.bulkSelect:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.35);
 }
 
 .bulkSelect option {
   color: #111827;
+  background: #fff;
+  font-weight: 600;
 }
 
 .ghostBtn {

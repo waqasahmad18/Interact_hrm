@@ -669,7 +669,7 @@ export default function ClaimsPage() {
           <div className={fh.topLeft}>
             <p className={fh.eyebrow}>
               <span className={fh.eyebrowDot} aria-hidden />
-              Interact · Payroll
+              Interact Claims
             </p>
             <h1 className={fh.heroTitle}>
               {isFinanceViewer ? "Claims payment" : "Claims"}
