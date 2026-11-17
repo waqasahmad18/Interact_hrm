@@ -38,6 +38,35 @@ function money(n: number | null | undefined) {
 function cell(v: unknown) {
   if (v == null || v === "") return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (o.file_name || o.file_path || o.documentId) {
+      const name = String(o.file_name || "PDF");
+      const docId = Number(o.documentId || 0);
+      const path = String(o.file_path || "");
+      return (
+        <button
+          type="button"
+          className={styles.btn}
+          style={{ padding: "4px 10px", fontSize: 12 }}
+          onClick={() => {
+            if (docId > 0) {
+              window.open(
+                `/api/employee-documents/${docId}?action=preview`,
+                "_blank",
+                "noopener,noreferrer"
+              );
+            } else if (path) {
+              window.open(path, "_blank", "noopener,noreferrer");
+            }
+          }}
+        >
+          Open PDF — {name}
+        </button>
+      );
+    }
+    return JSON.stringify(v);
+  }
   return String(v);
 }
 

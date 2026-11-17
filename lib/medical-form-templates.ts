@@ -61,12 +61,16 @@ function checks(
   };
 }
 
-function familyMemberBlock(n: number, includeAddAnother: boolean): FormFieldDef[] {
-  const fields: FormFieldDef[] = [
+function familyMemberBlock(n: number): FormFieldDef[] {
+  return [
     heading(
       `section_family_${n}`,
-      `4. Family Member ${n} (spouse, children, parents)`,
-      "Only legally married spouse, dependent children and dependent parents can be covered."
+      n === 1
+        ? "4. Family Member 1 (spouse, children, parents)"
+        : `4. Family Member ${n}`,
+      n === 1
+        ? "Only legally married spouse, dependent children and dependent parents can be covered. Start with one member — use Add another family member if needed."
+        : undefined
     ),
     text(`family_${n}_full_name`, `Family member ${n} - Full name`, { required: false }),
     select(
@@ -88,17 +92,17 @@ function familyMemberBlock(n: number, includeAddAnother: boolean): FormFieldDef[
       { required: false }
     ),
   ];
-  if (includeAddAnother) {
-    fields.push(
-      select(
-        `family_${n}_add_another`,
-        "Add another family member?",
-        ["Yes", "No"],
-        { required: false }
-      )
-    );
-  }
-  return fields;
+}
+
+function pdfUpload(key: string, label: string, description?: string): FormFieldDef {
+  return {
+    key,
+    label,
+    type: "file",
+    required: false,
+    filled_by: "employee",
+    ...(description ? { options: [description] } : {}),
+  };
 }
 
 export const MEDICAL_SUBSCRIPTION_DESCRIPTION =
@@ -166,19 +170,24 @@ export const MEDICAL_SUBSCRIPTION_SCHEMA: FormFieldDef[] = [
     "Employee + dependents",
   ]),
 
-  ...familyMemberBlock(1, true),
-  ...familyMemberBlock(2, true),
-  ...familyMemberBlock(3, true),
-  ...familyMemberBlock(4, true),
-  ...familyMemberBlock(5, true),
-  ...familyMemberBlock(6, true),
-  ...familyMemberBlock(7, true),
-  ...familyMemberBlock(8, false),
+  ...familyMemberBlock(1),
+  ...familyMemberBlock(2),
+  ...familyMemberBlock(3),
+  ...familyMemberBlock(4),
+  ...familyMemberBlock(5),
+  ...familyMemberBlock(6),
+  ...familyMemberBlock(7),
+  ...familyMemberBlock(8),
 
   heading(
     "section_5",
-    "5. Documents - ONE combined PDF to HR",
-    "Put ALL documents in ONE scanned PDF (max 10 MB), in order: (1) Your CNIC front/back (2) Spouse CNIC if covered (3) Children B-Form/CNIC + birth certificate (4) Parents CNIC. File name: EmployeeID_YourName_Medical_Documents.pdf. Upload/hand to HR — incomplete documents will be returned."
+    "5. Documents - ONE combined PDF",
+    "Put ALL documents in ONE scanned PDF (max 10 MB), in order: (1) Your CNIC front/back (2) Spouse CNIC if covered (3) Children B-Form/CNIC + birth certificate (4) Parents CNIC. File name: EmployeeID_YourName_Medical_Documents.pdf — incomplete documents will be returned."
+  ),
+  pdfUpload(
+    "documents_pdf",
+    "Upload combined PDF",
+    "PDF only · max 10 MB. HR can open this file from the submitted form."
   ),
   checks(
     "documents_included",
@@ -324,8 +333,13 @@ export const MEDICAL_CLAIM_SCHEMA: FormFieldDef[] = [
 
   heading(
     "section_3",
-    "3. Documents - ONE combined PDF to HR",
-    "Put ALL documents for this claim in ONE scanned PDF. OPD: (1) prescription (2) paid receipts. IPD: (1) discharge summary (2) itemized bills (3) medical records. Hand/upload to HR — max 10 MB."
+    "3. Documents - ONE combined PDF",
+    "Put ALL documents for this claim in ONE scanned PDF. OPD: (1) prescription (2) paid receipts. IPD: (1) discharge summary (2) itemized bills (3) medical records. Max 10 MB."
+  ),
+  pdfUpload(
+    "documents_pdf",
+    "Upload claim PDF",
+    "PDF only · max 10 MB. HR can open this file from the submitted claim."
   ),
   checks(
     "documents_included",

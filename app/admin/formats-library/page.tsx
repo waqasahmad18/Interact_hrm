@@ -670,6 +670,7 @@ export default function FormatsLibraryPage() {
                         <option value="select">Dropdown</option>
                         <option value="date">Date</option>
                         <option value="checkbox">Checkbox</option>
+                        <option value="file">PDF upload</option>
                       </select>
                     </div>
                     <div className={styles.field} style={{ margin: 0 }}>

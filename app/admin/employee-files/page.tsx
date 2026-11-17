@@ -4,7 +4,13 @@ import React from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./employee-files.module.css";
 import { DOCUMENT_UPLOAD_ACCEPT } from "@/lib/document-constants";
-import { formatFieldValueForDisplay, isCheckboxGroup, toggleCheckboxGroupValue } from "@/lib/form-field-options";
+import {
+  formatFieldValueForDisplay,
+  isCheckboxGroup,
+  isFileField,
+  toggleCheckboxGroupValue,
+} from "@/lib/form-field-options";
+import { parseFormFileValue } from "@/app/components/FormFieldControls";
 import { showAppToast } from "@/lib/app-toast";
 import { showAppConfirm } from "@/lib/app-confirm";
 import { canPreviewMime, documentTypeLabel, formCategoryLabel } from "@/lib/form-display";
@@ -639,6 +645,50 @@ export default function AdminEmployeeFilesPage() {
               {employeeFields.map((field) => {
                   const key = field.key || "";
                   if (!key) return null;
+                  if (String(field.type || "").toLowerCase() === "heading") {
+                    return (
+                      <div key={key} className={styles.responseRow}>
+                        <div className={styles.responseLabel} style={{ fontWeight: 700 }}>
+                          {field.label || key}
+                        </div>
+                        <div className={styles.responseValue}>
+                          {Array.isArray(field.options) && field.options[0] ? field.options[0] : ""}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (isFileField(field)) {
+                    const file = parseFormFileValue(viewSubmission.form_data?.[key]);
+                    return (
+                      <div key={key} className={styles.responseRow}>
+                        <div className={styles.responseLabel}>{field.label || key}</div>
+                        <div className={styles.responseValue}>
+                          {file ? (
+                            <button
+                              type="button"
+                              className={`${styles.btn} ${styles.btnPrimary}`}
+                              style={{ padding: "6px 12px", fontSize: 12 }}
+                              onClick={() => {
+                                if (file.documentId > 0) {
+                                  window.open(
+                                    `/api/employee-documents/${file.documentId}?action=preview&actorLogin=${encodeURIComponent(loginId)}`,
+                                    "_blank",
+                                    "noopener,noreferrer"
+                                  );
+                                } else if (file.file_path) {
+                                  window.open(file.file_path, "_blank", "noopener,noreferrer");
+                                }
+                              }}
+                            >
+                              Open PDF — {file.file_name}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={key} className={styles.responseRow}>
                       <div className={styles.responseLabel}>{field.label || key}</div>
