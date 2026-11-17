@@ -44,6 +44,21 @@ function PreviewField({ field }: { field: FormFieldDef }) {
       ? false
       : SAMPLE[key] || (field.type === "date" ? "2026-07-07" : "");
 
+  if (field.type === "heading") {
+    return (
+      <div className={styles.previewFormField} style={{ marginTop: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
+          {field.label || key}
+        </h3>
+        {Array.isArray(field.options) && field.options[0] ? (
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+            {field.options[0]}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.previewFormField}>
       <div className={styles.previewFormLabelRow}>

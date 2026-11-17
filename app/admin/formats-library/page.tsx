@@ -79,8 +79,35 @@ export default function FormatsLibraryPage() {
   const [customFields, setCustomFields] = React.useState<CustomFieldDraft[]>([]);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = React.useState<number | null>(null);
+  const [seedingMedical, setSeedingMedical] = React.useState(false);
 
   const loginId = typeof window !== "undefined" ? localStorage.getItem("loginId") || "hr" : "hr";
+
+  async function seedMedicalForms() {
+    if (seedingMedical) return;
+    setSeedingMedical(true);
+    try {
+      const res = await fetch("/api/admin/form-templates/seed-medical", { method: "POST" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Seed failed");
+      const parts = [
+        ...(data.created?.length ? [`created ${data.created.length}`] : []),
+        ...(data.updated?.length ? [`updated ${data.updated.length}`] : []),
+      ];
+      showAppToast({
+        message: `Medical forms ready${parts.length ? ` (${parts.join(", ")})` : ""}.`,
+        variant: "success",
+      });
+      await load();
+    } catch (e) {
+      showAppToast({
+        message: e instanceof Error ? e.message : "Could not seed medical forms",
+        variant: "error",
+      });
+    } finally {
+      setSeedingMedical(false);
+    }
+  }
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -350,6 +377,15 @@ export default function FormatsLibraryPage() {
             >
               + New template
             </button>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => void seedMedicalForms()}
+              disabled={seedingMedical}
+              title="Add / refresh Medical Subscription + Claim templates"
+            >
+              {seedingMedical ? "Seeding…" : "Seed medical forms"}
+            </button>
           </div>
 
           {loading ? (
@@ -542,6 +578,7 @@ export default function FormatsLibraryPage() {
                 onChange={(e) => onCategoryChange(e.target.value)}
               >
                 <option value="general">General</option>
+                <option value="medical">Medical</option>
                 <option value="warning">Warning</option>
                 <option value="appraisal">Appraisal</option>
                 <option value="onboarding">Onboarding</option>

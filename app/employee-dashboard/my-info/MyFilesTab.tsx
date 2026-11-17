@@ -133,7 +133,19 @@ function FormFillModal({
           />
         ) : null}
         {error ? <div className={`${styles.alert} ${styles.alertError}`}>{error}</div> : null}
-        {fields.map((f) => (
+        {fields.map((f) =>
+          f.type === "heading" ? (
+            <div key={f.key} className={styles.field} style={{ marginTop: 18, marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
+                {f.label || f.key}
+              </h3>
+              {Array.isArray(f.options) && f.options[0] ? (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+                  {f.options[0]}
+                </p>
+              ) : null}
+            </div>
+          ) : (
           <div key={f.key} className={styles.field}>
             <label className={styles.label}>
               {f.label || f.key}
@@ -206,7 +218,8 @@ function FormFillModal({
               />
             )}
           </div>
-        ))}
+          )
+        )}
         <div className={styles.modalActions}>
           <button type="button" className={styles.btnSm} onClick={onClose} disabled={saving}>
             Cancel

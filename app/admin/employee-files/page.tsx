@@ -300,6 +300,16 @@ export default function AdminEmployeeFilesPage() {
   function renderManagerField(field: FormField) {
     const key = field.key || "";
     if (!key) return null;
+    if (field.type === "heading") {
+      return (
+        <div key={key} className={styles.field} style={{ marginTop: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{field.label || key}</h3>
+          {Array.isArray(field.options) && field.options[0] ? (
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b" }}>{field.options[0]}</p>
+          ) : null}
+        </div>
+      );
+    }
     return (
       <div key={key} className={styles.field}>
         <label className={styles.label}>
