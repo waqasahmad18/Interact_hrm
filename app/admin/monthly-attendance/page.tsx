@@ -2667,7 +2667,7 @@ export default function MonthlyAttendancePage() {
                           <th>OverTime</th>
                           <th>Tardy Count</th>
                           <th>Status</th>
-                          <th style={{ whiteSpace: "normal", minWidth: 160, maxWidth: 280 }}>Note</th>
+                          <th style={{ whiteSpace: "normal", minWidth: 120, maxWidth: 200 }}>Note</th>
                           <th>Deduction</th>
                         </tr>
                       </thead>
