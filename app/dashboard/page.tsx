@@ -716,10 +716,10 @@ export default function DashboardPage() {
           </div>
           <header className={styles.header}>
             <div className={styles.headerText}>
-              <p className={styles.greeting}>{timeGreeting()} · Operations</p>
-              <h1 className={styles.title}>HR Command Center</h1>
+              <p className={styles.greeting}>{timeGreeting()}</p>
+              <h1 className={styles.title}>Welcome back</h1>
               <p className={styles.subtitle}>
-                Live attendance, pending work, and team pulse — designed for quick action.
+                Today’s attendance, pending requests, and team updates — ready when you are.
               </p>
             </div>
             <div className={styles.headerActions}>
