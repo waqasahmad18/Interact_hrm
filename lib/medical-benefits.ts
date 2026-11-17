@@ -112,14 +112,17 @@ type AssignmentLite = {
 export async function loadMedicalAssignments(): Promise<AssignmentLite[]> {
   // No multi-table JOINs — Mongo SQL adapter drops INNER JOIN rows when ON aliases
   // are reversed. Enrich templates/employees in JS (same pattern as form-assignments GET).
+  // Fetch all assignments then filter status in JS — Mongo `IN ('submitted',…)` can miss rows.
   const [rows] = await pool.execute<RowDataPacket[]>(
     `SELECT id, employee_id, template_id, status, submitted_at, form_data
      FROM hrm_form_assignments
-     WHERE status IN ('submitted','archived')
      ORDER BY id DESC`
   );
 
-  const raw = rows as Array<Record<string, unknown>>;
+  const raw = (rows as Array<Record<string, unknown>>).filter((r) => {
+    const s = String(r.status || "").toLowerCase();
+    return s === "submitted" || s === "archived";
+  });
   if (!raw.length) return [];
 
   const templateIds = Array.from(
@@ -130,60 +133,37 @@ export async function loadMedicalAssignments(): Promise<AssignmentLite[]> {
   );
 
   const templateMap = new Map<number, { title: string; category: string }>();
-  if (templateIds.length) {
-    try {
-      const ph = templateIds.map(() => "?").join(",");
-      const [tRows] = await pool.execute<RowDataPacket[]>(
-        `SELECT id, title, category FROM hrm_form_templates WHERE id IN (${ph})`,
-        templateIds
-      );
-      for (const t of tRows) {
-        templateMap.set(Number(t.id), {
-          title: String(t.title || ""),
-          category: String(t.category || ""),
-        });
-      }
-    } catch {
-      /* fall through — may filter none */
+  try {
+    // Always load full template list — Mongo adapter is unreliable with `IN (?)` lists.
+    const [tRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT id, title, category FROM hrm_form_templates`
+    );
+    for (const t of tRows) {
+      templateMap.set(Number(t.id), {
+        title: String(t.title || ""),
+        category: String(t.category || ""),
+      });
     }
-    // Fallback: load all active medical templates if IN query returned nothing
-    if (!templateMap.size) {
-      try {
-        const [allT] = await pool.execute<RowDataPacket[]>(
-          `SELECT id, title, category FROM hrm_form_templates`
-        );
-        for (const t of allT) {
-          const id = Number(t.id);
-          if (templateIds.includes(id)) {
-            templateMap.set(id, {
-              title: String(t.title || ""),
-              category: String(t.category || ""),
-            });
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
+  } catch {
+    /* ignore */
   }
 
   const employeeMap = new Map<number, string>();
-  if (employeeIds.length) {
-    try {
-      const ph = employeeIds.map(() => "?").join(",");
-      const [eRows] = await pool.execute<RowDataPacket[]>(
-        `SELECT id, first_name, last_name FROM hrm_employees WHERE id IN (${ph})`,
-        employeeIds
+  try {
+    const [eRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT id, first_name, last_name FROM hrm_employees`
+    );
+    const want = new Set(employeeIds);
+    for (const e of eRows) {
+      const id = Number(e.id);
+      if (!want.has(id)) continue;
+      employeeMap.set(
+        id,
+        `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${id}`
       );
-      for (const e of eRows) {
-        employeeMap.set(
-          Number(e.id),
-          `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`
-        );
-      }
-    } catch {
-      /* names optional */
     }
+  } catch {
+    /* names optional */
   }
 
   const out: AssignmentLite[] = [];
