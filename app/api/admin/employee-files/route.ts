@@ -31,14 +31,33 @@ export async function GET(req: NextRequest) {
     const params: (string | number)[] = [];
 
     if (q) {
-      sql += ` AND (
-        CONCAT(e.first_name, ' ', e.last_name) LIKE ?
-        OR CAST(e.id AS CHAR) LIKE ?
-        OR e.employee_code LIKE ?
-        OR e.pseudonym LIKE ?
-      )`;
-      const like = `%${q}%`;
-      params.push(like, like, like, like);
+      const tokens = q.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+      // Each token must match name / id / code / pseudo (supports "waqas rafique" and "94").
+      for (const token of tokens) {
+        const like = `%${token}%`;
+        if (/^\d+$/.test(token)) {
+          sql += ` AND (
+            e.id = ?
+            OR CAST(e.id AS CHAR) LIKE ?
+            OR CONCAT_WS(' ', IFNULL(e.first_name,''), IFNULL(e.last_name,'')) LIKE ?
+            OR IFNULL(e.first_name,'') LIKE ?
+            OR IFNULL(e.last_name,'') LIKE ?
+            OR IFNULL(e.employee_code,'') LIKE ?
+            OR IFNULL(e.pseudonym,'') LIKE ?
+          )`;
+          params.push(Number(token), like, like, like, like, like, like);
+        } else {
+          sql += ` AND (
+            CONCAT_WS(' ', IFNULL(e.first_name,''), IFNULL(e.last_name,'')) LIKE ?
+            OR IFNULL(e.first_name,'') LIKE ?
+            OR IFNULL(e.last_name,'') LIKE ?
+            OR CAST(e.id AS CHAR) LIKE ?
+            OR IFNULL(e.employee_code,'') LIKE ?
+            OR IFNULL(e.pseudonym,'') LIKE ?
+          )`;
+          params.push(like, like, like, like, like, like);
+        }
+      }
     }
     if (departmentId) {
       sql += ` AND j.department_id = ?`;

@@ -41,6 +41,8 @@ type Emp = {
   id: number;
   first_name: string;
   last_name: string;
+  employee_code?: string | null;
+  pseudonym?: string | null;
 };
 
 const PRESET_GROUPS = ["auto", "employee", "hr", "manager"] as const;
@@ -130,18 +132,55 @@ export default function FormatsLibraryPage() {
   }, [load]);
 
   React.useEffect(() => {
-    if (!sendModal || empQ.length < 2) {
+    if (!sendModal || empQ.trim().length < 1) {
       setEmpResults([]);
       return;
     }
+    const q = empQ.trim();
+    const viewerId =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    let cancelled = false;
     const t = window.setTimeout(() => {
-      void fetch(`/api/admin/employee-files?q=${encodeURIComponent(empQ)}`)
+      const params = new URLSearchParams();
+      params.set("q", q);
+      if (viewerId) params.set("viewerId", viewerId);
+      void fetch(`/api/admin/employee-files?${params.toString()}`, {
+        cache: "no-store",
+        headers: viewerId
+          ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+          : {},
+      })
         .then((r) => r.json())
         .then((d) => {
-          if (d.success) setEmpResults(d.employees || []);
+          if (cancelled || !d.success) return;
+          const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+          const rows = (d.employees || []) as Emp[];
+          // Client-side safety filter (API should already filter).
+          const filtered = rows.filter((e) => {
+            const hay = [
+              e.first_name,
+              e.last_name,
+              `${e.first_name} ${e.last_name}`,
+              String(e.id),
+              e.employee_code || "",
+              e.pseudonym || "",
+            ]
+              .join(" ")
+              .toLowerCase();
+            return tokens.every((tok) => hay.includes(tok));
+          });
+          setEmpResults(filtered);
+        })
+        .catch(() => {
+          if (!cancelled) setEmpResults([]);
         });
-    }, 300);
-    return () => window.clearTimeout(t);
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
   }, [empQ, sendModal]);
 
   function openSendModal(t: Template) {
@@ -472,21 +511,33 @@ export default function FormatsLibraryPage() {
               <input
                 className={styles.input}
                 value={empQ}
-                onChange={(e) => setEmpQ(e.target.value)}
-                placeholder="Name or ID"
+                onChange={(e) => {
+                  setEmpQ(e.target.value);
+                  setSelectedEmp(null);
+                }}
+                placeholder="Name or ID (e.g. Waqas or 94)"
+                autoComplete="off"
               />
             </div>
-            {empResults.slice(0, 8).map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className={`${styles.empItem} ${selectedEmp?.id === e.id ? styles.empItemActive : ""}`}
-                onClick={() => setSelectedEmp(e)}
-                style={{ marginBottom: 4 }}
-              >
-                {e.first_name} {e.last_name} (ID {e.id})
-              </button>
-            ))}
+            {empQ.trim() && empResults.length === 0 ? (
+              <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>
+                No employee matched “{empQ.trim()}”.
+              </p>
+            ) : null}
+            <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 8 }}>
+              {empResults.slice(0, 20).map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`${styles.empItem} ${selectedEmp?.id === e.id ? styles.empItemActive : ""}`}
+                  onClick={() => setSelectedEmp(e)}
+                  style={{ marginBottom: 4, width: "100%", textAlign: "left" }}
+                >
+                  {e.first_name} {e.last_name} (ID {e.id})
+                  {e.pseudonym ? ` · ${e.pseudonym}` : ""}
+                </button>
+              ))}
+            </div>
             {sendModal.category.toLowerCase() === "appraisal" ? (
               <div className={styles.field}>
                 <label className={styles.label}>Review period *</label>
