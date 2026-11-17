@@ -43,15 +43,10 @@ export async function GET() {
     const balances = buildMedicalBalances(assignments);
     const policy = policyYearBounds();
 
-    // Schema for column headers (latest template of each kind)
+    // Schema for column headers — fetch all templates then filter in JS
+    // (Mongo adapter struggles with LOWER(COALESCE(...)) / complex OR WHERE).
     const [tplRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT id, title, category, form_schema FROM hrm_form_templates
-       WHERE is_active = 1 AND (
-         LOWER(COALESCE(category,'')) = 'medical'
-         OR title LIKE '%Medical Benefits Subscription%'
-         OR title LIKE '%Medical Claim Form%'
-       )
-       ORDER BY id DESC`
+      `SELECT id, title, category, form_schema, is_active FROM hrm_form_templates ORDER BY id DESC`
     );
 
     let subscriptionSchema: unknown = [];
@@ -59,6 +54,7 @@ export async function GET() {
     let gotSub = false;
     let gotClaim = false;
     for (const t of tplRows as Array<Record<string, unknown>>) {
+      if (Number(t.is_active) === 0) continue;
       const schema = parseJsonField(t.form_schema);
       if (!gotSub && isMedicalSubscriptionTemplate(t.title, t.category)) {
         subscriptionSchema = schema;

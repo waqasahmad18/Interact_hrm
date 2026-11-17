@@ -110,32 +110,117 @@ type AssignmentLite = {
 };
 
 export async function loadMedicalAssignments(): Promise<AssignmentLite[]> {
+  // No multi-table JOINs — Mongo SQL adapter drops INNER JOIN rows when ON aliases
+  // are reversed. Enrich templates/employees in JS (same pattern as form-assignments GET).
   const [rows] = await pool.execute<RowDataPacket[]>(
-    `SELECT a.id, a.employee_id, a.status, a.submitted_at, a.form_data,
-            t.title AS template_title, t.category AS template_category,
-            CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,'')) AS employee_name
-     FROM hrm_form_assignments a
-     JOIN hrm_form_templates t ON t.id = a.template_id
-     JOIN hrm_employees e ON e.id = a.employee_id
-     WHERE a.status IN ('submitted','archived')
-       AND (
-         LOWER(COALESCE(t.category,'')) = 'medical'
-         OR t.title LIKE '%Medical Benefits Subscription%'
-         OR t.title LIKE '%Medical Claim Form%'
-       )
-     ORDER BY a.submitted_at DESC, a.id DESC`
+    `SELECT id, employee_id, template_id, status, submitted_at, form_data
+     FROM hrm_form_assignments
+     WHERE status IN ('submitted','archived')
+     ORDER BY id DESC`
   );
 
-  return (rows as Array<Record<string, unknown>>).map((r) => ({
-    id: Number(r.id),
-    employee_id: Number(r.employee_id),
-    employee_name: String(r.employee_name || "").trim() || `Employee ${r.employee_id}`,
-    template_title: String(r.template_title || ""),
-    template_category: String(r.template_category || ""),
-    status: String(r.status || ""),
-    submitted_at: r.submitted_at ? String(r.submitted_at) : null,
-    form_data: parseJsonField<Record<string, unknown>>(r.form_data),
-  }));
+  const raw = rows as Array<Record<string, unknown>>;
+  if (!raw.length) return [];
+
+  const templateIds = Array.from(
+    new Set(raw.map((r) => Number(r.template_id)).filter((n) => Number.isFinite(n) && n > 0))
+  );
+  const employeeIds = Array.from(
+    new Set(raw.map((r) => Number(r.employee_id)).filter((n) => Number.isFinite(n) && n > 0))
+  );
+
+  const templateMap = new Map<number, { title: string; category: string }>();
+  if (templateIds.length) {
+    try {
+      const ph = templateIds.map(() => "?").join(",");
+      const [tRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT id, title, category FROM hrm_form_templates WHERE id IN (${ph})`,
+        templateIds
+      );
+      for (const t of tRows) {
+        templateMap.set(Number(t.id), {
+          title: String(t.title || ""),
+          category: String(t.category || ""),
+        });
+      }
+    } catch {
+      /* fall through — may filter none */
+    }
+    // Fallback: load all active medical templates if IN query returned nothing
+    if (!templateMap.size) {
+      try {
+        const [allT] = await pool.execute<RowDataPacket[]>(
+          `SELECT id, title, category FROM hrm_form_templates`
+        );
+        for (const t of allT) {
+          const id = Number(t.id);
+          if (templateIds.includes(id)) {
+            templateMap.set(id, {
+              title: String(t.title || ""),
+              category: String(t.category || ""),
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const employeeMap = new Map<number, string>();
+  if (employeeIds.length) {
+    try {
+      const ph = employeeIds.map(() => "?").join(",");
+      const [eRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT id, first_name, last_name FROM hrm_employees WHERE id IN (${ph})`,
+        employeeIds
+      );
+      for (const e of eRows) {
+        employeeMap.set(
+          Number(e.id),
+          `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${e.id}`
+        );
+      }
+    } catch {
+      /* names optional */
+    }
+  }
+
+  const out: AssignmentLite[] = [];
+  for (const r of raw) {
+    const tid = Number(r.template_id);
+    const eid = Number(r.employee_id);
+    const t = templateMap.get(tid);
+    const title = t?.title || "";
+    const category = t?.category || "";
+    if (
+      !isMedicalClaimTemplate(title, category) &&
+      !isMedicalSubscriptionTemplate(title, category)
+    ) {
+      continue;
+    }
+    const status = String(r.status || "").toLowerCase();
+    if (status !== "submitted" && status !== "archived") continue;
+
+    out.push({
+      id: Number(r.id),
+      employee_id: eid,
+      employee_name: employeeMap.get(eid) || `Employee ${eid}`,
+      template_title: title,
+      template_category: category,
+      status: String(r.status || ""),
+      submitted_at: r.submitted_at ? String(r.submitted_at) : null,
+      form_data: parseJsonField<Record<string, unknown>>(r.form_data),
+    });
+  }
+
+  out.sort((a, b) => {
+    const as = a.submitted_at || "";
+    const bs = b.submitted_at || "";
+    if (as !== bs) return bs.localeCompare(as);
+    return b.id - a.id;
+  });
+  return out;
 }
 
 function inPolicyYear(submittedAt: string | null, start: string, end: string): boolean {
