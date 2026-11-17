@@ -17,8 +17,10 @@ export async function GET(req: NextRequest) {
     const q = (searchParams.get("q") || "").trim();
     const departmentId = searchParams.get("departmentId");
 
+    // One row per employee: multiple employee_jobs (or same dept via JOIN) must not
+    // duplicate search hits. Aggregate department name so GROUP BY stays on employee.
     let sql = `SELECT e.id, e.first_name, e.last_name, e.employee_code, e.pseudonym,
-                      d.name AS department_name,
+                      MAX(d.name) AS department_name,
                       COUNT(DISTINCT doc.id) AS document_count,
                       SUM(CASE WHEN doc.folder_type = 'personal_upload' THEN 1 ELSE 0 END) AS upload_count,
                       SUM(CASE WHEN doc.source_type IN ('warning','appraisal','hr_upload') THEN 1 ELSE 0 END) AS hr_issued_count
@@ -64,12 +66,19 @@ export async function GET(req: NextRequest) {
       params.push(Number(departmentId));
     }
 
-    sql += ` GROUP BY e.id, e.first_name, e.last_name, e.employee_code, e.pseudonym, d.name
+    sql += ` GROUP BY e.id, e.first_name, e.last_name, e.employee_code, e.pseudonym
              ORDER BY e.first_name, e.last_name
              LIMIT 500`;
 
     const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
-    let employees = rows as RowDataPacket[];
+    // Extra safety: unique by employee id (Mongo/SQL adapter edge cases).
+    const seen = new Set<number>();
+    let employees = (rows as RowDataPacket[]).filter((e) => {
+      const id = Number(e.id);
+      if (!Number.isFinite(id) || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 
     const viewerId = viewerIdFrom(req);
     if (viewerId) {

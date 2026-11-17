@@ -158,7 +158,10 @@ export default function FormatsLibraryPage() {
           const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
           const rows = (d.employees || []) as Emp[];
           // Client-side safety filter (API should already filter).
+          const seen = new Set<number>();
           const filtered = rows.filter((e) => {
+            const id = Number(e.id);
+            if (!Number.isFinite(id) || seen.has(id)) return false;
             const hay = [
               e.first_name,
               e.last_name,
@@ -169,7 +172,9 @@ export default function FormatsLibraryPage() {
             ]
               .join(" ")
               .toLowerCase();
-            return tokens.every((tok) => hay.includes(tok));
+            if (!tokens.every((tok) => hay.includes(tok))) return false;
+            seen.add(id);
+            return true;
           });
           setEmpResults(filtered);
         })
