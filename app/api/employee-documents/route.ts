@@ -47,9 +47,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "employeeId required" }, { status: 400 });
     }
 
-    const employeeId = Number(employeeIdParam);
-    if (!Number.isFinite(employeeId)) {
-      return NextResponse.json({ success: false, error: "Invalid employeeId" }, { status: 400 });
+    let employeeId = Number(employeeIdParam);
+    if (!Number.isFinite(employeeId) || employeeId <= 0) {
+      const resolved = await resolveEmployeeNumericId(String(employeeIdParam));
+      if (!resolved) {
+        return NextResponse.json({ success: false, error: "Invalid employeeId" }, { status: 400 });
+      }
+      employeeId = resolved;
     }
 
     const viewerId = (

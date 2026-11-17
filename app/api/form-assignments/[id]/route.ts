@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
-import { v4 as uuidv4 } from "uuid";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db";
-import { EMPLOYEE_FILES_DIR } from "@/lib/document-constants";
-import { buildFormPrintHtml } from "@/lib/form-print-html";
 import { regenerateSubmittedFormDocument } from "@/lib/form-submission";
 import {
   mergeFormDataForAudience,
@@ -191,52 +186,40 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         }
       }
 
-      const html = buildFormPrintHtml({
-        template: {
-          title: String(row.template_title),
-          category: String(row.template_category),
-        },
-        employeeName: String(row.employee_name),
-        employeeId: String(row.employee_id),
-        formData: submitData,
-        schema,
-        submittedAt: new Date().toISOString(),
-        hrMessage: row.assigned_note ? String(row.assigned_note) : null,
-        audience: "all",
-      });
-
-      const uploadRoot = path.join(process.cwd(), "public", "uploads", EMPLOYEE_FILES_DIR);
-      await fs.mkdir(uploadRoot, { recursive: true });
-      const safeTitle = String(row.template_title).replace(/[^\w\-]+/g, "_").slice(0, 40);
-      const fileName = `${safeTitle}-${row.employee_id}-${Date.now()}.html`;
-      const relPath = `/uploads/${EMPLOYEE_FILES_DIR}/${uuidv4()}-${fileName}`;
-      const absPath = path.join(process.cwd(), "public", relPath.replace(/^\//, ""));
-      await fs.writeFile(absPath, html, "utf8");
-      const buf = Buffer.from(html, "utf8");
-
-      const [docResult] = await pool.execute(
-        `INSERT INTO hrm_employee_documents
-          (employee_id, folder_type, source_type, assignment_id, template_id,
-           file_name, file_path, mime_type, file_size, is_readonly)
-         VALUES (?, 'form_submitted', 'form_submission', ?, ?, ?, ?, 'text/html', ?, 1)`,
-        [
-          row.employee_id,
-          assignmentId,
-          row.template_id,
-          fileName,
-          relPath,
-          buf.length,
-        ]
-      );
-      const docId = (docResult as { insertId: number }).insertId;
-
+      // Persist submission first so the form is never lost if file write fails.
       await pool.execute(
         `UPDATE hrm_form_assignments
-         SET status = 'submitted', form_data = ?, submitted_at = NOW(),
-             result_document_id = ?, updated_at = NOW()
+         SET status = 'submitted', form_data = ?, submitted_at = NOW(), updated_at = NOW()
          WHERE id = ?`,
-        [JSON.stringify(submitData), docId, assignmentId]
+        [JSON.stringify(submitData), assignmentId]
       );
+
+      let docId: number | null = null;
+      try {
+        docId = await regenerateSubmittedFormDocument({
+          assignmentId,
+          employeeId: Number(row.employee_id),
+          templateTitle: String(row.template_title || "Form"),
+          templateCategory: String(row.template_category || ""),
+          employeeName: String(row.employee_name || ""),
+          formData: submitData,
+          schema,
+          submittedAt: new Date().toISOString(),
+          hrMessage: row.assigned_note ? String(row.assigned_note) : null,
+          resultDocumentId: row.result_document_id != null ? Number(row.result_document_id) : null,
+        });
+        if (docId) {
+          await pool.execute(
+            `UPDATE hrm_form_assignments
+             SET result_document_id = ?, updated_at = NOW()
+             WHERE id = ?`,
+            [docId, assignmentId]
+          );
+        }
+      } catch {
+        // Submission already saved; employee can still open via print/preview.
+        docId = null;
+      }
 
       await logDocumentAudit({
         documentId: docId,

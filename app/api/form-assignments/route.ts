@@ -11,13 +11,14 @@ import {
   getEmployeeProfileForAutofill,
   logDocumentAudit,
   parseJsonField,
+  resolveEmployeeNumericId,
   type FormAssignmentRow,
 } from "@/lib/employee-documents";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const employeeId = searchParams.get("employeeId");
+    const employeeIdRaw = (searchParams.get("employeeId") || "").trim();
     const status = searchParams.get("status");
     const hrView = searchParams.get("hr") === "1";
     const viewerId = (
@@ -38,14 +39,22 @@ export async function GET(req: NextRequest) {
                WHERE 1=1`;
     const params: (string | number)[] = [];
 
-    if (employeeId) {
+    if (employeeIdRaw) {
+      let employeeId = Number(employeeIdRaw);
+      if (!Number.isFinite(employeeId) || employeeId <= 0) {
+        const resolved = await resolveEmployeeNumericId(employeeIdRaw);
+        if (!resolved) {
+          return NextResponse.json({ success: true, assignments: [] });
+        }
+        employeeId = resolved;
+      }
       sql += ` AND a.employee_id = ?`;
-      params.push(Number(employeeId));
+      params.push(employeeId);
     }
     if (status) {
       sql += ` AND a.status = ?`;
       params.push(status);
-    } else if (!hrView && employeeId) {
+    } else if (!hrView && employeeIdRaw) {
       sql += ` AND a.status IN ('pending','in_progress','draft','submitted')`;
     } else if (hrView) {
       sql += ` AND a.status IN ('submitted','archived')`;

@@ -334,21 +334,39 @@ export function MyFilesTab({ employeeId }: { employeeId: string }) {
   const loginId = typeof window !== "undefined" ? localStorage.getItem("loginId") || "" : "";
 
   const load = React.useCallback(async () => {
-    if (!employeeId) return;
+    const empId = String(employeeId || "").trim();
+    if (!empId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [docRes, assignRes] = await Promise.all([
-        fetch(`/api/employee-documents?employeeId=${encodeURIComponent(employeeId)}`, {
+        fetch(`/api/employee-documents?employeeId=${encodeURIComponent(empId)}`, {
           cache: "no-store",
         }),
-        fetch(`/api/form-assignments?employeeId=${encodeURIComponent(employeeId)}`, {
+        fetch(`/api/form-assignments?employeeId=${encodeURIComponent(empId)}`, {
           cache: "no-store",
         }),
       ]);
       const docData = await docRes.json();
       const assignData = await assignRes.json();
       if (docData.success) setDocuments(docData.documents || []);
+      else setDocuments([]);
       if (assignData.success) setAssignments(assignData.assignments || []);
+      else {
+        setAssignments([]);
+        if (assignData.error) {
+          showAppToast({
+            message: assignData.error || "Could not load forms from HR",
+            variant: "error",
+          });
+        }
+      }
+    } catch {
+      setDocuments([]);
+      setAssignments([]);
+      showAppToast({ message: "Could not load My Files", variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -461,7 +479,10 @@ export function MyFilesTab({ employeeId }: { employeeId: string }) {
     doc.folder_type === "hr_issued";
 
   const pendingForms = assignments.filter((a) =>
-    ["pending", "in_progress", "draft"].includes(a.status)
+    ["pending", "in_progress", "draft"].includes(String(a.status || "").toLowerCase())
+  );
+  const submittedForms = assignments.filter(
+    (a) => String(a.status || "").toLowerCase() === "submitted"
   );
 
   if (loading) {
@@ -470,14 +491,24 @@ export function MyFilesTab({ employeeId }: { employeeId: string }) {
 
   return (
     <div>
-      {pendingForms.length > 0 ? (
-        <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>
-            <FaFileAlt /> Forms to complete
-          </h3>
-          {pendingForms.map((a) => (
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>
+          <FaFileAlt /> Forms to complete
+        </h3>
+        <p className={styles.uploadHint} style={{ marginBottom: 12 }}>
+          When HR sends you a form (Formats Library → Send to employee), it appears here. Fill and
+          submit — then it moves to <strong>Submitted forms</strong> and <strong>My folder</strong>.
+        </p>
+        {pendingForms.length === 0 ? (
+          <div className={styles.empty}>
+            No form waiting right now. If HR just sent one, refresh this page.
+          </div>
+        ) : (
+          pendingForms.map((a) => (
             <div key={a.id} className={styles.formCard}>
-              <p className={styles.formCardTitle}>{a.template_title || formCategoryLabel(a.template_category)}</p>
+              <p className={styles.formCardTitle}>
+                {a.template_title || formCategoryLabel(a.template_category)}
+              </p>
               <p className={styles.formCardMeta}>
                 {formCategoryLabel(a.template_category)}
                 {a.template_id ? ` · Form #${a.template_id}` : ""}
@@ -499,6 +530,38 @@ export function MyFilesTab({ employeeId }: { employeeId: string }) {
                   onClick={() => void openFillForm(a.id)}
                 >
                   <FaEdit /> Fill form
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {submittedForms.length > 0 ? (
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>
+            <FaFileAlt /> Submitted forms
+          </h3>
+          {submittedForms.map((a) => (
+            <div key={a.id} className={styles.formCard}>
+              <p className={styles.formCardTitle}>
+                {a.template_title || formCategoryLabel(a.template_category)}
+              </p>
+              <p className={styles.formCardMeta}>
+                {formCategoryLabel(a.template_category)}
+                {" · "}
+                <span className={`${styles.badge} ${styles.badgeSubmitted}`}>submitted</span>
+                {a.submitted_at
+                  ? ` · ${new Date(a.submitted_at).toLocaleString()}`
+                  : ""}
+              </p>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={`${styles.btnSm} ${styles.btnPrimary}`}
+                  onClick={() => previewForm(a.id)}
+                >
+                  <FaEye /> Open / print
                 </button>
               </div>
             </div>
