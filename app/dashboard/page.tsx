@@ -88,15 +88,29 @@ function dayLabel(d: Date) {
   return d.toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function timeGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+function hourInServerTz(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: SERVER_TIMEZONE,
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(d);
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  // en-GB hour12:false can still yield "24" for midnight in some engines
+  return h === 24 ? 0 : h;
+}
+
+/** Wish by Asia/Karachi clock — not browser-local midnight quirks. */
+function timeGreeting(d = new Date()) {
+  const h = hourInServerTz(d);
+  if (h >= 5 && h < 12) return "Good morning";
+  if (h >= 12 && h < 17) return "Good afternoon";
+  if (h >= 17 && h < 22) return "Good evening";
+  return "Hello"; // late night / early hours
 }
 
 function formatToday() {
   return new Date().toLocaleDateString("en-US", {
+    timeZone: SERVER_TIMEZONE,
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -167,6 +181,7 @@ function Sparkline({ data }: { data: number[] }) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [greeting, setGreeting] = React.useState(() => timeGreeting());
   const [leaves, setLeaves] = React.useState<Leave[]>([]);
   const [financialRequests, setFinancialRequests] = React.useState<FinancialRequest[]>([]);
   const [tickets, setTickets] = React.useState<Ticket[]>([]);
@@ -645,6 +660,13 @@ export default function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
+    const syncGreeting = () => setGreeting(timeGreeting());
+    syncGreeting();
+    const greetingTimer = window.setInterval(syncGreeting, 60_000);
+    return () => window.clearInterval(greetingTimer);
+  }, []);
+
+  React.useEffect(() => {
     fetchLeaves();
     fetchFinancialRequests();
     fetchTickets();
@@ -716,7 +738,7 @@ export default function DashboardPage() {
           </div>
           <header className={styles.header}>
             <div className={styles.headerText}>
-              <p className={styles.greeting}>{timeGreeting()}</p>
+              <p className={styles.greeting}>{greeting}</p>
               <h1 className={styles.title}>Welcome back</h1>
               <p className={styles.subtitle}>
                 Today’s attendance, pending requests, and team updates — ready when you are.
