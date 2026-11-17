@@ -20,17 +20,53 @@ import {
 
 type Ctx = { params: Promise<{ id: string }> };
 
-async function loadAssignment(id: number) {
+async function loadAssignment(id: number): Promise<Record<string, unknown> | null> {
   const [rows] = await pool.execute<RowDataPacket[]>(
-    `SELECT a.*, t.title AS template_title, t.category AS template_category, t.form_schema,
-            CONCAT(e.first_name, ' ', e.last_name) AS employee_name
-     FROM hrm_form_assignments a
-     JOIN hrm_form_templates t ON t.id = a.template_id
-     JOIN hrm_employees e ON e.id = a.employee_id
-     WHERE a.id = ? LIMIT 1`,
+    `SELECT * FROM hrm_form_assignments WHERE id = ? LIMIT 1`,
     [id]
   );
-  return rows[0] ?? null;
+  const a = rows[0] as Record<string, unknown> | undefined;
+  if (!a) return null;
+
+  let template_title: string | null = null;
+  let template_category: string | null = null;
+  let form_schema: unknown = null;
+  let employee_name = `Employee ${a.employee_id}`;
+
+  try {
+    const [tRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT title, category, form_schema FROM hrm_form_templates WHERE id = ? LIMIT 1`,
+      [a.template_id]
+    );
+    if (tRows[0]) {
+      template_title = tRows[0].title != null ? String(tRows[0].title) : null;
+      template_category = tRows[0].category != null ? String(tRows[0].category) : null;
+      form_schema = tRows[0].form_schema;
+    }
+  } catch {
+    /* keep nulls */
+  }
+
+  try {
+    const [eRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT first_name, last_name FROM hrm_employees WHERE id = ? LIMIT 1`,
+      [a.employee_id]
+    );
+    if (eRows[0]) {
+      employee_name =
+        `${eRows[0].first_name || ""} ${eRows[0].last_name || ""}`.trim() || employee_name;
+    }
+  } catch {
+    /* keep fallback name */
+  }
+
+  return {
+    ...a,
+    template_title,
+    template_category,
+    form_schema,
+    employee_name,
+  };
 }
 
 export async function GET(_req: NextRequest, ctx: Ctx) {

@@ -1068,18 +1068,38 @@ export async function mongoExecute(
       const rightRows = (await db.collection(join.table).find({}).toArray()).map(
         normalizeDocDates,
       );
-      const rightKey = fieldRef(join.right).field;
-      const leftKey = fieldRef(join.left).field;
+      // ON clause sides may be written either way (t.id = a.template_id OR a.template_id = t.id).
+      // Map each side to the joined table vs the current left/base rows.
+      const sideA = fieldRef(join.left);
+      const sideB = fieldRef(join.right);
+      const sideAIsJoined =
+        sideA.alias === join.alias ||
+        (!sideA.alias && sideB.alias === from.alias) ||
+        (sideA.alias !== from.alias && sideB.alias === from.alias);
+      const joinedField = sideAIsJoined ? sideA.field : sideB.field;
+      const baseField = sideAIsJoined ? sideB.field : sideA.field;
       const index = new Map<string, Document[]>();
       for (const r of rightRows) {
-        const k = String(r[rightKey] ?? "");
+        const k = String(r[joinedField] ?? "");
         if (!index.has(k)) index.set(k, []);
         index.get(k)!.push(r);
+        // Also index numeric/string twin so "96" matches 96
+        if (k && /^\d+$/.test(k)) {
+          const n = String(Number(k));
+          if (n !== k) {
+            if (!index.has(n)) index.set(n, []);
+            index.get(n)!.push(r);
+          }
+        }
       }
       const joined: Document[] = [];
       for (const left of rows) {
-        const lk = String(left[leftKey] ?? "");
-        const matches = index.get(lk) || [];
+        const rawLk = left[baseField];
+        const lk = String(rawLk ?? "");
+        const matches =
+          index.get(lk) ||
+          (lk && /^\d+$/.test(lk) ? index.get(String(Number(lk))) : undefined) ||
+          [];
         if (!matches.length) {
           if (join.type === "LEFT") {
             joined.push({ ...left });
@@ -1099,6 +1119,11 @@ export async function mongoExecute(
               if (k === "first_name" || k === "last_name" || k === "pseudonym" || k === "gender") {
                 merged[k] = v;
               }
+            }
+            if (join.table === "hrm_form_templates") {
+              if (k === "title") merged.template_title = v;
+              if (k === "category") merged.template_category = v;
+              if (k === "form_schema") merged.form_schema = v;
             }
           }
           joined.push(merged);

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
-import { v4 as uuidv4 } from "uuid";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db";
-import { EMPLOYEE_FILES_DIR } from "@/lib/document-constants";
-import { buildFormPrintHtml } from "@/lib/form-print-html";
 import {
   applyAutofillToSchema,
   getEmployeeProfileForAutofill,
@@ -28,19 +23,14 @@ export async function GET(req: NextRequest) {
       ""
     ).trim();
 
-    let sql = `SELECT a.*, t.title AS template_title, t.category AS template_category,
-                      t.form_schema, CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
-                      d.name AS department_name
-               FROM hrm_form_assignments a
-               JOIN hrm_form_templates t ON t.id = a.template_id
-               JOIN hrm_employees e ON e.id = a.employee_id
-               LEFT JOIN employee_jobs j ON j.employee_id = e.id
-               LEFT JOIN departments d ON d.id = j.department_id
-               WHERE 1=1`;
+    // Avoid multi-JOIN SQL here — Mongo SQL adapter historically dropped INNER JOIN rows
+    // when ON sides were aliased (t.id = a.template_id). Enrich in JS instead.
+    let sql = `SELECT * FROM hrm_form_assignments WHERE 1=1`;
     const params: (string | number)[] = [];
+    let employeeId: number | null = null;
 
     if (employeeIdRaw) {
-      let employeeId = Number(employeeIdRaw);
+      employeeId = Number(employeeIdRaw);
       if (!Number.isFinite(employeeId) || employeeId <= 0) {
         const resolved = await resolveEmployeeNumericId(employeeIdRaw);
         if (!resolved) {
@@ -48,25 +38,109 @@ export async function GET(req: NextRequest) {
         }
         employeeId = resolved;
       }
-      sql += ` AND a.employee_id = ?`;
+      sql += ` AND employee_id = ?`;
       params.push(employeeId);
     }
     if (status) {
-      sql += ` AND a.status = ?`;
+      sql += ` AND status = ?`;
       params.push(status);
     } else if (!hrView && employeeIdRaw) {
-      sql += ` AND a.status IN ('pending','in_progress','draft','submitted')`;
+      sql += ` AND status IN ('pending','in_progress','draft','submitted')`;
     } else if (hrView) {
-      sql += ` AND a.status IN ('submitted','archived')`;
+      sql += ` AND status IN ('submitted','archived')`;
     }
-    sql += ` ORDER BY a.updated_at DESC`;
+    sql += ` ORDER BY updated_at DESC`;
 
     const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
-    let assignments = (rows as (FormAssignmentRow & { department_name?: string })[]).map((a) => ({
-      ...a,
-      form_data: parseJsonField<Record<string, unknown>>(a.form_data),
-      form_schema: parseJsonField(a.form_schema),
-    }));
+    const rawAssignments = rows as FormAssignmentRow[];
+
+    const templateIds = Array.from(
+      new Set(rawAssignments.map((a) => Number(a.template_id)).filter((n) => Number.isFinite(n) && n > 0))
+    );
+    const employeeIds = Array.from(
+      new Set(rawAssignments.map((a) => Number(a.employee_id)).filter((n) => Number.isFinite(n) && n > 0))
+    );
+
+    const templateMap = new Map<number, RowDataPacket>();
+    if (templateIds.length) {
+      const placeholders = templateIds.map(() => "?").join(",");
+      const [tRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT id, title, category, form_schema FROM hrm_form_templates WHERE id IN (${placeholders})`,
+        templateIds
+      );
+      for (const t of tRows) templateMap.set(Number(t.id), t);
+    }
+
+    const employeeMap = new Map<number, { name: string; department_name: string | null }>();
+    if (employeeIds.length) {
+      const placeholders = employeeIds.map(() => "?").join(",");
+      const [eRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT id, first_name, last_name FROM hrm_employees WHERE id IN (${placeholders})`,
+        employeeIds
+      );
+      for (const e of eRows) {
+        const id = Number(e.id);
+        if (!employeeMap.has(id)) {
+          employeeMap.set(id, {
+            name: `${e.first_name || ""} ${e.last_name || ""}`.trim() || `Employee ${id}`,
+            department_name: null,
+          });
+        }
+      }
+      // Optional department (best-effort; join adapter bugs must not hide forms)
+      try {
+        const [jRows] = await pool.execute<RowDataPacket[]>(
+          `SELECT employee_id, department_id FROM employee_jobs WHERE employee_id IN (${placeholders})`,
+          employeeIds
+        );
+        const deptIds = Array.from(
+          new Set(jRows.map((j) => Number(j.department_id)).filter((n) => Number.isFinite(n) && n > 0))
+        );
+        const deptMap = new Map<number, string>();
+        if (deptIds.length) {
+          const dph = deptIds.map(() => "?").join(",");
+          const [dRows] = await pool.execute<RowDataPacket[]>(
+            `SELECT id, name FROM departments WHERE id IN (${dph})`,
+            deptIds
+          );
+          for (const d of dRows) deptMap.set(Number(d.id), String(d.name || ""));
+        }
+        for (const j of jRows) {
+          const eid = Number(j.employee_id);
+          const emp = employeeMap.get(eid);
+          if (!emp || emp.department_name) continue;
+          const name = deptMap.get(Number(j.department_id));
+          if (name) emp.department_name = name;
+        }
+      } catch {
+        /* department enrichment is optional */
+      }
+    }
+
+    let assignments = rawAssignments.map((a) => {
+      const tid = Number(a.template_id);
+      const eid = Number(a.employee_id);
+      const t = templateMap.get(tid);
+      const emp = employeeMap.get(eid);
+      return {
+        ...a,
+        template_title: t?.title != null ? String(t.title) : null,
+        template_category: t?.category != null ? String(t.category) : null,
+        form_schema: parseJsonField(t?.form_schema ?? null),
+        form_data: parseJsonField<Record<string, unknown>>(a.form_data),
+        employee_name: emp?.name || `Employee ${eid}`,
+        department_name: emp?.department_name ?? null,
+      };
+    });
+
+    // Status filter in JS too (Mongo IN lists can be flaky)
+    if (!status && !hrView && employeeIdRaw) {
+      const allow = new Set(["pending", "in_progress", "draft", "submitted"]);
+      assignments = assignments.filter((a) => allow.has(String(a.status || "").toLowerCase()));
+    } else if (!status && hrView) {
+      const allow = new Set(["submitted", "archived"]);
+      assignments = assignments.filter((a) => allow.has(String(a.status || "").toLowerCase()));
+    }
 
     if (hrView && viewerId) {
       try {
@@ -78,7 +152,7 @@ export async function GET(req: NextRequest) {
           assignments = assignments.filter((a) =>
             rowInViewerScope(scope, {
               employeeId: a.employee_id,
-              departmentName: (a as { department_name?: string }).department_name ?? null,
+              departmentName: a.department_name ?? null,
             }),
           );
         }
