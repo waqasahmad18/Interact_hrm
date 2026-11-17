@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { FaFilter, FaSort, FaSortUp, FaSortDown } from "react-icons/fa";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
+import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 
@@ -144,16 +145,21 @@ export default function MonthlyLeaveSummaryPage() {
 
   return (
     <OptionalAdminShell>
-      <div className={styles.breakSummaryContainer} style={{ position: 'relative', maxWidth: 1200, margin: '0 auto' }}>
-        <div className={styles.breakSummaryHeader}>Leave Summary</div>
-        <div className={styles.breakSummaryFilters} style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-              <label style={{ fontWeight: 600 }}>Month:</label>
+      <div className={adminStyles.page}>
+        <div className={adminStyles.inner}>
+          <h1 className={adminStyles.title}>Leave summary</h1>
+          <p className={adminStyles.subtitle}>
+            Monthly leave totals by employee — approved, pending, and rejected.
+          </p>
+          <div className={styles.breakSummaryContainer} style={{ position: "relative", margin: 0 }}>
+        <div className={styles.breakSummaryFilters} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+              <label style={{ fontWeight: 650, color: "#475569", fontSize: 13 }}>Month</label>
               <input
                 type="month"
                 value={month}
                 onChange={e => setMonth(e.target.value)}
                 className={styles.breakSummaryInput}
-                style={{ width: 180, fontSize: 16 }}
+                style={{ width: 180, fontSize: 15 }}
               />
               <input
                 type="text"
@@ -250,6 +256,8 @@ export default function MonthlyLeaveSummaryPage() {
               )}
             </tbody>
           </table>
+        </div>
+          </div>
         </div>
       </div>
       {popup}

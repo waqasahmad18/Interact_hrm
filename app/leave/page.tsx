@@ -494,6 +494,9 @@ export default function LeavePage() {
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
+          <p style={{ margin: "0 0 18px", color: "#64748b", fontSize: 14 }}>
+            Review pending leave, approve or reject, and open request details.
+          </p>
 
           <div className={styles.filterBar}>
             <div className={`${styles.filterField} ${styles.searchField}`}>

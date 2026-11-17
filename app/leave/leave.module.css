@@ -2,8 +2,8 @@
   min-height: 100%;
   padding: 20px 28px 40px;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(97, 31, 105, 0.06) 0%, transparent 55%),
-    linear-gradient(180deg, #f4f6f9 0%, #f6f8fb 100%);
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(20, 184, 166, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #f7fafc 0%, #eef2f6 100%);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #0f172a;
 }
@@ -69,8 +69,8 @@
 
 .searchInput:focus {
   outline: none;
-  border-color: #611f69;
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
 }
 
 .clearFilters {
@@ -107,11 +107,11 @@
   border: 1px solid #e8edf3;
   border-radius: 16px;
   padding: 16px 18px;
-  box-shadow: 0 4px 18px rgba(97, 31, 105, 0.06);
+  box-shadow: 0 4px 18px rgba(20, 184, 166, 0.12);
 }
 
 .statCardPurple {
-  border-top: 4px solid #611f69;
+  border-top: 4px solid #0f766e;
 }
 
 .statCardGreen {
@@ -185,8 +185,8 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  background: #f3e8f5;
-  color: #611f69;
+  background: #ecfdf8;
+  color: #0f766e;
 }
 
 .btnApprove {
@@ -251,7 +251,7 @@
   margin: 0 0 16px;
   font-size: 1.15rem;
   font-weight: 700;
-  color: #611f69;
+  color: #0f766e;
 }
 
 .modalRow {
@@ -269,8 +269,8 @@
   margin: 12px 0;
   padding: 12px 14px;
   border-radius: 12px;
-  background: #faf5ff;
-  border: 1px solid #ede9fe;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
   font-size: 13px;
 }
 
@@ -312,8 +312,8 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  background: #f3e8f5;
-  color: #611f69;
+  background: #ecfdf8;
+  color: #0f766e;
   margin-right: 6px;
   margin-top: 4px;
 }

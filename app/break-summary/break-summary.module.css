@@ -1,6 +1,6 @@
 :root {
-  --brand-purple: #611f69;
-  --brand-purple-dark: #4a1850;
+  --brand-purple: #0f766e;
+  --brand-purple-dark: #0d9488;
   --brand-green: #007a5a;
   --brand-gold: #e8912d;
   --color-bg: #f4f6f9;
@@ -9,7 +9,7 @@
   --color-text-secondary: #64748b;
   --color-border: #e8edf3;
   --radius-card: 18px;
-  --shadow-card: 0 8px 32px rgba(97, 31, 105, 0.08);
+  --shadow-card: 0 8px 32px rgba(15, 23, 42, 0.06);
   --font-main: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -54,7 +54,7 @@
 .breakSummaryDate:focus {
   outline: none;
   border-color: var(--brand-purple);
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.12);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
 }
 
 .breakSummaryXLSButton {
@@ -81,11 +81,11 @@
 
 .breakSummaryXLSButtonSecondary {
   background: linear-gradient(135deg, var(--brand-purple) 0%, var(--brand-purple-dark) 100%);
-  box-shadow: 0 4px 14px rgba(97, 31, 105, 0.22);
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.22);
 }
 
 .breakSummaryXLSButtonSecondary:hover {
-  box-shadow: 0 6px 18px rgba(97, 31, 105, 0.3);
+  box-shadow: 0 6px 18px rgba(15, 118, 110, 0.3);
 }
 
 .breakSummaryTableWrapper {
@@ -118,7 +118,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(120deg, var(--brand-purple) 0%, #5b2d8e 45%, var(--brand-green) 100%);
+  background: linear-gradient(120deg, #0b1220 0%, #0f766e 55%, #14b8a6 100%);
 }
 
 .breakSummaryTable th {
@@ -147,7 +147,7 @@
 }
 
 .breakSummaryTable tbody tr:hover {
-  background: #faf5ff;
+  background: #f0fdfa;
 }
 
 .breakSummaryTable tbody tr:last-child td {
@@ -226,7 +226,7 @@
   width: 5px;
 }
 
-.listStatPurple::before { background: #611f69; }
+.listStatPurple::before { background: #14b8a6; }
 .listStatGreen::before { background: #16a34a; }
 .listStatRed::before { background: #dc2626; }
 
@@ -243,8 +243,8 @@
 }
 
 .listStatSelected {
-  border-color: #c4b5d0;
-  box-shadow: 0 8px 24px rgba(97, 31, 105, 0.12);
+  border-color: #99f6e4;
+  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.16);
 }
 
 .listStatLabel {
@@ -271,4 +271,12 @@
   .listStatsRow {
     grid-template-columns: 1fr;
   }
+}
+
+.breakSummaryHeader {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #0b1220;
 }
