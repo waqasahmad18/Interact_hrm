@@ -147,8 +147,8 @@ function Sparkline({ data }: { data: number[] }) {
     <svg className={styles.sparkline} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
         <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#611f69" />
-          <stop offset="100%" stopColor="#611f69" stopOpacity="0" />
+          <stop offset="0%" stopColor="#14b8a6" />
+          <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
         </linearGradient>
       </defs>
       <polygon className={styles.sparklineArea} points={area} />
@@ -156,7 +156,7 @@ function Sparkline({ data }: { data: number[] }) {
         points={line}
         className={styles.sparklineLine}
         fill="none"
-        stroke="#611f69"
+        stroke="#0f766e"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -716,10 +716,10 @@ export default function DashboardPage() {
           </div>
           <header className={styles.header}>
             <div className={styles.headerText}>
-              <p className={styles.greeting}>{timeGreeting()}</p>
-              <h1 className={styles.title}>Welcome back, Admin</h1>
+              <p className={styles.greeting}>{timeGreeting()} · Operations</p>
+              <h1 className={styles.title}>HR Command Center</h1>
               <p className={styles.subtitle}>
-                Hiring, attendance, and engagement — all in one clean workspace.
+                Live attendance, pending work, and team pulse — designed for quick action.
               </p>
             </div>
             <div className={styles.headerActions}>
@@ -896,14 +896,14 @@ export default function DashboardPage() {
                       <span>
                         <span
                           className={styles.legendDot}
-                          style={{ background: "var(--slack-purple)" }}
+                          style={{ background: "var(--dash-teal-deep)" }}
                         />
                         Weekdays
                       </span>
                       <span>
                         <span
                           className={styles.legendDot}
-                          style={{ background: "var(--slack-blue)" }}
+                          style={{ background: "var(--dash-sky)" }}
                         />
                         Today
                       </span>
@@ -915,7 +915,7 @@ export default function DashboardPage() {
                   <div
                     className={styles.donut}
                     style={{
-                      background: `conic-gradient(var(--slack-blue) 0% ${todayPct}%, #eef0f2 ${todayPct}% 100%)`,
+                      background: `conic-gradient(var(--dash-sky) 0% ${todayPct}%, #e2e8f0 ${todayPct}% 100%)`,
                     }}
                   >
                     <div className={styles.donutHole}>
