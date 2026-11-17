@@ -496,7 +496,7 @@ export function MyFilesTab({ employeeId }: { employeeId: string }) {
           <FaFileAlt /> Forms to complete
         </h3>
         <p className={styles.uploadHint} style={{ marginBottom: 12 }}>
-          When HR sends you a form (Formats Library → Send to employee), it appears here. Fill and
+          When HR sends you a form (Form Templates → Send to employee), it appears here. Fill and
           submit — then it moves to <strong>Submitted forms</strong> and <strong>My folder</strong>.
         </p>
         {pendingForms.length === 0 ? (

@@ -64,7 +64,7 @@ const sidebarLinks = [
 			{ name: "Recruitment", path: "/recruitment", icon: <FaUserPlus /> },
 			{ name: "Ticket Inbox", path: "/admin/tickets", icon: <FaTicketAlt /> },
 			{ name: "Employee Files", path: "/admin/employee-files", icon: <FaFolderOpen /> },
-			{ name: "Formats Library", path: "/admin/formats-library", icon: <FaFileAlt /> },
+			{ name: "Form Templates", path: "/admin/formats-library", icon: <FaFileAlt /> },
 			{ name: "Medical Tracker", path: "/admin/medical-tracker", icon: <FaNotesMedical /> },
 			{ name: "Pending Appraisals", path: "/admin/pending-appraisals", icon: <FaClipboardList /> },
 			{

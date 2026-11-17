@@ -91,19 +91,19 @@ export default function FormatsLibraryPage() {
     try {
       const res = await fetch("/api/admin/form-templates/seed-medical", { method: "POST" });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Seed failed");
+      if (!data.success) throw new Error(data.error || "Could not add medical templates");
       const parts = [
         ...(data.created?.length ? [`created ${data.created.length}`] : []),
         ...(data.updated?.length ? [`updated ${data.updated.length}`] : []),
       ];
       showAppToast({
-        message: `Medical forms ready${parts.length ? ` (${parts.join(", ")})` : ""}.`,
+        message: `Medical templates ready${parts.length ? ` (${parts.join(", ")})` : ""}.`,
         variant: "success",
       });
       await load();
     } catch (e) {
       showAppToast({
-        message: e instanceof Error ? e.message : "Could not seed medical forms",
+        message: e instanceof Error ? e.message : "Could not add medical templates",
         variant: "error",
       });
     } finally {
@@ -402,7 +402,7 @@ export default function FormatsLibraryPage() {
       <div className={styles.page}>
         <div className={styles.inner}>
           <header className={styles.header}>
-            <h1 className={styles.title}>Formats Library</h1>
+            <h1 className={styles.title}>Form Templates</h1>
             <p className={styles.subtitle}>
               Company-wide forms (warning, appraisal) and department-specific templates. Send forms to employees for online fill.
             </p>
@@ -423,7 +423,7 @@ export default function FormatsLibraryPage() {
               disabled={seedingMedical}
               title="Add / refresh Medical Subscription + Claim templates"
             >
-              {seedingMedical ? "Seeding…" : "Seed medical forms"}
+              {seedingMedical ? "Adding…" : "Add medical templates"}
             </button>
           </div>
 

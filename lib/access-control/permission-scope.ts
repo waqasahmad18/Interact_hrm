@@ -126,7 +126,7 @@ const ALL_SCOPE_LABEL_BY_KEY: Record<string, string> = {
   "people.face_enrollment.manage": "Face enrollment (all departments)",
   "people.files.view": "Employee files (all departments)",
   "people.appraisals.view": "Pending appraisals (all departments)",
-  "people.formats.view": "Formats library (all departments)",
+  "people.formats.view": "Form templates (all departments)",
   "people.recruitment.view": "Recruitment (all departments)",
   "shifts.scheduler.view": "Shift scheduler (all departments)",
   "shifts.management.view": "Shift management (all departments)",

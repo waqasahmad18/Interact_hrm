@@ -6,7 +6,7 @@ import { MEDICAL_FORM_SEEDS } from "@/lib/medical-form-templates";
 export const runtime = "nodejs";
 
 /**
- * Upsert Interact Global medical subscription + claim templates into Formats Library.
+ * Upsert Interact Global medical subscription + claim templates into Form Templates.
  * Idempotent by title — safe to call multiple times.
  */
 export async function POST() {

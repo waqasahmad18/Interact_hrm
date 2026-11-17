@@ -252,7 +252,7 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   },
   {
     permission: "people.formats.view",
-    name: "Formats Library",
+    name: "Form Templates",
     path: "/employee-dashboard/formats-library",
     group: "people",
   },
