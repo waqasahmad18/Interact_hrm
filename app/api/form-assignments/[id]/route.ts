@@ -15,6 +15,13 @@ import {
   logDocumentAudit,
   parseJsonField,
 } from "@/lib/employee-documents";
+import {
+  buildMedicalBalances,
+  createMedicalBudgetExceedTicket,
+  evaluateClaimAgainstBalance,
+  isMedicalClaimTemplate,
+  loadMedicalAssignments,
+} from "@/lib/medical-benefits";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -152,6 +159,38 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         return NextResponse.json({ success: false, error: validationError }, { status: 400 });
       }
 
+      let budgetTicket: { ticketId: number; ticketNumber: string } | null = null;
+      const submitData: Record<string, unknown> = { ...mergedEmployee };
+
+      if (isMedicalClaimTemplate(row.template_title, row.template_category)) {
+        try {
+          const existing = await loadMedicalAssignments();
+          const balances = buildMedicalBalances(existing);
+          const check = evaluateClaimAgainstBalance(
+            balances,
+            Number(row.employee_id),
+            submitData
+          );
+          if (check.exceeded) {
+            submitData.budget_exceeded = true;
+            submitData.budget_exceed_message = check.message;
+            submitData.budget_remaining_before = check.remainingBefore;
+            submitData.budget_limit = check.limit;
+            budgetTicket = await createMedicalBudgetExceedTicket({
+              employeeId: Number(row.employee_id),
+              employeeName: String(row.employee_name || ""),
+              check,
+              assignmentId,
+            });
+            if (budgetTicket) {
+              submitData.budget_exceed_ticket = budgetTicket.ticketNumber;
+            }
+          }
+        } catch {
+          // Budget check must not block form submit
+        }
+      }
+
       const html = buildFormPrintHtml({
         template: {
           title: String(row.template_title),
@@ -159,7 +198,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         },
         employeeName: String(row.employee_name),
         employeeId: String(row.employee_id),
-        formData: mergedEmployee,
+        formData: submitData,
         schema,
         submittedAt: new Date().toISOString(),
         hrMessage: row.assigned_note ? String(row.assigned_note) : null,
@@ -196,7 +235,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
          SET status = 'submitted', form_data = ?, submitted_at = NOW(),
              result_document_id = ?, updated_at = NOW()
          WHERE id = ?`,
-        [JSON.stringify(mergedEmployee), docId, assignmentId]
+        [JSON.stringify(submitData), docId, assignmentId]
       );
 
       await logDocumentAudit({
@@ -208,7 +247,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         actorId: String(row.employee_id),
       });
 
-      return NextResponse.json({ success: true, documentId: docId });
+      return NextResponse.json({
+        success: true,
+        documentId: docId,
+        budgetExceeded: Boolean(submitData.budget_exceeded),
+        budgetTicket: budgetTicket?.ticketNumber ?? null,
+      });
     }
 
     const status =
