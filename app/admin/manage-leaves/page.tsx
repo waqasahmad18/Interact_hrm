@@ -70,9 +70,32 @@ export default function ManageLeavesPage() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState("");
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
+  /** "" = all months; YYYY-MM filters employees with leave activity that month */
+  const [monthFilter, setMonthFilter] = useState("");
+  const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  const monthOptions = useMemo(() => {
+    const opts: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 18; i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      opts.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      );
+    }
+    return opts;
+  }, []);
+
+  const formatMonthLabel = (ym: string) => {
+    const [y, m] = ym.split("-");
+    if (!y || !m) return ym;
+    const d = new Date(Number(y), Number(m) - 1, 1);
+    if (!Number.isFinite(d.getTime())) return ym;
+    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+  };
 
   useEffect(() => {
     fetchEmployees();
@@ -88,6 +111,39 @@ export default function ManageLeavesPage() {
       })
       .catch((err) => console.error("Error fetching departments:", err));
   }, []);
+
+  useEffect(() => {
+    if (!monthFilter) {
+      setMonthActiveIds(null);
+      return;
+    }
+    let cancelled = false;
+    const [year, monthNum] = monthFilter.split("-");
+    const fromDate = `${year}-${monthNum}-01`;
+    const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
+    const toDate = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&ts=${Date.now()}`,
+          { cache: "no-store" },
+        );
+        const data = await res.json();
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const l of data?.leaves || []) {
+          const id = String(l?.employee_id ?? "").trim();
+          if (id) ids.add(id);
+        }
+        setMonthActiveIds(ids);
+      } catch {
+        if (!cancelled) setMonthActiveIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [monthFilter]);
 
   async function fetchEmployees() {
     try {
@@ -231,6 +287,9 @@ export default function ManageLeavesPage() {
     if (lowBalanceOnly) {
       rows = rows.filter((emp) => poolFor(emp).available < 4);
     }
+    if (monthActiveIds) {
+      rows = rows.filter((emp) => monthActiveIds.has(String(emp.id)));
+    }
     return rows;
   }, [
     employees,
@@ -238,6 +297,7 @@ export default function ManageLeavesPage() {
     selectedDepartment,
     employmentStatusFilter,
     lowBalanceOnly,
+    monthActiveIds,
   ]);
 
   return (
@@ -339,6 +399,19 @@ export default function ManageLeavesPage() {
                   />
                   Low balance only (&lt; 4 days)
                 </label>
+                <select
+                  className={leaveStyles.toolbarSelect}
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                  aria-label="Filter by month"
+                >
+                  <option value="">All months</option>
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {formatMonthLabel(m)}
+                    </option>
+                  ))}
+                </select>
                 <div className={styles.legend}>
                   <span>
                     <i className={`${styles.legendDot} ${styles.legendAnnual}`} />
