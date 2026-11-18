@@ -10,6 +10,10 @@ import { useEmployeeDetailPopup } from "../../components/use-employee-detail-pop
 import { ModalPortal } from "@/app/components/ModalPortal";
 import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
 import { toastError, toastSuccess } from "@/lib/app-toast";
+import LeaveRequestsPanel from "./LeaveRequestsPanel";
+import LeaveSummaryPanel from "./LeaveSummaryPanel";
+
+type LeaveDashTab = "balances" | "requests" | "summary";
 
 interface Employee {
   id: number;
@@ -79,6 +83,7 @@ export default function ManageLeavesPage() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
+  const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
@@ -341,24 +346,51 @@ export default function ManageLeavesPage() {
     );
   };
 
-  if (loading) {
-    return (
-      <OptionalAdminShell>
-        <div className={styles.container}>
-          <h1 className={styles.title}>Manage Leaves</h1>
-          <p>Loading employees...</p>
-        </div>
-      </OptionalAdminShell>
-    );
-  }
-
   return (
     <OptionalAdminShell>
       <div className={adminStyles.page}>
         <div className={adminStyles.inner}>
           <h1 className={adminStyles.title}>Manage leaves</h1>
-          <p className={adminStyles.subtitle}>Update annual and bereavement leave balances per employee.</p>
+          <p className={adminStyles.subtitle}>
+            Leave balances, requests, and monthly summary — one place.
+          </p>
 
+          <div className={styles.dashTabs} role="tablist" aria-label="Leave sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "balances"}
+              className={`${styles.dashTab}${activeTab === "balances" ? ` ${styles.dashTabActive}` : ""}`}
+              onClick={() => setActiveTab("balances")}
+            >
+              Balances
+              <span className={styles.dashTabCount}>{employees.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "requests"}
+              className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
+              onClick={() => setActiveTab("requests")}
+            >
+              Requests
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "summary"}
+              className={`${styles.dashTab}${activeTab === "summary" ? ` ${styles.dashTabActive}` : ""}`}
+              onClick={() => setActiveTab("summary")}
+            >
+              Summary
+            </button>
+          </div>
+
+          {activeTab === "requests" ? <LeaveRequestsPanel /> : null}
+          {activeTab === "summary" ? <LeaveSummaryPanel /> : null}
+
+          {activeTab === "balances" ? (
+            <>
           <div className={tableStyles.breakSummaryFilters}>
             <input
               type="text"
@@ -396,6 +428,9 @@ export default function ManageLeavesPage() {
 
           <div className={adminStyles.card}>
         <div className={tableStyles.breakSummaryTableWrapper} style={{ overflowY: "auto", maxHeight: "74vh" }}>
+          {loading ? (
+            <p style={{ padding: 24, color: "#64748b" }}>Loading employees…</p>
+          ) : (
           <table className={tableStyles.breakSummaryTable}>
             <thead>
               <tr>
@@ -468,8 +503,11 @@ export default function ManageLeavesPage() {
               )}
             </tbody>
           </table>
+          )}
         </div>
           </div>
+            </>
+          ) : null}
 
         {/* Edit Modal */}
         {showModal && editingEmployee && (

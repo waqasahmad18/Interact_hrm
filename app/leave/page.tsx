@@ -105,14 +105,17 @@ export default function LeavePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
   const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
+  const [balanceByEmp, setBalanceByEmp] = useState<
+    Record<string, { annualBalance: number; annualAllowance: number; bereavementBalance: number }>
+  >({});
   const [sortConfig, setSortConfig] = useState<{ key: LeaveSortKey; direction: SortDirection } | null>(
     null
   );
   const [searchText, setSearchText] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   /** "" = all; pending | approved | rejected */
   const [statusFilter, setStatusFilter] = useState<"" | "pending" | "approved" | "rejected">("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const leaveDayKey = (l: any) => {
@@ -123,6 +126,47 @@ export default function LeavePage() {
     } catch {
       return String(raw).slice(0, 10);
     }
+  };
+
+  const loadBalancesForLeaves = async (list: any[]) => {
+    const ids = [
+      ...new Set(
+        list
+          .map((l) => String(l.employee_id || "").trim())
+          .filter((id) => /^\d+$/.test(id)),
+      ),
+    ].slice(0, 80);
+    if (!ids.length) {
+      setBalanceByEmp({});
+      return;
+    }
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetch(
+            `/api/leave-balance?employee_id=${encodeURIComponent(id)}&ts=${Date.now()}`,
+            { cache: "no-store" },
+          );
+          const data = await res.json();
+          if (!data?.success) return null;
+          return [
+            id,
+            {
+              annualBalance: Number(data.annualBalance) || 0,
+              annualAllowance: Number(data.annualAllowance) || 0,
+              bereavementBalance: Number(data.bereavementBalance) || 0,
+            },
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const next: typeof balanceByEmp = {};
+    for (const e of entries) {
+      if (e) next[e[0]] = e[1];
+    }
+    setBalanceByEmp(next);
   };
 
   const fetchLeaves = async (scope = viewerScope) => {
@@ -181,6 +225,7 @@ export default function LeavePage() {
             rowAllowedByScope(scope, l.employee_id, l.department_name),
           );
         setLeaves(enrichedLeaves);
+        void loadBalancesForLeaves(enrichedLeaves);
       } else {
         setError(data.error || "Failed to fetch leaves");
       }
@@ -223,59 +268,18 @@ export default function LeavePage() {
     viewerScope.orgRole,
   ]);
 
-  const leaveDateSpanKey = (l: any) => {
-    const start = leaveDayKey(l);
-    const endRaw = l?.end_date || l?.start_date || "";
-    let end = "";
-    try {
-      end = endRaw ? getDateStringInTimeZone(endRaw, SERVER_TIMEZONE) || "" : "";
-    } catch {
-      end = String(endRaw).slice(0, 10);
-    }
-    return `${start}|${end || start}`;
-  };
-
-  const leavesWithMeta = useMemo(() => {
-    const seen = new Map<string, number>();
-    return leaves.map((l) => {
-      const key = [
-        String(l?.employee_id ?? "").trim(),
-        String(l?.leave_category || "").trim().toLowerCase(),
-        leaveDateSpanKey(l),
-      ].join("|");
-      const firstId = seen.get(key);
-      const id = Number(l?.id) || 0;
-      if (firstId == null) {
-        seen.set(key, id);
-        return { ...l, is_duplicate: false };
-      }
-      return { ...l, is_duplicate: true, duplicate_of: firstId };
-    });
-  }, [leaves]);
-
   const stats = useMemo(() => {
     let pending = 0;
     let approved = 0;
     let rejected = 0;
-    let duplicates = 0;
-    leavesWithMeta.forEach((l) => {
-      const s = overallLeaveStatus(l);
+    leaves.forEach((l) => {
+      const s = String(l?.status || "pending").toLowerCase();
       if (s === "approved") approved += 1;
       else if (s === "rejected") rejected += 1;
       else pending += 1;
-      if (l.is_duplicate) duplicates += 1;
     });
-    return { pending, approved, rejected, total: leavesWithMeta.length, duplicates };
-  }, [leavesWithMeta]);
-
-  const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    leavesWithMeta.forEach((l) => {
-      const c = String(l?.leave_category || "").trim();
-      if (c) set.add(c);
-    });
-    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [leavesWithMeta]);
+    return { pending, approved, rejected, total: leaves.length };
+  }, [leaves]);
 
   const handleDocumentDownload = (docPath: string) => {
     const filename = docPath.split("/").pop() || docPath;
@@ -378,21 +382,25 @@ export default function LeavePage() {
 
   const sortedLeaves = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    const scoped = leavesWithMeta.filter((l) => {
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
+    const scoped = leaves.filter((l) => {
       if (statusFilter) {
-        if (overallLeaveStatus(l) !== statusFilter) return false;
+        const s = String(l?.status || "pending").toLowerCase();
+        const normalized =
+          s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending";
+        if (normalized !== statusFilter) return false;
       }
-      if (categoryFilter) {
-        if (String(l.leave_category || "").trim().toLowerCase() !== categoryFilter.toLowerCase()) {
-          return false;
-        }
-      }
-      if (duplicatesOnly && !l.is_duplicate) return false;
       if (q) {
         const name = String(l.employee_name || "").toLowerCase();
         const pseudo = String(l.pseudonym || "").toLowerCase();
-        const id = String(l.employee_id || "").toLowerCase();
-        if (!name.includes(q) && !pseudo.includes(q) && !id.includes(q)) return false;
+        if (!name.includes(q) && !pseudo.includes(q)) return false;
+      }
+      if (from || to) {
+        const day = leaveDayKey(l);
+        if (!day) return false;
+        if (from && day < from) return false;
+        if (to && day > to) return false;
       }
       return true;
     });
@@ -421,7 +429,7 @@ export default function LeavePage() {
           cmp = getText(a[key]).localeCompare(getText(b[key]), undefined, { sensitivity: "base" });
           break;
         case "status":
-          cmp = getText(overallLeaveStatus(a)).localeCompare(getText(overallLeaveStatus(b)), undefined, {
+          cmp = getText(a.status).localeCompare(getText(b.status), undefined, {
             sensitivity: "base",
           });
           break;
@@ -436,20 +444,14 @@ export default function LeavePage() {
       }
       return direction === "asc" ? cmp : -cmp;
     });
-  }, [leavesWithMeta, sortConfig, searchText, statusFilter, categoryFilter, duplicatesOnly]);
+  }, [leaves, sortConfig, searchText, dateFrom, dateTo, statusFilter]);
 
   const hasActiveFilters = Boolean(
-    searchText.trim() || statusFilter || categoryFilter || duplicatesOnly,
+    searchText.trim() || dateFrom.trim() || dateTo.trim() || statusFilter,
   );
 
   const toggleStatusFilter = (next: "pending" | "approved" | "rejected" | "") => {
     setStatusFilter((prev) => (prev === next ? "" : next));
-  };
-
-  const actionTimestamp = (l: any) => {
-    const raw =
-      l?.updated_at || l?.step2_at || l?.step1_at || l?.requested_at || "";
-    return raw ? formatDateTime(String(raw)) : "—";
   };
 
   const sortButtonStyle: React.CSSProperties = {
@@ -504,7 +506,65 @@ export default function LeavePage() {
       <div className={styles.page}>
         <div className={styles.inner}>
           <h1 className={styles.title}>Leave requests</h1>
-          <p className={styles.subtitle}>Review and approve employee leave applications.</p>
+          <p style={{ margin: "0 0 18px", color: "#64748b", fontSize: 14 }}>
+            Review pending leave, approve or reject, and open request details.
+          </p>
+
+          <div className={styles.filterBar}>
+            <div className={`${styles.filterField} ${styles.searchField}`}>
+              <label htmlFor="leave-search-name">Search</label>
+              <input
+                id="leave-search-name"
+                type="search"
+                className={styles.searchInput}
+                placeholder="Search by name or pseudo name…"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="leave-date-from">From</label>
+              <input
+                id="leave-date-from"
+                type="date"
+                className={styles.searchInput}
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="leave-date-to">To</label>
+              <input
+                id="leave-date-to"
+                type="date"
+                className={styles.searchInput}
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className={styles.clearFilters}
+                onClick={() => {
+                  setSearchText("");
+                  setDateFrom("");
+                  setDateTo("");
+                  setStatusFilter("");
+                }}
+              >
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+          {!loading && leaves.length > 0 && hasActiveFilters ? (
+            <p className={styles.searchMeta}>
+              Showing {sortedLeaves.length} of {leaves.length} leave
+              {sortedLeaves.length === 1 ? "" : "s"}
+              {statusFilter ? ` · ${statusFilter}` : ""}
+            </p>
+          ) : null}
 
           <div className={styles.statRow}>
             <button
@@ -554,84 +614,10 @@ export default function LeavePage() {
               <p className={styles.statLabel}>Total requests</p>
               <p className={styles.statValue}>{stats.total}</p>
               <p className={styles.statSub}>
-                {stats.duplicates} flagged as duplicate
+                {statusFilter ? "Click to show all" : "All statuses"}
               </p>
             </button>
           </div>
-
-          <div className={styles.toolbar}>
-            <div className={styles.searchWrap}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="11" cy="11" r="7" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                className={styles.toolbarSearch}
-                placeholder="Search by name or ID"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <select
-              className={styles.toolbarSelect}
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as "" | "pending" | "approved" | "rejected")
-              }
-              aria-label="Filter by status"
-            >
-              <option value="">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              className={styles.toolbarSelect}
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              aria-label="Filter by category"
-            >
-              <option value="">All categories</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
-                </option>
-              ))}
-            </select>
-            <label
-              className={`${styles.toggleChip}${duplicatesOnly ? ` ${styles.toggleChipOn}` : ""}`}
-            >
-              <input
-                type="checkbox"
-                checked={duplicatesOnly}
-                onChange={(e) => setDuplicatesOnly(e.target.checked)}
-              />
-              Duplicates only
-            </label>
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                className={styles.clearFilters}
-                onClick={() => {
-                  setSearchText("");
-                  setStatusFilter("");
-                  setCategoryFilter("");
-                  setDuplicatesOnly(false);
-                }}
-              >
-                Clear filters
-              </button>
-            ) : null}
-          </div>
-
-          {!loading && leavesWithMeta.length > 0 && hasActiveFilters ? (
-            <p className={styles.searchMeta}>
-              Showing {sortedLeaves.length} of {leavesWithMeta.length} request
-              {sortedLeaves.length === 1 ? "" : "s"}
-            </p>
-          ) : null}
 
           {loading ? (
             <div className={styles.loading}>Loading leave requests…</div>
@@ -643,107 +629,140 @@ export default function LeavePage() {
                 <table className={tableStyles.breakSummaryTable}>
                   <thead>
                     <tr>
-                      <th>{renderSortableHeader("ID", "employee_id")}</th>
-                      <th>{renderSortableHeader("Employee", "employee_name")}</th>
+                      <th>{renderSortableHeader("Id", "employee_id")}</th>
+                      <th>{renderSortableHeader("Full Name", "employee_name")}</th>
+                      <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
                       <th>{renderSortableHeader("Department", "department_name")}</th>
                       <th>{renderSortableHeader("Category", "leave_category")}</th>
                       <th>{renderSortableHeader("Dates", "start_date")}</th>
                       <th>{renderSortableHeader("Days", "total_days")}</th>
+                      <th>Balance</th>
                       <th>{renderSortableHeader("Status", "status")}</th>
-                      <th>Reason</th>
-                      <th>Action</th>
+                      <th>Decided by</th>
+                      <th>{renderSortableHeader("Requested", "requested_at")}</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className={tableStyles.breakSummaryNoRecords}>
+                        <td colSpan={12} className={tableStyles.breakSummaryNoRecords}>
                           {hasActiveFilters
-                            ? "No requests match these filters."
+                            ? "No leave requests match your filters."
                             : "No leave requests yet."}
                         </td>
                       </tr>
                     ) : (
                       sortedLeaves.map((l, idx) => {
-                        const status = overallLeaveStatus(l);
+                        const statusLabel = leaveStatusLabel(l);
                         const pending =
-                          canActOnLeave(l) && status === "pending";
-                        const category = String(l.leave_category || "—");
+                          canActOnLeave(l) && overallLeaveStatus(l) === "pending";
+                        const bal = balanceByEmp[String(l.employee_id)];
+                        const isBereavement =
+                          String(l.leave_category || "").toLowerCase() === "bereavement";
+                        const currentBal = bal
+                          ? isBereavement
+                            ? bal.bereavementBalance
+                            : bal.annualBalance
+                          : null;
+                        const afterApprove =
+                          currentBal != null
+                            ? Math.max(0, currentBal - Number(l.total_days || 0))
+                            : null;
                         return (
                           <tr
                             key={
                               l?.id ??
                               `${l?.employee_id || "emp"}-${l?.start_date || "start"}-${l?.end_date || "end"}-${idx}`
                             }
-                            className={l.is_duplicate ? styles.rowDim : undefined}
                           >
                             <td className={tableStyles.cellMuted}>{l.employee_id}</td>
                             <td>
-                              <div className={styles.personCell}>
-                                <EmployeeTableNameCell
-                                  name={l.employee_name || ""}
-                                  employeeId={l.employee_id}
-                                  photo={getPhoto(l.employee_id)}
-                                  onOpen={() => openFromRow(l)}
-                                />
-                                {l.pseudonym && l.pseudonym !== "-" ? (
-                                  <div className={styles.pseudoLine}>{l.pseudonym}</div>
-                                ) : null}
-                              </div>
+                              <EmployeeTableNameCell
+                                name={l.employee_name || ""}
+                                employeeId={l.employee_id}
+                                photo={getPhoto(l.employee_id)}
+                                onOpen={() => openFromRow(l)}
+                              />
                             </td>
+                            <td>{l.pseudonym || "—"}</td>
                             <td>{l.department_name || "—"}</td>
+                            <td style={{ textTransform: "capitalize" }}>{l.leave_category}</td>
                             <td>
-                              <span className={`${styles.badge} ${styles.badgeType}`}>
-                                {category.charAt(0).toUpperCase() + category.slice(1)}
-                              </span>
-                            </td>
-                            <td className={styles.monoCell}>
                               {formatDate(l.start_date)} – {formatDate(l.end_date)}
                             </td>
-                            <td className={styles.monoCell}>{l.total_days}</td>
+                            <td>{l.total_days}</td>
+                            <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+                              {currentBal == null ? (
+                                "…"
+                              ) : (
+                                <>
+                                  {currentBal}
+                                  {bal && !isBereavement ? (
+                                    <span style={{ color: "#94a3b8", fontWeight: 500 }}>
+                                      {" "}
+                                      / {bal.annualAllowance}
+                                    </span>
+                                  ) : null}
+                                  {pending && afterApprove != null ? (
+                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                                      After approve: {afterApprove}
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </td>
                             <td>
-                              <span className={`${styles.badge} ${statusBadgeClass(status)}`}>
-                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              <span className={`${styles.badge} ${statusBadgeClass(statusLabel)}`}>
+                                {statusLabel}
                               </span>
-                              {l.is_duplicate ? (
-                                <div style={{ marginTop: 4 }}>
-                                  <span className={`${styles.badge} ${styles.badgeDup}`}>
-                                    Duplicate
-                                  </span>
+                              {l.decided_by_label ? (
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color:
+                                      String(statusLabel).toLowerCase() === "rejected"
+                                        ? "#b91c1c"
+                                        : "#0f766e",
+                                  }}
+                                >
+                                  {l.decided_by_label}
                                 </div>
                               ) : null}
                             </td>
-                            <td className={styles.reasonCell}>
-                              <button
-                                type="button"
-                                className={styles.reasonBtn}
-                                onClick={() => openModal(l)}
-                                title={String(l.reason || "")}
-                              >
-                                {l.reason || "—"}
-                              </button>
+                            <td style={{ whiteSpace: "nowrap" }}>
+                              {l.approved_by_name &&
+                              (statusLabel === "approved" || statusLabel === "rejected")
+                                ? l.approved_by_name
+                                : "—"}
                             </td>
+                            <td>{l.requested_at ? formatDateTime(l.requested_at) : "—"}</td>
                             <td>
-                              {pending ? (
-                                <div className={styles.actions}>
+                              <div className={styles.actions}>
+                                <button type="button" className={styles.btnView} onClick={() => openModal(l)}>
+                                  View
+                                </button>
+                                {pending && (
                                   <button
                                     type="button"
-                                    className={styles.btnApproveOutline}
+                                    className={styles.btnApprove}
                                     onClick={() => handleAction(l.id, "approve")}
                                   >
                                     Approve
                                   </button>
+                                )}
+                                {pending && (
                                   <button
                                     type="button"
-                                    className={styles.btnRejectOutline}
+                                    className={styles.btnReject}
                                     onClick={() => openModal(l)}
                                   >
                                     Reject
                                   </button>
-                                </div>
-                              ) : (
-                                <span className={styles.actionStamp}>{actionTimestamp(l)}</span>
-                              )}
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

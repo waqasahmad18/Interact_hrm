@@ -1,3 +1,57 @@
+.dashTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 4px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.dashTab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashTab:hover {
+  color: #0f766e;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.dashTabActive {
+  background: #fff;
+  color: #0f766e;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.dashTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ecfdf8;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .container {
   padding: 2rem;
   max-width: 1160px;
