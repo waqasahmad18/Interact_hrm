@@ -130,8 +130,6 @@ function ManageLeavesPageInner() {
   /** "" = all days; YYYY-MM-DD filters employees with leave activity that day */
   const [dateFilter, setDateFilter] = useState("");
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
-  /** Clickable legend: all | annual | bereavement (opens Requests filtered by category) */
-  const [balanceFocus, setBalanceFocus] = useState<"all" | "annual" | "bereavement">("all");
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
@@ -430,87 +428,27 @@ function ManageLeavesPageInner() {
     return "Confirmed";
   };
 
-  /** Real balances from API (allowance − used + adjustment) — never invent static used. */
+  /** Balances tab shows Annual only (bereavement / mat / pat remain requestable elsewhere). */
   const balanceFor = (emp: Employee) => {
-    const gender = normalizeEmployeeGender(emp.gender);
     const annualAllow = Number(emp.annual_allowance) || 20;
-    const berAllow = Number(emp.bereavement_allowance) || 3;
-    const matAllow =
-      gender === "female" ? Number(emp.maternity_allowance) || 90 : 0;
-    const patAllow =
-      gender === "male" ? Number(emp.paternity_allowance) || 5 : 0;
     const annualCurrent = Number.isFinite(Number(emp.annual_current_balance))
       ? Number(emp.annual_current_balance)
       : annualAllow;
-    const berCurrent = Number.isFinite(Number(emp.bereavement_current_balance))
-      ? Number(emp.bereavement_current_balance)
-      : berAllow;
-    const matCurrent =
-      gender === "female" &&
-      Number.isFinite(Number(emp.maternity_current_balance))
-        ? Number(emp.maternity_current_balance)
-        : matAllow;
-    const patCurrent =
-      gender === "male" &&
-      Number.isFinite(Number(emp.paternity_current_balance))
-        ? Number(emp.paternity_current_balance)
-        : patAllow;
     const annualUsed = Number.isFinite(Number(emp.annual_used))
       ? Number(emp.annual_used)
       : Math.max(0, annualAllow - annualCurrent);
-    const berUsed = Number.isFinite(Number(emp.bereavement_used))
-      ? Number(emp.bereavement_used)
-      : Math.max(0, berAllow - berCurrent);
-    const matUsed = Number.isFinite(Number(emp.maternity_used))
-      ? Number(emp.maternity_used)
-      : Math.max(0, matAllow - matCurrent);
-    const patUsed = Number.isFinite(Number(emp.paternity_used))
-      ? Number(emp.paternity_used)
-      : Math.max(0, patAllow - patCurrent);
-    const parentalCurrent = gender === "female" ? matCurrent : gender === "male" ? patCurrent : 0;
-    const available =
-      Math.round((annualCurrent + Math.max(0, berCurrent) + Math.max(0, parentalCurrent)) * 2) / 2;
+    const available = Math.round(Math.max(0, annualCurrent) * 2) / 2;
     const annualPct =
       annualAllow > 0
         ? Math.min(100, (Math.max(0, annualAllow - annualCurrent) / annualAllow) * 100)
         : 0;
-    const berPct =
-      berAllow > 0
-        ? Math.min(100, (Math.max(0, berAllow - berCurrent) / berAllow) * 100)
-        : 0;
-    const matPct =
-      matAllow > 0
-        ? Math.min(100, (Math.max(0, matAllow - matCurrent) / matAllow) * 100)
-        : 0;
-    const patPct =
-      patAllow > 0
-        ? Math.min(100, (Math.max(0, patAllow - patCurrent) / patAllow) * 100)
-        : 0;
     return {
-      gender,
       annualAllow,
-      berAllow,
-      matAllow,
-      patAllow,
       annualCurrent,
-      berCurrent,
-      matCurrent,
-      patCurrent,
       annualUsed,
-      berUsed,
-      matUsed,
-      patUsed,
       available,
       annualPct,
-      berPct,
-      matPct,
-      patPct,
     };
-  };
-
-  /** Stay on Balances — toggle which leave type column is focused (no tab switch). */
-  const toggleBalanceFocus = (category: "annual" | "bereavement") => {
-    setBalanceFocus((prev) => (prev === category ? "all" : category));
   };
 
   const filteredEmployees = useMemo(() => {
@@ -595,8 +533,8 @@ function ManageLeavesPageInner() {
           {activeTab === "balances" ? (
             <>
               <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
-                Live annual and bereavement balances from the database. Click Annual or
-                Bereavement to focus that column (click again for both).
+                Annual leave balances for everyone. Bereavement, maternity, and paternity
+                stay available when applying — they are not listed here.
               </p>
               <div className={leaveStyles.toolbar}>
                 <div className={leaveStyles.searchWrap}>
@@ -700,26 +638,6 @@ function ManageLeavesPageInner() {
                     Clear date
                   </button>
                 ) : null}
-                <div className={styles.legend}>
-                  <button
-                    type="button"
-                    className={`${styles.legendBtn}${balanceFocus === "annual" ? ` ${styles.legendBtnOn}` : ""}`}
-                    onClick={() => toggleBalanceFocus("annual")}
-                    title="Focus annual balances"
-                  >
-                    <i className={`${styles.legendDot} ${styles.legendAnnual}`} />
-                    Annual
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.legendBtn}${balanceFocus === "bereavement" ? ` ${styles.legendBtnOn}` : ""}`}
-                    onClick={() => toggleBalanceFocus("bereavement")}
-                    title="Focus bereavement balances"
-                  >
-                    <i className={`${styles.legendDot} ${styles.legendBer}`} />
-                    Bereavement
-                  </button>
-                </div>
               </div>
 
               <div className={leaveStyles.reqTableShell}>
@@ -734,9 +652,7 @@ function ManageLeavesPageInner() {
                           <th>Employee</th>
                           <th>Department</th>
                           <th>Status</th>
-                          {balanceFocus !== "bereavement" ? <th>Annual</th> : null}
-                          {balanceFocus !== "annual" ? <th>Bereavement</th> : null}
-                          {balanceFocus === "all" ? <th>Maternity / Paternity</th> : null}
+                          <th>Annual</th>
                           <th>Available</th>
                           {canEditBalances ? <th>Action</th> : null}
                         </tr>
@@ -745,10 +661,7 @@ function ManageLeavesPageInner() {
                         {filteredEmployees.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={
-                                (balanceFocus === "all" ? 7 : 6) +
-                                (canEditBalances ? 1 : 0)
-                              }
+                              colSpan={6 + (canEditBalances ? 1 : 0)}
                               className={leaveStyles.reqEmpty}
                             >
                               No employees match these filters.
@@ -758,16 +671,10 @@ function ManageLeavesPageInner() {
                           filteredEmployees.map((emp) => {
                             const statusKey = employmentStatusKey(emp);
                             const bal = balanceFor(emp);
-                            const focusAvail =
-                              balanceFocus === "annual"
-                                ? bal.annualCurrent
-                                : balanceFocus === "bereavement"
-                                  ? bal.berCurrent
-                                  : bal.available;
                             const availClass =
-                              focusAvail < 2
+                              bal.available < 2
                                 ? styles.availLow
-                                : focusAvail < 5
+                                : bal.available < 5
                                   ? styles.availMid
                                   : "";
                             return (
@@ -808,94 +715,28 @@ function ManageLeavesPageInner() {
                                     {statusKey}
                                   </span>
                                 </td>
-                                {balanceFocus !== "bereavement" ? (
-                                  <td>
-                                    <div className={styles.equity}>
-                                      <div className={styles.equityBar}>
-                                        <div
-                                          className={styles.segAnnual}
-                                          style={{ width: `${bal.annualPct}%` }}
-                                        />
-                                      </div>
-                                      <div className={styles.equityLabel}>
-                                        <span>
-                                          {formatLeaveDays(bal.annualCurrent)} /{" "}
-                                          {formatLeaveDays(bal.annualAllow)}
-                                        </span>
-                                        <b>
-                                          {formatLeaveDays(bal.annualUsed)} used
-                                        </b>
-                                      </div>
+                                <td>
+                                  <div className={styles.equity}>
+                                    <div className={styles.equityBar}>
+                                      <div
+                                        className={styles.segAnnual}
+                                        style={{ width: `${bal.annualPct}%` }}
+                                      />
                                     </div>
-                                  </td>
-                                ) : null}
-                                {balanceFocus !== "annual" ? (
-                                  <td>
-                                    <div className={styles.equity}>
-                                      <div className={styles.equityBar}>
-                                        <div
-                                          className={styles.segBer}
-                                          style={{ width: `${bal.berPct}%` }}
-                                        />
-                                      </div>
-                                      <div className={styles.equityLabel}>
-                                        <span>
-                                          {formatLeaveDays(bal.berCurrent)} /{" "}
-                                          {formatLeaveDays(bal.berAllow)}
-                                        </span>
-                                        <b>
-                                          {formatLeaveDays(bal.berUsed)} used
-                                        </b>
-                                      </div>
+                                    <div className={styles.equityLabel}>
+                                      <span>
+                                        {formatLeaveDays(bal.annualCurrent)} /{" "}
+                                        {formatLeaveDays(bal.annualAllow)}
+                                      </span>
+                                      <b>
+                                        {formatLeaveDays(bal.annualUsed)} used
+                                      </b>
                                     </div>
-                                  </td>
-                                ) : null}
-                                {balanceFocus === "all" ? (
-                                  <td>
-                                    {bal.gender === "female" ? (
-                                      <div className={styles.equity}>
-                                        <div className={styles.equityBar}>
-                                          <div
-                                            className={styles.segAnnual}
-                                            style={{ width: `${bal.matPct}%` }}
-                                          />
-                                        </div>
-                                        <div className={styles.equityLabel}>
-                                          <span>
-                                            Mat {formatLeaveDays(bal.matCurrent)} /{" "}
-                                            {formatLeaveDays(bal.matAllow)}
-                                          </span>
-                                          <b>
-                                            {formatLeaveDays(bal.matUsed)} used
-                                          </b>
-                                        </div>
-                                      </div>
-                                    ) : bal.gender === "male" ? (
-                                      <div className={styles.equity}>
-                                        <div className={styles.equityBar}>
-                                          <div
-                                            className={styles.segBer}
-                                            style={{ width: `${bal.patPct}%` }}
-                                          />
-                                        </div>
-                                        <div className={styles.equityLabel}>
-                                          <span>
-                                            Pat {formatLeaveDays(bal.patCurrent)} /{" "}
-                                            {formatLeaveDays(bal.patAllow)}
-                                          </span>
-                                          <b>
-                                            {formatLeaveDays(bal.patUsed)} used
-                                          </b>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <span className={leaveStyles.reqEmpty}>—</span>
-                                    )}
-                                  </td>
-                                ) : null}
+                                  </div>
+                                </td>
                                 <td>
                                   <span className={`${styles.availableCell} ${availClass}`}>
-                                    {formatLeaveDays(focusAvail)}d
+                                    {formatLeaveDays(bal.available)}d
                                   </span>
                                 </td>
                                 {canEditBalances ? (
