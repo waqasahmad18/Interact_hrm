@@ -32,11 +32,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #f3f4f7;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
 }
 
 .searchWrap {

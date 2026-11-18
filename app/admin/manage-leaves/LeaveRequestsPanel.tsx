@@ -89,8 +89,13 @@ export default function LeaveRequestsPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
   const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
-  /** "" = all; pending | approved | rejected — driven by clickable status cards */
+  const [searchText, setSearchText] = useState("");
+  /** "" = all; pending | approved | rejected — cards + toolbar select */
   const [statusFilter, setStatusFilter] = useState<"" | "pending" | "approved" | "rejected">("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  /** "" = all months; otherwise YYYY-MM */
+  const [monthFilter, setMonthFilter] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const leaveDayKey = (l: any) => {
@@ -231,20 +236,46 @@ export default function LeaveRequestsPanel() {
     });
   }, [leaves]);
 
+  const leaveMonthKey = (l: any) => {
+    const day = leaveDayKey(l);
+    return day ? day.slice(0, 7) : "";
+  };
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    leavesWithMeta.forEach((l) => {
+      const c = String(l?.leave_category || "").trim();
+      if (c) set.add(c);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [leavesWithMeta]);
+
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    leavesWithMeta.forEach((l) => {
+      const m = leaveMonthKey(l);
+      if (m) set.add(m);
+    });
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [leavesWithMeta]);
+
   const stats = useMemo(() => {
     let pending = 0;
     let approved = 0;
     let rejected = 0;
     let duplicates = 0;
+    let total = 0;
     leavesWithMeta.forEach((l) => {
+      if (monthFilter && leaveMonthKey(l) !== monthFilter) return;
+      total += 1;
       const s = overallLeaveStatus(l);
       if (s === "approved") approved += 1;
       else if (s === "rejected") rejected += 1;
       else pending += 1;
       if (l.is_duplicate) duplicates += 1;
     });
-    return { pending, approved, rejected, total: leavesWithMeta.length, duplicates };
-  }, [leavesWithMeta]);
+    return { pending, approved, rejected, total, duplicates };
+  }, [leavesWithMeta, monthFilter]);
 
   const handleDocumentDownload = (docPath: string) => {
     const filename = docPath.split("/").pop() || docPath;
@@ -327,18 +358,58 @@ export default function LeaveRequestsPanel() {
   };
 
   const sortedLeaves = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
     const scoped = leavesWithMeta.filter((l) => {
       if (statusFilter && overallLeaveStatus(l) !== statusFilter) return false;
+      if (categoryFilter) {
+        if (
+          String(l.leave_category || "").trim().toLowerCase() !==
+          categoryFilter.toLowerCase()
+        ) {
+          return false;
+        }
+      }
+      if (duplicatesOnly && !l.is_duplicate) return false;
+      if (monthFilter && leaveMonthKey(l) !== monthFilter) return false;
+      if (q) {
+        const name = String(l.employee_name || "").toLowerCase();
+        const pseudo = String(l.pseudonym || "").toLowerCase();
+        const id = String(l.employee_id || "").toLowerCase();
+        if (!name.includes(q) && !pseudo.includes(q) && !id.includes(q)) return false;
+      }
       return true;
     });
     return [...scoped].sort((a, b) => {
       const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
       return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
     });
-  }, [leavesWithMeta, statusFilter]);
+  }, [
+    leavesWithMeta,
+    statusFilter,
+    categoryFilter,
+    duplicatesOnly,
+    monthFilter,
+    searchText,
+  ]);
+
+  const hasActiveFilters = Boolean(
+    searchText.trim() ||
+      statusFilter ||
+      categoryFilter ||
+      duplicatesOnly ||
+      monthFilter,
+  );
 
   const toggleStatusFilter = (next: "pending" | "approved" | "rejected" | "") => {
     setStatusFilter((prev) => (prev === next ? "" : next));
+  };
+
+  const formatMonthLabel = (ym: string) => {
+    const [y, m] = ym.split("-");
+    if (!y || !m) return ym;
+    const d = new Date(Number(y), Number(m) - 1, 1);
+    if (!Number.isFinite(d.getTime())) return ym;
+    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
   };
 
   const actionTimestamp = (l: any) => {
@@ -412,6 +483,104 @@ export default function LeaveRequestsPanel() {
               </p>
             </button>
           </div>
+
+          <div className={styles.toolbar}>
+            <div className={styles.searchWrap}>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className={styles.toolbarSearch}
+                placeholder="Search by name or ID"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <select
+              className={styles.toolbarSelect}
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as "" | "pending" | "approved" | "rejected",
+                )
+              }
+              aria-label="Filter by status"
+            >
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select
+              className={styles.toolbarSelect}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="Filter by category"
+            >
+              <option value="">All categories</option>
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                </option>
+              ))}
+            </select>
+            <label
+              className={`${styles.toggleChip}${duplicatesOnly ? ` ${styles.toggleChipOn}` : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={duplicatesOnly}
+                onChange={(e) => setDuplicatesOnly(e.target.checked)}
+              />
+              Duplicates only
+            </label>
+            <select
+              className={styles.toolbarSelect}
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              aria-label="Filter by month"
+            >
+              <option value="">All months</option>
+              {monthOptions.map((m) => (
+                <option key={m} value={m}>
+                  {formatMonthLabel(m)}
+                </option>
+              ))}
+            </select>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className={styles.clearFilters}
+                onClick={() => {
+                  setSearchText("");
+                  setStatusFilter("");
+                  setCategoryFilter("");
+                  setDuplicatesOnly(false);
+                  setMonthFilter("");
+                }}
+              >
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+
+          {!loading && leavesWithMeta.length > 0 && hasActiveFilters ? (
+            <p className={styles.searchMeta}>
+              Showing {sortedLeaves.length} of {leavesWithMeta.length} request
+              {sortedLeaves.length === 1 ? "" : "s"}
+            </p>
+          ) : null}
 
           {loading ? (
             <div className={styles.loading}>Loading leave requests…</div>
