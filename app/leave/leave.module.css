@@ -21,6 +21,173 @@
   color: #0f172a;
 }
 
+.subtitle {
+  margin: 0 0 18px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.searchWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(100%, 240px);
+  flex: 1 1 220px;
+  padding: 0 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  color: #94a3b8;
+}
+
+.toolbarSearch {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 10px 0;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+}
+
+.toolbarSelect {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #0f172a;
+  min-width: 140px;
+}
+
+.toggleChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleChipOn {
+  border-color: #99f6e4;
+  background: #ecfdf8;
+  color: #0f766e;
+}
+
+.personCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+}
+
+.pseudoLine {
+  padding-left: 42px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.monoCell {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reasonCell {
+  max-width: 280px;
+}
+
+.reasonBtn {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reasonBtn:hover {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+.rowDim {
+  opacity: 0.72;
+}
+
+.actionStamp {
+  font-size: 11px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.badgeType {
+  background: #f1f5f9;
+  color: #475569;
+  text-transform: none;
+}
+
+.badgeDup {
+  background: #fff7ed;
+  color: #c2410c;
+  text-transform: none;
+}
+
+.btnApproveOutline,
+.btnRejectOutline {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+  color: #0f172a;
+}
+
+.btnApproveOutline:hover {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.btnRejectOutline:hover {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
 .filterBar {
   display: flex;
   flex-wrap: wrap;
