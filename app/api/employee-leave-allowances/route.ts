@@ -42,11 +42,17 @@ function bumpUsed(bucket: UsedBucket, category: string, days: number) {
   else bucket.annual_used += days;
 }
 
-// GET: Fetch all employees with their leave allowances
+// GET: Fetch employees with leave allowances (scoped by viewer hierarchy)
 export async function GET(req: NextRequest) {
   let conn;
   try {
     conn = await pool.getConnection();
+
+    const viewerId =
+      req.headers.get("x-hrm-employee-id") ||
+      req.headers.get("x-employee-id") ||
+      req.nextUrl.searchParams.get("viewerId") ||
+      "";
 
     const [rows]: any = await conn.execute(`
       SELECT 
@@ -57,6 +63,7 @@ export async function GET(req: NextRequest) {
         e.employment_status,
         e.gender,
         j.joined_date,
+        d.name AS department_name,
         COALESCE(ela.annual_balance_adjustment, 0) as annual_balance_adjustment,
         COALESCE(ela.bereavement_balance_adjustment, 0) as bereavement_balance_adjustment,
         COALESCE(ela.maternity_balance_adjustment, 0) as maternity_balance_adjustment,
@@ -64,12 +71,33 @@ export async function GET(req: NextRequest) {
         ela.updated_at as allowance_updated_at
       FROM hrm_employees e
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+      LEFT JOIN departments d ON j.department_id = d.id
       LEFT JOIN employee_leave_allowances ela ON e.id = ela.employee_id
       WHERE e.status IN ('enabled', 'active')
       ORDER BY e.id
     `);
 
-    const employeeIds = rows.map((r: any) => r.id).filter((id: any) => id != null);
+    let scopedRows = Array.isArray(rows) ? rows : [];
+    if (viewerId.trim()) {
+      try {
+        const { resolveViewerDataScope, rowInViewerScope } = await import(
+          "@/lib/access-control/data-scope"
+        );
+        const scope = await resolveViewerDataScope(viewerId.trim());
+        if (scope.mode !== "all") {
+          scopedRows = scopedRows.filter((r: any) =>
+            rowInViewerScope(scope, {
+              employeeId: r.id,
+              departmentName: r.department_name,
+            }),
+          );
+        }
+      } catch {
+        /* keep full list if scope helper fails */
+      }
+    }
+
+    const employeeIds = scopedRows.map((r: any) => r.id).filter((id: any) => id != null);
     let leaveRows: any[] = [];
     if (employeeIds.length > 0) {
       const placeholders = employeeIds.map(() => "?").join(",");
@@ -84,7 +112,7 @@ export async function GET(req: NextRequest) {
 
     const usedByEmployee = new Map<number, UsedBucket>();
     const cycleStartByEmployee = new Map<number, string | null>();
-    rows.forEach((emp: any) => {
+    scopedRows.forEach((emp: any) => {
       const empId = Number(emp.id);
       usedByEmployee.set(empId, {
         annual_used: 0,
@@ -111,7 +139,7 @@ export async function GET(req: NextRequest) {
       bumpUsed(current, leave.leave_category, days);
     });
 
-    const employeesWithBalance = rows.map((emp: any) => {
+    const employeesWithBalance = scopedRows.map((emp: any) => {
       const empId = Number(emp.id);
       const used = usedByEmployee.get(empId) || {
         annual_used: 0,
@@ -213,9 +241,11 @@ export async function POST(req: NextRequest) {
         e.id,
         e.employment_status,
         e.gender,
-        j.joined_date
+        j.joined_date,
+        d.name AS department_name
       FROM hrm_employees e
       LEFT JOIN employee_jobs j ON e.id = j.employee_id
+      LEFT JOIN departments d ON j.department_id = d.id
       WHERE e.id = ?
     `,
       [employee_id],
@@ -229,6 +259,34 @@ export async function POST(req: NextRequest) {
     }
 
     const emp = empRows[0];
+
+    const viewerId =
+      req.headers.get("x-hrm-employee-id") ||
+      req.headers.get("x-employee-id") ||
+      String(body?.viewerId || "").trim() ||
+      "";
+    if (viewerId) {
+      try {
+        const { resolveViewerDataScope, rowInViewerScope } = await import(
+          "@/lib/access-control/data-scope"
+        );
+        const scope = await resolveViewerDataScope(viewerId);
+        if (
+          scope.mode !== "all" &&
+          !rowInViewerScope(scope, {
+            employeeId: emp.id,
+            departmentName: emp.department_name,
+          })
+        ) {
+          return NextResponse.json(
+            { success: false, error: "Out of scope" },
+            { status: 403 },
+          );
+        }
+      } catch {
+        /* allow if scope helper fails */
+      }
+    }
     const genderNorm = normalizeEmployeeGender(emp.gender);
     const cycleStart = getLeaveCycleStartYmd(emp.joined_date || null);
     const annualTarget = parseLeaveDays(annual_current_balance);

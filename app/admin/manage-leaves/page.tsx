@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./manage-leaves.module.css";
 import leaveStyles from "../../leave/leave.module.css";
@@ -94,6 +95,14 @@ function formatLeaveDelta(next: number, current: number): string {
 }
 
 export default function ManageLeavesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading leaves…</div>}>
+      <ManageLeavesPageInner />
+    </Suspense>
+  );
+}
+
+function ManageLeavesPageInner() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -116,7 +125,8 @@ export default function ManageLeavesPage() {
   /** Clickable legend: all | annual | bereavement (opens Requests filtered by category) */
   const [balanceFocus, setBalanceFocus] = useState<"all" | "annual" | "bereavement">("all");
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
-  const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const selectTab = (tab: LeaveDashTab) => {
@@ -125,11 +135,20 @@ export default function ManageLeavesPage() {
   };
 
   useEffect(() => {
-    const next = readPersistedLeaveTab();
-    if (!next) return;
+    const fromUrl = tabFromParam(searchParams?.get("tab") ?? null);
+    if (fromUrl) {
+      setActiveTab(fromUrl);
+      try {
+        sessionStorage.setItem(MANAGE_LEAVES_TAB_KEY, fromUrl);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    const next = readPersistedLeaveTab() || "requests";
     setActiveTab(next);
     persistLeaveTab(next);
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchEmployees();
@@ -182,9 +201,18 @@ export default function ManageLeavesPage() {
   async function fetchEmployees() {
     try {
       setLoading(true);
-      const res = await fetch(`/api/employee-leave-allowances?ts=${Date.now()}`, {
-        cache: "no-store",
-      });
+      const viewerId =
+        typeof window !== "undefined"
+          ? String(localStorage.getItem("employeeId") || "").trim()
+          : "";
+      const viewerQs = viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : "";
+      const viewerHeaders: HeadersInit = viewerId
+        ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+        : {};
+      const res = await fetch(
+        `/api/employee-leave-allowances?ts=${Date.now()}${viewerQs}`,
+        { cache: "no-store", headers: viewerHeaders },
+      );
       const data = await res.json();
       if (data.success) {
         const empDetailsMap = new Map<
@@ -193,7 +221,10 @@ export default function ManageLeavesPage() {
         >();
 
         try {
-          const listRes = await fetch("/api/employee-list", { cache: "no-store" });
+          const listRes = await fetch(
+            `/api/employee-list?ts=${Date.now()}${viewerQs}`,
+            { cache: "no-store", headers: viewerHeaders },
+          );
           const listData = await listRes.json();
           const list = Array.isArray(listData?.employees)
             ? listData.employees
@@ -214,7 +245,10 @@ export default function ManageLeavesPage() {
 
         const enrichedEmployees = data.employees.map((emp: Employee) => ({
           ...emp,
-          department_name: empDetailsMap.get(emp.id)?.department_name || "-",
+          department_name:
+            emp.department_name ||
+            empDetailsMap.get(emp.id)?.department_name ||
+            "-",
           pseudonym: empDetailsMap.get(emp.id)?.pseudonym || "-",
         }));
         setEmployees(enrichedEmployees);
@@ -248,11 +282,18 @@ export default function ManageLeavesPage() {
 
     try {
       setSaving(true);
+      const viewerId = String(localStorage.getItem("employeeId") || "").trim();
       const res = await fetch("/api/employee-leave-allowances", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(viewerId
+            ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+            : {}),
+        },
         body: JSON.stringify({
           employee_id: editingEmployee.id,
+          viewerId: viewerId || undefined,
           annual_current_balance: parseLeaveDays(formData.annual_current_balance),
           bereavement_current_balance: parseLeaveDays(formData.bereavement_current_balance),
           maternity_current_balance: parseLeaveDays(formData.maternity_current_balance),
@@ -414,12 +455,21 @@ export default function ManageLeavesPage() {
     <OptionalAdminShell>
       <div className={`${adminStyles.page} ${styles.pageWhite}`}>
         <div className={`${adminStyles.inner} ${styles.pageWide}`}>
-          <h1 className={adminStyles.title}>Manage leaves</h1>
+          <h1 className={adminStyles.title}>Leaves</h1>
           <p className={adminStyles.subtitle}>
-            Leave balances, requests, and monthly summary — one place.
+            Requests, balances, and monthly summary — one place (scoped to your hierarchy).
           </p>
 
           <div className={styles.dashTabs} role="tablist" aria-label="Leave sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "requests"}
+              className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
+              onClick={() => selectTab("requests")}
+            >
+              Requests
+            </button>
             <button
               type="button"
               role="tab"
@@ -429,15 +479,6 @@ export default function ManageLeavesPage() {
             >
               Balances
               <span className={styles.dashTabCount}>{employees.length}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "requests"}
-              className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => selectTab("requests")}
-            >
-              Requests
             </button>
             <button
               type="button"

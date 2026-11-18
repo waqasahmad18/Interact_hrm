@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Legacy route — summary now lives under Manage Leaves. */
-export default function EmployeeMonthlyLeaveSummaryRedirect() {
-  redirect("/employee-dashboard/manage-leaves?tab=summary");
+/** Leave Summary menu removed — Summary lives inside Leaves tabs. */
+export default function MonthlyLeaveSummaryRedirect() {
+  redirect("/employee-dashboard/manage-leaves?tab=requests");
 }

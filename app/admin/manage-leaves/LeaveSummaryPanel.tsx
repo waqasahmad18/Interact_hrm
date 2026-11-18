@@ -99,7 +99,19 @@ export default function LeaveSummaryPanel() {
     setLoading(true);
     setError("");
     try {
-      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
+      const viewerId =
+        typeof window !== "undefined"
+          ? String(localStorage.getItem("employeeId") || "").trim()
+          : "";
+      const viewerQs = viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : "";
+      const viewerHeaders: HeadersInit = viewerId
+        ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+        : {};
+
+      const empRes = await fetch(`/api/employee-list?ts=${Date.now()}${viewerQs}`, {
+        cache: "no-store",
+        headers: viewerHeaders,
+      });
       const empData = await empRes.json();
       if (!empData.success) throw new Error(empData.error || "Failed to fetch employees");
       const employees = empData.employees || [];
@@ -113,12 +125,12 @@ export default function LeaveSummaryPanel() {
 
       const [monthLeavesRes, yearLeavesRes] = await Promise.all([
         fetch(
-          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDateStr)}&ts=${Date.now()}`,
-          { cache: "no-store" },
+          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDateStr)}&ts=${Date.now()}${viewerQs}`,
+          { cache: "no-store", headers: viewerHeaders },
         ),
         fetch(
-          `/api/leaves?fromDate=${encodeURIComponent(yearStart)}&toDate=${encodeURIComponent(yearEnd)}&ts=${Date.now()}`,
-          { cache: "no-store" },
+          `/api/leaves?fromDate=${encodeURIComponent(yearStart)}&toDate=${encodeURIComponent(yearEnd)}&ts=${Date.now()}${viewerQs}`,
+          { cache: "no-store", headers: viewerHeaders },
         ),
       ]);
       const monthLeavesData = await monthLeavesRes.json();

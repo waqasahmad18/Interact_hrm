@@ -145,7 +145,7 @@ function navTabIsActive(
 }
 
 /** Bump when menu paths change so stale localStorage links (e.g. ?view=) refresh. */
-const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache_v3";
+const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache_v4";
 
 const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },

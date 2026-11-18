@@ -45,7 +45,7 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "team.leaves.view",
     name: "Leaves",
-    path: "/employee-dashboard/leave-inbox",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
 
@@ -71,7 +71,7 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "department.leaves.view",
     name: "Leaves",
-    path: "/employee-dashboard/leave-inbox",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
   {
@@ -129,25 +129,25 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   {
     permission: "leave.list.view",
     name: "Leaves",
-    path: "/employee-dashboard/leave-inbox",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
   {
     permission: "leave.approval_status.view",
     name: "Leaves",
-    path: "/employee-dashboard/leave-inbox",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
   {
     permission: "leave.approve.manager",
     name: "Leaves",
-    path: "/employee-dashboard/leave-inbox",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
   {
     permission: "leave.balances.edit",
-    name: "Manage Leaves",
-    path: "/employee-dashboard/manage-leaves",
+    name: "Leaves",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
   {
@@ -158,8 +158,8 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   },
   {
     permission: "leave.monthly_summary.view",
-    name: "Leave Summary",
-    path: "/employee-dashboard/manage-leaves?tab=summary",
+    name: "Leaves",
+    path: "/employee-dashboard/manage-leaves?tab=requests",
     group: "leave",
   },
 
@@ -355,13 +355,13 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
 
 /** Old admin URLs → employee-shell equivalents (for bookmarks / stale links). */
 export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
-  "/leave": "/employee-dashboard/leave-inbox",
+  "/leave": "/employee-dashboard/manage-leaves?tab=requests",
   "/summaries": "/employee-dashboard/summaries",
   "/attendance/employee-report": "/employee-dashboard/attendance",
   "/add-employee": "/employee-dashboard/add-employee",
   "/recruitment": "/employee-dashboard/recruitment",
   "/performance": "/employee-dashboard/performance",
-  "/admin/manage-leaves": "/employee-dashboard/manage-leaves",
+  "/admin/manage-leaves": "/employee-dashboard/manage-leaves?tab=requests",
   "/admin/monthly-attendance": "/employee-dashboard/monthly-attendance",
   "/admin/manage-attendance": "/employee-dashboard/manage-attendance",
   "/admin/manage-breaks": "/employee-dashboard/manage-breaks",
@@ -386,7 +386,7 @@ export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
   "/admin/company-policy": "/employee-dashboard/company-policy",
   "/admin/tungsten-in-out": "/employee-dashboard/tungsten-in-out",
   "/admin/presence-idle": "/employee-dashboard/presence-idle",
-  "/admin/monthly-leave-summary": "/employee-dashboard/manage-leaves?tab=summary",
+  "/admin/monthly-leave-summary": "/employee-dashboard/manage-leaves?tab=requests",
   "/admin/calendar": "/employee-dashboard/calendar",
   "/admin/financial-requests": "/employee-dashboard/financial-requests",
   "/admin/shift-scheduler": "/employee-dashboard/shift-scheduler",

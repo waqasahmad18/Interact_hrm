@@ -497,7 +497,7 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                 <button
                   type="button"
                   className={styles.actionBtn}
-                  onClick={() => onNavigate("/employee-dashboard/leave-inbox")}
+                  onClick={() => onNavigate("/employee-dashboard/manage-leaves?tab=requests")}
                 >
                   <span className={`${styles.actionIcon} ${styles.actionBlue}`}>
                     <FaUsers />
