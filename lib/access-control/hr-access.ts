@@ -31,6 +31,7 @@ export const HR_DEPARTMENT_DEFAULT_PERMISSIONS: string[] = [
   "leave.list.view",
   "leave.approval_status.view",
   "leave.monthly_summary.view",
+  "leave.balances.edit",
   "payroll.monthly.view",
   "payroll.advance",
   "payroll.loan",
@@ -193,12 +194,22 @@ export function mergeHrAccessPermissions(opts: {
   // Master switch: everyone → default employee dashboard (no role menus).
   // Exception: Finance staff / Finance Manager role still get payroll menus.
   const hr = isHrDepartment(opts.departmentName);
-  const hrAdminSlug = slugsEarly.some(
-    (s) => s === "hr_manager" || s.includes("hr_manager"),
+  const hrAdminSlug = slugsEarly.some((s) => {
+    if (!s) return false;
+    if (s === "hr_manager" || s === "dir_hr" || s === "admin_manager") return true;
+    if (s.includes("hr_manager") || s.includes("dir_hr")) return true;
+    if (s === "sysadmin" || s.includes("sysadmin") || s === "admin") return true;
+    return false;
+  });
+  const alreadyHasBalanceEdit = opts.permissions.some((k) =>
+    permissionSetHas([k], "leave.balances.edit"),
   );
-  /** Leave balance Edit — HR Admin / HR Manager only (not Team Lead / CEO / other depts). */
+  /**
+   * Leave balance Edit: HR dept / HR Admin / Admin, or System Control grant.
+   * Not auto-granted to non-HR Team Leads / other departments.
+   */
   const canEditLeaveBalances =
-    (hr && manager) || hrAdminSlug;
+    alreadyHasBalanceEdit || hrAdminSlug || hr;
 
   if (opts.allEmployeeDashboardEnabled) {
     const set = new Set<string>();
@@ -276,9 +287,6 @@ export function mergeHrAccessPermissions(opts: {
 
   if (canEditLeaveBalances) {
     set.add("leave.balances.edit");
-  } else {
-    set.delete("leave.balances.edit");
-    set.delete("leave.balances.edit@all_departments");
   }
 
   return [...set];

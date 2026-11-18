@@ -13,8 +13,12 @@ import { toastError, toastSuccess } from "@/lib/app-toast";
 import LeaveRequestsPanel from "./LeaveRequestsPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
 import { normalizeEmployeeGender } from "@/lib/leave-categories";
-import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
+import {
+  fetchAccessControlMe,
+  invalidateAccessControlMeCache,
+} from "@/lib/access-control/me-client-cache";
 import { permissionSetHas } from "@/lib/access-control/permission-scope";
+import { isAdminBrowserSession } from "@/lib/access-control/employee-shell";
 
 type LeaveDashTab = "balances" | "requests" | "summary";
 
@@ -134,26 +138,66 @@ function ManageLeavesPageInner() {
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
-    const eid =
-      typeof window !== "undefined"
-        ? String(localStorage.getItem("employeeId") || "").trim()
-        : "";
-    if (!eid) {
-      setCanEditBalances(false);
-      return;
-    }
     let cancelled = false;
-    void fetchAccessControlMe(eid)
-      .then((data) => {
+    const resolveCanEdit = async () => {
+      try {
+        // Classic admin login — full leave balance edit.
+        if (isAdminBrowserSession()) {
+          if (!cancelled) setCanEditBalances(true);
+          return;
+        }
+        const eid = String(localStorage.getItem("employeeId") || "").trim();
+        if (!eid) {
+          if (!cancelled) setCanEditBalances(false);
+          return;
+        }
+        invalidateAccessControlMeCache(eid);
+        const data = await fetchAccessControlMe(eid);
         if (cancelled) return;
         const perms = Array.isArray(data?.permissions)
           ? (data.permissions as string[])
           : [];
-        setCanEditBalances(permissionSetHas(perms, "leave.balances.edit"));
-      })
-      .catch(() => {
+        if (permissionSetHas(perms, "leave.balances.edit")) {
+          setCanEditBalances(true);
+          return;
+        }
+        // Fallback: HR dept + Manager/Team Lead/Admin role slug (API merge may lag cache).
+        const dept = String(
+          (data as { departmentName?: string })?.departmentName || "",
+        ).toLowerCase();
+        const isHr =
+          dept.includes("hr") ||
+          dept.includes("human resource") ||
+          dept === "recruit";
+        const slug = String(
+          (data as { role?: { slug?: string; slugs?: string[] } })?.role?.slug ||
+            "",
+        ).toLowerCase();
+        const slugs = (
+          (data as { role?: { slugs?: string[] } })?.role?.slugs || []
+        ).map((s) => String(s || "").toLowerCase());
+        const legacy = String(
+          (data as { legacyRole?: string })?.legacyRole || "",
+        ).toLowerCase();
+        const adminish =
+          slug.includes("hr_manager") ||
+          slug.includes("dir_hr") ||
+          slug.includes("admin") ||
+          slugs.some(
+            (s) =>
+              s.includes("hr_manager") ||
+              s.includes("dir_hr") ||
+              s.includes("admin"),
+          ) ||
+          legacy === "manager" ||
+          legacy === "team lead" ||
+          legacy === "ceo";
+        setCanEditBalances(Boolean(isHr && adminish));
+      } catch {
         if (!cancelled) setCanEditBalances(false);
-      });
+      }
+    };
+    void resolveCanEdit();
     return () => {
       cancelled = true;
     };
@@ -314,6 +358,10 @@ function ManageLeavesPageInner() {
     try {
       setSaving(true);
       const viewerId = String(localStorage.getItem("employeeId") || "").trim();
+      const portal =
+        localStorage.getItem("hrmPortal") ||
+        sessionStorage.getItem("hrmPortal") ||
+        "";
       const res = await fetch("/api/employee-leave-allowances", {
         method: "POST",
         headers: {
@@ -321,10 +369,12 @@ function ManageLeavesPageInner() {
           ...(viewerId
             ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
             : {}),
+          ...(portal === "admin" ? { "x-hrm-portal": "admin" } : {}),
         },
         body: JSON.stringify({
           employee_id: editingEmployee.id,
           viewerId: viewerId || undefined,
+          portal: portal || undefined,
           annual_current_balance: parseLeaveDays(formData.annual_current_balance),
           bereavement_current_balance: parseLeaveDays(formData.bereavement_current_balance),
           maternity_current_balance: parseLeaveDays(formData.maternity_current_balance),
