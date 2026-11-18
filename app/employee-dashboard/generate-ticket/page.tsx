@@ -24,6 +24,7 @@ import {
   type LeaveDuration,
 } from "../../../lib/leave-duration";
 import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
+import { toastSuccess } from "@/lib/app-toast";
 import styles from "./generate-ticket.module.css";
 
 type TicketRow = {
@@ -547,8 +548,20 @@ function GenerateTicketPageInner() {
         setError(data.error || "Could not submit ticket");
         return;
       }
+      const ticketNo = String(data.ticket?.ticket_number || "").trim();
+      const submittedAt = new Date().toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      toastSuccess(
+        "Your Team Lead or Manager will review shortly.",
+        ticketNo ? `Ticket ${ticketNo} sent` : "Ticket sent",
+        6000,
+      );
       setSuccess(
-        `Ticket ${data.ticket?.ticket_number || ""} submitted! Admin will review it shortly.`
+        ticketNo
+          ? `Ticket ${ticketNo} submitted · ${submittedAt}`
+          : `Ticket submitted · ${submittedAt}`,
       );
       setSelectedTicket(null);
       setEmployeeReply("");
@@ -576,14 +589,13 @@ function GenerateTicketPageInner() {
         <header className={styles.header}>
           <h1 className={styles.title}>Generate ticket</h1>
           <p className={styles.sub}>
-            Select department and request type. All tickets go to the admin HR inbox for review.
+            Select department and request type. Your Team Lead or Manager will review shortly.
           </p>
         </header>
 
         <form className={styles.card} onSubmit={handleSubmit}>
           <h2 className={styles.cardTitle}>New ticket</h2>
           {error ? <div className={styles.alertError}>{error}</div> : null}
-          {success ? <div className={styles.alertSuccess}>{success}</div> : null}
 
           <div className={styles.grid2}>
             <div className={styles.field}>
@@ -1022,6 +1034,11 @@ function GenerateTicketPageInner() {
           >
             {submitting ? "Submitting…" : "Submit ticket"}
           </button>
+          {success ? (
+            <div className={styles.alertSuccess} style={{ marginTop: 14 }} role="status">
+              {success}
+            </div>
+          ) : null}
         </form>
 
       </div>
