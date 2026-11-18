@@ -75,7 +75,7 @@
 
 .equity {
   width: 100%;
-  max-width: 100%;
+  max-width: 152px;
   min-width: 0;
 }
 
@@ -86,6 +86,7 @@
   overflow: hidden;
   display: flex;
   width: 100%;
+  max-width: 152px;
 }
 
 .segAnnual {
@@ -101,11 +102,12 @@
 .equityLabel {
   display: flex;
   justify-content: space-between;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 4px;
   font-size: 11px;
   color: #8b93a6;
   min-width: 0;
+  max-width: 152px;
 }
 
 .equityLabel span,

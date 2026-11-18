@@ -127,10 +127,11 @@
   background: #fff;
 }
 
-/** Balances: shrink with sidebar — no clipped Action column */
+/** Balances: content-sized columns so gutters stay tight (no full-width stretch) */
 .balTable {
   table-layout: fixed;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -138,20 +139,54 @@
 .balTable tbody td {
   overflow: hidden;
   vertical-align: middle;
+  padding: 8px 10px;
 }
 
-.balTable th:first-child,
-.balTable td:first-child {
+.balTable thead th {
+  padding: 8px 10px;
+}
+
+/* ID | Employee | Dept | Status | Annual | Available | Action */
+.balTable th:nth-child(1),
+.balTable td:nth-child(1) {
   width: 52px;
+  padding-left: 12px;
+  padding-right: 6px;
 }
 
-.balTable th:last-child,
-.balTable td:last-child {
+.balTable th:nth-child(2),
+.balTable td:nth-child(2) {
+  width: 220px;
+}
+
+.balTable th:nth-child(3),
+.balTable td:nth-child(3) {
+  width: 118px;
+}
+
+.balTable th:nth-child(4),
+.balTable td:nth-child(4) {
+  width: 100px;
+}
+
+.balTable th:nth-child(5),
+.balTable td:nth-child(5) {
+  width: 168px;
+}
+
+.balTable th:nth-child(6),
+.balTable td:nth-child(6) {
   width: 76px;
 }
 
+.balTable th:nth-child(7),
+.balTable td:nth-child(7) {
+  width: 76px;
+  padding-right: 12px;
+}
+
 .balTable .personCell {
-  max-width: 100%;
+  max-width: 220px;
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -161,6 +196,13 @@
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.balTable .sumDeptCell {
+  max-width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /** Requests: squeeze all columns into one viewport (no cut-off Action) */
