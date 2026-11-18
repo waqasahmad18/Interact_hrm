@@ -261,19 +261,14 @@ function GenerateTicketPageInner() {
   useEffect(() => {
     const openId = searchParams?.get("open");
     if (!openId) {
-      // Allow a future toast deep-link (?open=) to open again after URL is cleared
       consumedOpenIdRef.current = null;
       return;
     }
-    if (history.length === 0) return;
-    // Only auto-open once per ?open= id — do not re-open when history refreshes after creating a ticket
-    if (consumedOpenIdRef.current === openId) return;
-    const match = history.find((t) => String(t.id) === openId);
-    if (match) {
-      consumedOpenIdRef.current = openId;
-      void openTicket(match);
-    }
-  }, [searchParams, history, openTicket]);
+    // Ticket detail lives in My Ticket Inbox now
+    router.replace(
+      `/employee-dashboard/my-tickets?open=${encodeURIComponent(openId)}`,
+    );
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (!employeeId || typeof window === "undefined") return;
@@ -931,64 +926,25 @@ function GenerateTicketPageInner() {
         </form>
 
         <section className={styles.card}>
-          <h2 className={styles.cardTitle}>My tickets</h2>
-          {history.length === 0 ? (
-            <div className={styles.empty}>No tickets yet.</div>
-          ) : (
-            <div className={styles.historyList}>
-              {history.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={styles.historyItem}
-                  onClick={() => void openTicket(t)}
-                >
-                  <div className={styles.historyTop}>
-                    <span className={styles.historyId}>{t.ticket_number}</span>
-                    <span className={`${styles.badge} ${statusBadgeClass(t.status)}`}>
-                      {formatTicketStatusLabel(t.status, t.ticket_type)}
-                    </span>
-                  </div>
-                  <div className={styles.historySubject}>{t.subject}</div>
-                  <div className={styles.historyMeta}>
-                    {categoryLabel(t.category)} · {ticketTypeLabel(t.category, t.ticket_type)} ·{" "}
-                    {new Date(t.requested_at).toLocaleString()}
-                  </div>
-                  {ticketAcknowledgedByLabel(t) ? (
-                    <div
-                      className={styles.historyMeta}
-                      style={{
-                        marginTop: 4,
-                        fontWeight: 600,
-                        color: "#1d4ed8",
-                      }}
-                    >
-                      {ticketAcknowledgedByLabel(t)}
-                    </div>
-                  ) : null}
-                  {ticketDecidedByLabel(t) ? (
-                    <div
-                      className={styles.historyMeta}
-                      style={{
-                        marginTop: 4,
-                        fontWeight: 600,
-                        color: t.status === "rejected" ? "#b91c1c" : "#0f766e",
-                      }}
-                    >
-                      {ticketDecidedByLabel(t)}
-                    </div>
-                  ) : null}
-                  <div className={styles.historyHint}>
-                    {t.ticket_type === "leave"
-                      ? "Leave request · Click to view status"
-                      : isTicketClosed(t.status)
-                        ? "Closed · Click to read conversation"
-                        : "Click to view conversation"}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <h2 className={styles.cardTitle}>Ticket responses</h2>
+          <p className={styles.sub} style={{ marginBottom: 12, paddingLeft: 0 }}>
+            Your tickets and HR replies now live in a dedicated inbox — not under this form.
+          </p>
+          <a
+            href="/employee-dashboard/my-tickets"
+            className={styles.submitBtn}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+              width: "auto",
+              padding: "10px 16px",
+            }}
+          >
+            Open My Ticket Inbox
+            {history.length > 0 ? ` (${history.length})` : ""}
+          </a>
         </section>
       </div>
 

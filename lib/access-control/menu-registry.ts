@@ -319,6 +319,13 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "core",
   },
   {
+    permission: "portal.tickets.create",
+    featureGate: "tickets",
+    name: "My Ticket Inbox",
+    path: "/employee-dashboard/my-tickets",
+    group: "core",
+  },
+  {
     permission: "portal.my_info.view",
     name: "My Info",
     path: "/employee-dashboard/my-info",
@@ -415,6 +422,7 @@ export function allowedPathsFromPermissions(permissions: string[]): Set<string> 
   paths.add("/employee-dashboard/my-info");
   paths.add("/employee-dashboard/my-team");
   paths.add("/employee-dashboard/generate-ticket");
+  paths.add("/employee-dashboard/my-tickets");
   return paths;
 }
 

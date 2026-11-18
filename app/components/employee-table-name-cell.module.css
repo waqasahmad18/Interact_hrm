@@ -23,7 +23,12 @@
 }
 
 .avatarBtn:hover {
-  transform: scale(1.06);
+  transform: scale(1.03);
+}
+
+/* Keep purple ring fully visible inside tight table cells */
+.avatarBtn :global(*) {
+  box-sizing: border-box;
 }
 
 .avatarBtn:focus-visible {

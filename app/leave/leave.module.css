@@ -109,6 +109,10 @@
   max-width: 100%;
 }
 
+.sumTableShell {
+  overflow: visible;
+}
+
 .reqTableScroll {
   overflow-x: auto;
   max-width: 100%;
@@ -322,6 +326,15 @@
   word-break: break-word;
 }
 
+/* Avatar ring needs room — don't clip the employee name cell */
+.sumTable tbody td:nth-child(2) {
+  overflow: visible;
+  padding-left: 16px;
+  padding-right: 14px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 .sumTable th:nth-child(1),
 .sumTable td:nth-child(1) {
   width: 5%;
@@ -359,7 +372,7 @@
   max-width: 100%;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .sumTable .pseudoLine {

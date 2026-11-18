@@ -283,7 +283,7 @@ export default function LeaveSummaryPanel() {
         </label>
       </div>
 
-      <div className={leaveStyles.reqTableShell}>
+      <div className={`${leaveStyles.reqTableShell} ${leaveStyles.sumTableShell}`}>
         <div className={leaveStyles.reqTableScroll}>
           <table className={`${leaveStyles.reqTable} ${leaveStyles.sumTable}`}>
             <thead>
