@@ -80,6 +80,8 @@ export default function LeaveSummaryPanel() {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [showZeroActivity, setShowZeroActivity] = useState(false);
   const [month, setMonth] = useState<string>(getCurrentMonth());
+  /** Optional day filter YYYY-MM-DD within the selected month */
+  const [dateFilter, setDateFilter] = useState("");
   const [leaveData, setLeaveData] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -89,7 +91,7 @@ export default function LeaveSummaryPanel() {
     if (!month) return;
     void fetchSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [month, dateFilter]);
 
   const uniqueDepartments = useMemo(() => {
     return Array.from(new Set(leaveData.map((row) => row.department).filter(Boolean))).sort();
@@ -119,9 +121,13 @@ export default function LeaveSummaryPanel() {
       const [year, monthNum] = month.split("-");
       const yearStart = `${year}-01-01`;
       const yearEnd = `${year}-12-31`;
-      const fromDate = `${year}-${monthNum}-01`;
+      const monthStart = `${year}-${monthNum}-01`;
       const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
-      const toDateStr = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
+      const monthEnd = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
+      const dayYmd =
+        dateFilter && dateFilter.startsWith(month) ? dateFilter : "";
+      const fromDate = dayYmd || monthStart;
+      const toDateStr = dayYmd || monthEnd;
 
       const [monthLeavesRes, yearLeavesRes] = await Promise.all([
         fetch(
@@ -138,7 +144,15 @@ export default function LeaveSummaryPanel() {
       if (!monthLeavesData.success) {
         throw new Error(monthLeavesData.error || "Failed to fetch leaves");
       }
-      const monthLeaves = monthLeavesData.leaves || [];
+      let monthLeaves = monthLeavesData.leaves || [];
+      if (dayYmd) {
+        monthLeaves = monthLeaves.filter((l: any) => {
+          const start = String(l?.start_date || "").slice(0, 10);
+          const end = String(l?.end_date || l?.start_date || "").slice(0, 10);
+          if (!start) return false;
+          return start <= dayYmd && (end || start) >= dayYmd;
+        });
+      }
       const yearLeaves = yearLeavesData.success ? yearLeavesData.leaves || [] : monthLeaves;
 
       const yearByEmp = new Map<string, number[]>();
@@ -241,13 +255,37 @@ export default function LeaveSummaryPanel() {
       </div>
 
       <div className={leaveStyles.toolbar}>
-        <input
-          type="month"
-          className={leaveStyles.toolbarSelect}
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          aria-label="Month"
-        />
+        <div className={leaveStyles.filterField}>
+          <label htmlFor="sum-filter-month">Month</label>
+          <input
+            id="sum-filter-month"
+            type="month"
+            className={leaveStyles.toolbarSelect}
+            value={month}
+            onChange={(e) => {
+              setMonth(e.target.value);
+              if (dateFilter && e.target.value && !dateFilter.startsWith(e.target.value)) {
+                setDateFilter("");
+              }
+            }}
+            aria-label="Filter by month"
+          />
+        </div>
+        <div className={leaveStyles.filterField}>
+          <label htmlFor="sum-filter-date">Date</label>
+          <input
+            id="sum-filter-date"
+            type="date"
+            className={leaveStyles.toolbarSelect}
+            value={dateFilter}
+            onChange={(e) => {
+              const v = e.target.value;
+              setDateFilter(v);
+              if (v) setMonth(v.slice(0, 7));
+            }}
+            aria-label="Filter by date"
+          />
+        </div>
         <div className={leaveStyles.searchWrap}>
           <svg
             width="14"
@@ -270,19 +308,23 @@ export default function LeaveSummaryPanel() {
             autoComplete="off"
           />
         </div>
-        <select
-          className={leaveStyles.toolbarSelect}
-          value={departmentFilter}
-          onChange={(e) => setDepartmentFilter(e.target.value)}
-          aria-label="Filter by department"
-        >
-          <option value="">All departments</option>
-          {uniqueDepartments.map((dept) => (
-            <option key={dept} value={dept}>
-              {dept}
-            </option>
-          ))}
-        </select>
+        <div className={leaveStyles.filterField}>
+          <label htmlFor="sum-filter-dept">Department</label>
+          <select
+            id="sum-filter-dept"
+            className={leaveStyles.toolbarSelect}
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            aria-label="Filter by department"
+          >
+            <option value="">All departments</option>
+            {uniqueDepartments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
+        </div>
         <label
           className={`${leaveStyles.toggleChip}${showZeroActivity ? ` ${leaveStyles.toggleChipOn}` : ""}`}
         >

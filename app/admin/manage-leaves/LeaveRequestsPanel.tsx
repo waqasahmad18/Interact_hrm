@@ -112,6 +112,9 @@ export default function LeaveRequestsPanel({
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   /** "" = all months; otherwise YYYY-MM */
   const [monthFilter, setMonthFilter] = useState("");
+  /** "" = all days; otherwise YYYY-MM-DD */
+  const [dateFilter, setDateFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
@@ -265,6 +268,32 @@ export default function LeaveRequestsPanel({
     return day ? day.slice(0, 7) : "";
   };
 
+  const leaveCoversDate = (l: any, ymd: string) => {
+    if (!ymd) return true;
+    const start = leaveDayKey(l);
+    if (!start) return false;
+    let end = "";
+    try {
+      end = l?.end_date
+        ? getDateStringInTimeZone(l.end_date, SERVER_TIMEZONE) || ""
+        : start;
+    } catch {
+      end = String(l?.end_date || start).slice(0, 10);
+    }
+    if (!end) end = start;
+    return start <= ymd && end >= ymd;
+  };
+
+  const departmentOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        leavesWithMeta
+          .map((l) => String(l.department_name || "").trim())
+          .filter((d) => d && d !== "-"),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [leavesWithMeta]);
+
   const categoryOptions = useMemo(() => {
     // HR filter: Annual, Bereavement, Maternity, Paternity (both genders).
     return ["annual", "bereavement", "maternity", "paternity"];
@@ -278,6 +307,14 @@ export default function LeaveRequestsPanel({
     let total = 0;
     leavesWithMeta.forEach((l) => {
       if (monthFilter && leaveMonthKey(l) !== monthFilter) return;
+      if (dateFilter && !leaveCoversDate(l, dateFilter)) return;
+      if (
+        departmentFilter &&
+        String(l.department_name || "").trim().toLowerCase() !==
+          departmentFilter.toLowerCase()
+      ) {
+        return;
+      }
       total += 1;
       const s = overallLeaveStatus(l);
       if (s === "approved") approved += 1;
@@ -286,7 +323,7 @@ export default function LeaveRequestsPanel({
       if (l.is_duplicate) duplicates += 1;
     });
     return { pending, approved, rejected, total, duplicates };
-  }, [leavesWithMeta, monthFilter]);
+  }, [leavesWithMeta, monthFilter, dateFilter, departmentFilter]);
 
   const handleDocumentDownload = (docPath: string) => {
     const filename = docPath.split("/").pop() || docPath;
@@ -382,6 +419,14 @@ export default function LeaveRequestsPanel({
       }
       if (duplicatesOnly && !l.is_duplicate) return false;
       if (monthFilter && leaveMonthKey(l) !== monthFilter) return false;
+      if (dateFilter && !leaveCoversDate(l, dateFilter)) return false;
+      if (
+        departmentFilter &&
+        String(l.department_name || "").trim().toLowerCase() !==
+          departmentFilter.toLowerCase()
+      ) {
+        return false;
+      }
       if (q) {
         const name = String(l.employee_name || "").toLowerCase();
         const pseudo = String(l.pseudonym || "").toLowerCase();
@@ -400,6 +445,8 @@ export default function LeaveRequestsPanel({
     categoryFilter,
     duplicatesOnly,
     monthFilter,
+    dateFilter,
+    departmentFilter,
     searchText,
   ]);
 
@@ -408,7 +455,9 @@ export default function LeaveRequestsPanel({
       statusFilter ||
       categoryFilter ||
       duplicatesOnly ||
-      monthFilter,
+      monthFilter ||
+      dateFilter ||
+      departmentFilter,
   );
 
   const toggleStatusFilter = (next: "pending" | "approved" | "rejected" | "") => {
@@ -488,6 +537,54 @@ export default function LeaveRequestsPanel({
           </div>
 
           <div className={styles.toolbar}>
+            <div className={styles.filterField}>
+              <label htmlFor="req-filter-dept">Department</label>
+              <select
+                id="req-filter-dept"
+                className={styles.toolbarSelect}
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                aria-label="Filter by department"
+              >
+                <option value="">All departments</option>
+                {departmentOptions.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="req-filter-month">Month</label>
+              <input
+                id="req-filter-month"
+                type="month"
+                className={styles.toolbarSelect}
+                value={monthFilter}
+                onChange={(e) => {
+                  setMonthFilter(e.target.value);
+                  if (e.target.value && dateFilter && !dateFilter.startsWith(e.target.value)) {
+                    setDateFilter("");
+                  }
+                }}
+                aria-label="Filter by month"
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="req-filter-date">Date</label>
+              <input
+                id="req-filter-date"
+                type="date"
+                className={styles.toolbarSelect}
+                value={dateFilter}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDateFilter(v);
+                  if (v) setMonthFilter(v.slice(0, 7));
+                }}
+                aria-label="Filter by date"
+              />
+            </div>
             <div className={styles.searchWrap}>
               <svg
                 width="14"
@@ -548,22 +645,6 @@ export default function LeaveRequestsPanel({
               />
               Duplicates only
             </label>
-            <input
-              type="month"
-              className={styles.toolbarSelect}
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
-              aria-label="Filter by month"
-            />
-            {monthFilter ? (
-              <button
-                type="button"
-                className={styles.clearFilters}
-                onClick={() => setMonthFilter("")}
-              >
-                All months
-              </button>
-            ) : null}
             {hasActiveFilters ? (
               <button
                 type="button"
@@ -574,6 +655,8 @@ export default function LeaveRequestsPanel({
                   setCategoryFilter("");
                   setDuplicatesOnly(false);
                   setMonthFilter("");
+                  setDateFilter("");
+                  setDepartmentFilter("");
                 }}
               >
                 Clear filters

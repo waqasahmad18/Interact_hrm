@@ -127,6 +127,8 @@ function ManageLeavesPageInner() {
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
   /** "" = all months; YYYY-MM filters employees with leave activity that month */
   const [monthFilter, setMonthFilter] = useState("");
+  /** "" = all days; YYYY-MM-DD filters employees with leave activity that day */
+  const [dateFilter, setDateFilter] = useState("");
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
   /** Clickable legend: all | annual | bereavement (opens Requests filtered by category) */
   const [balanceFocus, setBalanceFocus] = useState<"all" | "annual" | "bereavement">("all");
@@ -240,25 +242,40 @@ function ManageLeavesPageInner() {
   }, []);
 
   useEffect(() => {
-    if (!monthFilter) {
+    if (!monthFilter && !dateFilter) {
       setMonthActiveIds(null);
       return;
     }
     let cancelled = false;
-    const [year, monthNum] = monthFilter.split("-");
-    const fromDate = `${year}-${monthNum}-01`;
+    const dayYmd = dateFilter || "";
+    const monthKey = dayYmd ? dayYmd.slice(0, 7) : monthFilter;
+    const [year, monthNum] = monthKey.split("-");
+    const fromDate = dayYmd || `${year}-${monthNum}-01`;
     const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
-    const toDate = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
+    const toDate =
+      dayYmd || `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
     void (async () => {
       try {
+        const viewerId = String(localStorage.getItem("employeeId") || "").trim();
+        const viewerQs = viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : "";
         const res = await fetch(
-          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&ts=${Date.now()}`,
-          { cache: "no-store" },
+          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&ts=${Date.now()}${viewerQs}`,
+          {
+            cache: "no-store",
+            headers: viewerId
+              ? { "x-employee-id": viewerId, "x-hrm-employee-id": viewerId }
+              : {},
+          },
         );
         const data = await res.json();
         if (cancelled) return;
         const ids = new Set<string>();
         for (const l of data?.leaves || []) {
+          if (dayYmd) {
+            const start = String(l?.start_date || "").slice(0, 10);
+            const end = String(l?.end_date || l?.start_date || "").slice(0, 10);
+            if (!start || start > dayYmd || (end || start) < dayYmd) continue;
+          }
           const id = String(l?.employee_id ?? "").trim();
           if (id) ids.add(id);
         }
@@ -270,7 +287,7 @@ function ManageLeavesPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [monthFilter]);
+  }, [monthFilter, dateFilter]);
 
   async function fetchEmployees() {
     try {
@@ -596,22 +613,61 @@ function ManageLeavesPageInner() {
                     autoComplete="off"
                   />
                 </div>
-                <select
-                  className={leaveStyles.toolbarSelect}
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  aria-label="Filter by department"
-                >
-                  <option value="">All departments</option>
-                  {departments.map((dept) => {
-                    const name = dept.name || dept.department_name || "";
-                    return (
-                      <option key={dept.id} value={name}>
-                        {name}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className={leaveStyles.filterField}>
+                  <label htmlFor="bal-filter-dept">Department</label>
+                  <select
+                    id="bal-filter-dept"
+                    className={leaveStyles.toolbarSelect}
+                    value={selectedDepartment}
+                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                    aria-label="Filter by department"
+                  >
+                    <option value="">All departments</option>
+                    {departments.map((dept) => {
+                      const name = dept.name || dept.department_name || "";
+                      return (
+                        <option key={dept.id} value={name}>
+                          {name}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div className={leaveStyles.filterField}>
+                  <label htmlFor="bal-filter-month">Month</label>
+                  <input
+                    id="bal-filter-month"
+                    type="month"
+                    className={leaveStyles.toolbarSelect}
+                    value={monthFilter}
+                    onChange={(e) => {
+                      setMonthFilter(e.target.value);
+                      if (
+                        e.target.value &&
+                        dateFilter &&
+                        !dateFilter.startsWith(e.target.value)
+                      ) {
+                        setDateFilter("");
+                      }
+                    }}
+                    aria-label="Filter by month"
+                  />
+                </div>
+                <div className={leaveStyles.filterField}>
+                  <label htmlFor="bal-filter-date">Date</label>
+                  <input
+                    id="bal-filter-date"
+                    type="date"
+                    className={leaveStyles.toolbarSelect}
+                    value={dateFilter}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDateFilter(v);
+                      if (v) setMonthFilter(v.slice(0, 7));
+                    }}
+                    aria-label="Filter by date"
+                  />
+                </div>
                 <select
                   className={leaveStyles.toolbarSelect}
                   value={employmentStatusFilter}
@@ -632,20 +688,16 @@ function ManageLeavesPageInner() {
                   />
                   Low balance only (&lt; 4 days)
                 </label>
-                <input
-                  type="month"
-                  className={leaveStyles.toolbarSelect}
-                  value={monthFilter}
-                  onChange={(e) => setMonthFilter(e.target.value)}
-                  aria-label="Filter by month"
-                />
-                {monthFilter ? (
+                {monthFilter || dateFilter ? (
                   <button
                     type="button"
                     className={leaveStyles.clearFilters}
-                    onClick={() => setMonthFilter("")}
+                    onClick={() => {
+                      setMonthFilter("");
+                      setDateFilter("");
+                    }}
                   >
-                    All months
+                    Clear date
                   </button>
                 ) : null}
                 <div className={styles.legend}>
