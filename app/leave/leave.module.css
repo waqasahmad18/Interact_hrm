@@ -105,7 +105,7 @@
   border-radius: 10px;
   box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04), 0 6px 20px -8px rgba(27, 34, 51, 0.1);
   overflow: hidden;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -115,9 +115,8 @@
 }
 
 .reqTable {
-  width: max-content;
-  max-width: 100%;
-  min-width: 0;
+  width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   table-layout: auto;
   background: #fff;
@@ -125,22 +124,22 @@
 
 .reqTable thead th {
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: #fff;
   font-weight: 600;
   background: #111827;
-  padding: 5px 6px;
+  padding: 10px 12px;
   border-bottom: 1px solid #111827;
   white-space: nowrap;
 }
 
 .reqTable tbody td {
-  padding: 4px 6px;
+  padding: 10px 12px;
   border-bottom: 1px solid #eef0f3;
-  font-size: 11.5px;
-  line-height: 1.25;
+  font-size: 13px;
+  line-height: 1.35;
   vertical-align: middle;
   color: #1b2233;
   background: #fff;
@@ -155,15 +154,15 @@
 }
 
 .statusByCell {
-  max-width: 130px;
+  max-width: 180px;
   white-space: nowrap;
 }
 
 .statusByName {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 600;
   color: #1b2233;
-  line-height: 1.2;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -171,30 +170,30 @@
 .statusByRole {
   font-weight: 600;
   color: #2e3f6e;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .statusById {
-  margin-top: 0;
-  font-size: 10px;
+  margin-top: 1px;
+  font-size: 11px;
   color: #8b93a6;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .reqId {
   color: #8b93a6;
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 12.5px;
   white-space: nowrap;
   width: 1%;
 }
 
 .reqEmpty {
   text-align: center;
-  padding: 20px 10px !important;
+  padding: 28px 12px !important;
   color: #8b93a6;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .personCell {
@@ -202,15 +201,15 @@
   flex-direction: column;
   gap: 0;
   min-width: 0;
-  max-width: 140px;
+  max-width: 220px;
 }
 
 .pseudoLine {
-  padding-left: 30px;
-  font-size: 10px;
+  padding-left: 36px;
+  font-size: 11.5px;
   color: #8b93a6;
-  line-height: 1.15;
-  margin-top: -1px;
+  line-height: 1.2;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -218,28 +217,28 @@
 
 .monoCell {
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 12.5px;
   white-space: nowrap;
   color: #5b6478;
   width: 1%;
 }
 
 .reasonCell {
-  max-width: 150px;
+  max-width: 220px;
 }
 
 .reasonBtn {
   display: block;
   width: 100%;
-  max-width: 150px;
+  max-width: 220px;
   border: none;
   background: transparent;
   padding: 0;
   margin: 0;
   text-align: left;
   font: inherit;
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 12.5px;
+  line-height: 1.3;
   color: #5b6478;
   cursor: pointer;
   overflow: hidden;
@@ -278,9 +277,9 @@
 .btnApproveOutline,
 .btnRejectOutline {
   border: 1px solid #d3d7e0;
-  border-radius: 6px;
-  padding: 2px 7px;
-  font-size: 10.5px;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   background: #fff;
@@ -464,9 +463,9 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
   white-space: nowrap;

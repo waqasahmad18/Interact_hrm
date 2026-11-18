@@ -2,6 +2,11 @@
   background: #fff !important;
 }
 
+.pageWide {
+  max-width: 1480px !important;
+  width: 100%;
+}
+
 .legend {
   display: flex;
   align-items: center;
@@ -41,12 +46,12 @@
 }
 
 .equity {
-  width: 120px;
+  width: 180px;
   max-width: 100%;
 }
 
 .equityBar {
-  height: 6px;
+  height: 8px;
   border-radius: 4px;
   background: #eef0f3;
   overflow: hidden;
@@ -68,8 +73,8 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 5px;
-  font-size: 10.5px;
+  margin-top: 6px;
+  font-size: 12px;
   color: #8b93a6;
 }
 
@@ -89,6 +94,7 @@
 
 .availableCell {
   font-weight: 700;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   color: #1b2233;
 }

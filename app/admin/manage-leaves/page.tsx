@@ -303,7 +303,7 @@ export default function ManageLeavesPage() {
   return (
     <OptionalAdminShell>
       <div className={`${adminStyles.page} ${styles.pageWhite}`}>
-        <div className={adminStyles.inner}>
+        <div className={`${adminStyles.inner} ${styles.pageWide}`}>
           <h1 className={adminStyles.title}>Manage leaves</h1>
           <p className={adminStyles.subtitle}>
             Leave balances, requests, and monthly summary — one place.
