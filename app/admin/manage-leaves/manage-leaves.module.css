@@ -1,3 +1,7 @@
+.pageWhite {
+  background: #fff !important;
+}
+
 .dashTabs {
   display: flex;
   flex-wrap: wrap;

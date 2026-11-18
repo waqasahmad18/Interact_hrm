@@ -348,7 +348,7 @@ export default function ManageLeavesPage() {
 
   return (
     <OptionalAdminShell>
-      <div className={adminStyles.page}>
+      <div className={`${adminStyles.page} ${styles.pageWhite}`}>
         <div className={adminStyles.inner}>
           <h1 className={adminStyles.title}>Manage leaves</h1>
           <p className={adminStyles.subtitle}>
