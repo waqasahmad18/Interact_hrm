@@ -348,7 +348,9 @@ export default function LeaveSummaryPanel() {
                         ) : null}
                       </div>
                     </td>
-                    <td>{row.department}</td>
+                    <td className={leaveStyles.sumDeptCell} title={row.department}>
+                      {row.department}
+                    </td>
                     <td className={leaveStyles.sumTotal}>{row.total}</td>
                     <td className={leaveStyles.sumOk}>{row.approved}</td>
                     <td className={leaveStyles.sumBad}>{row.rejected}</td>

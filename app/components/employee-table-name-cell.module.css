@@ -32,12 +32,13 @@
 }
 
 .name {
+  display: block;
   font-weight: 600;
   color: #0f172a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 100%;
 }
 
 .nameBtn {
@@ -47,6 +48,9 @@
   cursor: pointer;
   text-align: left;
   font: inherit;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .nameBtn:hover .name {

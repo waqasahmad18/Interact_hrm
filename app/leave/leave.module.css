@@ -263,6 +263,7 @@
 }
 
 .sumTable {
+  width: 100%;
   min-width: 0;
   table-layout: fixed;
 }
@@ -279,10 +280,62 @@
 .sumTable tbody td {
   padding: 10px 12px;
   font-size: 12.5px;
+  overflow: hidden;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.sumTable th:nth-child(1),
+.sumTable td:nth-child(1) {
+  width: 5%;
+}
+.sumTable th:nth-child(2),
+.sumTable td:nth-child(2) {
+  width: 22%;
+}
+.sumTable th:nth-child(3),
+.sumTable td:nth-child(3) {
+  width: 12%;
+}
+.sumTable th:nth-child(4),
+.sumTable td:nth-child(4) {
+  width: 6%;
+}
+.sumTable th:nth-child(5),
+.sumTable td:nth-child(5),
+.sumTable th:nth-child(6),
+.sumTable td:nth-child(6),
+.sumTable th:nth-child(7),
+.sumTable td:nth-child(7) {
+  width: 7%;
+}
+.sumTable th:nth-child(8),
+.sumTable td:nth-child(8) {
+  width: 14%;
+}
+.sumTable th:nth-child(9),
+.sumTable td:nth-child(9) {
+  width: 20%;
 }
 
 .sumTable .personCell {
-  max-width: none;
+  max-width: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sumTable .pseudoLine {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sumDeptCell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sumTotal {
