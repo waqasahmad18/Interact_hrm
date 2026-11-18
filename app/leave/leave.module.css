@@ -122,6 +122,125 @@
   background: #fff;
 }
 
+/** Requests: squeeze all columns into one viewport (no cut-off Action) */
+.reqTableFit {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.reqTableFit thead th {
+  padding: 6px 5px;
+  font-size: 10px;
+  letter-spacing: 0.25px;
+}
+
+.reqTableFit tbody td {
+  padding: 5px 5px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reqTableFit td:nth-child(2),
+.reqTableFit td:nth-child(8) {
+  white-space: normal;
+}
+
+.reqTableFit th:nth-child(1),
+.reqTableFit td:nth-child(1) {
+  width: 3.5%;
+}
+.reqTableFit th:nth-child(2),
+.reqTableFit td:nth-child(2) {
+  width: 13%;
+}
+.reqTableFit th:nth-child(3),
+.reqTableFit td:nth-child(3) {
+  width: 9%;
+}
+.reqTableFit th:nth-child(4),
+.reqTableFit td:nth-child(4) {
+  width: 7%;
+}
+.reqTableFit th:nth-child(5),
+.reqTableFit td:nth-child(5) {
+  width: 11%;
+}
+.reqTableFit th:nth-child(6),
+.reqTableFit td:nth-child(6) {
+  width: 4%;
+}
+.reqTableFit th:nth-child(7),
+.reqTableFit td:nth-child(7) {
+  width: 7%;
+}
+.reqTableFit th:nth-child(8),
+.reqTableFit td:nth-child(8) {
+  width: 13%;
+}
+.reqTableFit th:nth-child(9),
+.reqTableFit td:nth-child(9) {
+  width: 15%;
+}
+.reqTableFit th:nth-child(10),
+.reqTableFit td:nth-child(10) {
+  width: 17.5%;
+}
+
+.reqTableFit .personCell,
+.reqTableFit .statusByCell,
+.reqTableFit .reasonCell,
+.reqTableFit .reasonBtn {
+  max-width: none;
+}
+
+.reqTableFit .reasonBtn {
+  font-size: 11px;
+}
+
+.reqTableFit .statusByName {
+  font-size: 11.5px;
+}
+
+.reqTableFit .statusByRole {
+  font-size: 10.5px;
+}
+
+.reqTableFit .statusById,
+.reqTableFit .pseudoLine,
+.reqTableFit .actionStamp {
+  font-size: 10px;
+}
+
+.reqTableFit .pseudoLine {
+  padding-left: 30px;
+}
+
+.reqTableFit .reqId,
+.reqTableFit .monoCell {
+  font-size: 11px;
+}
+
+.reqTableFit .badge {
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
+
+.reqTableFit .btnApproveOutline,
+.reqTableFit .btnRejectOutline {
+  padding: 2px 6px;
+  font-size: 10.5px;
+  border-radius: 6px;
+}
+
+.reqTableFit .actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
 .reqTable thead th {
   text-align: left;
   font-size: 11px;

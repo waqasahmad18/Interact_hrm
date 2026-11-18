@@ -26,6 +26,14 @@ function formatDate(dateString: string) {
   return `${day}/${month}/${year}`;
 }
 
+function formatDateRange(start: string, end: string) {
+  const a = formatDate(start);
+  const b = formatDate(end);
+  if (!a) return "—";
+  if (!b || a === b) return a;
+  return `${a}–${b}`;
+}
+
 function formatDateTime(dateTimeString: string) {
   if (!dateTimeString) return "";
   const dateKey = getDateStringInTimeZone(dateTimeString, SERVER_TIMEZONE);
@@ -589,13 +597,13 @@ export default function LeaveRequestsPanel() {
           ) : (
             <div className={styles.reqTableShell}>
               <div className={styles.reqTableScroll}>
-                <table className={styles.reqTable}>
+                <table className={`${styles.reqTable} ${styles.reqTableFit}`}>
                   <thead>
                     <tr>
                       <th>ID</th>
                       <th>Employee</th>
-                      <th>Department</th>
-                      <th>Category</th>
+                      <th>Dept</th>
+                      <th>Cat</th>
                       <th>Dates</th>
                       <th>Days</th>
                       <th>Status</th>
@@ -652,7 +660,7 @@ export default function LeaveRequestsPanel() {
                               </span>
                             </td>
                             <td className={styles.monoCell}>
-                              {formatDate(l.start_date)} – {formatDate(l.end_date)}
+                              {formatDateRange(l.start_date, l.end_date)}
                             </td>
                             <td className={styles.monoCell}>{l.total_days}</td>
                             <td>
