@@ -114,6 +114,8 @@ export default function LeavePage() {
   const [searchText, setSearchText] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  /** "" = all; pending | approved | rejected */
+  const [statusFilter, setStatusFilter] = useState<"" | "pending" | "approved" | "rejected">("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const leaveDayKey = (l: any) => {
@@ -383,6 +385,12 @@ export default function LeavePage() {
     const from = dateFrom.trim();
     const to = dateTo.trim();
     const scoped = leaves.filter((l) => {
+      if (statusFilter) {
+        const s = String(l?.status || "pending").toLowerCase();
+        const normalized =
+          s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending";
+        if (normalized !== statusFilter) return false;
+      }
       if (q) {
         const name = String(l.employee_name || "").toLowerCase();
         const pseudo = String(l.pseudonym || "").toLowerCase();
@@ -436,11 +444,15 @@ export default function LeavePage() {
       }
       return direction === "asc" ? cmp : -cmp;
     });
-  }, [leaves, sortConfig, searchText, dateFrom, dateTo]);
+  }, [leaves, sortConfig, searchText, dateFrom, dateTo, statusFilter]);
 
   const hasActiveFilters = Boolean(
-    searchText.trim() || dateFrom.trim() || dateTo.trim(),
+    searchText.trim() || dateFrom.trim() || dateTo.trim() || statusFilter,
   );
+
+  const toggleStatusFilter = (next: "pending" | "approved" | "rejected" | "") => {
+    setStatusFilter((prev) => (prev === next ? "" : next));
+  };
 
   const sortButtonStyle: React.CSSProperties = {
     border: "none",
@@ -539,6 +551,7 @@ export default function LeavePage() {
                   setSearchText("");
                   setDateFrom("");
                   setDateTo("");
+                  setStatusFilter("");
                 }}
               >
                 Clear filters
@@ -549,22 +562,61 @@ export default function LeavePage() {
             <p className={styles.searchMeta}>
               Showing {sortedLeaves.length} of {leaves.length} leave
               {sortedLeaves.length === 1 ? "" : "s"}
+              {statusFilter ? ` · ${statusFilter}` : ""}
             </p>
           ) : null}
 
           <div className={styles.statRow}>
-            <div className={`${styles.statCard} ${styles.statCardGold}`}>
+            <button
+              type="button"
+              className={`${styles.statCard} ${styles.statCardGold}${
+                statusFilter === "pending" ? ` ${styles.statCardActive}` : ""
+              }`}
+              onClick={() => toggleStatusFilter("pending")}
+              aria-pressed={statusFilter === "pending"}
+            >
               <p className={styles.statLabel}>Pending</p>
               <p className={styles.statValue}>{stats.pending}</p>
-            </div>
-            <div className={`${styles.statCard} ${styles.statCardGreen}`}>
+              <p className={styles.statSub}>Awaiting a decision</p>
+            </button>
+            <button
+              type="button"
+              className={`${styles.statCard} ${styles.statCardGreen}${
+                statusFilter === "approved" ? ` ${styles.statCardActive}` : ""
+              }`}
+              onClick={() => toggleStatusFilter("approved")}
+              aria-pressed={statusFilter === "approved"}
+            >
               <p className={styles.statLabel}>Approved</p>
               <p className={styles.statValue}>{stats.approved}</p>
-            </div>
-            <div className={`${styles.statCard} ${styles.statCardPurple}`}>
+              <p className={styles.statSub}>This leave year</p>
+            </button>
+            <button
+              type="button"
+              className={`${styles.statCard} ${styles.statCardRed}${
+                statusFilter === "rejected" ? ` ${styles.statCardActive}` : ""
+              }`}
+              onClick={() => toggleStatusFilter("rejected")}
+              aria-pressed={statusFilter === "rejected"}
+            >
+              <p className={styles.statLabel}>Rejected</p>
+              <p className={styles.statValue}>{stats.rejected}</p>
+              <p className={styles.statSub}>This leave year</p>
+            </button>
+            <button
+              type="button"
+              className={`${styles.statCard} ${styles.statCardPurple}${
+                statusFilter === "" ? ` ${styles.statCardActive}` : ""
+              }`}
+              onClick={() => setStatusFilter("")}
+              aria-pressed={statusFilter === ""}
+            >
               <p className={styles.statLabel}>Total requests</p>
               <p className={styles.statValue}>{stats.total}</p>
-            </div>
+              <p className={styles.statSub}>
+                {statusFilter ? "Click to show all" : "All statuses"}
+              </p>
+            </button>
           </div>
 
           {loading ? (

@@ -77,6 +77,7 @@ export default function ManageLeavesPage() {
   const [searchName, setSearchName] = useState("");
   const deferredSearchName = useDeferredValue(searchName);
   const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
@@ -226,8 +227,11 @@ export default function ManageLeavesPage() {
           (emp.department_name || "").toLowerCase() === selectedDepartment.toLowerCase()
       );
     }
+    if (lowBalanceOnly) {
+      rows = rows.filter((emp) => Number(emp.annual_current_balance || 0) < 4);
+    }
     return rows;
-  }, [employees, deferredSearchName, selectedDepartment]);
+  }, [employees, deferredSearchName, selectedDepartment, lowBalanceOnly]);
 
   const sortedEmployees = useMemo(() => {
     if (!sortConfig) return filteredEmployees;
@@ -380,6 +384,14 @@ export default function ManageLeavesPage() {
                 );
               })}
             </select>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569" }}>
+              <input
+                type="checkbox"
+                checked={lowBalanceOnly}
+                onChange={(e) => setLowBalanceOnly(e.target.checked)}
+              />
+              Low balance only (&lt; 4 days)
+            </label>
           </div>
 
           <div className={adminStyles.card}>
