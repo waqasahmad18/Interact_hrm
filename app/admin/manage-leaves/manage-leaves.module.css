@@ -41,13 +41,13 @@
 }
 
 .equity {
-  width: 150px;
+  width: 120px;
   max-width: 100%;
 }
 
 .equityBar {
-  height: 8px;
-  border-radius: 5px;
+  height: 6px;
+  border-radius: 4px;
   background: #eef0f3;
   overflow: hidden;
   display: flex;
