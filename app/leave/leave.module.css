@@ -109,13 +109,15 @@
 
 .reqTableScroll {
   overflow-x: auto;
+  background: #fff;
 }
 
 .reqTable {
   width: 100%;
-  min-width: 860px;
+  min-width: 920px;
   border-collapse: collapse;
   table-layout: auto;
+  background: #fff;
 }
 
 .reqTable thead th {
@@ -123,28 +125,53 @@
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8b93a6;
+  color: #fff;
   font-weight: 600;
-  background: #fafbfc;
+  background: #111827;
   padding: 8px 10px;
-  border-bottom: 1px solid #e4e7ec;
+  border-bottom: 1px solid #111827;
   white-space: nowrap;
 }
 
 .reqTable tbody td {
   padding: 7px 10px;
-  border-bottom: 1px solid #e4e7ec;
+  border-bottom: 1px solid #eef0f3;
   font-size: 12.5px;
   vertical-align: middle;
   color: #1b2233;
+  background: #fff;
 }
 
 .reqTable tbody tr:last-child td {
   border-bottom: none;
 }
 
-.reqTable tbody tr:hover {
+.reqTable tbody tr:hover td {
   background: #fafbfd;
+}
+
+.statusByCell {
+  min-width: 120px;
+  max-width: 180px;
+}
+
+.statusByName {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1b2233;
+  line-height: 1.25;
+}
+
+.statusByRole {
+  font-weight: 600;
+  color: #2e3f6e;
+}
+
+.statusById {
+  margin-top: 1px;
+  font-size: 11px;
+  color: #8b93a6;
+  font-variant-numeric: tabular-nums;
 }
 
 .reqId {

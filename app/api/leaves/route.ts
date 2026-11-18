@@ -18,6 +18,7 @@ import {
   isCeoOrgRole,
   isManagerOrgRole,
   isTeamLeadOrgRole,
+  orgRoleLabel,
 } from "@/lib/org-role";
 import {
   backfillLeavesFromTickets,
@@ -272,11 +273,12 @@ export async function GET(req: NextRequest) {
       ),
     ];
     const nameById = new Map<string, string>();
+    const roleById = new Map<string, string>();
     if (actorIds.length) {
       try {
         const placeholders = actorIds.map(() => "?").join(",");
         const [nameRows] = await pool.execute(
-          `SELECT id, first_name, last_name, pseudonym FROM hrm_employees
+          `SELECT id, first_name, last_name, pseudonym, role FROM hrm_employees
            WHERE id IN (${placeholders})`,
           actorIds.map((id) => Number(id)),
         );
@@ -285,12 +287,14 @@ export async function GET(req: NextRequest) {
           first_name?: string | null;
           last_name?: string | null;
           pseudonym?: string | null;
+          role?: string | null;
         }[]) {
           const full = `${r.first_name || ""} ${r.last_name || ""}`.trim();
           nameById.set(
             String(r.id),
             full || (r.pseudonym ? String(r.pseudonym).trim() : "") || String(r.id),
           );
+          roleById.set(String(r.id), String(r.role || "").trim());
         }
       } catch {
         /* names optional */
@@ -303,7 +307,19 @@ export async function GET(req: NextRequest) {
         const decidedName =
           (decidedBy && nameById.get(decidedBy)) ||
           (decidedBy && !/^\d+$/.test(decidedBy) ? decidedBy : null);
+        const roleLabel =
+          decidedBy && roleById.has(decidedBy)
+            ? orgRoleLabel(roleById.get(decidedBy))
+            : null;
         const overall = overallLeaveStatus(l);
+        const statusBy =
+          decidedName && (overall === "approved" || overall === "rejected")
+            ? {
+                name: decidedName,
+                employee_id: decidedBy && /^\d+$/.test(decidedBy) ? decidedBy : null,
+                role: roleLabel,
+              }
+            : null;
         return {
           ...l,
           step1_status: normStep(
@@ -316,9 +332,13 @@ export async function GET(req: NextRequest) {
           overall_status: overall,
           approved_by: decidedBy,
           approved_by_name: decidedName,
+          approved_by_role: roleLabel,
+          status_by: statusBy,
           decided_by_label:
             decidedName && (overall === "approved" || overall === "rejected")
-              ? `${overall === "rejected" ? "Rejected by" : "Approved by"} ${decidedName}`
+              ? `${overall === "rejected" ? "Rejected by" : "Approved by"} ${decidedName}${
+                  roleLabel ? ` (${roleLabel})` : ""
+                }${decidedBy && /^\d+$/.test(decidedBy) ? ` · ${decidedBy}` : ""}`
               : null,
         };
       })

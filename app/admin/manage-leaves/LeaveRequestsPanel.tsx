@@ -430,6 +430,7 @@ export default function LeaveRequestsPanel() {
                       <th>Dates</th>
                       <th>Days</th>
                       <th>Status</th>
+                      <th>Status by</th>
                       <th>Reason</th>
                       <th>Action</th>
                     </tr>
@@ -437,7 +438,7 @@ export default function LeaveRequestsPanel() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className={styles.reqEmpty}>
+                        <td colSpan={10} className={styles.reqEmpty}>
                           {statusFilter
                             ? "No requests match this status."
                             : "No leave requests yet."}
@@ -449,6 +450,10 @@ export default function LeaveRequestsPanel() {
                         const pending =
                           canActOnLeave(l) && status === "pending";
                         const category = String(l.leave_category || "—");
+                        const statusBy = l.status_by as
+                          | { name?: string; employee_id?: string | null; role?: string | null }
+                          | null
+                          | undefined;
                         return (
                           <tr
                             key={
@@ -492,6 +497,28 @@ export default function LeaveRequestsPanel() {
                                   </span>
                                 </div>
                               ) : null}
+                            </td>
+                            <td className={styles.statusByCell}>
+                              {statusBy?.name ? (
+                                <>
+                                  <div className={styles.statusByName}>
+                                    {statusBy.name}
+                                    {statusBy.role ? (
+                                      <span className={styles.statusByRole}>
+                                        {" "}
+                                        ({statusBy.role})
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {statusBy.employee_id ? (
+                                    <div className={styles.statusById}>
+                                      ID {statusBy.employee_id}
+                                    </div>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className={styles.actionStamp}>—</span>
+                              )}
                             </td>
                             <td className={styles.reasonCell}>
                               <button
