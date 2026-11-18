@@ -192,10 +192,23 @@ export function mergeHrAccessPermissions(opts: {
 
   // Master switch: everyone → default employee dashboard (no role menus).
   // Exception: Finance staff / Finance Manager role still get payroll menus.
+  const hr = isHrDepartment(opts.departmentName);
+  const hrAdminSlug = slugsEarly.some(
+    (s) => s === "hr_manager" || s.includes("hr_manager"),
+  );
+  /** Leave balance Edit — HR Admin / HR Manager only (not Team Lead / CEO / other depts). */
+  const canEditLeaveBalances =
+    (hr && manager) || hrAdminSlug;
+
   if (opts.allEmployeeDashboardEnabled) {
     const set = new Set<string>();
     for (const k of opts.permissions.filter(Boolean)) {
-      if (k.startsWith("system.")) set.add(k);
+      if (
+        k.startsWith("system.") ||
+        permissionSetHas([k], "leave.balances.edit")
+      ) {
+        set.add(k);
+      }
     }
     if (manager || deptHeadCeo) {
       for (const k of MANAGER_SYSTEM_CONTROL_PERMISSIONS) set.add(k);
@@ -207,11 +220,11 @@ export function mergeHrAccessPermissions(opts: {
     if (finance) {
       for (const k of FINANCE_DEPARTMENT_DEFAULT_PERMISSIONS) set.add(k);
     }
+    if (canEditLeaveBalances) set.add("leave.balances.edit");
     return [...set];
   }
 
   const set = new Set(opts.permissions.filter(Boolean));
-  const hr = isHrDepartment(opts.departmentName);
   const hrDefaultsOn = opts.hrDepartmentDefaultsEnabled !== false;
   const slugs = slugsEarly;
 
@@ -259,6 +272,13 @@ export function mergeHrAccessPermissions(opts: {
     for (const k of [...set]) {
       if (k.startsWith("system.")) set.delete(k);
     }
+  }
+
+  if (canEditLeaveBalances) {
+    set.add("leave.balances.edit");
+  } else {
+    set.delete("leave.balances.edit");
+    set.delete("leave.balances.edit@all_departments");
   }
 
   return [...set];

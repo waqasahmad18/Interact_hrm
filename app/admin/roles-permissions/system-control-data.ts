@@ -512,6 +512,11 @@ for (const roleId of ["hr_manager", "hr_coordinator", "team_lead_hr"]) {
   if (!set) continue;
   for (const k of HR_ROLE_OPS) set.add(k);
   set.delete("department.salary.view");
+  if (roleId === "hr_manager") {
+    set.add("leave.balances.edit");
+  } else {
+    set.delete("leave.balances.edit");
+  }
   if (roleId !== "hr_manager") {
     for (const k of [...set]) {
       if (k.startsWith("system.")) set.delete(k);

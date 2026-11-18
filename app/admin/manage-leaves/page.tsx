@@ -13,6 +13,8 @@ import { toastError, toastSuccess } from "@/lib/app-toast";
 import LeaveRequestsPanel from "./LeaveRequestsPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
 import { normalizeEmployeeGender } from "@/lib/leave-categories";
+import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
+import { permissionSetHas } from "@/lib/access-control/permission-scope";
 
 type LeaveDashTab = "balances" | "requests" | "summary";
 
@@ -127,7 +129,35 @@ function ManageLeavesPageInner() {
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
+  /** HR Admin / HR Manager only — leave.balances.edit */
+  const [canEditBalances, setCanEditBalances] = useState(false);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  useEffect(() => {
+    const eid =
+      typeof window !== "undefined"
+        ? String(localStorage.getItem("employeeId") || "").trim()
+        : "";
+    if (!eid) {
+      setCanEditBalances(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchAccessControlMe(eid)
+      .then((data) => {
+        if (cancelled) return;
+        const perms = Array.isArray(data?.permissions)
+          ? (data.permissions as string[])
+          : [];
+        setCanEditBalances(permissionSetHas(perms, "leave.balances.edit"));
+      })
+      .catch(() => {
+        if (!cancelled) setCanEditBalances(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectTab = (tab: LeaveDashTab) => {
     setActiveTab(tab);
@@ -263,6 +293,7 @@ function ManageLeavesPageInner() {
   }
 
   function handleEdit(employee: Employee) {
+    if (!canEditBalances) return;
     setEditingEmployee(employee);
     setFormData({
       annual_current_balance: formatLeaveDays(employee.annual_current_balance),
@@ -605,13 +636,19 @@ function ManageLeavesPageInner() {
                           {balanceFocus !== "annual" ? <th>Bereavement</th> : null}
                           {balanceFocus === "all" ? <th>Maternity / Paternity</th> : null}
                           <th>Available</th>
-                          <th>Action</th>
+                          {canEditBalances ? <th>Action</th> : null}
                         </tr>
                       </thead>
                       <tbody>
                         {filteredEmployees.length === 0 ? (
                           <tr>
-                            <td colSpan={balanceFocus === "all" ? 8 : 7} className={leaveStyles.reqEmpty}>
+                            <td
+                              colSpan={
+                                (balanceFocus === "all" ? 7 : 6) +
+                                (canEditBalances ? 1 : 0)
+                              }
+                              className={leaveStyles.reqEmpty}
+                            >
                               No employees match these filters.
                             </td>
                           </tr>
@@ -759,15 +796,17 @@ function ManageLeavesPageInner() {
                                     {formatLeaveDays(focusAvail)}d
                                   </span>
                                 </td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    className={styles.editBtn}
-                                    onClick={() => handleEdit(emp)}
-                                  >
-                                    Edit
-                                  </button>
-                                </td>
+                                {canEditBalances ? (
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className={styles.editBtn}
+                                      onClick={() => handleEdit(emp)}
+                                    >
+                                      Edit
+                                    </button>
+                                  </td>
+                                ) : null}
                               </tr>
                             );
                           })
@@ -780,8 +819,8 @@ function ManageLeavesPageInner() {
             </>
           ) : null}
 
-        {/* Edit Modal */}
-        {showModal && editingEmployee && (
+        {/* Edit Modal — HR Admin only */}
+        {showModal && editingEmployee && canEditBalances ? (
           <ModalPortal>
           <div className={styles.modalOverlay} data-hrm-modal-overlay>
             <div className={styles.modal}>
@@ -1053,7 +1092,7 @@ function ManageLeavesPageInner() {
             </div>
           </div>
           </ModalPortal>
-        )}
+        ) : null}
         </div>
       </div>
       {popup}

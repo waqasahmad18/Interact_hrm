@@ -265,27 +265,54 @@ export async function POST(req: NextRequest) {
       req.headers.get("x-employee-id") ||
       String(body?.viewerId || "").trim() ||
       "";
-    if (viewerId) {
-      try {
-        const { resolveViewerDataScope, rowInViewerScope } = await import(
-          "@/lib/access-control/data-scope"
+    if (!viewerId) {
+      return NextResponse.json(
+        { success: false, error: "viewerId is required" },
+        { status: 401 },
+      );
+    }
+    try {
+      const { getEmployeeAccessPayload } = await import(
+        "@/lib/access-control/store"
+      );
+      const { permissionSetHas } = await import(
+        "@/lib/access-control/permission-scope"
+      );
+      const access = await getEmployeeAccessPayload(viewerId);
+      const perms = Array.isArray(access?.permissions) ? access.permissions : [];
+      if (!permissionSetHas(perms, "leave.balances.edit")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Only HR Admin can edit leave balances",
+          },
+          { status: 403 },
         );
-        const scope = await resolveViewerDataScope(viewerId);
-        if (
-          scope.mode !== "all" &&
-          !rowInViewerScope(scope, {
-            employeeId: emp.id,
-            departmentName: emp.department_name,
-          })
-        ) {
-          return NextResponse.json(
-            { success: false, error: "Out of scope" },
-            { status: 403 },
-          );
-        }
-      } catch {
-        /* allow if scope helper fails */
       }
+      const { resolveViewerDataScope, rowInViewerScope } = await import(
+        "@/lib/access-control/data-scope"
+      );
+      const scope = await resolveViewerDataScope(viewerId);
+      if (
+        scope.mode !== "all" &&
+        !rowInViewerScope(scope, {
+          employeeId: emp.id,
+          departmentName: emp.department_name,
+        })
+      ) {
+        return NextResponse.json(
+          { success: false, error: "Out of scope" },
+          { status: 403 },
+        );
+      }
+    } catch (err) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : "Permission check failed",
+        },
+        { status: 403 },
+      );
     }
     const genderNorm = normalizeEmployeeGender(emp.gender);
     const cycleStart = getLeaveCycleStartYmd(emp.joined_date || null);
