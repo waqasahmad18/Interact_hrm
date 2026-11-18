@@ -3,12 +3,11 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./manage-leaves.module.css";
-import tableStyles from "../../break-summary/break-summary.module.css";
+import leaveStyles from "../../leave/leave.module.css";
 import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { ModalPortal } from "@/app/components/ModalPortal";
-import { FaFilter, FaSort, FaSortDown, FaSortUp } from "react-icons/fa";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 import LeaveRequestsPanel from "./LeaveRequestsPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
@@ -56,17 +55,6 @@ function formatLeaveDelta(next: number, current: number): string {
   return delta > 0 ? `+${abs} leaves added` : `-${abs} leaves removed`;
 }
 
-type SortKey =
-  | "id"
-  | "full_name"
-  | "pseudonym"
-  | "department_name"
-  | "employment_status"
-  | "annual_balance"
-  | "bereavement_balance";
-
-type SortDirection = "asc" | "desc";
-
 export default function ManageLeavesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,13 +65,13 @@ export default function ManageLeavesPage() {
     bereavement_current_balance: "3"
   });
   const [saving, setSaving] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [searchName, setSearchName] = useState("");
   const deferredSearchName = useDeferredValue(searchName);
   const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [employmentStatusFilter, setEmploymentStatusFilter] = useState("");
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
-  const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
+  const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
@@ -197,23 +185,27 @@ export default function ManageLeavesPage() {
     return `${employee.first_name || ""} ${employee.last_name || ""}`.trim();
   };
 
-  const handleFilterClick = (key: SortKey) => {
-    setSortConfig((prev) => {
-      if (prev?.key === key) return null;
-      return { key, direction: "asc" };
-    });
+  const employmentStatusKey = (emp: Employee) => {
+    const s = String(emp.employment_status || "").toLowerCase();
+    if (s.includes("probation")) return "Probation";
+    return "Confirmed";
   };
 
-  const handleSortToggle = (key: SortKey) => {
-    setSortConfig((prev) => {
-      if (!prev || prev.key !== key) return { key, direction: "asc" };
-      return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
-    });
-  };
-
-  const getSortIcon = (key: SortKey) => {
-    if (!sortConfig || sortConfig.key !== key) return <FaSort style={{ opacity: 0.75 }} />;
-    return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
+  const poolFor = (emp: Employee) => {
+    const cap = Number(emp.annual_allowance) || 20;
+    const annualUsed = Number(emp.annual_used);
+    const berUsed = Number(emp.bereavement_used);
+    const usedAnnual = Number.isFinite(annualUsed)
+      ? annualUsed
+      : Math.max(0, cap - Number(emp.annual_current_balance || 0));
+    const usedBer = Number.isFinite(berUsed)
+      ? berUsed
+      : Math.max(0, Number(emp.bereavement_allowance || 3) - Number(emp.bereavement_current_balance || 0));
+    const poolUsed = usedAnnual + usedBer;
+    const available = Math.max(0, Math.round((cap - poolUsed) * 2) / 2);
+    const annualPct = Math.min(100, (usedAnnual / cap) * 100);
+    const berPct = Math.min(100 - annualPct, (usedBer / cap) * 100);
+    return { cap, poolUsed, available, annualPct, berPct, usedAnnual, usedBer };
   };
 
   const filteredEmployees = useMemo(() => {
@@ -223,7 +215,8 @@ export default function ManageLeavesPage() {
       rows = rows.filter((emp) => {
         const fullName = getFullName(emp).toLowerCase();
         const pseudo = (emp.pseudonym || "").toLowerCase();
-        return fullName.includes(term) || pseudo.includes(term);
+        const id = String(emp.id || "");
+        return fullName.includes(term) || pseudo.includes(term) || id.includes(term);
       });
     }
     if (selectedDepartment) {
@@ -232,119 +225,20 @@ export default function ManageLeavesPage() {
           (emp.department_name || "").toLowerCase() === selectedDepartment.toLowerCase()
       );
     }
+    if (employmentStatusFilter) {
+      rows = rows.filter((emp) => employmentStatusKey(emp) === employmentStatusFilter);
+    }
     if (lowBalanceOnly) {
-      rows = rows.filter((emp) => Number(emp.annual_current_balance || 0) < 4);
+      rows = rows.filter((emp) => poolFor(emp).available < 4);
     }
     return rows;
-  }, [employees, deferredSearchName, selectedDepartment, lowBalanceOnly]);
-
-  const sortedEmployees = useMemo(() => {
-    if (!sortConfig) return filteredEmployees;
-
-    const getText = (value: unknown) => String(value || "").toLowerCase();
-
-    return [...filteredEmployees].sort((a, b) => {
-      let cmp = 0;
-
-      switch (sortConfig.key) {
-        case "id":
-          cmp = Number(a.id || 0) - Number(b.id || 0);
-          break;
-        case "full_name":
-          cmp = getText(getFullName(a)).localeCompare(getText(getFullName(b)), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        case "pseudonym":
-          cmp = getText(a.pseudonym).localeCompare(getText(b.pseudonym), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        case "department_name":
-          cmp = getText(a.department_name).localeCompare(getText(b.department_name), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        case "employment_status":
-          cmp = getText(a.employment_status).localeCompare(getText(b.employment_status), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        case "annual_balance":
-          cmp = Number(a.annual_current_balance || 0) - Number(b.annual_current_balance || 0);
-          break;
-        case "bereavement_balance":
-          cmp = Number(a.bereavement_current_balance || 0) - Number(b.bereavement_current_balance || 0);
-          break;
-        default:
-          cmp = 0;
-      }
-
-      return sortConfig.direction === "asc" ? cmp : -cmp;
-    });
-  }, [filteredEmployees, sortConfig]);
-
-  const sortButtonStyle: React.CSSProperties = {
-    border: "none",
-    background: "transparent",
-    color: "#fff",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "0",
-    fontSize: "0.8rem",
-  };
-
-  const thStyle: React.CSSProperties = {
-    color: "#fff",
-    fontSize: "12px",
-    padding: "10px 10px",
-    whiteSpace: "nowrap",
-    textAlign: "left",
-    verticalAlign: "middle",
-  };
-
-  const tdStyle: React.CSSProperties = {
-    fontSize: "13px",
-    padding: "8px 10px",
-    whiteSpace: "nowrap",
-    verticalAlign: "middle",
-  };
-
-  const tdAlignedStyle: React.CSSProperties = { ...tdStyle, paddingLeft: 54 };
-  const thActionsStyle: React.CSSProperties = { ...thStyle, minWidth: 200, paddingRight: 30 };
-  const tdActionsStyle: React.CSSProperties = { ...tdStyle, minWidth: 210, paddingRight: 30 };
-
-  const renderSortableHeader = (label: string, key: SortKey) => {
-    const isActive = sortConfig?.key === key;
-
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "38px 1fr", alignItems: "center", gap: 6, width: "100%" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <button
-            type="button"
-            onClick={() => handleFilterClick(key)}
-            style={{ ...sortButtonStyle, opacity: isActive ? 1 : 0.78 }}
-            title={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
-            aria-label={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
-          >
-            <FaFilter />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSortToggle(key)}
-            style={sortButtonStyle}
-            title={`Toggle sort direction for ${label}`}
-            aria-label={`Toggle sort direction for ${label}`}
-          >
-            {getSortIcon(key)}
-          </button>
-        </div>
-        <span style={{ lineHeight: 1.2 }}>{label}</span>
-      </div>
-    );
-  };
+  }, [
+    employees,
+    deferredSearchName,
+    selectedDepartment,
+    employmentStatusFilter,
+    lowBalanceOnly,
+  ]);
 
   return (
     <OptionalAdminShell>
@@ -391,121 +285,187 @@ export default function ManageLeavesPage() {
 
           {activeTab === "balances" ? (
             <>
-          <div className={tableStyles.breakSummaryFilters}>
-            <input
-              type="text"
-              placeholder="Search by name or pseudo name..."
-              value={searchName}
-              onChange={(e) => setSearchName(e.target.value)}
-              className={tableStyles.breakSummaryInput}
-              style={{ width: 220 }}
-            />
-            <select
-              value={selectedDepartment}
-              onChange={(e) => setSelectedDepartment(e.target.value)}
-              className={tableStyles.breakSummaryDate}
-              style={{ width: 180 }}
-            >
-              <option value="">All Departments</option>
-              {departments.map((dept) => {
-                const name = dept.name || dept.department_name || "";
-                return (
-                  <option key={dept.id} value={name}>
-                    {name}
-                  </option>
-                );
-              })}
-            </select>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569" }}>
-              <input
-                type="checkbox"
-                checked={lowBalanceOnly}
-                onChange={(e) => setLowBalanceOnly(e.target.checked)}
-              />
-              Low balance only (&lt; 4 days)
-            </label>
-          </div>
+              <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
+                Annual and bereavement share one pool. Update balances per employee when needed.
+              </p>
+              <div className={leaveStyles.toolbar}>
+                <div className={leaveStyles.searchWrap}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    className={leaveStyles.toolbarSearch}
+                    placeholder="Search by name, pseudo name, or ID"
+                    value={searchName}
+                    onChange={(e) => setSearchName(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                <select
+                  className={leaveStyles.toolbarSelect}
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  aria-label="Filter by department"
+                >
+                  <option value="">All departments</option>
+                  {departments.map((dept) => {
+                    const name = dept.name || dept.department_name || "";
+                    return (
+                      <option key={dept.id} value={name}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+                <select
+                  className={leaveStyles.toolbarSelect}
+                  value={employmentStatusFilter}
+                  onChange={(e) => setEmploymentStatusFilter(e.target.value)}
+                  aria-label="Filter by employment status"
+                >
+                  <option value="">All statuses</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Probation">Probation</option>
+                </select>
+                <label
+                  className={`${leaveStyles.toggleChip}${lowBalanceOnly ? ` ${leaveStyles.toggleChipOn}` : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={lowBalanceOnly}
+                    onChange={(e) => setLowBalanceOnly(e.target.checked)}
+                  />
+                  Low balance only (&lt; 4 days)
+                </label>
+                <div className={styles.legend}>
+                  <span>
+                    <i className={`${styles.legendDot} ${styles.legendAnnual}`} />
+                    Annual
+                  </span>
+                  <span>
+                    <i className={`${styles.legendDot} ${styles.legendBer}`} />
+                    Bereavement
+                  </span>
+                </div>
+              </div>
 
-          <div className={adminStyles.card}>
-        <div className={tableStyles.breakSummaryTableWrapper} style={{ overflowY: "auto", maxHeight: "74vh" }}>
-          {loading ? (
-            <p style={{ padding: 24, color: "#64748b" }}>Loading employees…</p>
-          ) : (
-          <table className={tableStyles.breakSummaryTable}>
-            <thead>
-              <tr>
-                <th>{renderSortableHeader("Id", "id")}</th>
-                <th>{renderSortableHeader("Full Name", "full_name")}</th>
-                <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
-                <th>{renderSortableHeader("Department", "department_name")}</th>
-                <th>{renderSortableHeader("Employment Status", "employment_status")}</th>
-                <th>{renderSortableHeader("Annual Leave Balance", "annual_balance")}</th>
-                <th>{renderSortableHeader("Bereavement Leave Balance", "bereavement_balance")}</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className={tableStyles.breakSummaryNoRecords}>
-                    No employees found
-                  </td>
-                </tr>
-              ) : (
-                sortedEmployees.map((emp) => {
-                  return (
-                    <tr key={emp.id}>
-                      <td>{emp.id}</td>
-                      <td>
-                        <EmployeeTableNameCell
-                          name={getFullName(emp)}
-                          employeeId={emp.id}
-                          photo={getPhoto(emp.id)}
-                          onOpen={() =>
-                            openFromRow({
-                              employee_id: emp.id,
-                              first_name: emp.first_name,
-                              last_name: emp.last_name,
-                              pseudonym: emp.pseudonym,
-                              department_name: emp.department_name,
-                            })
-                          }
-                        />
-                      </td>
-                      <td>{emp.pseudonym || "-"}</td>
-                      <td>{emp.department_name || "-"}</td>
-                      <td>
-                        <span className={emp.employment_status === "Permanent" ? styles.statusPermanent : styles.statusProbation}>
-                          {emp.employment_status || "Permanent"}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{ fontWeight: 600, color: "#007a5a" }}>
-                          {formatLeaveDays(emp.annual_current_balance)} / {formatLeaveDays(emp.annual_allowance)}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{ fontWeight: 600, color: "#007a5a" }}>
-                          {formatLeaveDays(emp.bereavement_current_balance)} / {formatLeaveDays(emp.bereavement_allowance)}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          className={styles.editBtn}
-                          onClick={() => handleEdit(emp)}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-          )}
-        </div>
-          </div>
+              <div className={leaveStyles.reqTableShell}>
+                <div className={leaveStyles.reqTableScroll}>
+                  {loading ? (
+                    <p className={leaveStyles.loading}>Loading employees…</p>
+                  ) : (
+                    <table className={leaveStyles.reqTable}>
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Employee</th>
+                          <th>Department</th>
+                          <th>Status</th>
+                          <th>Annual + Bereavement</th>
+                          <th>Available</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredEmployees.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className={leaveStyles.reqEmpty}>
+                              No employees match these filters.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredEmployees.map((emp) => {
+                            const statusKey = employmentStatusKey(emp);
+                            const pool = poolFor(emp);
+                            const availClass =
+                              pool.available < 2
+                                ? styles.availLow
+                                : pool.available < 5
+                                  ? styles.availMid
+                                  : "";
+                            return (
+                              <tr key={emp.id}>
+                                <td className={leaveStyles.reqId}>{emp.id}</td>
+                                <td>
+                                  <div className={leaveStyles.personCell}>
+                                    <EmployeeTableNameCell
+                                      name={getFullName(emp)}
+                                      employeeId={emp.id}
+                                      photo={getPhoto(emp.id)}
+                                      onOpen={() =>
+                                        openFromRow({
+                                          employee_id: emp.id,
+                                          first_name: emp.first_name,
+                                          last_name: emp.last_name,
+                                          pseudonym: emp.pseudonym,
+                                          department_name: emp.department_name,
+                                        })
+                                      }
+                                    />
+                                    {emp.pseudonym && emp.pseudonym !== "-" ? (
+                                      <div className={leaveStyles.pseudoLine}>{emp.pseudonym}</div>
+                                    ) : null}
+                                  </div>
+                                </td>
+                                <td>{emp.department_name || "—"}</td>
+                                <td>
+                                  <span
+                                    className={`${leaveStyles.badge} ${
+                                      statusKey === "Confirmed"
+                                        ? styles.badgeConfirmed
+                                        : styles.badgeProbation
+                                    }`}
+                                  >
+                                    {statusKey}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div className={styles.equity}>
+                                    <div className={styles.equityBar}>
+                                      <div
+                                        className={styles.segAnnual}
+                                        style={{ width: `${pool.annualPct}%` }}
+                                      />
+                                      <div
+                                        className={styles.segBer}
+                                        style={{ width: `${pool.berPct}%` }}
+                                      />
+                                    </div>
+                                    <div className={styles.equityLabel}>
+                                      <span>
+                                        {formatLeaveDays(pool.poolUsed)} / {formatLeaveDays(pool.cap)} used
+                                      </span>
+                                      <b className={availClass}>
+                                        {formatLeaveDays(pool.available)} left
+                                      </b>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className={`${styles.availableCell} ${availClass}`}>
+                                    {formatLeaveDays(pool.available)}d
+                                  </span>
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className={styles.editBtn}
+                                    onClick={() => handleEdit(emp)}
+                                  >
+                                    Edit
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
             </>
           ) : null}
 

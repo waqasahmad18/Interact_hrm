@@ -2,6 +2,97 @@
   background: #fff !important;
 }
 
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  font-size: 11.5px;
+  color: #8b93a6;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.legendAnnual {
+  background: #2e3f6e;
+}
+
+.legendBer {
+  background: #ad7a2e;
+}
+
+.badgeConfirmed {
+  background: #e6f3ec;
+  color: #2c8058;
+  text-transform: none;
+}
+
+.badgeProbation {
+  background: #fbf1df;
+  color: #ad7a2e;
+  text-transform: none;
+}
+
+.equity {
+  width: 150px;
+  max-width: 100%;
+}
+
+.equityBar {
+  height: 8px;
+  border-radius: 5px;
+  background: #eef0f3;
+  overflow: hidden;
+  display: flex;
+  width: 100%;
+}
+
+.segAnnual {
+  background: #2e3f6e;
+  height: 100%;
+}
+
+.segBer {
+  background: #ad7a2e;
+  height: 100%;
+}
+
+.equityLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #8b93a6;
+}
+
+.equityLabel b {
+  font-weight: 600;
+  color: #1b2233;
+  font-variant-numeric: tabular-nums;
+}
+
+.availLow {
+  color: #bc3a3a !important;
+}
+
+.availMid {
+  color: #ad7a2e !important;
+}
+
+.availableCell {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1b2233;
+}
+
 .dashTabs {
   display: flex;
   flex-wrap: wrap;
