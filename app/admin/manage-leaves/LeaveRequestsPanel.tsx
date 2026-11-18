@@ -7,8 +7,6 @@ import {
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
-import { FaFilter, FaSort, FaSortUp, FaSortDown } from "react-icons/fa";
-import tableStyles from "../../break-summary/break-summary.module.css";
 import styles from "../../leave/leave.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
@@ -20,19 +18,6 @@ import {
   isManagerOrgRole,
   isTeamLeadOrgRole,
 } from "@/lib/org-role";
-
-type LeaveSortKey =
-  | "employee_id"
-  | "employee_name"
-  | "pseudonym"
-  | "department_name"
-  | "leave_category"
-  | "start_date"
-  | "total_days"
-  | "status"
-  | "requested_at";
-
-type SortDirection = "asc" | "desc";
 
 function formatDate(dateString: string) {
   if (!dateString) return "";
@@ -104,14 +89,8 @@ export default function LeaveRequestsPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rejectRemark, setRejectRemark] = useState("");
   const [balanceInfo, setBalanceInfo] = useState<any | null>(null);
-  const [sortConfig, setSortConfig] = useState<{ key: LeaveSortKey; direction: SortDirection } | null>(
-    null
-  );
-  const [searchText, setSearchText] = useState("");
-  /** "" = all; pending | approved | rejected */
+  /** "" = all; pending | approved | rejected — driven by clickable status cards */
   const [statusFilter, setStatusFilter] = useState<"" | "pending" | "approved" | "rejected">("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   const leaveDayKey = (l: any) => {
@@ -267,15 +246,6 @@ export default function LeaveRequestsPanel() {
     return { pending, approved, rejected, total: leavesWithMeta.length, duplicates };
   }, [leavesWithMeta]);
 
-  const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    leavesWithMeta.forEach((l) => {
-      const c = String(l?.leave_category || "").trim();
-      if (c) set.add(c);
-    });
-    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [leavesWithMeta]);
-
   const handleDocumentDownload = (docPath: string) => {
     const filename = docPath.split("/").pop() || docPath;
     const link = document.createElement("a");
@@ -345,25 +315,6 @@ export default function LeaveRequestsPanel() {
     setBalanceInfo(null);
   };
 
-  const handleFilterClick = (key: LeaveSortKey) => {
-    setSortConfig((prev) => {
-      if (prev?.key === key) return null;
-      return { key, direction: "asc" };
-    });
-  };
-
-  const handleSortToggle = (key: LeaveSortKey) => {
-    setSortConfig((prev) => {
-      if (!prev || prev.key !== key) return { key, direction: "asc" };
-      return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
-    });
-  };
-
-  const getSortIcon = (key: LeaveSortKey) => {
-    if (!sortConfig || sortConfig.key !== key) return <FaSort style={{ opacity: 0.75 }} />;
-    return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
-  };
-
   const leaveRecencyMs = (l: any) => {
     let best = 0;
     for (const c of [l?.updated_at, l?.step2_at, l?.step1_at, l?.requested_at]) {
@@ -376,70 +327,15 @@ export default function LeaveRequestsPanel() {
   };
 
   const sortedLeaves = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
     const scoped = leavesWithMeta.filter((l) => {
-      if (statusFilter) {
-        if (overallLeaveStatus(l) !== statusFilter) return false;
-      }
-      if (categoryFilter) {
-        if (String(l.leave_category || "").trim().toLowerCase() !== categoryFilter.toLowerCase()) {
-          return false;
-        }
-      }
-      if (duplicatesOnly && !l.is_duplicate) return false;
-      if (q) {
-        const name = String(l.employee_name || "").toLowerCase();
-        const pseudo = String(l.pseudonym || "").toLowerCase();
-        const id = String(l.employee_id || "").toLowerCase();
-        if (!name.includes(q) && !pseudo.includes(q) && !id.includes(q)) return false;
-      }
+      if (statusFilter && overallLeaveStatus(l) !== statusFilter) return false;
       return true;
     });
-
-    // Default: most recent activity / approval on top.
-    if (!sortConfig) {
-      return [...scoped].sort((a, b) => {
-        const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
-        return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
-      });
-    }
-    const { key, direction } = sortConfig;
-    const getText = (v: unknown) => String(v || "").toLowerCase();
-
     return [...scoped].sort((a, b) => {
-      let cmp = 0;
-      switch (key) {
-        case "employee_id":
-        case "total_days":
-          cmp = Number(a[key] || 0) - Number(b[key] || 0);
-          break;
-        case "employee_name":
-        case "pseudonym":
-        case "department_name":
-        case "leave_category":
-          cmp = getText(a[key]).localeCompare(getText(b[key]), undefined, { sensitivity: "base" });
-          break;
-        case "status":
-          cmp = getText(overallLeaveStatus(a)).localeCompare(getText(overallLeaveStatus(b)), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        case "start_date":
-          cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
-          break;
-        case "requested_at":
-          cmp = leaveRecencyMs(a) - leaveRecencyMs(b);
-          break;
-        default:
-          cmp = 0;
-      }
-      return direction === "asc" ? cmp : -cmp;
+      const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
+      return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
     });
-  }, [leavesWithMeta, sortConfig, searchText, statusFilter, categoryFilter, duplicatesOnly]);
-
-  const hasActiveFilters = Boolean(
-    searchText.trim() || statusFilter || categoryFilter || duplicatesOnly,
-  );
+  }, [leavesWithMeta, statusFilter]);
 
   const toggleStatusFilter = (next: "pending" | "approved" | "rejected" | "") => {
     setStatusFilter((prev) => (prev === next ? "" : next));
@@ -451,47 +347,6 @@ export default function LeaveRequestsPanel() {
     return raw ? formatDateTime(String(raw)) : "—";
   };
 
-  const sortButtonStyle: React.CSSProperties = {
-    border: "none",
-    background: "transparent",
-    color: "#fff",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    fontSize: "0.8rem",
-  };
-
-  const renderSortableHeader = (label: string, key: LeaveSortKey) => {
-    const isActive = sortConfig?.key === key;
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <button
-            type="button"
-            onClick={() => handleFilterClick(key)}
-            style={{ ...sortButtonStyle, opacity: isActive ? 1 : 0.78 }}
-            title={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
-            aria-label={isActive ? `Clear ${label} sort` : `Apply ${label} sort`}
-          >
-            <FaFilter />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSortToggle(key)}
-            style={sortButtonStyle}
-            title={`Toggle sort direction for ${label}`}
-            aria-label={`Toggle sort direction for ${label}`}
-          >
-            {getSortIcon(key)}
-          </button>
-        </div>
-        <span>{label}</span>
-      </div>
-    );
-  };
-
   const selectedStatus = leaveStatusLabel(selectedLeave || {});
   const selectedPending =
     Boolean(selectedLeave) &&
@@ -500,7 +355,7 @@ export default function LeaveRequestsPanel() {
 
   return (
     <>
-      <div>
+      <div className={styles.reqPanel}>
           <p className={styles.subtitle} style={{ marginTop: 0 }}>
             Review and approve employee leave applications.
           </p>
@@ -558,97 +413,23 @@ export default function LeaveRequestsPanel() {
             </button>
           </div>
 
-          <div className={styles.toolbar}>
-            <div className={styles.searchWrap}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="11" cy="11" r="7" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                className={styles.toolbarSearch}
-                placeholder="Search by name or ID"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-            <select
-              className={styles.toolbarSelect}
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as "" | "pending" | "approved" | "rejected")
-              }
-              aria-label="Filter by status"
-            >
-              <option value="">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              className={styles.toolbarSelect}
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              aria-label="Filter by category"
-            >
-              <option value="">All categories</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
-                </option>
-              ))}
-            </select>
-            <label
-              className={`${styles.toggleChip}${duplicatesOnly ? ` ${styles.toggleChipOn}` : ""}`}
-            >
-              <input
-                type="checkbox"
-                checked={duplicatesOnly}
-                onChange={(e) => setDuplicatesOnly(e.target.checked)}
-              />
-              Duplicates only
-            </label>
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                className={styles.clearFilters}
-                onClick={() => {
-                  setSearchText("");
-                  setStatusFilter("");
-                  setCategoryFilter("");
-                  setDuplicatesOnly(false);
-                }}
-              >
-                Clear filters
-              </button>
-            ) : null}
-          </div>
-
-          {!loading && leavesWithMeta.length > 0 && hasActiveFilters ? (
-            <p className={styles.searchMeta}>
-              Showing {sortedLeaves.length} of {leavesWithMeta.length} request
-              {sortedLeaves.length === 1 ? "" : "s"}
-            </p>
-          ) : null}
-
           {loading ? (
             <div className={styles.loading}>Loading leave requests…</div>
           ) : error ? (
             <div className={styles.alertError}>{error}</div>
           ) : (
-            <div className={styles.tableCard}>
-              <div className={tableStyles.breakSummaryTableWrapper}>
-                <table className={tableStyles.breakSummaryTable}>
+            <div className={styles.reqTableShell}>
+              <div className={styles.reqTableScroll}>
+                <table className={styles.reqTable}>
                   <thead>
                     <tr>
-                      <th>{renderSortableHeader("ID", "employee_id")}</th>
-                      <th>{renderSortableHeader("Employee", "employee_name")}</th>
-                      <th>{renderSortableHeader("Department", "department_name")}</th>
-                      <th>{renderSortableHeader("Category", "leave_category")}</th>
-                      <th>{renderSortableHeader("Dates", "start_date")}</th>
-                      <th>{renderSortableHeader("Days", "total_days")}</th>
-                      <th>{renderSortableHeader("Status", "status")}</th>
+                      <th>ID</th>
+                      <th>Employee</th>
+                      <th>Department</th>
+                      <th>Category</th>
+                      <th>Dates</th>
+                      <th>Days</th>
+                      <th>Status</th>
                       <th>Reason</th>
                       <th>Action</th>
                     </tr>
@@ -656,9 +437,9 @@ export default function LeaveRequestsPanel() {
                   <tbody>
                     {sortedLeaves.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className={tableStyles.breakSummaryNoRecords}>
-                          {hasActiveFilters
-                            ? "No requests match these filters."
+                        <td colSpan={9} className={styles.reqEmpty}>
+                          {statusFilter
+                            ? "No requests match this status."
                             : "No leave requests yet."}
                         </td>
                       </tr>
@@ -676,7 +457,7 @@ export default function LeaveRequestsPanel() {
                             }
                             className={l.is_duplicate ? styles.rowDim : undefined}
                           >
-                            <td className={tableStyles.cellMuted}>{l.employee_id}</td>
+                            <td className={styles.reqId}>{l.employee_id}</td>
                             <td>
                               <div className={styles.personCell}>
                                 <EmployeeTableNameCell
@@ -705,7 +486,7 @@ export default function LeaveRequestsPanel() {
                                 {status.charAt(0).toUpperCase() + status.slice(1)}
                               </span>
                               {l.is_duplicate ? (
-                                <div style={{ marginTop: 4 }}>
+                                <div style={{ marginTop: 2 }}>
                                   <span className={`${styles.badge} ${styles.badgeDup}`}>
                                     Duplicate
                                   </span>

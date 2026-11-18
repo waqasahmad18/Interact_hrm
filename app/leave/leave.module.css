@@ -22,9 +22,9 @@
 }
 
 .subtitle {
-  margin: 0 0 18px;
-  color: #64748b;
-  font-size: 14px;
+  margin: 0 0 12px;
+  color: #5b6478;
+  font-size: 13.5px;
 }
 
 .toolbar {
@@ -95,41 +95,111 @@
   color: #0f766e;
 }
 
+.reqPanel {
+  color: #1b2233;
+}
+
+.reqTableShell {
+  background: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04), 0 6px 20px -8px rgba(27, 34, 51, 0.1);
+  overflow: hidden;
+}
+
+.reqTableScroll {
+  overflow-x: auto;
+}
+
+.reqTable {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.reqTable thead th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8b93a6;
+  font-weight: 600;
+  background: #fafbfc;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e4e7ec;
+  white-space: nowrap;
+}
+
+.reqTable tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #e4e7ec;
+  font-size: 12.5px;
+  vertical-align: middle;
+  color: #1b2233;
+}
+
+.reqTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.reqTable tbody tr:hover {
+  background: #fafbfd;
+}
+
+.reqId {
+  color: #8b93a6;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.reqEmpty {
+  text-align: center;
+  padding: 28px 12px !important;
+  color: #8b93a6;
+  font-size: 13px;
+}
+
 .personCell {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 160px;
+  gap: 0;
+  min-width: 0;
+  max-width: 180px;
 }
 
 .pseudoLine {
-  padding-left: 42px;
-  font-size: 12px;
-  color: #94a3b8;
+  padding-left: 36px;
+  font-size: 11px;
+  color: #8b93a6;
+  line-height: 1.2;
+  margin-top: -2px;
 }
 
 .monoCell {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   white-space: nowrap;
+  color: #5b6478;
 }
 
 .reasonCell {
-  max-width: 280px;
+  max-width: 200px;
 }
 
 .reasonBtn {
   display: block;
   width: 100%;
-  max-width: 280px;
+  max-width: 200px;
   border: none;
   background: transparent;
   padding: 0;
   margin: 0;
   text-align: left;
   font: inherit;
-  font-size: 13px;
-  color: #334155;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #5b6478;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -137,55 +207,55 @@
 }
 
 .reasonBtn:hover {
-  color: #0f766e;
+  color: #2e3f6e;
   text-decoration: underline;
 }
 
 .rowDim {
-  opacity: 0.72;
+  opacity: 0.78;
 }
 
 .actionStamp {
   font-size: 11px;
-  color: #94a3b8;
+  color: #8b93a6;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .badgeType {
-  background: #f1f5f9;
-  color: #475569;
+  background: #eef0f3;
+  color: #5b6478;
   text-transform: none;
 }
 
 .badgeDup {
-  background: #fff7ed;
-  color: #c2410c;
+  background: #fbf1df;
+  color: #ad7a2e;
   text-transform: none;
 }
 
 .btnApproveOutline,
 .btnRejectOutline {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 5px 12px;
-  font-size: 12px;
+  border: 1px solid #d3d7e0;
+  border-radius: 7px;
+  padding: 4px 9px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   background: #fff;
-  color: #0f172a;
+  color: #1b2233;
 }
 
 .btnApproveOutline:hover {
-  border-color: #86efac;
-  background: #ecfdf5;
-  color: #047857;
+  border-color: #b7d9c7;
+  background: #e6f3ec;
+  color: #2c8058;
 }
 
 .btnRejectOutline:hover {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #dc2626;
+  border-color: #e8b4b4;
+  background: #fbeaea;
+  color: #bc3a3a;
 }
 
 .filterBar {
@@ -265,70 +335,69 @@
 .statRow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .statCard {
   background: #fff;
-  border: 1px solid #e8edf3;
-  border-radius: 16px;
-  padding: 16px 18px;
-  box-shadow: 0 4px 18px rgba(20, 184, 166, 0.12);
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04), 0 6px 20px -8px rgba(27, 34, 51, 0.1);
   text-align: left;
   cursor: pointer;
   font: inherit;
   width: 100%;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .statCard:hover {
-  border-color: #99f6e4;
-  box-shadow: 0 6px 22px rgba(20, 184, 166, 0.18);
-  transform: translateY(-1px);
+  border-color: #d3d7e0;
 }
 
 .statCardActive {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2), 0 6px 22px rgba(20, 184, 166, 0.16);
+  border-color: #2e3f6e;
+  box-shadow: 0 0 0 2px rgba(46, 63, 110, 0.16);
 }
 
 .statCardPurple {
-  border-top: 4px solid #0f766e;
+  border-top: 3px solid #2e3f6e;
 }
 
 .statCardGreen {
-  border-top: 4px solid #007a5a;
+  border-top: 3px solid #2c8058;
 }
 
 .statCardGold {
-  border-top: 4px solid #e8912d;
+  border-top: 3px solid #ad7a2e;
 }
 
 .statCardRed {
-  border-top: 4px solid #dc2626;
+  border-top: 3px solid #bc3a3a;
 }
 
 .statLabel {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
+  letter-spacing: 0.6px;
+  color: #8b93a6;
 }
 
 .statValue {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #0f172a;
+  margin: 4px 0 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #1b2233;
+  font-variant-numeric: tabular-nums;
 }
 
 .statSub {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: #8b93a6;
 }
 
 @media (max-width: 900px) {
@@ -354,33 +423,34 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .badgeApproved {
-  background: #ecfdf5;
-  color: #047857;
+  background: #e6f3ec;
+  color: #2c8058;
 }
 
 .badgeRejected {
-  background: #fef2f2;
-  color: #dc2626;
+  background: #fbeaea;
+  color: #bc3a3a;
 }
 
 .badgePending {
-  background: #fff7ed;
-  color: #c2410c;
+  background: #fbf1df;
+  color: #ad7a2e;
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 5px;
+  flex-wrap: nowrap;
 }
 
 .btnView {
