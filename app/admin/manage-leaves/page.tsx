@@ -105,7 +105,6 @@ export default function ManageLeavesPage() {
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
   /** Clickable legend: all | annual | bereavement (opens Requests filtered by category) */
   const [balanceFocus, setBalanceFocus] = useState<"all" | "annual" | "bereavement">("all");
-  const [requestsCategory, setRequestsCategory] = useState("");
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
@@ -312,10 +311,9 @@ export default function ManageLeavesPage() {
     };
   };
 
-  const openCategoryLeaves = (category: "annual" | "bereavement") => {
-    setBalanceFocus(category);
-    setRequestsCategory(category);
-    selectTab("requests");
+  /** Stay on Balances — toggle which leave type column is focused (no tab switch). */
+  const toggleBalanceFocus = (category: "annual" | "bereavement") => {
+    setBalanceFocus((prev) => (prev === category ? "all" : category));
   };
 
   const filteredEmployees = useMemo(() => {
@@ -394,19 +392,14 @@ export default function ManageLeavesPage() {
             </button>
           </div>
 
-          {activeTab === "requests" ? (
-            <LeaveRequestsPanel
-              initialCategory={requestsCategory}
-              onCategoryConsumed={() => setRequestsCategory("")}
-            />
-          ) : null}
+          {activeTab === "requests" ? <LeaveRequestsPanel /> : null}
           {activeTab === "summary" ? <LeaveSummaryPanel /> : null}
 
           {activeTab === "balances" ? (
             <>
               <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
                 Live annual and bereavement balances from the database. Click Annual or
-                Bereavement to open matching leave requests.
+                Bereavement to focus that column (click again for both).
               </p>
               <div className={leaveStyles.toolbar}>
                 <div className={leaveStyles.searchWrap}>
@@ -479,8 +472,8 @@ export default function ManageLeavesPage() {
                   <button
                     type="button"
                     className={`${styles.legendBtn}${balanceFocus === "annual" ? ` ${styles.legendBtnOn}` : ""}`}
-                    onClick={() => openCategoryLeaves("annual")}
-                    title="Show all annual leave requests"
+                    onClick={() => toggleBalanceFocus("annual")}
+                    title="Focus annual balances"
                   >
                     <i className={`${styles.legendDot} ${styles.legendAnnual}`} />
                     Annual
@@ -488,8 +481,8 @@ export default function ManageLeavesPage() {
                   <button
                     type="button"
                     className={`${styles.legendBtn}${balanceFocus === "bereavement" ? ` ${styles.legendBtnOn}` : ""}`}
-                    onClick={() => openCategoryLeaves("bereavement")}
-                    title="Show all bereavement leave requests"
+                    onClick={() => toggleBalanceFocus("bereavement")}
+                    title="Focus bereavement balances"
                   >
                     <i className={`${styles.legendDot} ${styles.legendBer}`} />
                     Bereavement
@@ -502,15 +495,15 @@ export default function ManageLeavesPage() {
                   {loading ? (
                     <p className={leaveStyles.loading}>Loading employees…</p>
                   ) : (
-                    <table className={leaveStyles.reqTable}>
+                    <table className={`${leaveStyles.reqTable} ${leaveStyles.balTable}`}>
                       <thead>
                         <tr>
                           <th>ID</th>
                           <th>Employee</th>
                           <th>Department</th>
                           <th>Status</th>
-                          <th>Annual</th>
-                          <th>Bereavement</th>
+                          {balanceFocus !== "bereavement" ? <th>Annual</th> : null}
+                          {balanceFocus !== "annual" ? <th>Bereavement</th> : null}
                           <th>Available</th>
                           <th>Action</th>
                         </tr>
@@ -518,7 +511,7 @@ export default function ManageLeavesPage() {
                       <tbody>
                         {filteredEmployees.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className={leaveStyles.reqEmpty}>
+                            <td colSpan={7} className={leaveStyles.reqEmpty}>
                               No employees match these filters.
                             </td>
                           </tr>
@@ -526,10 +519,16 @@ export default function ManageLeavesPage() {
                           filteredEmployees.map((emp) => {
                             const statusKey = employmentStatusKey(emp);
                             const bal = balanceFor(emp);
+                            const focusAvail =
+                              balanceFocus === "annual"
+                                ? bal.annualCurrent
+                                : balanceFocus === "bereavement"
+                                  ? bal.berCurrent
+                                  : bal.available;
                             const availClass =
-                              bal.available < 2
+                              focusAvail < 2
                                 ? styles.availLow
-                                : bal.available < 5
+                                : focusAvail < 5
                                   ? styles.availMid
                                   : "";
                             return (
@@ -556,7 +555,9 @@ export default function ManageLeavesPage() {
                                     ) : null}
                                   </div>
                                 </td>
-                                <td>{emp.department_name || "—"}</td>
+                                <td className={leaveStyles.sumDeptCell} title={emp.department_name || ""}>
+                                  {emp.department_name || "—"}
+                                </td>
                                 <td>
                                   <span
                                     className={`${leaveStyles.badge} ${
@@ -568,47 +569,51 @@ export default function ManageLeavesPage() {
                                     {statusKey}
                                   </span>
                                 </td>
-                                <td>
-                                  <div className={styles.equity}>
-                                    <div className={styles.equityBar}>
-                                      <div
-                                        className={styles.segAnnual}
-                                        style={{ width: `${bal.annualPct}%` }}
-                                      />
+                                {balanceFocus !== "bereavement" ? (
+                                  <td>
+                                    <div className={styles.equity}>
+                                      <div className={styles.equityBar}>
+                                        <div
+                                          className={styles.segAnnual}
+                                          style={{ width: `${bal.annualPct}%` }}
+                                        />
+                                      </div>
+                                      <div className={styles.equityLabel}>
+                                        <span>
+                                          {formatLeaveDays(bal.annualCurrent)} /{" "}
+                                          {formatLeaveDays(bal.annualAllow)}
+                                        </span>
+                                        <b>
+                                          {formatLeaveDays(bal.annualUsed)} used
+                                        </b>
+                                      </div>
                                     </div>
-                                    <div className={styles.equityLabel}>
-                                      <span>
-                                        {formatLeaveDays(bal.annualCurrent)} /{" "}
-                                        {formatLeaveDays(bal.annualAllow)}
-                                      </span>
-                                      <b>
-                                        {formatLeaveDays(bal.annualUsed)} used
-                                      </b>
+                                  </td>
+                                ) : null}
+                                {balanceFocus !== "annual" ? (
+                                  <td>
+                                    <div className={styles.equity}>
+                                      <div className={styles.equityBar}>
+                                        <div
+                                          className={styles.segBer}
+                                          style={{ width: `${bal.berPct}%` }}
+                                        />
+                                      </div>
+                                      <div className={styles.equityLabel}>
+                                        <span>
+                                          {formatLeaveDays(bal.berCurrent)} /{" "}
+                                          {formatLeaveDays(bal.berAllow)}
+                                        </span>
+                                        <b>
+                                          {formatLeaveDays(bal.berUsed)} used
+                                        </b>
+                                      </div>
                                     </div>
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className={styles.equity}>
-                                    <div className={styles.equityBar}>
-                                      <div
-                                        className={styles.segBer}
-                                        style={{ width: `${bal.berPct}%` }}
-                                      />
-                                    </div>
-                                    <div className={styles.equityLabel}>
-                                      <span>
-                                        {formatLeaveDays(bal.berCurrent)} /{" "}
-                                        {formatLeaveDays(bal.berAllow)}
-                                      </span>
-                                      <b>
-                                        {formatLeaveDays(bal.berUsed)} used
-                                      </b>
-                                    </div>
-                                  </div>
-                                </td>
+                                  </td>
+                                ) : null}
                                 <td>
                                   <span className={`${styles.availableCell} ${availClass}`}>
-                                    {formatLeaveDays(bal.available)}d
+                                    {formatLeaveDays(focusAvail)}d
                                   </span>
                                 </td>
                                 <td>

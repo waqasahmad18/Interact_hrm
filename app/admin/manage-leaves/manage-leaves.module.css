@@ -3,8 +3,9 @@
 }
 
 .pageWide {
-  max-width: 1480px !important;
+  max-width: 100% !important;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .legend {
@@ -73,8 +74,9 @@
 }
 
 .equity {
-  width: 180px;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
 .equityBar {
@@ -99,10 +101,18 @@
 .equityLabel {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: #8b93a6;
+  min-width: 0;
+}
+
+.equityLabel span,
+.equityLabel b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .equityLabel b {
@@ -294,11 +304,12 @@
   background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.75rem;
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .editBtn:hover {
