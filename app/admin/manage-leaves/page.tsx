@@ -14,9 +14,34 @@ import LeaveSummaryPanel from "./LeaveSummaryPanel";
 
 type LeaveDashTab = "balances" | "requests" | "summary";
 
+const MANAGE_LEAVES_TAB_KEY = "manage-leaves-tab";
+
 function tabFromParam(raw: string | null): LeaveDashTab | null {
   if (raw === "balances" || raw === "requests" || raw === "summary") return raw;
   return null;
+}
+
+function persistLeaveTab(tab: LeaveDashTab) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    sessionStorage.setItem(MANAGE_LEAVES_TAB_KEY, tab);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readPersistedLeaveTab(): LeaveDashTab | null {
+  try {
+    const fromUrl = tabFromParam(
+      new URLSearchParams(window.location.search).get("tab"),
+    );
+    if (fromUrl) return fromUrl;
+    return tabFromParam(sessionStorage.getItem(MANAGE_LEAVES_TAB_KEY));
+  } catch {
+    return null;
+  }
 }
 
 interface Employee {
@@ -85,15 +110,16 @@ export default function ManageLeavesPage() {
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
+  const selectTab = (tab: LeaveDashTab) => {
+    setActiveTab(tab);
+    persistLeaveTab(tab);
+  };
+
   useEffect(() => {
-    try {
-      const next = tabFromParam(
-        new URLSearchParams(window.location.search).get("tab"),
-      );
-      if (next) setActiveTab(next);
-    } catch {
-      /* ignore */
-    }
+    const next = readPersistedLeaveTab();
+    if (!next) return;
+    setActiveTab(next);
+    persistLeaveTab(next);
   }, []);
 
   useEffect(() => {
@@ -289,7 +315,7 @@ export default function ManageLeavesPage() {
   const openCategoryLeaves = (category: "annual" | "bereavement") => {
     setBalanceFocus(category);
     setRequestsCategory(category);
-    setActiveTab("requests");
+    selectTab("requests");
   };
 
   const filteredEmployees = useMemo(() => {
@@ -343,7 +369,7 @@ export default function ManageLeavesPage() {
               role="tab"
               aria-selected={activeTab === "balances"}
               className={`${styles.dashTab}${activeTab === "balances" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => setActiveTab("balances")}
+              onClick={() => selectTab("balances")}
             >
               Balances
               <span className={styles.dashTabCount}>{employees.length}</span>
@@ -353,7 +379,7 @@ export default function ManageLeavesPage() {
               role="tab"
               aria-selected={activeTab === "requests"}
               className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => setActiveTab("requests")}
+              onClick={() => selectTab("requests")}
             >
               Requests
             </button>
@@ -362,7 +388,7 @@ export default function ManageLeavesPage() {
               role="tab"
               aria-selected={activeTab === "summary"}
               className={`${styles.dashTab}${activeTab === "summary" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => setActiveTab("summary")}
+              onClick={() => selectTab("summary")}
             >
               Summary
             </button>

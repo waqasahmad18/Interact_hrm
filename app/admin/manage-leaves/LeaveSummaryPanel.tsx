@@ -35,15 +35,36 @@ function titleCaseType(raw: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 function YearTrend({ values }: { values: number[] }) {
-  const max = Math.max(1, ...values);
+  const series = values.length === 12 ? values : Array.from({ length: 12 }, (_, i) => values[i] || 0);
+  const max = Math.max(1, ...series);
+  const tip = series
+    .map((v, i) => `${MONTH_SHORT[i]}: ${v}`)
+    .join(" · ");
   return (
-    <div className={leaveStyles.trendRow} title={values.map((v, i) => `${i + 1}:${v}`).join(" ")}>
-      {values.map((v, i) => (
+    <div className={leaveStyles.trendRow} title={tip} aria-label={`Year trend: ${tip}`}>
+      {series.map((v, i) => (
         <span
-          key={i}
-          className={leaveStyles.trendBar}
-          style={{ height: `${Math.max(2, Math.round((v / max) * 26))}px` }}
+          key={MONTH_SHORT[i]}
+          className={`${leaveStyles.trendBar}${v <= 0 ? ` ${leaveStyles.trendBarMuted}` : ""}`}
+          style={{
+            height: `${v <= 0 ? 3 : Math.max(4, Math.round((v / max) * 28))}px`,
+          }}
         />
       ))}
     </div>
@@ -201,8 +222,9 @@ export default function LeaveSummaryPanel() {
           <line x1="4" y1="22" x2="4" y2="15" />
         </svg>
         <span>
-          Rows with no leave activity are collapsed out of the default view —
-          toggle <b>Show zero-activity</b> to bring them back.
+          Rows with no leave activity and no pseudo name assigned are collapsed
+          out of the default view — toggle <b>Show zero-activity</b> to bring
+          them back.
         </span>
       </div>
 

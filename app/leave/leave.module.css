@@ -268,12 +268,16 @@
 }
 
 .sumTable thead th {
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 10.5px;
+  letter-spacing: 0.5px;
+  background: #fff;
+  color: #8b93a6;
+  border-bottom: 1px solid #eef0f3;
 }
 
 .sumTable tbody td {
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 12.5px;
 }
 
@@ -314,16 +318,23 @@
 .trendRow {
   display: inline-flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 28px;
-  min-width: 84px;
+  gap: 3px;
+  height: 32px;
+  min-width: 96px;
+  padding: 0 2px;
 }
 
 .trendBar {
   display: inline-block;
-  width: 5px;
+  width: 6px;
   background: #2e3f6e;
   border-radius: 2px 2px 0 0;
+  opacity: 0.92;
+}
+
+.trendBarMuted {
+  background: #c5cad6;
+  opacity: 0.7;
 }
 
 .reqTable thead th {
