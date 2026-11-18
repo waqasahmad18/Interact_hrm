@@ -15,6 +15,7 @@ import {
   FaUsers,
   FaSearch,
   FaTicketAlt,
+  FaInbox,
   FaClipboardList,
   FaCalendarAlt,
   FaWallet,
@@ -144,13 +145,14 @@ function navTabIsActive(
 }
 
 /** Bump when menu paths change so stale localStorage links (e.g. ?view=) refresh. */
-const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache_v2";
+const ACCESS_MENU_CACHE_KEY = "employeeAccessMenuCache_v3";
 
 const BASE_EMPLOYEE_TABS: NavTab[] = [
   { name: "Employee Dashboard", path: "/employee-dashboard", icon: <FaTachometerAlt /> },
   { name: "My Info", path: "/employee-dashboard/my-info", icon: <FaUser /> },
   { name: "My Team", path: "/employee-dashboard/my-team", icon: <FaUsers /> },
   { name: "Generate Ticket", path: "/employee-dashboard/generate-ticket", icon: <FaTicketAlt /> },
+  { name: "My Ticket Inbox", path: "/employee-dashboard/my-tickets", icon: <FaInbox /> },
 ];
 
 function buildAccessTabsFromPayload(
@@ -245,6 +247,7 @@ const PREFETCH_PATHS = [
   "/employee-dashboard/my-team",
   "/employee-dashboard/my-info",
   "/employee-dashboard/generate-ticket",
+  "/employee-dashboard/my-tickets",
   "/employee-dashboard/time",
   "/employee-dashboard/attendance",
 ];
@@ -516,13 +519,15 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         t.path !== "/employee-dashboard/my-team" &&
         t.path !== "/employee-dashboard/tickets",
     );
-    const [home, myInfo, myTeam, generateTicket, ...tail] = BASE_EMPLOYEE_TABS;
-    // Home → My Info → My Team → Generate Ticket → Ticket Inbox (HR) → …
+    const [home, myInfo, myTeam, generateTicket, myTicketInbox, ...tail] =
+      BASE_EMPLOYEE_TABS;
+    // Home → My Info → My Team → Generate Ticket → My Ticket Inbox → Ticket Inbox (HR) → …
     return [
       home,
       myInfo,
       myTeam,
       generateTicket,
+      myTicketInbox,
       ...ticketInbox,
       ...tail,
       ...rest,

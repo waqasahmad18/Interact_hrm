@@ -363,6 +363,8 @@ export async function POST(req: NextRequest) {
             error: gate.error,
             annualBalance: bal.annualBalance,
             bereavementBalance: bal.bereavementBalance,
+            maternityBalance: bal.maternityBalance,
+            paternityBalance: bal.paternityBalance,
           },
           { status: 400 }
         );

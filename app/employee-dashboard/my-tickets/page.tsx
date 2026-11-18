@@ -85,6 +85,11 @@ function MyTicketsPageInner() {
   const [replyError, setReplyError] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
   const [search, setSearch] = useState("");
+  const [monthFilter, setMonthFilter] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [dateFilter, setDateFilter] = useState("");
 
   const clearOpenQuery = useCallback(() => {
     if (!searchParams?.get("open")) return;
@@ -234,6 +239,18 @@ function MyTicketsPageInner() {
     const closed = isTicketClosed(t.status);
     if (statusFilter === "open" && closed) return false;
     if (statusFilter === "closed" && !closed) return false;
+    const requested = new Date(t.requested_at);
+    if (!Number.isNaN(requested.getTime())) {
+      const y = requested.getFullYear();
+      const m = String(requested.getMonth() + 1).padStart(2, "0");
+      const d = String(requested.getDate()).padStart(2, "0");
+      const ymd = `${y}-${m}-${d}`;
+      const ym = `${y}-${m}`;
+      if (dateFilter && ymd !== dateFilter) return false;
+      if (!dateFilter && monthFilter && ym !== monthFilter) return false;
+    } else if (dateFilter || monthFilter) {
+      return false;
+    }
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -263,9 +280,34 @@ function MyTicketsPageInner() {
               alignItems: "center",
             }}
           >
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#64748b" }}>
+              Month
+              <input
+                className={styles.input}
+                style={{ width: "auto", minWidth: 150, marginBottom: 0 }}
+                type="month"
+                value={monthFilter}
+                onChange={(e) => {
+                  setMonthFilter(e.target.value);
+                  setDateFilter("");
+                }}
+                aria-label="Filter by month"
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#64748b" }}>
+              Date
+              <input
+                className={styles.input}
+                style={{ width: "auto", minWidth: 150, marginBottom: 0 }}
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                aria-label="Filter by date"
+              />
+            </label>
             <input
               className={styles.input}
-              style={{ flex: "1 1 200px", marginBottom: 0 }}
+              style={{ flex: "1 1 200px", marginBottom: 0, alignSelf: "flex-end" }}
               type="search"
               placeholder="Search ticket #, subject, type…"
               value={search}
@@ -273,7 +315,7 @@ function MyTicketsPageInner() {
             />
             <select
               className={styles.select}
-              style={{ width: "auto", minWidth: 140, marginBottom: 0 }}
+              style={{ width: "auto", minWidth: 140, marginBottom: 0, alignSelf: "flex-end" }}
               value={statusFilter}
               onChange={(e) =>
                 setStatusFilter(e.target.value as "all" | "open" | "closed")
@@ -293,6 +335,7 @@ function MyTicketsPageInner() {
                 textDecoration: "none",
                 width: "auto",
                 padding: "10px 14px",
+                alignSelf: "flex-end",
               }}
             >
               New ticket

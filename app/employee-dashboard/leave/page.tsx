@@ -76,6 +76,10 @@ export default function LeavePage() {
   const [annualAllowance, setAnnualAllowance] = useState(20);
   const [employmentStatus, setEmploymentStatus] = useState<string>("Permanent");
   const [bereavementBalance, setBereavementBalance] = useState(3);
+  const [maternityBalance, setMaternityBalance] = useState(0);
+  const [maternityAllowance, setMaternityAllowance] = useState(90);
+  const [paternityBalance, setPaternityBalance] = useState(0);
+  const [paternityAllowance, setPaternityAllowance] = useState(5);
   const [category, setCategory] = useState("annual");
   const [employeeGender, setEmployeeGender] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -179,7 +183,14 @@ export default function LeavePage() {
         setLeaveBalance(balanceData.annualBalance || 0);
         setAnnualAllowance(balanceData.annualAllowance || 20);
         setBereavementBalance(balanceData.bereavementBalance || 0);
+        setMaternityBalance(balanceData.maternityBalance || 0);
+        setMaternityAllowance(balanceData.maternityAllowance || 90);
+        setPaternityBalance(balanceData.paternityBalance || 0);
+        setPaternityAllowance(balanceData.paternityAllowance || 5);
         setEmploymentStatus(balanceData.employment_status || "Permanent");
+        if (balanceData.gender) {
+          setEmployeeGender(String(balanceData.gender).trim());
+        }
       }
     } catch {
       /* keep current state */
@@ -224,7 +235,14 @@ export default function LeavePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rem = category === "bereavement" ? bereavementBalance : leaveBalance;
+    const rem =
+      category === "bereavement"
+        ? bereavementBalance
+        : category === "maternity"
+          ? maternityBalance
+          : category === "paternity"
+            ? paternityBalance
+            : leaveBalance;
     const days = calcDays(startDate, endDate);
     if (rem <= 0) {
       setError("Leave balance is 0. You cannot apply for leave.");
@@ -302,7 +320,13 @@ export default function LeavePage() {
   const balanceLabel =
     employmentStatus === "Probation" ? "Leave balance" : "Annual leave balance";
   const effectiveBalance =
-    category === "bereavement" ? bereavementBalance : leaveBalance;
+    category === "bereavement"
+      ? bereavementBalance
+      : category === "maternity"
+        ? maternityBalance
+        : category === "paternity"
+          ? paternityBalance
+          : leaveBalance;
   const leaveDisabled = effectiveBalance <= 0;
 
   return (
@@ -344,6 +368,32 @@ export default function LeavePage() {
             </p>
             <p className={styles.statSub}>Days remaining</p>
           </div>
+          {maternityAllowance > 0 ? (
+            <div className={`${styles.statCard} ${styles.statCardPurple}`}>
+              <p className={styles.statLabel}>Maternity leave</p>
+              <p className={styles.statValue}>
+                {maternityBalance}
+                <span style={{ fontSize: "1rem", fontWeight: 600, color: "#94a3b8" }}>
+                  {" "}
+                  / {maternityAllowance}
+                </span>
+              </p>
+              <p className={styles.statSub}>Days remaining</p>
+            </div>
+          ) : null}
+          {paternityAllowance > 0 ? (
+            <div className={`${styles.statCard} ${styles.statCardGreen}`}>
+              <p className={styles.statLabel}>Paternity leave</p>
+              <p className={styles.statValue}>
+                {paternityBalance}
+                <span style={{ fontSize: "1rem", fontWeight: 600, color: "#94a3b8" }}>
+                  {" "}
+                  / {paternityAllowance}
+                </span>
+              </p>
+              <p className={styles.statSub}>Days remaining</p>
+            </div>
+          ) : null}
         </div>
 
         <form className={styles.formCard} onSubmit={handleSubmit}>

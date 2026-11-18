@@ -11,6 +11,7 @@ import { ModalPortal } from "@/app/components/ModalPortal";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 import LeaveRequestsPanel from "./LeaveRequestsPanel";
 import LeaveSummaryPanel from "./LeaveSummaryPanel";
+import { normalizeEmployeeGender } from "@/lib/leave-categories";
 
 type LeaveDashTab = "balances" | "requests" | "summary";
 
@@ -50,12 +51,19 @@ interface Employee {
   last_name: string;
   employee_code: string;
   employment_status: string;
+  gender?: string | null;
   annual_allowance: number;
   bereavement_allowance: number;
+  maternity_allowance?: number;
+  paternity_allowance?: number;
   annual_used: number;
   bereavement_used: number;
+  maternity_used?: number;
+  paternity_used?: number;
   annual_current_balance: number;
   bereavement_current_balance: number;
+  maternity_current_balance?: number;
+  paternity_current_balance?: number;
   annual_balance_adjustment: number;
   bereavement_balance_adjustment: number;
   department_name?: string;
@@ -92,7 +100,9 @@ export default function ManageLeavesPage() {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     annual_current_balance: "20",
-    bereavement_current_balance: "3"
+    bereavement_current_balance: "3",
+    maternity_current_balance: "90",
+    paternity_current_balance: "5",
   });
   const [saving, setSaving] = useState(false);
   const [searchName, setSearchName] = useState("");
@@ -222,7 +232,13 @@ export default function ManageLeavesPage() {
     setEditingEmployee(employee);
     setFormData({
       annual_current_balance: formatLeaveDays(employee.annual_current_balance),
-      bereavement_current_balance: formatLeaveDays(employee.bereavement_current_balance)
+      bereavement_current_balance: formatLeaveDays(employee.bereavement_current_balance),
+      maternity_current_balance: formatLeaveDays(
+        employee.maternity_current_balance ?? employee.maternity_allowance ?? 90,
+      ),
+      paternity_current_balance: formatLeaveDays(
+        employee.paternity_current_balance ?? employee.paternity_allowance ?? 5,
+      ),
     });
     setShowModal(true);
   }
@@ -238,7 +254,9 @@ export default function ManageLeavesPage() {
         body: JSON.stringify({
           employee_id: editingEmployee.id,
           annual_current_balance: parseLeaveDays(formData.annual_current_balance),
-          bereavement_current_balance: parseLeaveDays(formData.bereavement_current_balance)
+          bereavement_current_balance: parseLeaveDays(formData.bereavement_current_balance),
+          maternity_current_balance: parseLeaveDays(formData.maternity_current_balance),
+          paternity_current_balance: parseLeaveDays(formData.paternity_current_balance),
         })
       });
 
@@ -275,21 +293,44 @@ export default function ManageLeavesPage() {
 
   /** Real balances from API (allowance − used + adjustment) — never invent static used. */
   const balanceFor = (emp: Employee) => {
+    const gender = normalizeEmployeeGender(emp.gender);
     const annualAllow = Number(emp.annual_allowance) || 20;
     const berAllow = Number(emp.bereavement_allowance) || 3;
+    const matAllow =
+      gender === "female" ? Number(emp.maternity_allowance) || 90 : 0;
+    const patAllow =
+      gender === "male" ? Number(emp.paternity_allowance) || 5 : 0;
     const annualCurrent = Number.isFinite(Number(emp.annual_current_balance))
       ? Number(emp.annual_current_balance)
       : annualAllow;
     const berCurrent = Number.isFinite(Number(emp.bereavement_current_balance))
       ? Number(emp.bereavement_current_balance)
       : berAllow;
+    const matCurrent =
+      gender === "female" &&
+      Number.isFinite(Number(emp.maternity_current_balance))
+        ? Number(emp.maternity_current_balance)
+        : matAllow;
+    const patCurrent =
+      gender === "male" &&
+      Number.isFinite(Number(emp.paternity_current_balance))
+        ? Number(emp.paternity_current_balance)
+        : patAllow;
     const annualUsed = Number.isFinite(Number(emp.annual_used))
       ? Number(emp.annual_used)
       : Math.max(0, annualAllow - annualCurrent);
     const berUsed = Number.isFinite(Number(emp.bereavement_used))
       ? Number(emp.bereavement_used)
       : Math.max(0, berAllow - berCurrent);
-    const available = Math.round((annualCurrent + Math.max(0, berCurrent)) * 2) / 2;
+    const matUsed = Number.isFinite(Number(emp.maternity_used))
+      ? Number(emp.maternity_used)
+      : Math.max(0, matAllow - matCurrent);
+    const patUsed = Number.isFinite(Number(emp.paternity_used))
+      ? Number(emp.paternity_used)
+      : Math.max(0, patAllow - patCurrent);
+    const parentalCurrent = gender === "female" ? matCurrent : gender === "male" ? patCurrent : 0;
+    const available =
+      Math.round((annualCurrent + Math.max(0, berCurrent) + Math.max(0, parentalCurrent)) * 2) / 2;
     const annualPct =
       annualAllow > 0
         ? Math.min(100, (Math.max(0, annualAllow - annualCurrent) / annualAllow) * 100)
@@ -298,16 +339,33 @@ export default function ManageLeavesPage() {
       berAllow > 0
         ? Math.min(100, (Math.max(0, berAllow - berCurrent) / berAllow) * 100)
         : 0;
+    const matPct =
+      matAllow > 0
+        ? Math.min(100, (Math.max(0, matAllow - matCurrent) / matAllow) * 100)
+        : 0;
+    const patPct =
+      patAllow > 0
+        ? Math.min(100, (Math.max(0, patAllow - patCurrent) / patAllow) * 100)
+        : 0;
     return {
+      gender,
       annualAllow,
       berAllow,
+      matAllow,
+      patAllow,
       annualCurrent,
       berCurrent,
+      matCurrent,
+      patCurrent,
       annualUsed,
       berUsed,
+      matUsed,
+      patUsed,
       available,
       annualPct,
       berPct,
+      matPct,
+      patPct,
     };
   };
 
@@ -504,6 +562,7 @@ export default function ManageLeavesPage() {
                           <th>Status</th>
                           {balanceFocus !== "bereavement" ? <th>Annual</th> : null}
                           {balanceFocus !== "annual" ? <th>Bereavement</th> : null}
+                          {balanceFocus === "all" ? <th>Maternity / Paternity</th> : null}
                           <th>Available</th>
                           <th>Action</th>
                         </tr>
@@ -511,7 +570,7 @@ export default function ManageLeavesPage() {
                       <tbody>
                         {filteredEmployees.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className={leaveStyles.reqEmpty}>
+                            <td colSpan={balanceFocus === "all" ? 8 : 7} className={leaveStyles.reqEmpty}>
                               No employees match these filters.
                             </td>
                           </tr>
@@ -611,6 +670,49 @@ export default function ManageLeavesPage() {
                                     </div>
                                   </td>
                                 ) : null}
+                                {balanceFocus === "all" ? (
+                                  <td>
+                                    {bal.gender === "female" ? (
+                                      <div className={styles.equity}>
+                                        <div className={styles.equityBar}>
+                                          <div
+                                            className={styles.segAnnual}
+                                            style={{ width: `${bal.matPct}%` }}
+                                          />
+                                        </div>
+                                        <div className={styles.equityLabel}>
+                                          <span>
+                                            Mat {formatLeaveDays(bal.matCurrent)} /{" "}
+                                            {formatLeaveDays(bal.matAllow)}
+                                          </span>
+                                          <b>
+                                            {formatLeaveDays(bal.matUsed)} used
+                                          </b>
+                                        </div>
+                                      </div>
+                                    ) : bal.gender === "male" ? (
+                                      <div className={styles.equity}>
+                                        <div className={styles.equityBar}>
+                                          <div
+                                            className={styles.segBer}
+                                            style={{ width: `${bal.patPct}%` }}
+                                          />
+                                        </div>
+                                        <div className={styles.equityLabel}>
+                                          <span>
+                                            Pat {formatLeaveDays(bal.patCurrent)} /{" "}
+                                            {formatLeaveDays(bal.patAllow)}
+                                          </span>
+                                          <b>
+                                            {formatLeaveDays(bal.patUsed)} used
+                                          </b>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className={leaveStyles.reqEmpty}>—</span>
+                                    )}
+                                  </td>
+                                ) : null}
                                 <td>
                                   <span className={`${styles.availableCell} ${availClass}`}>
                                     {formatLeaveDays(focusAvail)}d
@@ -650,7 +752,19 @@ export default function ManageLeavesPage() {
               </p>
 
               <p className={styles.infoText}>
-                Total Allowance: <strong>{editingEmployee.annual_allowance}</strong> Annual, <strong>{editingEmployee.bereavement_allowance}</strong> Bereavement (Fixed)
+                Total Allowance: <strong>{editingEmployee.annual_allowance}</strong> Annual,{" "}
+                <strong>{editingEmployee.bereavement_allowance}</strong> Bereavement
+                {normalizeEmployeeGender(editingEmployee.gender) === "female" ? (
+                  <>
+                    , <strong>{editingEmployee.maternity_allowance ?? 90}</strong> Maternity
+                  </>
+                ) : null}
+                {normalizeEmployeeGender(editingEmployee.gender) === "male" ? (
+                  <>
+                    , <strong>{editingEmployee.paternity_allowance ?? 5}</strong> Paternity
+                  </>
+                ) : null}{" "}
+                (Fixed)
               </p>
 
               <div className={styles.currentBalances}>
@@ -671,6 +785,44 @@ export default function ManageLeavesPage() {
                     <span className={styles.total}>{formatLeaveDays(editingEmployee.bereavement_allowance)}</span>
                   </div>
                 </div>
+
+                {normalizeEmployeeGender(editingEmployee.gender) === "female" ? (
+                  <div className={styles.balanceCard}>
+                    <div className={styles.balanceLabel}>Current Maternity Leave</div>
+                    <div className={styles.balanceValue}>
+                      <span className={styles.remaining}>
+                        {formatLeaveDays(
+                          editingEmployee.maternity_current_balance ??
+                            editingEmployee.maternity_allowance ??
+                            90,
+                        )}
+                      </span>
+                      <span className={styles.separator}>/</span>
+                      <span className={styles.total}>
+                        {formatLeaveDays(editingEmployee.maternity_allowance ?? 90)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {normalizeEmployeeGender(editingEmployee.gender) === "male" ? (
+                  <div className={styles.balanceCard}>
+                    <div className={styles.balanceLabel}>Current Paternity Leave</div>
+                    <div className={styles.balanceValue}>
+                      <span className={styles.remaining}>
+                        {formatLeaveDays(
+                          editingEmployee.paternity_current_balance ??
+                            editingEmployee.paternity_allowance ??
+                            5,
+                        )}
+                      </span>
+                      <span className={styles.separator}>/</span>
+                      <span className={styles.total}>
+                        {formatLeaveDays(editingEmployee.paternity_allowance ?? 5)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.formGroup}>
@@ -748,6 +900,98 @@ export default function ManageLeavesPage() {
                   )}
                 </div>
               </div>
+
+              {normalizeEmployeeGender(editingEmployee.gender) === "female" ? (
+                <div className={styles.formGroup}>
+                  <label>Update Maternity Current Balance</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formData.maternity_current_balance}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(",", ".");
+                      if (!isLeaveDaysInput(raw)) return;
+                      setFormData({ ...formData, maternity_current_balance: raw });
+                    }}
+                    className={styles.input}
+                  />
+                  <div className={styles.helpText}>
+                    {formatLeaveDelta(
+                      parseLeaveDays(formData.maternity_current_balance),
+                      editingEmployee.maternity_current_balance ??
+                        editingEmployee.maternity_allowance ??
+                        90,
+                    ) ? (
+                      <span
+                        style={{
+                          color:
+                            parseLeaveDays(formData.maternity_current_balance) >
+                            (editingEmployee.maternity_current_balance ??
+                              editingEmployee.maternity_allowance ??
+                              90)
+                              ? "#10b981"
+                              : "#ef4444",
+                        }}
+                      >
+                        {formatLeaveDelta(
+                          parseLeaveDays(formData.maternity_current_balance),
+                          editingEmployee.maternity_current_balance ??
+                            editingEmployee.maternity_allowance ??
+                            90,
+                        )}
+                      </span>
+                    ) : (
+                      <span>No change</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {normalizeEmployeeGender(editingEmployee.gender) === "male" ? (
+                <div className={styles.formGroup}>
+                  <label>Update Paternity Current Balance</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formData.paternity_current_balance}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(",", ".");
+                      if (!isLeaveDaysInput(raw)) return;
+                      setFormData({ ...formData, paternity_current_balance: raw });
+                    }}
+                    className={styles.input}
+                  />
+                  <div className={styles.helpText}>
+                    {formatLeaveDelta(
+                      parseLeaveDays(formData.paternity_current_balance),
+                      editingEmployee.paternity_current_balance ??
+                        editingEmployee.paternity_allowance ??
+                        5,
+                    ) ? (
+                      <span
+                        style={{
+                          color:
+                            parseLeaveDays(formData.paternity_current_balance) >
+                            (editingEmployee.paternity_current_balance ??
+                              editingEmployee.paternity_allowance ??
+                              5)
+                              ? "#10b981"
+                              : "#ef4444",
+                        }}
+                      >
+                        {formatLeaveDelta(
+                          parseLeaveDays(formData.paternity_current_balance),
+                          editingEmployee.paternity_current_balance ??
+                            editingEmployee.paternity_allowance ??
+                            5,
+                        )}
+                      </span>
+                    ) : (
+                      <span>No change</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               <div className={styles.modalActions}>
                 <button

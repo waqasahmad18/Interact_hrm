@@ -151,6 +151,10 @@ export type DashboardHomeViewProps = {
     annualAllowance: number;
     bereavement: number;
     bereavementAllowance: number;
+    maternity: number;
+    maternityAllowance: number;
+    paternity: number;
+    paternityAllowance: number;
   };
   eventsCal: {
     monthLabel: string;
@@ -292,6 +296,54 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                 />
               </div>
             </div>
+            {leaveBalance.maternityAllowance > 0 ? (
+              <div className={styles.leaveRow}>
+                <div className={styles.leaveMeta}>
+                  <span>Maternity Leave</span>
+                  <span>
+                    {String(leaveBalance.maternity).padStart(2, "0")}/
+                    {leaveBalance.maternityAllowance} days
+                  </span>
+                </div>
+                <div className={styles.leaveTrack}>
+                  <div
+                    className={`${styles.leaveFill} ${styles.leaveTeal}`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        leaveBalance.maternityAllowance
+                          ? (leaveBalance.maternity / leaveBalance.maternityAllowance) * 100
+                          : 0,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {leaveBalance.paternityAllowance > 0 ? (
+              <div className={styles.leaveRow}>
+                <div className={styles.leaveMeta}>
+                  <span>Paternity Leave</span>
+                  <span>
+                    {String(leaveBalance.paternity).padStart(2, "0")}/
+                    {leaveBalance.paternityAllowance} days
+                  </span>
+                </div>
+                <div className={styles.leaveTrack}>
+                  <div
+                    className={`${styles.leaveFill} ${styles.leaveOrange}`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        leaveBalance.paternityAllowance
+                          ? (leaveBalance.paternity / leaveBalance.paternityAllowance) * 100
+                          : 0,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
           </article>
 
           <article className={`${styles.card} ${styles.profileCard}`}>

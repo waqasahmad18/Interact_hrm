@@ -61,6 +61,10 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
     annualBalance: number;
     annualAllowance: number;
     bereavementBalance: number;
+    maternityBalance: number;
+    maternityAllowance: number;
+    paternityBalance: number;
+    paternityAllowance: number;
     employment_status?: string;
   } | null>(null);
   const [searchText, setSearchText] = React.useState("");
@@ -212,6 +216,10 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
           annualBalance: Number(data.annualBalance) || 0,
           annualAllowance: Number(data.annualAllowance) || 0,
           bereavementBalance: Number(data.bereavementBalance) || 0,
+          maternityBalance: Number(data.maternityBalance) || 0,
+          maternityAllowance: Number(data.maternityAllowance) || 0,
+          paternityBalance: Number(data.paternityBalance) || 0,
+          paternityAllowance: Number(data.paternityAllowance) || 0,
           employment_status: data.employment_status,
         });
       })
@@ -821,6 +829,24 @@ export default function AdminTicketsPage({ inboxMode = "admin" }: TicketsPagePro
                     <div>
                       Bereavement: <b>{leaveBalanceInfo.bereavementBalance} / 3</b>
                     </div>
+                    {leaveBalanceInfo.maternityAllowance > 0 ? (
+                      <div>
+                        Maternity:{" "}
+                        <b>
+                          {leaveBalanceInfo.maternityBalance} /{" "}
+                          {leaveBalanceInfo.maternityAllowance}
+                        </b>
+                      </div>
+                    ) : null}
+                    {leaveBalanceInfo.paternityAllowance > 0 ? (
+                      <div>
+                        Paternity:{" "}
+                        <b>
+                          {leaveBalanceInfo.paternityBalance} /{" "}
+                          {leaveBalanceInfo.paternityAllowance}
+                        </b>
+                      </div>
+                    ) : null}
                     <div style={{ marginTop: 8, color: "#64748b", fontSize: 13 }}>
                       Approve → balance minus requested days. Reject → balance unchanged.
                     </div>

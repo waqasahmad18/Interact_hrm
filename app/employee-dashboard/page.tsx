@@ -71,6 +71,10 @@ type LeaveBalance = {
   annualAllowance: number;
   bereavement: number;
   bereavementAllowance: number;
+  maternity: number;
+  maternityAllowance: number;
+  paternity: number;
+  paternityAllowance: number;
 };
 
 type TicketWidgetRow = {
@@ -245,6 +249,10 @@ export default function EmployeeDashboardPage() {
     annualAllowance: 20,
     bereavement: 0,
     bereavementAllowance: 3,
+    maternity: 0,
+    maternityAllowance: 0,
+    paternity: 0,
+    paternityAllowance: 0,
   });
   const [events, setEvents] = React.useState<DashboardEvent[]>([]);
   const [holidays, setHolidays] = React.useState<DashboardEvent[]>([]);
@@ -564,7 +572,11 @@ export default function EmployeeDashboardPage() {
           annual: data.annualBalance ?? 0,
           annualAllowance: data.annualAllowance ?? 20,
           bereavement: data.bereavementBalance ?? 0,
-          bereavementAllowance: 3,
+          bereavementAllowance: data.bereavementAllowance ?? 3,
+          maternity: data.maternityBalance ?? 0,
+          maternityAllowance: data.maternityAllowance ?? 0,
+          paternity: data.paternityBalance ?? 0,
+          paternityAllowance: data.paternityAllowance ?? 0,
         });
       }
     } catch (err) {

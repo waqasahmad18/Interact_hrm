@@ -6,6 +6,10 @@ export type LeaveCategoryValue =
   | "maternity"
   | "paternity";
 
+export const MATERNITY_ALLOWANCE = 90;
+export const PATERNITY_ALLOWANCE = 5;
+export const BEREAVEMENT_ALLOWANCE = 3;
+
 export const LEAVE_CATEGORY_OPTIONS: ReadonlyArray<{
   value: LeaveCategoryValue;
   label: string;
@@ -16,16 +20,18 @@ export const LEAVE_CATEGORY_OPTIONS: ReadonlyArray<{
   { value: "paternity", label: "Paternity" },
 ];
 
-/** HR / admin filters — always all four. */
-export function leaveCategoriesForHr(): typeof LEAVE_CATEGORY_OPTIONS {
-  return LEAVE_CATEGORY_OPTIONS;
-}
-
-function normalizeGender(gender: string | null | undefined): "male" | "female" | "" {
+export function normalizeEmployeeGender(
+  gender: string | null | undefined,
+): "male" | "female" | "" {
   const g = String(gender || "").trim().toLowerCase();
   if (g === "male" || g === "m") return "male";
   if (g === "female" || g === "f") return "female";
   return "";
+}
+
+/** HR / admin filters — always all four. */
+export function leaveCategoriesForHr(): typeof LEAVE_CATEGORY_OPTIONS {
+  return LEAVE_CATEGORY_OPTIONS;
 }
 
 /**
@@ -36,7 +42,7 @@ function normalizeGender(gender: string | null | undefined): "male" | "female" |
 export function leaveCategoriesForEmployeeGender(
   gender: string | null | undefined,
 ): Array<{ value: LeaveCategoryValue; label: string }> {
-  const g = normalizeGender(gender);
+  const g = normalizeEmployeeGender(gender);
   return LEAVE_CATEGORY_OPTIONS.filter((c) => {
     if (c.value === "maternity") return g === "female";
     if (c.value === "paternity") return g === "male";

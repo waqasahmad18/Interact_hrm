@@ -795,6 +795,18 @@ export default function LeaveRequestsPanel({
                     <div>
                       Bereavement: {balanceInfo.bereavementBalance} / 3
                     </div>
+                    {Number(balanceInfo.maternityAllowance) > 0 ? (
+                      <div>
+                        Maternity: {balanceInfo.maternityBalance} /{" "}
+                        {balanceInfo.maternityAllowance}
+                      </div>
+                    ) : null}
+                    {Number(balanceInfo.paternityAllowance) > 0 ? (
+                      <div>
+                        Paternity: {balanceInfo.paternityBalance} /{" "}
+                        {balanceInfo.paternityAllowance}
+                      </div>
+                    ) : null}
                     {selectedPending ? (
                       <div style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>
                         Approve → balance minus {selectedLeave.total_days || 1} day(s). Reject →

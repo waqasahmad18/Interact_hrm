@@ -127,6 +127,8 @@ export async function POST(req: NextRequest) {
           error: gate.error,
           annualBalance: bal.annualBalance,
           bereavementBalance: bal.bereavementBalance,
+          maternityBalance: bal.maternityBalance,
+          paternityBalance: bal.paternityBalance,
         });
       }
     }
@@ -440,6 +442,10 @@ export async function PATCH(req: NextRequest) {
           ? {
               annualBalance: bal.annualBalance,
               bereavementBalance: bal.bereavementBalance,
+              maternityBalance: bal.maternityBalance,
+              maternityAllowance: bal.maternityAllowance,
+              paternityBalance: bal.paternityBalance,
+              paternityAllowance: bal.paternityAllowance,
             }
           : null,
       });
@@ -452,6 +458,10 @@ export async function PATCH(req: NextRequest) {
             annualBalance: bal.annualBalance,
             annualAllowance: bal.annualAllowance,
             bereavementBalance: bal.bereavementBalance,
+            maternityBalance: bal.maternityBalance,
+            maternityAllowance: bal.maternityAllowance,
+            paternityBalance: bal.paternityBalance,
+            paternityAllowance: bal.paternityAllowance,
           }
         : null;
     }

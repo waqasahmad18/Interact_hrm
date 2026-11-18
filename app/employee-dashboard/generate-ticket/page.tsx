@@ -110,6 +110,10 @@ function GenerateTicketPageInner() {
   const [leaveBalance, setLeaveBalance] = useState(0);
   const [annualAllowance, setAnnualAllowance] = useState(20);
   const [bereavementBalance, setBereavementBalance] = useState(3);
+  const [maternityBalance, setMaternityBalance] = useState(0);
+  const [maternityAllowance, setMaternityAllowance] = useState(90);
+  const [paternityBalance, setPaternityBalance] = useState(0);
+  const [paternityAllowance, setPaternityAllowance] = useState(5);
   const [employmentStatus, setEmploymentStatus] = useState("Permanent");
   const [documents, setDocuments] = useState<File[]>([]);
   const [issueImages, setIssueImages] = useState<File[]>([]);
@@ -169,7 +173,12 @@ function GenerateTicketPageInner() {
         setLeaveBalance(data.annualBalance ?? 0);
         setAnnualAllowance(data.annualAllowance ?? 20);
         setBereavementBalance(data.bereavementBalance ?? 0);
+        setMaternityBalance(data.maternityBalance ?? 0);
+        setMaternityAllowance(data.maternityAllowance ?? 90);
+        setPaternityBalance(data.paternityBalance ?? 0);
+        setPaternityAllowance(data.paternityAllowance ?? 5);
         setEmploymentStatus(data.employment_status || "Permanent");
+        if (data.gender) setEmployeeGender(String(data.gender).trim());
       }
     } catch {
       /* keep current */
@@ -375,7 +384,13 @@ function GenerateTicketPageInner() {
     employmentStatus === "Probation" ? "Leave balance" : "Annual leave balance";
 
   const effectiveLeaveBalance =
-    leaveCategory === "bereavement" ? bereavementBalance : leaveBalance;
+    leaveCategory === "bereavement"
+      ? bereavementBalance
+      : leaveCategory === "maternity"
+        ? maternityBalance
+        : leaveCategory === "paternity"
+          ? paternityBalance
+          : leaveBalance;
   const leaveBalanceExhausted =
     formKind === "leave" && effectiveLeaveBalance <= 0;
   const leaveDaysExceedBalance =
@@ -414,7 +429,13 @@ function GenerateTicketPageInner() {
       if (!description.trim()) throw new Error("Please enter a reason for leave.");
       const days = leaveDaysForDuration(leaveDuration, startDate, effectiveEnd);
       const rem =
-        leaveCategory === "bereavement" ? bereavementBalance : leaveBalance;
+        leaveCategory === "bereavement"
+          ? bereavementBalance
+          : leaveCategory === "maternity"
+            ? maternityBalance
+            : leaveCategory === "paternity"
+              ? paternityBalance
+              : leaveBalance;
       if (rem <= 0) {
         throw new Error("Leave balance is 0. You cannot apply for leave.");
       }
@@ -682,6 +703,52 @@ function GenerateTicketPageInner() {
                   </p>
                   <p className={styles.leaveBalanceSub}>Days remaining</p>
                 </div>
+                {maternityAllowance > 0 ? (
+                  <div
+                    className={`${styles.leaveBalanceCard} ${styles.leaveBalancePurple}`}
+                    style={
+                      maternityBalance <= 0
+                        ? { outline: "2px solid #dc2626", background: "#fef2f2" }
+                        : undefined
+                    }
+                  >
+                    <p className={styles.leaveBalanceLabel}>Maternity leave</p>
+                    <p
+                      className={styles.leaveBalanceValue}
+                      style={maternityBalance <= 0 ? { color: "#dc2626" } : undefined}
+                    >
+                      {maternityBalance}
+                      <span className={styles.leaveBalanceOf}>
+                        {" "}
+                        / {maternityAllowance}
+                      </span>
+                    </p>
+                    <p className={styles.leaveBalanceSub}>Days remaining</p>
+                  </div>
+                ) : null}
+                {paternityAllowance > 0 ? (
+                  <div
+                    className={`${styles.leaveBalanceCard} ${styles.leaveBalanceGreen}`}
+                    style={
+                      paternityBalance <= 0
+                        ? { outline: "2px solid #dc2626", background: "#fef2f2" }
+                        : undefined
+                    }
+                  >
+                    <p className={styles.leaveBalanceLabel}>Paternity leave</p>
+                    <p
+                      className={styles.leaveBalanceValue}
+                      style={paternityBalance <= 0 ? { color: "#dc2626" } : undefined}
+                    >
+                      {paternityBalance}
+                      <span className={styles.leaveBalanceOf}>
+                        {" "}
+                        / {paternityAllowance}
+                      </span>
+                    </p>
+                    <p className={styles.leaveBalanceSub}>Days remaining</p>
+                  </div>
+                ) : null}
               </div>
               {leaveBalanceExhausted ? (
                 <div className={styles.alertError} role="alert">
@@ -957,27 +1024,6 @@ function GenerateTicketPageInner() {
           </button>
         </form>
 
-        <section className={styles.card}>
-          <h2 className={styles.cardTitle}>Ticket responses</h2>
-          <p className={styles.sub} style={{ marginBottom: 12, paddingLeft: 0 }}>
-            Your tickets and HR replies now live in a dedicated inbox — not under this form.
-          </p>
-          <a
-            href="/employee-dashboard/my-tickets"
-            className={styles.submitBtn}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-              width: "auto",
-              padding: "10px 16px",
-            }}
-          >
-            Open My Ticket Inbox
-            {history.length > 0 ? ` (${history.length})` : ""}
-          </a>
-        </section>
       </div>
 
       {selectedTicket ? (
