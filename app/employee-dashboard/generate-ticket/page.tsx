@@ -23,6 +23,7 @@ import {
   leaveDurationLabel,
   type LeaveDuration,
 } from "../../../lib/leave-duration";
+import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
 import styles from "./generate-ticket.module.css";
 
 type TicketRow = {
@@ -62,14 +63,6 @@ function ticketAcknowledgedByLabel(t: TicketRow): string | null {
   return `Acknowledged by ${name}`;
 }
 
-const LEAVE_CATEGORIES = [
-  { value: "annual", label: "Annual" },
-  { value: "casual", label: "Casual" },
-  { value: "sick", label: "Sick" },
-  { value: "bereavement", label: "Bereavement" },
-  { value: "other", label: "Other" },
-];
-
 function statusBadgeClass(status: string) {
   if (status === "in_progress") return styles.badgeProgress;
   if (status === "resolved" || status === "closed") {
@@ -100,6 +93,7 @@ function GenerateTicketPageInner() {
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [leaveCategory, setLeaveCategory] = useState("annual");
+  const [employeeGender, setEmployeeGender] = useState<string>("");
   /** Empty until user picks — submit requires Full / 1st / 2nd half. */
   const [leaveDuration, setLeaveDuration] = useState<LeaveDuration | "">("");
   const [startDate, setStartDate] = useState("");
@@ -257,6 +251,44 @@ function GenerateTicketPageInner() {
     setEmployeeName(name);
     if (id) void fetchHistory(id);
   }, [fetchHistory]);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/employee-list", { cache: "no-store" });
+        const data = await res.json();
+        const list = Array.isArray(data?.employees)
+          ? data.employees
+          : Array.isArray(data)
+            ? data
+            : [];
+        const me = list.find(
+          (e: any) => String(e?.id ?? "").trim() === String(employeeId).trim(),
+        );
+        if (!cancelled) {
+          setEmployeeGender(String(me?.gender || "").trim());
+        }
+      } catch {
+        if (!cancelled) setEmployeeGender("");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
+
+  const leaveCategoryOptions = useMemo(
+    () => leaveCategoriesForEmployeeGender(employeeGender),
+    [employeeGender],
+  );
+
+  useEffect(() => {
+    if (!leaveCategoryOptions.some((c) => c.value === leaveCategory)) {
+      setLeaveCategory(leaveCategoryOptions[0]?.value || "annual");
+    }
+  }, [leaveCategoryOptions, leaveCategory]);
 
   useEffect(() => {
     const openId = searchParams?.get("open");
@@ -668,7 +700,7 @@ function GenerateTicketPageInner() {
                   value={leaveCategory}
                   onChange={(e) => setLeaveCategory(e.target.value)}
                 >
-                  {LEAVE_CATEGORIES.map((c) => (
+                  {leaveCategoryOptions.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>

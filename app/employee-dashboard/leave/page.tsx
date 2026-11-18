@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   getDateStringInTimeZone,
   getTimeStringInTimeZone,
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
+import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
 import styles from "./leave.module.css";
 
 interface Leave {
@@ -25,14 +26,6 @@ interface Leave {
   approved_by_name?: string | null;
   decided_by_label?: string | null;
 }
-
-const LEAVE_CATEGORIES = [
-  { value: "annual", label: "Annual" },
-  { value: "casual", label: "Casual" },
-  { value: "sick", label: "Sick" },
-  { value: "bereavement", label: "Bereavement" },
-  { value: "other", label: "Other" },
-];
 
 function formatDate(dateString: string) {
   if (!dateString) return "";
@@ -84,6 +77,7 @@ export default function LeavePage() {
   const [employmentStatus, setEmploymentStatus] = useState<string>("Permanent");
   const [bereavementBalance, setBereavementBalance] = useState(3);
   const [category, setCategory] = useState("annual");
+  const [employeeGender, setEmployeeGender] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
@@ -94,6 +88,11 @@ export default function LeavePage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const leaveCategoryOptions = useMemo(
+    () => leaveCategoriesForEmployeeGender(employeeGender),
+    [employeeGender],
+  );
+
   const closeModal = () => {
     setModalOpen(false);
     setSelectedLeave(null);
@@ -103,6 +102,7 @@ export default function LeavePage() {
     const initEmployeeInfo = async () => {
       let empId = localStorage.getItem("employeeId") || "";
       let empName = localStorage.getItem("employeeName") || "";
+      let gender = "";
 
       if (!empId) {
         const loginId = localStorage.getItem("loginId");
@@ -113,6 +113,7 @@ export default function LeavePage() {
             if (data.success && data.employee) {
               empId = String(data.employee.id || data.employee.employee_id || loginId);
               empName = `${data.employee.first_name || ""} ${data.employee.middle_name || ""} ${data.employee.last_name || ""}`.trim();
+              gender = String(data.employee.gender || "").trim();
               localStorage.setItem("employeeId", empId);
               localStorage.setItem("employeeName", empName);
             }
@@ -122,12 +123,37 @@ export default function LeavePage() {
         }
       }
 
+      if (empId && !gender) {
+        try {
+          const res = await fetch("/api/employee-list", { cache: "no-store" });
+          const data = await res.json();
+          const list = Array.isArray(data?.employees)
+            ? data.employees
+            : Array.isArray(data)
+              ? data
+              : [];
+          const me = list.find(
+            (e: any) => String(e?.id ?? "").trim() === String(empId).trim(),
+          );
+          gender = String(me?.gender || "").trim();
+        } catch {
+          /* ignore */
+        }
+      }
+
       setEmployeeId(empId);
       setEmployeeName(empName);
+      setEmployeeGender(gender);
     };
 
     void initEmployeeInfo();
   }, []);
+
+  useEffect(() => {
+    if (!leaveCategoryOptions.some((c) => c.value === category)) {
+      setCategory(leaveCategoryOptions[0]?.value || "annual");
+    }
+  }, [leaveCategoryOptions, category]);
 
   const fetchLeaves = async () => {
     try {
@@ -338,7 +364,7 @@ export default function LeavePage() {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               >
-                {LEAVE_CATEGORIES.map((cat) => (
+                {leaveCategoryOptions.map((cat) => (
                   <option key={cat.value} value={cat.value}>
                     {cat.label}
                   </option>

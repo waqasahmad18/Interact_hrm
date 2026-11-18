@@ -266,13 +266,9 @@ export default function LeaveRequestsPanel({
   };
 
   const categoryOptions = useMemo(() => {
-    const set = new Set<string>(["annual", "bereavement", "casual", "sick"]);
-    leavesWithMeta.forEach((l) => {
-      const c = String(l?.leave_category || "").trim().toLowerCase();
-      if (c) set.add(c);
-    });
-    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [leavesWithMeta]);
+    // HR filter: Annual, Bereavement, Maternity, Paternity (both genders).
+    return ["annual", "bereavement", "maternity", "paternity"];
+  }, []);
 
   const stats = useMemo(() => {
     let pending = 0;
