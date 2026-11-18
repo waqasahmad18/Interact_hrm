@@ -369,15 +369,15 @@ export default function LeavePage() {
     return sortConfig.direction === "asc" ? <FaSortUp /> : <FaSortDown />;
   };
 
-  const leaveRecencyMs = (l: any) => {
-    let best = 0;
-    for (const c of [l?.updated_at, l?.step2_at, l?.step1_at, l?.requested_at]) {
+  /** Newest request first — prefer submitted time, then id. */
+  const leaveRequestMs = (l: any) => {
+    for (const c of [l?.requested_at, l?.created_at, l?.updated_at]) {
       const raw = String(c || "").trim();
       if (!raw) continue;
       const ms = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
-      if (Number.isFinite(ms) && ms > best) best = ms;
+      if (Number.isFinite(ms) && ms > 0) return ms;
     }
-    return best || Number(l?.id) || 0;
+    return Number(l?.id) || 0;
   };
 
   const sortedLeaves = useMemo(() => {
@@ -405,10 +405,10 @@ export default function LeavePage() {
       return true;
     });
 
-    // Default: most recent activity / approval on top.
+    // Default: latest submitted request on top.
     if (!sortConfig) {
       return [...scoped].sort((a, b) => {
-        const diff = leaveRecencyMs(b) - leaveRecencyMs(a);
+        const diff = leaveRequestMs(b) - leaveRequestMs(a);
         return diff !== 0 ? diff : (Number(b.id) || 0) - (Number(a.id) || 0);
       });
     }
@@ -437,7 +437,7 @@ export default function LeavePage() {
           cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
           break;
         case "requested_at":
-          cmp = leaveRecencyMs(a) - leaveRecencyMs(b);
+          cmp = leaveRequestMs(a) - leaveRequestMs(b);
           break;
         default:
           cmp = 0;
