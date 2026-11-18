@@ -72,7 +72,15 @@ function readViewerEmployeeId(): string {
   return "";
 }
 
-export default function LeaveRequestsPanel() {
+type LeaveRequestsPanelProps = {
+  initialCategory?: string;
+  onCategoryConsumed?: () => void;
+};
+
+export default function LeaveRequestsPanel({
+  initialCategory = "",
+  onCategoryConsumed,
+}: LeaveRequestsPanelProps) {
   const viewerScope = useViewerDataScope();
   const viewerEmployeeId = readViewerEmployeeId();
   const canApproveLeaves =
@@ -106,8 +114,16 @@ export default function LeaveRequestsPanel() {
   const [monthFilter, setMonthFilter] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
+  useEffect(() => {
+    const cat = String(initialCategory || "").trim().toLowerCase();
+    if (!cat) return;
+    setCategoryFilter(cat);
+    onCategoryConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCategory]);
+
   const leaveDayKey = (l: any) => {
-    const raw = l?.start_date || l?.requested_at || "";
+    const raw = l?.start_date || l?.end_date || l?.requested_at || l?.updated_at || "";
     if (!raw) return "";
     try {
       return getDateStringInTimeZone(raw, SERVER_TIMEZONE) || "";
@@ -250,21 +266,12 @@ export default function LeaveRequestsPanel() {
   };
 
   const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(["annual", "bereavement", "casual", "sick"]);
     leavesWithMeta.forEach((l) => {
-      const c = String(l?.leave_category || "").trim();
+      const c = String(l?.leave_category || "").trim().toLowerCase();
       if (c) set.add(c);
     });
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [leavesWithMeta]);
-
-  const monthOptions = useMemo(() => {
-    const set = new Set<string>();
-    leavesWithMeta.forEach((l) => {
-      const m = leaveMonthKey(l);
-      if (m) set.add(m);
-    });
-    return [...set].sort((a, b) => b.localeCompare(a));
   }, [leavesWithMeta]);
 
   const stats = useMemo(() => {
@@ -412,14 +419,6 @@ export default function LeaveRequestsPanel() {
     setStatusFilter((prev) => (prev === next ? "" : next));
   };
 
-  const formatMonthLabel = (ym: string) => {
-    const [y, m] = ym.split("-");
-    if (!y || !m) return ym;
-    const d = new Date(Number(y), Number(m) - 1, 1);
-    if (!Number.isFinite(d.getTime())) return ym;
-    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
-  };
-
   const actionTimestamp = (l: any) => {
     const raw =
       l?.updated_at || l?.step2_at || l?.step1_at || l?.requested_at || "";
@@ -553,19 +552,22 @@ export default function LeaveRequestsPanel() {
               />
               Duplicates only
             </label>
-            <select
+            <input
+              type="month"
               className={styles.toolbarSelect}
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
               aria-label="Filter by month"
-            >
-              <option value="">All months</option>
-              {monthOptions.map((m) => (
-                <option key={m} value={m}>
-                  {formatMonthLabel(m)}
-                </option>
-              ))}
-            </select>
+            />
+            {monthFilter ? (
+              <button
+                type="button"
+                className={styles.clearFilters}
+                onClick={() => setMonthFilter("")}
+              >
+                All months
+              </button>
+            ) : null}
             {hasActiveFilters ? (
               <button
                 type="button"

@@ -45,7 +45,6 @@ const sidebarLinks = [
 				dropdown: [
 					{ name: "Manage Leave", path: "/admin/manage-leaves", icon: <FaEdit /> },
 					{ name: "Calendar", path: "/admin/calendar", icon: <FaCalendarAlt /> },
-					{ name: "Leave Summary", path: "/admin/monthly-leave-summary", icon: <FaClipboardList /> },
 				]
 			},
 			{

@@ -14,6 +14,11 @@ import LeaveSummaryPanel from "./LeaveSummaryPanel";
 
 type LeaveDashTab = "balances" | "requests" | "summary";
 
+function tabFromParam(raw: string | null): LeaveDashTab | null {
+  if (raw === "balances" || raw === "requests" || raw === "summary") return raw;
+  return null;
+}
+
 interface Employee {
   id: number;
   first_name: string;
@@ -73,29 +78,23 @@ export default function ManageLeavesPage() {
   /** "" = all months; YYYY-MM filters employees with leave activity that month */
   const [monthFilter, setMonthFilter] = useState("");
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
+  /** Clickable legend: all | annual | bereavement (opens Requests filtered by category) */
+  const [balanceFocus, setBalanceFocus] = useState<"all" | "annual" | "bereavement">("all");
+  const [requestsCategory, setRequestsCategory] = useState("");
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("balances");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
-  const monthOptions = useMemo(() => {
-    const opts: string[] = [];
-    const now = new Date();
-    for (let i = 0; i < 18; i += 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      opts.push(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+  useEffect(() => {
+    try {
+      const next = tabFromParam(
+        new URLSearchParams(window.location.search).get("tab"),
       );
+      if (next) setActiveTab(next);
+    } catch {
+      /* ignore */
     }
-    return opts;
   }, []);
-
-  const formatMonthLabel = (ym: string) => {
-    const [y, m] = ym.split("-");
-    if (!y || !m) return ym;
-    const d = new Date(Number(y), Number(m) - 1, 1);
-    if (!Number.isFinite(d.getTime())) return ym;
-    return d.toLocaleString("en-US", { month: "short", year: "numeric" });
-  };
 
   useEffect(() => {
     fetchEmployees();
@@ -148,7 +147,9 @@ export default function ManageLeavesPage() {
   async function fetchEmployees() {
     try {
       setLoading(true);
-      const res = await fetch("/api/employee-leave-allowances");
+      const res = await fetch(`/api/employee-leave-allowances?ts=${Date.now()}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.success) {
         const empDetailsMap = new Map<
@@ -247,21 +248,48 @@ export default function ManageLeavesPage() {
     return "Confirmed";
   };
 
-  const poolFor = (emp: Employee) => {
-    const cap = Number(emp.annual_allowance) || 20;
-    const annualUsed = Number(emp.annual_used);
-    const berUsed = Number(emp.bereavement_used);
-    const usedAnnual = Number.isFinite(annualUsed)
-      ? annualUsed
-      : Math.max(0, cap - Number(emp.annual_current_balance || 0));
-    const usedBer = Number.isFinite(berUsed)
-      ? berUsed
-      : Math.max(0, Number(emp.bereavement_allowance || 3) - Number(emp.bereavement_current_balance || 0));
-    const poolUsed = usedAnnual + usedBer;
-    const available = Math.max(0, Math.round((cap - poolUsed) * 2) / 2);
-    const annualPct = Math.min(100, (usedAnnual / cap) * 100);
-    const berPct = Math.min(100 - annualPct, (usedBer / cap) * 100);
-    return { cap, poolUsed, available, annualPct, berPct, usedAnnual, usedBer };
+  /** Real balances from API (allowance − used + adjustment) — never invent static used. */
+  const balanceFor = (emp: Employee) => {
+    const annualAllow = Number(emp.annual_allowance) || 20;
+    const berAllow = Number(emp.bereavement_allowance) || 3;
+    const annualCurrent = Number.isFinite(Number(emp.annual_current_balance))
+      ? Number(emp.annual_current_balance)
+      : annualAllow;
+    const berCurrent = Number.isFinite(Number(emp.bereavement_current_balance))
+      ? Number(emp.bereavement_current_balance)
+      : berAllow;
+    const annualUsed = Number.isFinite(Number(emp.annual_used))
+      ? Number(emp.annual_used)
+      : Math.max(0, annualAllow - annualCurrent);
+    const berUsed = Number.isFinite(Number(emp.bereavement_used))
+      ? Number(emp.bereavement_used)
+      : Math.max(0, berAllow - berCurrent);
+    const available = Math.round((annualCurrent + Math.max(0, berCurrent)) * 2) / 2;
+    const annualPct =
+      annualAllow > 0
+        ? Math.min(100, (Math.max(0, annualAllow - annualCurrent) / annualAllow) * 100)
+        : 0;
+    const berPct =
+      berAllow > 0
+        ? Math.min(100, (Math.max(0, berAllow - berCurrent) / berAllow) * 100)
+        : 0;
+    return {
+      annualAllow,
+      berAllow,
+      annualCurrent,
+      berCurrent,
+      annualUsed,
+      berUsed,
+      available,
+      annualPct,
+      berPct,
+    };
+  };
+
+  const openCategoryLeaves = (category: "annual" | "bereavement") => {
+    setBalanceFocus(category);
+    setRequestsCategory(category);
+    setActiveTab("requests");
   };
 
   const filteredEmployees = useMemo(() => {
@@ -285,7 +313,7 @@ export default function ManageLeavesPage() {
       rows = rows.filter((emp) => employmentStatusKey(emp) === employmentStatusFilter);
     }
     if (lowBalanceOnly) {
-      rows = rows.filter((emp) => poolFor(emp).available < 4);
+      rows = rows.filter((emp) => balanceFor(emp).available < 4);
     }
     if (monthActiveIds) {
       rows = rows.filter((emp) => monthActiveIds.has(String(emp.id)));
@@ -340,13 +368,19 @@ export default function ManageLeavesPage() {
             </button>
           </div>
 
-          {activeTab === "requests" ? <LeaveRequestsPanel /> : null}
+          {activeTab === "requests" ? (
+            <LeaveRequestsPanel
+              initialCategory={requestsCategory}
+              onCategoryConsumed={() => setRequestsCategory("")}
+            />
+          ) : null}
           {activeTab === "summary" ? <LeaveSummaryPanel /> : null}
 
           {activeTab === "balances" ? (
             <>
               <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
-                Annual and bereavement share one pool. Update balances per employee when needed.
+                Live annual and bereavement balances from the database. Click Annual or
+                Bereavement to open matching leave requests.
               </p>
               <div className={leaveStyles.toolbar}>
                 <div className={leaveStyles.searchWrap}>
@@ -399,28 +433,41 @@ export default function ManageLeavesPage() {
                   />
                   Low balance only (&lt; 4 days)
                 </label>
-                <select
+                <input
+                  type="month"
                   className={leaveStyles.toolbarSelect}
                   value={monthFilter}
                   onChange={(e) => setMonthFilter(e.target.value)}
                   aria-label="Filter by month"
-                >
-                  <option value="">All months</option>
-                  {monthOptions.map((m) => (
-                    <option key={m} value={m}>
-                      {formatMonthLabel(m)}
-                    </option>
-                  ))}
-                </select>
+                />
+                {monthFilter ? (
+                  <button
+                    type="button"
+                    className={leaveStyles.clearFilters}
+                    onClick={() => setMonthFilter("")}
+                  >
+                    All months
+                  </button>
+                ) : null}
                 <div className={styles.legend}>
-                  <span>
+                  <button
+                    type="button"
+                    className={`${styles.legendBtn}${balanceFocus === "annual" ? ` ${styles.legendBtnOn}` : ""}`}
+                    onClick={() => openCategoryLeaves("annual")}
+                    title="Show all annual leave requests"
+                  >
                     <i className={`${styles.legendDot} ${styles.legendAnnual}`} />
                     Annual
-                  </span>
-                  <span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.legendBtn}${balanceFocus === "bereavement" ? ` ${styles.legendBtnOn}` : ""}`}
+                    onClick={() => openCategoryLeaves("bereavement")}
+                    title="Show all bereavement leave requests"
+                  >
                     <i className={`${styles.legendDot} ${styles.legendBer}`} />
                     Bereavement
-                  </span>
+                  </button>
                 </div>
               </div>
 
@@ -436,7 +483,8 @@ export default function ManageLeavesPage() {
                           <th>Employee</th>
                           <th>Department</th>
                           <th>Status</th>
-                          <th>Annual + Bereavement</th>
+                          <th>Annual</th>
+                          <th>Bereavement</th>
                           <th>Available</th>
                           <th>Action</th>
                         </tr>
@@ -444,18 +492,18 @@ export default function ManageLeavesPage() {
                       <tbody>
                         {filteredEmployees.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className={leaveStyles.reqEmpty}>
+                            <td colSpan={8} className={leaveStyles.reqEmpty}>
                               No employees match these filters.
                             </td>
                           </tr>
                         ) : (
                           filteredEmployees.map((emp) => {
                             const statusKey = employmentStatusKey(emp);
-                            const pool = poolFor(emp);
+                            const bal = balanceFor(emp);
                             const availClass =
-                              pool.available < 2
+                              bal.available < 2
                                 ? styles.availLow
-                                : pool.available < 5
+                                : bal.available < 5
                                   ? styles.availMid
                                   : "";
                             return (
@@ -499,26 +547,42 @@ export default function ManageLeavesPage() {
                                     <div className={styles.equityBar}>
                                       <div
                                         className={styles.segAnnual}
-                                        style={{ width: `${pool.annualPct}%` }}
-                                      />
-                                      <div
-                                        className={styles.segBer}
-                                        style={{ width: `${pool.berPct}%` }}
+                                        style={{ width: `${bal.annualPct}%` }}
                                       />
                                     </div>
                                     <div className={styles.equityLabel}>
                                       <span>
-                                        {formatLeaveDays(pool.poolUsed)} / {formatLeaveDays(pool.cap)} used
+                                        {formatLeaveDays(bal.annualCurrent)} /{" "}
+                                        {formatLeaveDays(bal.annualAllow)}
                                       </span>
-                                      <b className={availClass}>
-                                        {formatLeaveDays(pool.available)} left
+                                      <b>
+                                        {formatLeaveDays(bal.annualUsed)} used
+                                      </b>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className={styles.equity}>
+                                    <div className={styles.equityBar}>
+                                      <div
+                                        className={styles.segBer}
+                                        style={{ width: `${bal.berPct}%` }}
+                                      />
+                                    </div>
+                                    <div className={styles.equityLabel}>
+                                      <span>
+                                        {formatLeaveDays(bal.berCurrent)} /{" "}
+                                        {formatLeaveDays(bal.berAllow)}
+                                      </span>
+                                      <b>
+                                        {formatLeaveDays(bal.berUsed)} used
                                       </b>
                                     </div>
                                   </div>
                                 </td>
                                 <td>
                                   <span className={`${styles.availableCell} ${availClass}`}>
-                                    {formatLeaveDays(pool.available)}d
+                                    {formatLeaveDays(bal.available)}d
                                   </span>
                                 </td>
                                 <td>

@@ -4,8 +4,51 @@ import React, { useEffect, useMemo, useState } from "react";
 import leaveStyles from "../../leave/leave.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
+import { overallLeaveStatus } from "@/lib/leave-approval";
 
-type StatusCardFilter = "" | "approved" | "rejected" | "pending" | "active";
+type SummaryRow = {
+  id: number | string;
+  employeeName: string;
+  pseudonym: string;
+  department: string;
+  total: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+  leaveTypes: string[];
+  yearTrend: number[];
+};
+
+function leaveMonthIndex(dateStr: string): number | null {
+  if (!dateStr) return null;
+  const raw = String(dateStr).slice(0, 10);
+  const parts = raw.split("-");
+  if (parts.length < 2) return null;
+  const m = Number(parts[1]);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return null;
+  return m - 1;
+}
+
+function titleCaseType(raw: string) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function YearTrend({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className={leaveStyles.trendRow} title={values.map((v, i) => `${i + 1}:${v}`).join(" ")}>
+      {values.map((v, i) => (
+        <span
+          key={i}
+          className={leaveStyles.trendBar}
+          style={{ height: `${Math.max(2, Math.round((v / max) * 26))}px` }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function LeaveSummaryPanel() {
   const getCurrentMonth = () => {
@@ -15,9 +58,8 @@ export default function LeaveSummaryPanel() {
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [showZeroActivity, setShowZeroActivity] = useState(false);
-  const [statusCardFilter, setStatusCardFilter] = useState<StatusCardFilter>("");
   const [month, setMonth] = useState<string>(getCurrentMonth());
-  const [leaveData, setLeaveData] = useState<any[]>([]);
+  const [leaveData, setLeaveData] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
@@ -29,35 +71,78 @@ export default function LeaveSummaryPanel() {
   }, [month]);
 
   const uniqueDepartments = useMemo(() => {
-    return Array.from(new Set(leaveData.map((row) => row.department).filter(Boolean)));
+    return Array.from(new Set(leaveData.map((row) => row.department).filter(Boolean))).sort();
   }, [leaveData]);
 
   async function fetchSummary() {
     setLoading(true);
     setError("");
     try {
-      const empRes = await fetch("/api/employee-list");
+      const empRes = await fetch("/api/employee-list", { cache: "no-store" });
       const empData = await empRes.json();
       if (!empData.success) throw new Error(empData.error || "Failed to fetch employees");
       const employees = empData.employees || [];
 
       const [year, monthNum] = month.split("-");
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
       const fromDate = `${year}-${monthNum}-01`;
-      const toDate = new Date(Number(year), Number(monthNum), 0);
-      const toDateStr = `${year}-${monthNum}-${String(toDate.getDate()).padStart(2, "0")}`;
-      const leavesRes = await fetch(`/api/leaves?fromDate=${fromDate}&toDate=${toDateStr}`);
-      const leavesData = await leavesRes.json();
-      if (!leavesData.success) throw new Error(leavesData.error || "Failed to fetch leaves");
-      const leaves = leavesData.leaves || [];
+      const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
+      const toDateStr = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
 
-      const summary = employees.map((emp: any) => {
-        const empLeaves = leaves.filter((l: any) => String(l.employee_id) === String(emp.id));
-        const approved = empLeaves.filter((l: any) => l.status === "approved");
-        const rejected = empLeaves.filter((l: any) => l.status === "rejected");
-        const pending = empLeaves.filter((l: any) => l.status === "pending");
-        const leaveTypes = Array.from(
-          new Set(empLeaves.map((l: any) => l.leave_category).filter(Boolean)),
-        ).join(", ");
+      const [monthLeavesRes, yearLeavesRes] = await Promise.all([
+        fetch(
+          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDateStr)}&ts=${Date.now()}`,
+          { cache: "no-store" },
+        ),
+        fetch(
+          `/api/leaves?fromDate=${encodeURIComponent(yearStart)}&toDate=${encodeURIComponent(yearEnd)}&ts=${Date.now()}`,
+          { cache: "no-store" },
+        ),
+      ]);
+      const monthLeavesData = await monthLeavesRes.json();
+      const yearLeavesData = await yearLeavesRes.json();
+      if (!monthLeavesData.success) {
+        throw new Error(monthLeavesData.error || "Failed to fetch leaves");
+      }
+      const monthLeaves = monthLeavesData.leaves || [];
+      const yearLeaves = yearLeavesData.success ? yearLeavesData.leaves || [] : monthLeaves;
+
+      const yearByEmp = new Map<string, number[]>();
+      for (const l of yearLeaves) {
+        const id = String(l?.employee_id ?? "").trim();
+        if (!id) continue;
+        const idx = leaveMonthIndex(l.start_date || l.end_date || "");
+        if (idx == null) continue;
+        let arr = yearByEmp.get(id);
+        if (!arr) {
+          arr = Array(12).fill(0);
+          yearByEmp.set(id, arr);
+        }
+        arr[idx] += 1;
+      }
+
+      const summary: SummaryRow[] = employees.map((emp: any) => {
+        const empId = String(emp.id);
+        const empLeaves = monthLeaves.filter(
+          (l: any) => String(l.employee_id) === empId,
+        );
+        const approved = empLeaves.filter(
+          (l: any) => overallLeaveStatus(l) === "approved",
+        );
+        const rejected = empLeaves.filter(
+          (l: any) => overallLeaveStatus(l) === "rejected",
+        );
+        const pending = empLeaves.filter(
+          (l: any) => overallLeaveStatus(l) === "pending",
+        );
+        const types = Array.from(
+          new Set(
+            empLeaves
+              .map((l: any) => titleCaseType(l.leave_category))
+              .filter(Boolean),
+          ),
+        );
         return {
           id: emp.id,
           employeeName: `${emp.first_name || ""} ${emp.last_name || ""}`.trim(),
@@ -67,7 +152,8 @@ export default function LeaveSummaryPanel() {
           approved: approved.length,
           rejected: rejected.length,
           pending: pending.length,
-          leaveTypes: leaveTypes || "-",
+          leaveTypes: types,
+          yearTrend: yearByEmp.get(empId) || Array(12).fill(0),
         };
       });
       setLeaveData(summary);
@@ -77,30 +163,6 @@ export default function LeaveSummaryPanel() {
     }
     setLoading(false);
   }
-
-  const summaryStats = useMemo(() => {
-    let approved = 0;
-    let rejected = 0;
-    let pending = 0;
-    let withActivity = 0;
-    leaveData.forEach((row) => {
-      approved += Number(row.approved) || 0;
-      rejected += Number(row.rejected) || 0;
-      pending += Number(row.pending) || 0;
-      if ((Number(row.total) || 0) > 0) withActivity += 1;
-    });
-    return {
-      approved,
-      rejected,
-      pending,
-      totalRequests: approved + rejected + pending,
-      withActivity,
-    };
-  }, [leaveData]);
-
-  const toggleStatusCard = (next: StatusCardFilter) => {
-    setStatusCardFilter((prev) => (prev === next ? "" : next));
-  };
 
   const visibleRows = useMemo(() => {
     const searchLower = search.toLowerCase();
@@ -113,68 +175,35 @@ export default function LeaveSummaryPanel() {
       const matchesDept = !departmentFilter || row.department === departmentFilter;
       if (!matchesSearch || !matchesDept) return false;
       if (!showZeroActivity && (Number(row.total) || 0) === 0) return false;
-      if (statusCardFilter === "approved" && (Number(row.approved) || 0) === 0) return false;
-      if (statusCardFilter === "rejected" && (Number(row.rejected) || 0) === 0) return false;
-      if (statusCardFilter === "pending" && (Number(row.pending) || 0) === 0) return false;
       return true;
     });
-  }, [leaveData, search, departmentFilter, showZeroActivity, statusCardFilter]);
+  }, [leaveData, search, departmentFilter, showZeroActivity]);
 
   return (
     <>
       <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
-        Monthly activity per employee. Zero-activity rows are hidden by default.
+        Monthly activity per employee. Employees with zero activity are hidden by
+        default so the table isn&apos;t dominated by empty rows.
       </p>
 
-      <div className={leaveStyles.statRow}>
-        <button
-          type="button"
-          className={`${leaveStyles.statCard} ${leaveStyles.statCardGold}${
-            statusCardFilter === "pending" ? ` ${leaveStyles.statCardActive}` : ""
-          }`}
-          onClick={() => toggleStatusCard("pending")}
-          aria-pressed={statusCardFilter === "pending"}
+      <div className={leaveStyles.infoNote} role="status">
+        <svg
+          className={leaveStyles.infoNoteIcon}
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden
         >
-          <p className={leaveStyles.statLabel}>Pending</p>
-          <p className={leaveStyles.statValue}>{summaryStats.pending}</p>
-          <p className={leaveStyles.statSub}>This month</p>
-        </button>
-        <button
-          type="button"
-          className={`${leaveStyles.statCard} ${leaveStyles.statCardGreen}${
-            statusCardFilter === "approved" ? ` ${leaveStyles.statCardActive}` : ""
-          }`}
-          onClick={() => toggleStatusCard("approved")}
-          aria-pressed={statusCardFilter === "approved"}
-        >
-          <p className={leaveStyles.statLabel}>Approved</p>
-          <p className={leaveStyles.statValue}>{summaryStats.approved}</p>
-          <p className={leaveStyles.statSub}>This month</p>
-        </button>
-        <button
-          type="button"
-          className={`${leaveStyles.statCard} ${leaveStyles.statCardRed}${
-            statusCardFilter === "rejected" ? ` ${leaveStyles.statCardActive}` : ""
-          }`}
-          onClick={() => toggleStatusCard("rejected")}
-          aria-pressed={statusCardFilter === "rejected"}
-        >
-          <p className={leaveStyles.statLabel}>Rejected</p>
-          <p className={leaveStyles.statValue}>{summaryStats.rejected}</p>
-          <p className={leaveStyles.statSub}>This month</p>
-        </button>
-        <button
-          type="button"
-          className={`${leaveStyles.statCard} ${leaveStyles.statCardPurple}${
-            statusCardFilter === "" ? ` ${leaveStyles.statCardActive}` : ""
-          }`}
-          onClick={() => setStatusCardFilter("")}
-          aria-pressed={statusCardFilter === ""}
-        >
-          <p className={leaveStyles.statLabel}>Total requests</p>
-          <p className={leaveStyles.statValue}>{summaryStats.totalRequests}</p>
-          <p className={leaveStyles.statSub}>{summaryStats.withActivity} with activity</p>
-        </button>
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+          <line x1="4" y1="22" x2="4" y2="15" />
+        </svg>
+        <span>
+          Rows with no leave activity are collapsed out of the default view —
+          toggle <b>Show zero-activity</b> to bring them back.
+        </span>
       </div>
 
       <div className={leaveStyles.toolbar}>
@@ -186,7 +215,15 @@ export default function LeaveSummaryPanel() {
           aria-label="Month"
         />
         <div className={leaveStyles.searchWrap}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden
+          >
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
@@ -226,7 +263,7 @@ export default function LeaveSummaryPanel() {
 
       <div className={leaveStyles.reqTableShell}>
         <div className={leaveStyles.reqTableScroll}>
-          <table className={leaveStyles.reqTable}>
+          <table className={`${leaveStyles.reqTable} ${leaveStyles.sumTable}`}>
             <thead>
               <tr>
                 <th>ID</th>
@@ -237,24 +274,29 @@ export default function LeaveSummaryPanel() {
                 <th>Rejected</th>
                 <th>Pending</th>
                 <th>Leave type</th>
+                <th>Year trend</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className={leaveStyles.reqEmpty}>
+                  <td colSpan={9} className={leaveStyles.reqEmpty}>
                     Loading…
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={8} className={leaveStyles.reqEmpty} style={{ color: "#bc3a3a" }}>
+                  <td
+                    colSpan={9}
+                    className={leaveStyles.reqEmpty}
+                    style={{ color: "#bc3a3a" }}
+                  >
                     {error}
                   </td>
                 </tr>
               ) : visibleRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className={leaveStyles.reqEmpty}>
+                  <td colSpan={9} className={leaveStyles.reqEmpty}>
                     No employees match these filters.
                   </td>
                 </tr>
@@ -278,23 +320,35 @@ export default function LeaveSummaryPanel() {
                           }
                         />
                         {row.pseudonym && row.pseudonym !== "-" ? (
-                          <div className={leaveStyles.pseudoLine}>{row.pseudonym}</div>
+                          <div className={leaveStyles.pseudoLine}>
+                            {row.pseudonym}
+                          </div>
                         ) : null}
                       </div>
                     </td>
                     <td>{row.department}</td>
-                    <td className={leaveStyles.monoCell}>{row.total}</td>
-                    <td className={leaveStyles.monoCell}>{row.approved}</td>
-                    <td className={leaveStyles.monoCell}>{row.rejected}</td>
-                    <td className={leaveStyles.monoCell}>{row.pending}</td>
+                    <td className={leaveStyles.sumTotal}>{row.total}</td>
+                    <td className={leaveStyles.sumOk}>{row.approved}</td>
+                    <td className={leaveStyles.sumBad}>{row.rejected}</td>
+                    <td className={leaveStyles.sumWarn}>{row.pending}</td>
                     <td>
-                      {row.leaveTypes !== "-" ? (
-                        <span className={`${leaveStyles.badge} ${leaveStyles.badgeType}`}>
-                          {row.leaveTypes}
-                        </span>
+                      {row.leaveTypes.length > 0 ? (
+                        <div className={leaveStyles.typePills}>
+                          {row.leaveTypes.map((t) => (
+                            <span
+                              key={t}
+                              className={`${leaveStyles.badge} ${leaveStyles.badgeType}`}
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
                       ) : (
                         "—"
                       )}
+                    </td>
+                    <td>
+                      <YearTrend values={row.yearTrend} />
                     </td>
                   </tr>
                 ))

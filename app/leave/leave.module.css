@@ -241,6 +241,91 @@
   gap: 3px;
 }
 
+.infoNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: #eef6ff;
+  border: 1px solid #d6e7fb;
+  border-radius: 10px;
+  color: #35598a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.infoNoteIcon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #3b82f6;
+  font-size: 12px;
+}
+
+.sumTable {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.sumTable thead th {
+  padding: 8px 10px;
+  font-size: 10.5px;
+}
+
+.sumTable tbody td {
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.sumTable .personCell {
+  max-width: none;
+}
+
+.sumTotal {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1b2233;
+}
+
+.sumOk {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #2c8058;
+}
+
+.sumBad {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #bc3a3a;
+}
+
+.sumWarn {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ad7a2e;
+}
+
+.typePills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.trendRow {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+  min-width: 84px;
+}
+
+.trendBar {
+  display: inline-block;
+  width: 5px;
+  background: #2e3f6e;
+  border-radius: 2px 2px 0 0;
+}
+
 .reqTable thead th {
   text-align: left;
   font-size: 11px;

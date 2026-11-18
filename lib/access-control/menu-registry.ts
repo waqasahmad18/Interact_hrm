@@ -158,8 +158,8 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
   },
   {
     permission: "leave.monthly_summary.view",
-    name: "Monthly Leave Summary",
-    path: "/employee-dashboard/monthly-leave-summary",
+    name: "Leave Summary",
+    path: "/employee-dashboard/manage-leaves?tab=summary",
     group: "leave",
   },
 
@@ -379,7 +379,7 @@ export const ADMIN_PATH_TO_EMPLOYEE: Record<string, string> = {
   "/admin/company-policy": "/employee-dashboard/company-policy",
   "/admin/tungsten-in-out": "/employee-dashboard/tungsten-in-out",
   "/admin/presence-idle": "/employee-dashboard/presence-idle",
-  "/admin/monthly-leave-summary": "/employee-dashboard/monthly-leave-summary",
+  "/admin/monthly-leave-summary": "/employee-dashboard/manage-leaves?tab=summary",
   "/admin/calendar": "/employee-dashboard/calendar",
   "/admin/financial-requests": "/employee-dashboard/financial-requests",
   "/admin/shift-scheduler": "/employee-dashboard/shift-scheduler",
