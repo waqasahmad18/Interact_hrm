@@ -5,10 +5,9 @@ import {
   FaClock,
   FaUsers,
   FaTicketAlt,
-  FaEnvelope,
-  FaPhone,
-  FaMapMarkerAlt,
-  FaIdBadge,
+  FaCalendarAlt,
+  FaUser,
+  FaFileAlt,
 } from "react-icons/fa";
 import {
   getLastAdminMessage,
@@ -17,7 +16,6 @@ import {
 } from "../../lib/ticket-thread";
 import type { TicketCategory } from "../../lib/ticket-catalog";
 import dynamic from "next/dynamic";
-import { HeroProfileAvatar } from "./components/HeroProfileAvatar";
 import { SERVER_TIMEZONE } from "../../lib/timezone";
 import styles from "./employee-dashboard.module.css";
 
@@ -41,6 +39,23 @@ type TicketWidgetRow = {
   approved_by_name?: string | null;
 };
 
+type WeekDay = {
+  label: string;
+  dateKey: string;
+  hours: number;
+  status: "onTime" | "tardy" | "absent" | "pending" | "upcoming";
+  lateMinutes: number;
+  isToday: boolean;
+};
+
+type UpcomingEvent = {
+  id: string | number;
+  title: string;
+  start_at: string;
+  color?: string;
+  source?: string;
+};
+
 function ticketStatusLabel(status: string, ticketType?: string) {
   if (ticketType === "leave" && status === "resolved") return "approved";
   return status.replace("_", " ");
@@ -58,51 +73,57 @@ function ticketDecidedByLabel(ticket: TicketWidgetRow): string | null {
   return null;
 }
 
-const ProgressRing = React.memo(function ProgressRing({
-  pct,
-  color,
-  size = 54,
-  children,
-}: {
-  pct: number;
-  color: string;
-  size?: number;
-  children?: React.ReactNode;
-}) {
-  const r = (size - 10) / 2;
-  const c = 2 * Math.PI * r;
-  const clamped = Math.min(100, Math.max(0, pct));
-  const offset = c - (clamped / 100) * c;
+function greetingWord(hour: number) {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
-  return (
-    <div className={styles.ringWrap} style={{ width: size, height: size }}>
-      <svg width={size} height={size} aria-hidden>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="#e5e7eb"
-          strokeWidth="5"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth="5"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          className={styles.ringArc}
-        />
-      </svg>
-      {children ? <div className={styles.ringCenter}>{children}</div> : null}
-    </div>
-  );
-});
+function formatShiftTime(raw?: string | null) {
+  if (!raw) return "—";
+  const m = String(raw).match(/(\d{1,2}):(\d{2})/);
+  if (!m) return String(raw);
+  let h = Number(m[1]);
+  const min = m[2];
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${min} ${ampm}`;
+}
+
+function formatHours(hours: number) {
+  if (!hours || hours <= 0) return "0h";
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  if (m <= 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function eventParts(startAt: string) {
+  const key = String(startAt || "").slice(0, 10);
+  const [y, mo, d] = key.split("-").map(Number);
+  if (!y || !mo || !d) return { day: "—", mon: "", when: "" };
+  const instant = new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+  const day = String(d);
+  const mon = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    timeZone: "UTC",
+  }).format(instant);
+  const when = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(instant);
+  return { day, mon, when };
+}
+
+function barClass(status: WeekDay["status"]) {
+  if (status === "onTime") return styles.weekBarOnTime;
+  if (status === "tardy") return styles.weekBarTardy;
+  if (status === "absent") return styles.weekBarAbsent;
+  if (status === "pending") return styles.weekBarPending;
+  return styles.weekBarUpcoming;
+}
 
 /** Own 1s tick — avoids re-rendering the whole dashboard every second. */
 const LiveClock = React.memo(function LiveClock() {
@@ -137,15 +158,23 @@ const LiveClock = React.memo(function LiveClock() {
 export type DashboardHomeViewProps = {
   employeeId: string;
   employeeName: string;
-  profilePhoto: string | null;
-  onAvatarUpdated: (url: string) => void;
-  profileContact: { email: string; phone: string; location: string };
+  /** Kept for parent session sync; home uses greeting + ID chips instead of avatar card. */
+  profilePhoto?: string | null;
+  onAvatarUpdated?: (url: string) => void;
+  profileContact?: { email: string; phone: string; location: string };
   clockedInLabel: string;
+  todayStatus: string;
+  todayHours: number;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  greetingHour: number;
+  todayLabel: string;
   monthAttendanceStats: {
     present: number;
     absent: number;
     pct: number;
   };
+  monthTardies: number;
   leaveBalance: {
     annual: number;
     annualAllowance: number;
@@ -156,28 +185,26 @@ export type DashboardHomeViewProps = {
     paternity: number;
     paternityAllowance: number;
   };
-  eventsCal: {
-    monthLabel: string;
-    slots: Array<{
-      day: number;
-      tags: { id: string | number; title: string; color: string }[];
-      isTardy?: boolean;
-    } | null>;
+  weekChart: WeekDay[];
+  weekStats: {
+    onTime: number;
+    late: number;
+    absent: number;
+    weekScore: number;
+    avgHours: number;
   };
-  eventsMonthOffset: number;
-  todayDay: number;
-  setEventsMonthOffset: React.Dispatch<React.SetStateAction<number>>;
+  maxChartHours: number;
+  upcomingEvents: UpcomingEvent[];
+  reminders: Array<{ id: number; message: string }>;
   ticketWidgetItems: TicketWidgetRow[];
   ticketSeenMap: Record<number, string>;
   newReplyCount: number;
   openTicketPage: (ticket?: TicketWidgetRow) => void;
-  /** HR: company-wide ticket inbox (all employees). */
   isHrTicketInbox?: boolean;
   inboxTicketItems?: TicketWidgetRow[];
   inboxPendingCount?: number;
   openTicketInbox?: () => void;
   onNavigate: (path: string) => void;
-  /** Clock/Break controls rendered inline (avoids layout portal flash). */
   todayClock?: React.ReactNode;
 };
 
@@ -185,16 +212,21 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
   const {
     employeeId,
     employeeName,
-    profilePhoto,
-    onAvatarUpdated,
-    profileContact,
     clockedInLabel,
+    todayStatus,
+    todayHours,
+    shiftStart,
+    shiftEnd,
+    greetingHour,
+    todayLabel,
     monthAttendanceStats,
+    monthTardies,
     leaveBalance,
-    eventsCal,
-    eventsMonthOffset,
-    todayDay,
-    setEventsMonthOffset,
+    weekChart,
+    weekStats,
+    maxChartHours,
+    upcomingEvents,
+    reminders,
     ticketWidgetItems,
     ticketSeenMap,
     newReplyCount,
@@ -207,489 +239,514 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     todayClock,
   } = props;
 
-  const profileInitials = (employeeName || "E")
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
+  const firstName = (employeeName || "there").split(" ")[0];
   const leaveLeftLabel = `${String(leaveBalance.annual).padStart(2, "0")}/${leaveBalance.annualAllowance}`;
+  const statusChipClass =
+    todayStatus.startsWith("Late")
+      ? styles.chipWarn
+      : todayStatus === "On time"
+        ? styles.chipLive
+        : styles.chipMuted;
+
+  const leaveRows = [
+    {
+      key: "annual",
+      label: "Annual leave",
+      left: leaveBalance.annual,
+      total: leaveBalance.annualAllowance,
+      fill: styles.leaveTeal,
+    },
+    {
+      key: "bereavement",
+      label: "Bereavement",
+      left: leaveBalance.bereavement,
+      total: leaveBalance.bereavementAllowance,
+      fill: styles.leaveOrange,
+    },
+    ...(leaveBalance.maternityAllowance > 0
+      ? [
+          {
+            key: "maternity",
+            label: "Maternity",
+            left: leaveBalance.maternity,
+            total: leaveBalance.maternityAllowance,
+            fill: styles.leaveTeal,
+          },
+        ]
+      : []),
+    ...(leaveBalance.paternityAllowance > 0
+      ? [
+          {
+            key: "paternity",
+            label: "Paternity",
+            left: leaveBalance.paternity,
+            total: leaveBalance.paternityAllowance,
+            fill: styles.leaveOrange,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
         {employeeId ? <TardyNoteWidget employeeId={employeeId} variant="slack" /> : null}
 
-        <section className={styles.kpiStrip} aria-label="At a glance">
-          <div className={`${styles.kpi} ${styles.kpiTeal}`}>
-            <p className={styles.kpiLabel}>Attendance</p>
-            <p className={styles.kpiValue}>{monthAttendanceStats.pct}%</p>
-            <p className={styles.kpiHint}>Month to date</p>
+        <header className={styles.greeting}>
+          <div className={styles.greetingText}>
+            <p className={styles.greetingEyebrow}>{todayLabel}</p>
+            <h1 className={styles.greetingTitle}>
+              {greetingWord(greetingHour)}, {firstName}
+            </h1>
+            <div className={styles.greetingMeta}>
+              <span className={`${styles.chip} ${statusChipClass}`}>{todayStatus}</span>
+              <span className={styles.chip}>{clockedInLabel}</span>
+              {employeeId ? (
+                <span className={`${styles.chip} ${styles.chipMuted}`}>ID {employeeId}</span>
+              ) : null}
+            </div>
           </div>
-          <div className={styles.kpi}>
-            <p className={styles.kpiLabel}>Present days</p>
-            <p className={styles.kpiValue}>{monthAttendanceStats.present}</p>
-            <p className={styles.kpiHint}>Counted this month</p>
+          <div className={styles.greetingActions}>
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              onClick={() => onNavigate("/employee-dashboard/my-info")}
+            >
+              My profile
+            </button>
+            <button
+              type="button"
+              className={styles.solidBtn}
+              onClick={() => onNavigate("/employee-dashboard/attendance")}
+            >
+              Attendance detail
+            </button>
           </div>
-          <div className={styles.kpi}>
-            <p className={styles.kpiLabel}>Absent days</p>
-            <p className={styles.kpiValue}>{monthAttendanceStats.absent}</p>
-            <p className={styles.kpiHint}>Open attendance for detail</p>
-          </div>
-          <div className={`${styles.kpi} ${styles.kpiTeal}`}>
-            <p className={styles.kpiLabel}>Leave left</p>
-            <p className={styles.kpiValue}>{leaveLeftLabel}</p>
-            <p className={styles.kpiHint}>Annual balance</p>
-          </div>
-        </section>
+        </header>
 
-        <div className={styles.dashGrid}>
-          <article className={`${styles.card} ${styles.todayCard}`}>
-            <h2 className={styles.cardTitle}>
-              Today&apos;s Status
-              <span className={styles.cardTitleMeta}>Live</span>
-            </h2>
-            <LiveClock />
-            <p className={styles.clockedInLabel}>{clockedInLabel}</p>
+        <section className={styles.primaryRow} aria-label="Today and this week">
+          <article className={`${styles.panel} ${styles.todayDesk}`}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>Today&apos;s desk</h2>
+              <span className={styles.panelMeta}>Live workspace</span>
+            </div>
+            <div className={styles.todayTop}>
+              <div>
+                <LiveClock />
+                <p className={styles.clockedLine}>{clockedInLabel}</p>
+              </div>
+              <div className={styles.todayStats}>
+                <div className={styles.statPill}>
+                  <span className={styles.statPillLabel}>Hours today</span>
+                  <span className={styles.statPillValue}>{formatHours(todayHours)}</span>
+                </div>
+                <div className={styles.statPill}>
+                  <span className={styles.statPillLabel}>Punch status</span>
+                  <span className={styles.statPillValue}>{todayStatus}</span>
+                </div>
+              </div>
+            </div>
+            <div className={styles.shiftRow}>
+              <div className={styles.shiftItem}>
+                <span className={styles.shiftItemLabel}>Shift starts</span>
+                <span className={styles.shiftItemValue}>{formatShiftTime(shiftStart)}</span>
+              </div>
+              <div className={styles.shiftItem}>
+                <span className={styles.shiftItemLabel}>Shift ends</span>
+                <span className={styles.shiftItemValue}>{formatShiftTime(shiftEnd)}</span>
+              </div>
+            </div>
             <div className={styles.todayActions}>{todayClock}</div>
           </article>
 
-          <article className={`${styles.card} ${styles.attendanceCard}`}>
-            <h2 className={styles.cardTitle}>
-              My Attendance
-              <span className={styles.cardTitleMeta}>This month</span>
-            </h2>
-            <div className={styles.attendanceBody}>
-              <ProgressRing pct={monthAttendanceStats.pct} color="#0f766e" size={78}>
-                <span>{monthAttendanceStats.pct}%</span>
-              </ProgressRing>
-              <div className={styles.attendanceStats}>
-                <div className={styles.attStat}>
-                  <span className={`${styles.dot} ${styles.dotBlue}`} />
-                  {monthAttendanceStats.present} Days Present
+          <article className={styles.panel}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>This week</h2>
+              <span className={styles.panelMeta}>Mon – Fri pulse</span>
+            </div>
+            <div className={styles.weekBody}>
+              <div className={styles.weekBars} aria-label="Weekly hours">
+                {weekChart.map((day) => {
+                  const pct =
+                    day.status === "absent"
+                      ? 12
+                      : day.status === "upcoming" || day.status === "pending"
+                        ? 8
+                        : Math.max(8, Math.round((day.hours / maxChartHours) * 100));
+                  return (
+                    <div
+                      key={day.dateKey}
+                      className={`${styles.weekCol}${day.isToday ? ` ${styles.weekColToday}` : ""}`}
+                    >
+                      <span className={styles.weekHours}>
+                        {day.status === "upcoming" || day.status === "pending"
+                          ? "—"
+                          : day.status === "absent"
+                            ? "Abs"
+                            : formatHours(day.hours)}
+                      </span>
+                      <div className={styles.weekBarTrack}>
+                        <div
+                          className={`${styles.weekBarFill} ${barClass(day.status)}`}
+                          style={{ height: `${pct}%` }}
+                        />
+                      </div>
+                      <span className={styles.weekLabel}>{day.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className={styles.weekSummary}>
+                <div className={styles.weekStat}>
+                  <span className={styles.weekStatLabel}>On time</span>
+                  <span className={styles.weekStatValue}>{weekStats.onTime}</span>
                 </div>
-                <button
-                  type="button"
-                  className={`${styles.attStat} ${styles.attStatBtn}`}
-                  onClick={() => onNavigate("/employee-dashboard/attendance?filter=absent")}
-                >
-                  <span className={`${styles.dot} ${styles.dotRed}`} />
-                  {monthAttendanceStats.absent} Absent
-                </button>
-              </div>
-            </div>
-          </article>
-
-          <article className={`${styles.card} ${styles.leaveCard}`}>
-            <h2 className={styles.cardTitle}>
-              Leave Balance
-              <span className={styles.cardTitleMeta}>Remaining</span>
-            </h2>
-            <div className={styles.leaveRow}>
-              <div className={styles.leaveMeta}>
-                <span>Annual Leaves</span>
-                <span>
-                  {String(leaveBalance.annual).padStart(2, "0")}/{leaveBalance.annualAllowance}{" "}
-                  days
-                </span>
-              </div>
-              <div className={styles.leaveTrack}>
-                <div
-                  className={`${styles.leaveFill} ${styles.leaveTeal}`}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      leaveBalance.annualAllowance
-                        ? (leaveBalance.annual / leaveBalance.annualAllowance) * 100
-                        : 0
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div className={styles.leaveRow}>
-              <div className={styles.leaveMeta}>
-                <span>Bereavement Leave</span>
-                <span>
-                  {String(leaveBalance.bereavement).padStart(2, "0")}/
-                  {leaveBalance.bereavementAllowance} days
-                </span>
-              </div>
-              <div className={styles.leaveTrack}>
-                <div
-                  className={`${styles.leaveFill} ${styles.leaveOrange}`}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      leaveBalance.bereavementAllowance
-                        ? (leaveBalance.bereavement / leaveBalance.bereavementAllowance) * 100
-                        : 0
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-            {leaveBalance.maternityAllowance > 0 ? (
-              <div className={styles.leaveRow}>
-                <div className={styles.leaveMeta}>
-                  <span>Maternity Leave</span>
-                  <span>
-                    {String(leaveBalance.maternity).padStart(2, "0")}/
-                    {leaveBalance.maternityAllowance} days
+                <div className={styles.weekStat}>
+                  <span className={styles.weekStatLabel}>Late</span>
+                  <span className={styles.weekStatValue}>{weekStats.late}</span>
+                </div>
+                <div className={styles.weekStat}>
+                  <span className={styles.weekStatLabel}>Absent</span>
+                  <span className={styles.weekStatValue}>{weekStats.absent}</span>
+                </div>
+                <div className={styles.weekStat}>
+                  <span className={styles.weekStatLabel}>Avg hours</span>
+                  <span className={styles.weekStatValue}>
+                    {weekStats.avgHours > 0 ? weekStats.avgHours.toFixed(1) : "0"}
                   </span>
                 </div>
-                <div className={styles.leaveTrack}>
-                  <div
-                    className={`${styles.leaveFill} ${styles.leaveTeal}`}
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        leaveBalance.maternityAllowance
-                          ? (leaveBalance.maternity / leaveBalance.maternityAllowance) * 100
-                          : 0,
-                      )}%`,
-                    }}
-                  />
-                </div>
               </div>
-            ) : null}
-            {leaveBalance.paternityAllowance > 0 ? (
-              <div className={styles.leaveRow}>
-                <div className={styles.leaveMeta}>
-                  <span>Paternity Leave</span>
-                  <span>
-                    {String(leaveBalance.paternity).padStart(2, "0")}/
-                    {leaveBalance.paternityAllowance} days
-                  </span>
-                </div>
-                <div className={styles.leaveTrack}>
-                  <div
-                    className={`${styles.leaveFill} ${styles.leaveOrange}`}
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        leaveBalance.paternityAllowance
-                          ? (leaveBalance.paternity / leaveBalance.paternityAllowance) * 100
-                          : 0,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </article>
-
-          <article className={`${styles.card} ${styles.profileCard}`}>
-            <HeroProfileAvatar
-              employeeId={employeeId}
-              name={employeeName}
-              initials={profileInitials}
-              photo={profilePhoto}
-              onAvatarUpdated={onAvatarUpdated}
-              variant="card"
-            />
-            <h3 className={styles.profileName}>{employeeName}</h3>
-            <ul className={styles.profileMeta}>
-              <li>
-                <FaEnvelope aria-hidden />
-                <span>{profileContact.email || "No email"}</span>
-              </li>
-              <li>
-                <FaPhone aria-hidden />
-                <span>{profileContact.phone || "No phone"}</span>
-              </li>
-              <li>
-                <FaMapMarkerAlt aria-hidden />
-                <span>{profileContact.location}</span>
-              </li>
-              <li>
-                <FaIdBadge aria-hidden />
-                <span>ID: {employeeId || "—"}</span>
-              </li>
-            </ul>
-            <button
-              type="button"
-              className={styles.profileBtn}
-              onClick={() => onNavigate("/employee-dashboard/my-info")}
-            >
-              View Full Profile
-            </button>
-          </article>
-
-          <article className={`${styles.card} ${styles.eventsCard}`}>
-            <div className={styles.calNav}>
-              <button
-                type="button"
-                className={styles.calNavBtn}
-                onClick={() => setEventsMonthOffset((o) => o - 1)}
-                aria-label="Previous month"
-              >
-                ‹
-              </button>
-              <h2 className={styles.calMonth}>{eventsCal.monthLabel}</h2>
-              <button
-                type="button"
-                className={styles.calNavBtn}
-                onClick={() => setEventsMonthOffset((o) => o + 1)}
-                aria-label="Next month"
-              >
-                ›
-              </button>
             </div>
-            <div className={styles.calWeek}>
-              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-                <div key={`${d}-${i}`} className={styles.calDow}>
-                  {d}
+          </article>
+        </section>
+
+        <section className={styles.pulseStrip} aria-label="Month at a glance">
+          <div className={`${styles.pulseCard} ${styles.pulseAccent}`}>
+            <p className={styles.pulseLabel}>Attendance</p>
+            <p className={styles.pulseValue}>{monthAttendanceStats.pct}%</p>
+            <p className={styles.pulseHint}>Month to date</p>
+          </div>
+          <div className={styles.pulseCard}>
+            <p className={styles.pulseLabel}>Present</p>
+            <p className={styles.pulseValue}>{monthAttendanceStats.present}</p>
+            <p className={styles.pulseHint}>Working days counted</p>
+          </div>
+          <div className={`${styles.pulseCard} ${styles.pulseDanger}`}>
+            <p className={styles.pulseLabel}>Absent</p>
+            <p className={styles.pulseValue}>{monthAttendanceStats.absent}</p>
+            <p className={styles.pulseHint}>Open attendance for detail</p>
+          </div>
+          <div className={`${styles.pulseCard} ${styles.pulseWarn}`}>
+            <p className={styles.pulseLabel}>Tardies</p>
+            <p className={styles.pulseValue}>{monthTardies}</p>
+            <p className={styles.pulseHint}>Late punches this month</p>
+          </div>
+          <div className={`${styles.pulseCard} ${styles.pulseAccent}`}>
+            <p className={styles.pulseLabel}>Leave left</p>
+            <p className={styles.pulseValue}>{leaveLeftLabel}</p>
+            <p className={styles.pulseHint}>Annual balance</p>
+          </div>
+        </section>
+
+        <section className={styles.secondaryRow} aria-label="Leave, events, attention">
+          <article className={styles.panel}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>Leave wallet</h2>
+              <span className={styles.panelMeta}>Remaining</span>
+            </div>
+            <div className={styles.leaveList}>
+              {leaveRows.map((row) => (
+                <div key={row.key} className={styles.leaveRow}>
+                  <div className={styles.leaveMeta}>
+                    <span>{row.label}</span>
+                    <span>
+                      {String(row.left).padStart(2, "0")}/{row.total} days
+                    </span>
+                  </div>
+                  <div className={styles.leaveTrack}>
+                    <div
+                      className={`${styles.leaveFill} ${row.fill}`}
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          row.total ? (row.left / row.total) * 100 : 0
+                        )}%`,
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
-            <div className={styles.calGrid}>
-              {eventsCal.slots.map((slot, idx) =>
-                slot ? (
-                  <div
-                    key={idx}
-                    className={`${styles.calCell}${
-                      slot.day === todayDay && eventsMonthOffset === 0
-                        ? ` ${styles.calCellToday}`
-                        : ""
-                    }`}
-                  >
-                    {slot.day}
-                    <div className={styles.calDots}>
-                      {slot.isTardy ? (
-                        <span className={styles.calDotTardy} title="Tardy" />
-                      ) : null}
-                      {slot.tags.slice(0, 3).map((t) => (
-                        <span
-                          key={String(t.id)}
-                          className={styles.calDot}
-                          style={{ background: t.color }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div key={idx} className={styles.calCell} />
-                )
-              )}
-            </div>
+            <button
+              type="button"
+              className={styles.linkBtn}
+              onClick={() => onNavigate("/employee-dashboard/leave")}
+            >
+              Request leave →
+            </button>
           </article>
 
-          <article className={`${styles.card} ${styles.actionsCard}`}>
-            <h2 className={styles.cardTitle}>
-              Quick Actions
-              <span className={styles.cardTitleMeta}>Shortcuts</span>
-            </h2>
-            <div className={styles.actionList}>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={() => onNavigate("/employee-dashboard/time")}
-              >
-                <span className={`${styles.actionIcon} ${styles.actionBlue}`}>
-                  <FaClock />
-                </span>
-                Time & attendance
-              </button>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={() => onNavigate("/employee-dashboard/leave")}
-              >
-                <span className={`${styles.actionIcon} ${styles.actionOrange}`}>
-                  <FaTicketAlt />
-                </span>
-                Request leave
-              </button>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
-              >
-                <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
-                  <FaTicketAlt />
-                </span>
-                Generate ticket
-              </button>
-              {isHrTicketInbox ? (
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() =>
-                    openTicketInbox
-                      ? openTicketInbox()
-                      : onNavigate("/employee-dashboard/tickets")
-                  }
-                >
-                  <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
-                    <FaTicketAlt />
-                  </span>
-                  Ticket Inbox
-                  {inboxPendingCount > 0 ? ` (${inboxPendingCount})` : ""}
-                </button>
+          <article className={styles.panel}>
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>Coming up</h2>
+              <span className={styles.panelMeta}>Events & holidays</span>
+            </div>
+            <div className={styles.upcomingList}>
+              {upcomingEvents.length === 0 ? (
+                <p className={styles.emptyNote}>No upcoming events</p>
               ) : (
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() => onNavigate("/employee-dashboard/my-team")}
-                >
-                  <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
-                    <FaUsers />
-                  </span>
-                  My team
-                </button>
+                upcomingEvents.map((ev) => {
+                  const parts = eventParts(ev.start_at);
+                  return (
+                    <div key={String(ev.id)} className={styles.upcomingItem}>
+                      <div className={styles.upcomingDate}>
+                        <span className={styles.upcomingDay}>{parts.day}</span>
+                        <span className={styles.upcomingMon}>{parts.mon}</span>
+                      </div>
+                      <div className={styles.upcomingBody}>
+                        <p className={styles.upcomingTitle}>{ev.title || "Event"}</p>
+                        <p className={styles.upcomingSub}>
+                          <span
+                            className={styles.dot}
+                            style={{ background: ev.color || "#0f766e" }}
+                          />
+                          {parts.when}
+                          {ev.source ? ` · ${ev.source}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-              {isHrTicketInbox ? (
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() => onNavigate("/employee-dashboard/manage-leaves?tab=requests")}
-                >
-                  <span className={`${styles.actionIcon} ${styles.actionBlue}`}>
-                    <FaUsers />
-                  </span>
-                  Leaves
-                </button>
-              ) : null}
             </div>
+            <button
+              type="button"
+              className={styles.linkBtn}
+              onClick={() => onNavigate("/employee-dashboard/events")}
+            >
+              Open calendar →
+            </button>
           </article>
 
-          {isHrTicketInbox ? (
-            <article
-              className={`${styles.card} ${styles.ticketsCard}`}
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                openTicketInbox
+          <article
+            className={`${styles.panel} ${styles.clickPanel}`}
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              isHrTicketInbox
+                ? openTicketInbox
                   ? openTicketInbox()
                   : onNavigate("/employee-dashboard/tickets")
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
+                : openTicketPage()
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (isHrTicketInbox) {
                   openTicketInbox
                     ? openTicketInbox()
                     : onNavigate("/employee-dashboard/tickets");
-                }
-              }}
-            >
-              <div className={styles.ticketsHead}>
-                <h2 className={styles.ticketsHeadTitle}>Ticket Inbox</h2>
-                <button
-                  type="button"
-                  className={styles.viewAll}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNavigate("/employee-dashboard/tickets");
-                  }}
-                >
-                  View all
-                </button>
-              </div>
-              <div className={styles.ticketsBody}>
-                {inboxPendingCount > 0 ? (
-                  <span className={styles.replyBadge}>
-                    {inboxPendingCount} open
-                  </span>
-                ) : null}
-                {inboxTicketItems.length === 0 ? (
-                  <div className={styles.ticketEmpty}>No open tickets</div>
-                ) : (
-                  inboxTicketItems.map((ticket) => (
-                    <div key={ticket.id} className={styles.ticketItem}>
-                      <div className={styles.ticketTop}>
-                        <span className={styles.ticketNum}>{ticket.ticket_number}</span>
-                        <span className={styles.badgeMuted}>
-                          {ticketStatusLabel(ticket.status, ticket.ticket_type)}
-                        </span>
-                      </div>
-                      <div className={styles.ticketSub}>
-                        {ticket.employee_name || ticket.employee_id || "Employee"}
-                        {ticket.subject ? ` · ${ticket.subject}` : ""}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
-          ) : (
-            <article
-              className={`${styles.card} ${styles.ticketsCard}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => openTicketPage()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
+                } else {
                   openTicketPage();
                 }
-              }}
-            >
-              <div className={styles.ticketsHead}>
-                <h2 className={styles.ticketsHeadTitle}>My Tickets</h2>
-                <button
-                  type="button"
-                  className={styles.viewAll}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNavigate("/employee-dashboard/generate-ticket");
-                  }}
-                >
-                  View all
-                </button>
-              </div>
-              <div className={styles.ticketsBody}>
-                {newReplyCount > 0 ? (
-                  <span className={styles.replyBadge}>
-                    {newReplyCount} New {newReplyCount === 1 ? "Reply" : "Replies"}
-                  </span>
-                ) : null}
-                {ticketWidgetItems.length === 0 ? (
-                  <div className={styles.ticketEmpty}>No pending tickets</div>
-                ) : (
-                  ticketWidgetItems.map((ticket) => {
-                    const isLeave = ticket.ticket_type === "leave";
-                    const unread =
-                      !isLeave &&
-                      hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
-                    const lastAdmin = isLeave
-                      ? null
-                      : getLastAdminMessage(ticket.messages ?? []);
-                    return (
-                      <div key={ticket.id} className={styles.ticketItem}>
-                        <div className={styles.ticketTop}>
-                          <span className={styles.ticketNum}>{ticket.ticket_number}</span>
-                          <span className={unread ? styles.badgeNew : styles.badgeMuted}>
-                            {unread
-                              ? "New reply"
-                              : ticketStatusLabel(ticket.status, ticket.ticket_type)}
-                          </span>
-                        </div>
-                        <div className={styles.ticketSub}>{ticket.subject}</div>
-                        {ticketDecidedByLabel(ticket) ? (
-                          <div
-                            className={styles.ticketPreview}
-                            style={{
-                              fontWeight: 600,
-                              color:
-                                ticket.status === "rejected" ? "#b91c1c" : "#0f766e",
-                            }}
-                          >
-                            {ticketDecidedByLabel(ticket)}
+              }
+            }}
+          >
+            <div className={styles.panelHead}>
+              <h2 className={styles.panelTitle}>
+                {isHrTicketInbox ? "Needs attention" : "My attention"}
+              </h2>
+              <span className={styles.panelMeta}>Tickets & notes</span>
+            </div>
+            <div className={styles.attentionStack}>
+              {!isHrTicketInbox && reminders.length > 0 ? (
+                <div className={styles.attentionBlock}>
+                  <p className={styles.attentionBlockTitle}>Reminders</p>
+                  {reminders.slice(0, 2).map((r) => (
+                    <div key={r.id} className={styles.reminderItem}>
+                      <p className={styles.reminderText}>{r.message}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className={styles.attentionBlock}>
+                <p className={styles.attentionBlockTitle}>
+                  {isHrTicketInbox ? "Open tickets" : "Active tickets"}
+                </p>
+                {isHrTicketInbox ? (
+                  <>
+                    {inboxPendingCount > 0 ? (
+                      <span className={styles.replyBadge}>{inboxPendingCount} open</span>
+                    ) : null}
+                    {inboxTicketItems.length === 0 ? (
+                      <p className={styles.emptyNote}>No open tickets</p>
+                    ) : (
+                      inboxTicketItems.slice(0, 3).map((ticket) => (
+                        <div key={ticket.id} className={styles.ticketItem}>
+                          <div className={styles.ticketTop}>
+                            <span className={styles.ticketNum}>{ticket.ticket_number}</span>
+                            <span className={styles.badgeMuted}>
+                              {ticketStatusLabel(ticket.status, ticket.ticket_type)}
+                            </span>
                           </div>
-                        ) : null}
-                        {lastAdmin ? (
-                          <div className={styles.ticketPreview}>Admin: {lastAdmin.body}</div>
-                        ) : null}
-                      </div>
-                    );
-                  })
+                          <div className={styles.ticketSub}>
+                            {ticket.employee_name || ticket.employee_id || "Employee"}
+                            {ticket.subject ? ` · ${ticket.subject}` : ""}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {newReplyCount > 0 ? (
+                      <span className={styles.replyBadge}>
+                        {newReplyCount} new {newReplyCount === 1 ? "reply" : "replies"}
+                      </span>
+                    ) : null}
+                    {ticketWidgetItems.length === 0 ? (
+                      <p className={styles.emptyNote}>Nothing pending — you&apos;re clear</p>
+                    ) : (
+                      ticketWidgetItems.map((ticket) => {
+                        const isLeave = ticket.ticket_type === "leave";
+                        const unread =
+                          !isLeave &&
+                          hasUnreadAdminReply(ticket.id, ticket.messages, ticketSeenMap);
+                        const lastAdmin = isLeave
+                          ? null
+                          : getLastAdminMessage(ticket.messages ?? []);
+                        return (
+                          <div key={ticket.id} className={styles.ticketItem}>
+                            <div className={styles.ticketTop}>
+                              <span className={styles.ticketNum}>{ticket.ticket_number}</span>
+                              <span className={unread ? styles.badgeNew : styles.badgeMuted}>
+                                {unread
+                                  ? "New reply"
+                                  : ticketStatusLabel(ticket.status, ticket.ticket_type)}
+                              </span>
+                            </div>
+                            <div className={styles.ticketSub}>{ticket.subject}</div>
+                            {ticketDecidedByLabel(ticket) ? (
+                              <div
+                                className={styles.ticketPreview}
+                                style={{
+                                  fontWeight: 600,
+                                  color:
+                                    ticket.status === "rejected" ? "#b91c1c" : "#0f766e",
+                                }}
+                              >
+                                {ticketDecidedByLabel(ticket)}
+                              </div>
+                            ) : null}
+                            {lastAdmin ? (
+                              <div className={styles.ticketPreview}>
+                                Admin: {lastAdmin.body}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </>
                 )}
               </div>
-            </article>
+            </div>
+          </article>
+        </section>
+
+        <nav className={styles.shortcuts} aria-label="Useful shortcuts">
+          <button
+            type="button"
+            className={styles.shortcut}
+            onClick={() => onNavigate("/employee-dashboard/time")}
+          >
+            <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+              <FaClock />
+            </span>
+            Time & attendance
+          </button>
+          <button
+            type="button"
+            className={styles.shortcut}
+            onClick={() => onNavigate("/employee-dashboard/leave")}
+          >
+            <span className={`${styles.shortcutIcon} ${styles.iconOrange}`}>
+              <FaTicketAlt />
+            </span>
+            Request leave
+          </button>
+          <button
+            type="button"
+            className={styles.shortcut}
+            onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
+          >
+            <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
+              <FaFileAlt />
+            </span>
+            Generate ticket
+          </button>
+          <button
+            type="button"
+            className={styles.shortcut}
+            onClick={() => onNavigate("/employee-dashboard/events")}
+          >
+            <span className={`${styles.shortcutIcon} ${styles.iconSlate}`}>
+              <FaCalendarAlt />
+            </span>
+            Events
+          </button>
+          {isHrTicketInbox ? (
+            <>
+              <button
+                type="button"
+                className={styles.shortcut}
+                onClick={() =>
+                  openTicketInbox
+                    ? openTicketInbox()
+                    : onNavigate("/employee-dashboard/tickets")
+                }
+              >
+                <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
+                  <FaTicketAlt />
+                </span>
+                Ticket inbox
+                {inboxPendingCount > 0 ? ` (${inboxPendingCount})` : ""}
+              </button>
+              <button
+                type="button"
+                className={styles.shortcut}
+                onClick={() => onNavigate("/employee-dashboard/manage-leaves?tab=requests")}
+              >
+                <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+                  <FaUsers />
+                </span>
+                Leaves
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={styles.shortcut}
+              onClick={() => onNavigate("/employee-dashboard/my-team")}
+            >
+              <span className={`${styles.shortcutIcon} ${styles.iconSlate}`}>
+                <FaUsers />
+              </span>
+              My team
+            </button>
           )}
-        </div>
+          <button
+            type="button"
+            className={styles.shortcut}
+            onClick={() => onNavigate("/employee-dashboard/my-info")}
+          >
+            <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+              <FaUser />
+            </span>
+            My info
+          </button>
+        </nav>
       </div>
     </div>
   );

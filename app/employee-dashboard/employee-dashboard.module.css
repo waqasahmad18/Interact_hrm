@@ -1,18 +1,19 @@
-/* Employee home — quiet elegant, fast paint */
+/* Employee home — professional workspace layout */
 
 .page {
-  --ink: #111827;
-  --muted: #6b7280;
-  --line: #e8eaee;
-  --soft: #f3f4f6;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --soft: #f1f5f9;
   --paper: #ffffff;
   --accent: #0f766e;
-  --accent-soft: #f0fdfa;
+  --accent-soft: #ecfdf5;
   --warn: #c2410c;
   --danger: #b91c1c;
+  --good: #15803d;
   min-height: 0;
   background: transparent;
-  padding: 6px 24px 28px;
+  padding: 8px 24px 32px;
   font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
   color: var(--ink);
@@ -20,56 +21,393 @@
 }
 
 .inner {
-  max-width: 1320px;
+  max-width: 1280px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* Slim informative metrics — not chunky cards */
-.kpiStrip {
+/* —— Greeting —— */
+.greeting {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.greetingText {
+  min-width: 0;
+}
+
+.greetingEyebrow {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.greetingTitle {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.greetingMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: #334155;
+}
+
+.chipLive {
+  border-color: #99f6e4;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chipWarn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: var(--warn);
+}
+
+.chipMuted {
+  color: var(--muted);
+}
+
+.greetingActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ghostBtn {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+  font-family: inherit;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ghostBtn:hover {
+  background: var(--soft);
+  border-color: #cbd5e1;
+}
+
+.solidBtn {
+  border: none;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.solidBtn:hover {
+  background: #1e293b;
+}
+
+/* —— Primary row: Today + Week —— */
+.primaryRow {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 14px;
   align-items: stretch;
-  gap: 0;
+}
+
+.panel {
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-sizing: border-box;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
 }
 
-.kpi {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 16px;
-  border-right: 1px solid var(--line);
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.kpi:last-child {
-  border-right: none;
-}
-
-.kpiLabel {
+.panelTitle {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.panelMeta {
+  font-size: 12px;
   font-weight: 600;
+  color: var(--muted);
+}
+
+.todayDesk {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.todayTop {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.liveClock {
+  font-size: clamp(1.65rem, 2.4vw, 2.15rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.clockedLine {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.todayStats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.statPill {
+  min-width: 108px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--soft);
+  border: 1px solid transparent;
+}
+
+.statPillLabel {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.kpiValue {
+.statPillValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.shiftRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shiftItem {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fafbfc;
+}
+
+.shiftItemLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.shiftItemValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.todayActions {
+  margin-top: auto;
+}
+
+/* —— Week chart —— */
+.weekBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weekBars {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  align-items: end;
+  min-height: 132px;
+  padding: 4px 2px 0;
+}
+
+.weekCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.weekBarTrack {
+  width: 100%;
+  max-width: 36px;
+  height: 110px;
+  border-radius: 10px;
+  background: var(--soft);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.weekBarFill {
+  width: 100%;
+  border-radius: 10px 10px 0 0;
+  min-height: 4px;
+  transition: height 0.3s ease;
+}
+
+.weekBarOnTime { background: var(--accent); }
+.weekBarTardy { background: #ea580c; }
+.weekBarAbsent { background: #f87171; }
+.weekBarPending { background: #94a3b8; }
+.weekBarUpcoming { background: #cbd5e1; }
+
+.weekColToday .weekBarTrack {
+  outline: 2px solid rgba(15, 118, 110, 0.28);
+  outline-offset: 1px;
+}
+
+.weekLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.weekHours {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.weekSummary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.weekStat {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.weekStatLabel {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.weekStatValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— Month pulse —— */
+.pulseStrip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.pulseCard {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.pulseLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pulseValue {
   margin: 4px 0 0;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 750;
   letter-spacing: -0.03em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
-.kpiHint {
-  margin: 2px 0 0;
+.pulseHint {
+  margin: 3px 0 0;
   font-size: 11.5px;
   color: var(--muted);
   white-space: nowrap;
@@ -77,209 +415,49 @@
   text-overflow: ellipsis;
 }
 
-.kpiTeal .kpiValue {
+.pulseAccent .pulseValue {
   color: var(--accent);
 }
 
-.dashGrid {
-  display: grid;
-  grid-template-columns: 1.15fr 1fr 1fr 0.92fr;
-  grid-template-areas:
-    "today attendance leave profile"
-    "today events actions tickets";
-  gap: 12px;
-  align-items: stretch;
+.pulseWarn .pulseValue {
+  color: var(--warn);
 }
 
-.card {
-  background: var(--paper);
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  padding: 15px 16px;
-  box-sizing: border-box;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 200px;
-}
-
-.cardTitle {
-  margin: 0 0 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.cardTitleMeta {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-/* Today */
-.todayCard {
-  grid-area: today;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.liveClock {
-  font-size: clamp(1.7rem, 2.5vw, 2.25rem);
-  font-weight: 750;
-  letter-spacing: -0.045em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
-  margin: 2px 0 6px;
-}
-
-.clockedInLabel {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 550;
-  color: var(--muted);
-}
-
-.todayActions {
-  flex: 0 1 auto;
-  display: flex;
-  flex-direction: column;
-  margin-top: auto;
-  min-height: 0;
-}
-
-/* Attendance — elegant, not loud gradient blob */
-.attendanceCard {
-  grid-area: attendance;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--paper);
-  border-color: var(--line);
-  box-shadow: none;
-  position: relative;
-}
-
-.attendanceCard::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-}
-
-.attendanceCard .cardTitle {
-  color: var(--ink);
-}
-
-.attendanceCard .cardTitleMeta {
-  color: var(--muted);
-}
-
-.attendanceBody {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-left: 6px;
-}
-
-.attendanceStats {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.attStat {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.attStatBtn {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.attStatBtn:hover {
+.pulseDanger .pulseValue {
   color: var(--danger);
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  flex-shrink: 0;
+/* —— Secondary widgets —— */
+.secondaryRow {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1.1fr;
+  gap: 14px;
+  align-items: stretch;
 }
 
-.dotBlue { background: var(--accent); }
-.dotRed { background: #ef4444; }
-.dotGreen { background: #22c55e; }
-
-.ringWrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.ringCenter {
-  position: absolute;
-  inset: 0;
+.leaveList {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 750;
-  color: var(--accent);
-}
-
-.ringArc {
-  transition: stroke-dashoffset 0.35s ease;
-}
-
-/* Leave */
-.leaveCard {
-  grid-area: leave;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .leaveRow {
-  margin-bottom: 12px;
-}
-
-.leaveRow:last-child {
-  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .leaveMeta {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
   font-size: 12.5px;
-  font-weight: 600;
-  color: #374151;
+  font-weight: 650;
+  color: #334155;
 }
 
 .leaveTrack {
-  height: 6px;
+  height: 7px;
   border-radius: 999px;
   background: var(--soft);
   overflow: hidden;
@@ -290,315 +468,144 @@
   border-radius: 999px;
 }
 
-.leaveTeal {
-  background: var(--accent);
-}
+.leaveTeal { background: var(--accent); }
+.leaveOrange { background: #ea580c; }
 
-.leaveOrange {
-  background: #ea580c;
-}
-
-/* Profile */
-.profileCard {
-  grid-area: profile;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-}
-
-.profileAvatar {
-  width: 76px;
-  height: 76px;
-  border-radius: 999px;
-  object-fit: cover;
-  border: 2px solid var(--line);
-}
-
-.profileAvatarFallback {
-  width: 76px;
-  height: 76px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--soft);
-  color: var(--ink);
-  font-weight: 750;
-  font-size: 22px;
-  border: 2px solid var(--line);
-}
-
-.profileName {
-  margin: 2px 0 0;
-  font-size: 15px;
-  font-weight: 750;
-  color: var(--ink);
-  letter-spacing: -0.02em;
-}
-
-.profileMeta {
-  list-style: none;
-  margin: 2px 0 0;
+.linkBtn {
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
   padding: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  cursor: pointer;
   text-align: left;
 }
 
-.profileMeta li {
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+/* Upcoming */
+.upcomingList {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+}
+
+.upcomingItem {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fafbfc;
+}
+
+.upcomingDate {
+  text-align: center;
+  line-height: 1.1;
+}
+
+.upcomingDay {
+  display: block;
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.upcomingMon {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+.upcomingBody {
   min-width: 0;
 }
 
-.profileMeta li span {
+.upcomingTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.profileMeta svg {
-  flex-shrink: 0;
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.profileBtn {
-  margin-top: auto;
-  width: 100%;
-  border: none;
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  color: #fff;
-  background: var(--ink);
-  transition: background 0.12s ease;
-}
-
-.profileBtn:hover {
-  background: #1f2937;
-}
-
-/* Events */
-.eventsCard {
-  grid-area: events;
-}
-
-.calNav {
+.upcomingSub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
 }
 
-.calNavBtn {
-  border: 1px solid var(--line);
-  background: var(--paper);
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #374151;
-  font-weight: 700;
-}
-
-.calNavBtn:hover {
-  background: var(--soft);
-}
-
-.calMonth {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.calWeek {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-  margin-bottom: 4px;
-}
-
-.calDow {
-  text-align: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: #9ca3af;
-  text-transform: uppercase;
-}
-
-.calGrid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-
-.calCell {
-  aspect-ratio: 1;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.calCellToday {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 750;
-}
-
-.calDots {
-  display: flex;
-  gap: 2px;
-  min-height: 3px;
-}
-
-.calDot {
-  width: 3px;
-  height: 3px;
+.dot {
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
-}
-
-.calDotTardy {
-  width: 3px;
-  height: 3px;
-  border-radius: 999px;
-  background: #ef4444;
-}
-
-/* Quick actions — elegant button colors */
-.actionsCard {
-  grid-area: actions;
-}
-
-.actionList {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.actionBtn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.actionBtn:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-}
-
-.actionIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 11px;
   flex-shrink: 0;
 }
 
-.actionBlue { background: #0f766e; }
-.actionOrange { background: #ea580c; }
-.actionPurple { background: #111827; }
-
-/* Tickets */
-.ticketsCard {
-  grid-area: tickets;
-  padding: 0;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.ticketsHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  background: var(--ink);
-  color: #fff;
-}
-
-.ticketsHeadTitle {
+.emptyNote {
   margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  padding: 10px 0;
+  font-size: 13px;
+  color: #94a3b8;
 }
 
-.viewAll {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: transparent;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 650;
-  cursor: pointer;
-  font-family: inherit;
-  padding: 4px 9px;
-  border-radius: 8px;
-}
-
-.viewAll:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.ticketsBody {
-  padding: 10px 12px 12px;
-  background: #fafafa;
-  min-height: 110px;
+/* Attention */
+.attentionStack {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
 }
 
-.replyBadge {
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--warn);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-.ticketItem {
-  padding: 9px 10px;
-  border-radius: 10px;
+.attentionBlock {
   border: 1px solid var(--line);
-  background: var(--paper);
+  border-radius: 12px;
+  background: #fafbfc;
+  padding: 10px 12px;
+}
+
+.attentionBlockTitle {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.reminderItem,
+.ticketItem {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.reminderItem:first-of-type,
+.ticketItem:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.reminderText {
+  margin: 0;
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.35;
 }
 
 .ticketTop {
@@ -610,7 +617,7 @@
 
 .ticketNum {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 750;
   color: var(--ink);
 }
 
@@ -625,7 +632,7 @@
 
 .badgeMuted {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--muted);
   background: var(--soft);
   padding: 2px 7px;
@@ -636,7 +643,7 @@
 .ticketSub {
   margin-top: 3px;
   font-size: 12px;
-  color: #4b5563;
+  color: #475569;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -645,64 +652,130 @@
 .ticketPreview {
   margin-top: 3px;
   font-size: 11px;
-  color: #9ca3af;
+  color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.ticketEmpty {
-  font-size: 12.5px;
-  color: #9ca3af;
-  padding: 6px 0;
+.replyBadge {
+  display: inline-flex;
+  margin-bottom: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--warn);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
 }
 
-@media (max-width: 1200px) {
-  .kpiStrip {
-    flex-wrap: wrap;
-  }
+.clickPanel {
+  cursor: pointer;
+}
 
-  .kpi {
-    flex: 1 1 45%;
-    border-bottom: 1px solid var(--line);
-  }
+.clickPanel:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.45);
+  outline-offset: 2px;
+}
 
-  .dashGrid {
+/* —— Shortcuts —— */
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+  font-family: inherit;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+.shortcut:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.shortcutIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.iconTeal { background: #0f766e; }
+.iconOrange { background: #ea580c; }
+.iconInk { background: #0f172a; }
+.iconSlate { background: #475569; }
+
+@media (max-width: 1100px) {
+  .primaryRow,
+  .secondaryRow {
     grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "today today"
-      "attendance leave"
-      "profile profile"
-      "events actions"
-      "tickets tickets";
+  }
+
+  .secondaryRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .secondaryRow > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .pulseStrip {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 720px) {
   .page {
-    padding: 6px 12px 22px;
+    padding: 6px 12px 24px;
   }
 
-  .kpi {
-    flex: 1 1 100%;
-    border-right: none;
-  }
-
-  .dashGrid {
+  .primaryRow,
+  .secondaryRow,
+  .pulseStrip {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "today"
-      "attendance"
-      "leave"
-      "profile"
-      "events"
-      "actions"
-      "tickets";
+  }
+
+  .secondaryRow > :last-child {
+    grid-column: auto;
+  }
+
+  .weekSummary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .todayTop {
+    grid-template-columns: 1fr;
+  }
+
+  .todayStats {
+    align-items: stretch;
+    text-align: left;
+    flex-direction: row;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ringArc {
+  .weekBarFill,
+  .shortcut {
     transition: none;
   }
 }

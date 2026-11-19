@@ -873,13 +873,6 @@ export default function EmployeeDashboardPage() {
     return `Clocked In: ${time}`;
   }, [activeSession, todayKey]);
 
-  const profileInitials = (employeeName || "E")
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   const newReplyCount = React.useMemo(
     () =>
       tickets.filter(
@@ -1016,44 +1009,33 @@ export default function EmployeeDashboardPage() {
     return { year, month, monthLabel, slots };
   }, [todayParts.year, todayParts.month, eventsMonthOffset, allCalendarEvents, attendanceByDate]);
 
-  /** Sidebar: next upcoming US / company events with distinct palette colors. */
-  const sidebarEvents = React.useMemo(() => {
-    const todayKey = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-${String(todayParts.day).padStart(2, "0")}`;
-    const upcoming = allCalendarEvents
+  /** Real upcoming events for the home widget (no placeholder filler). */
+  const upcomingEvents = React.useMemo(() => {
+    const keyToday = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-${String(todayParts.day).padStart(2, "0")}`;
+    return allCalendarEvents
       .filter((ev) => {
         const key = eventDateKey(ev.start_at);
-        return key && key >= todayKey;
+        return key && key >= keyToday;
       })
-      .slice(0, 5);
-
-    if (upcoming.length > 0) {
-      return upcoming.map((ev, i) => ({
-        ...ev,
-        // Keep a stable chip color: prefer saved color, else cycle palette by slot
+      .slice(0, 4)
+      .map((ev, i) => ({
+        id: ev.id,
+        title: ev.title || "Event",
+        start_at: String(ev.start_at || ""),
         color: resolveEventColor(ev, i),
+        source: ev.source || undefined,
       }));
-    }
-
-    // Rare empty fallback — same colorful layout as the PDF mock
-    return [
-      { id: -1, title: "Lunch", start_at: "", color: "#25c6da" },
-      { id: -2, title: "Go Home", start_at: "", color: "#45aef0" },
-      { id: -3, title: "Do Homework", start_at: "", color: "#ffb22c" },
-      { id: -4, title: "Work On UI Design", start_at: "", color: "#e03756" },
-      { id: -5, title: "Sleep Tight", start_at: "", color: "#7c4dff" },
-    ] as DashboardEvent[];
   }, [allCalendarEvents, todayParts]);
 
-  const jumpCalendarToEvent = React.useCallback(
-    (ev: DashboardEvent) => {
-      const key = eventDateKey(ev.start_at);
-      if (!key) return;
-      const [y, m] = key.split("-").map(Number);
-      if (!y || !m) return;
-      setEventsMonthOffset((y - todayParts.year) * 12 + (m - todayParts.month));
-    },
-    [todayParts.year, todayParts.month]
-  );
+  const todayLabel = React.useMemo(() => {
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      timeZone: SERVER_TIMEZONE,
+    }).format(calendarNow);
+  }, [calendarNow]);
 
   React.useEffect(() => {
     eventsYearRef.current = eventsCal.year;
@@ -1093,12 +1075,20 @@ export default function EmployeeDashboardPage() {
       onAvatarUpdated={(url) => setProfilePhoto(url)}
       profileContact={profileContact}
       clockedInLabel={clockedInLabel}
+      todayStatus={todayStatus}
+      todayHours={todayHours}
+      shiftStart={activeSession?.shift_start_time ?? todayRecord?.shift_start_time ?? null}
+      shiftEnd={activeSession?.shift_end_time ?? todayRecord?.shift_end_time ?? null}
+      greetingHour={todayParts.hour}
+      todayLabel={todayLabel}
       monthAttendanceStats={monthAttendanceStats}
+      monthTardies={monthTardies}
       leaveBalance={leaveBalance}
-      eventsCal={eventsCal}
-      eventsMonthOffset={eventsMonthOffset}
-      todayDay={todayParts.day}
-      setEventsMonthOffset={setEventsMonthOffset}
+      weekChart={weekChart}
+      weekStats={weekStats}
+      maxChartHours={maxChartHours}
+      upcomingEvents={upcomingEvents}
+      reminders={reminders}
       ticketWidgetItems={ticketWidgetItems}
       ticketSeenMap={ticketSeenMap}
       newReplyCount={newReplyCount}
