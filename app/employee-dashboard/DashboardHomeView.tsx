@@ -490,6 +490,80 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                   </span>
                 </div>
               </div>
+              <nav className={styles.shortcuts} aria-label="Useful shortcuts">
+                <button
+                  type="button"
+                  className={styles.shortcut}
+                  onClick={() => onNavigate("/employee-dashboard/time")}
+                >
+                  <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+                    <FaClock />
+                  </span>
+                  Time & attendance
+                </button>
+                <button
+                  type="button"
+                  className={styles.shortcut}
+                  onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
+                >
+                  <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
+                    <FaFileAlt />
+                  </span>
+                  Generate ticket
+                </button>
+                {isHrTicketInbox ? (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.shortcut}
+                      onClick={() =>
+                        openTicketInbox
+                          ? openTicketInbox()
+                          : onNavigate("/employee-dashboard/tickets")
+                      }
+                    >
+                      <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
+                        <FaTicketAlt />
+                      </span>
+                      Ticket inbox
+                      {inboxPendingCount > 0 ? ` (${inboxPendingCount})` : ""}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.shortcut}
+                      onClick={() =>
+                        onNavigate("/employee-dashboard/manage-leaves?tab=requests")
+                      }
+                    >
+                      <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+                        <FaUsers />
+                      </span>
+                      Leaves
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.shortcut}
+                    onClick={() => onNavigate("/employee-dashboard/my-team")}
+                  >
+                    <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
+                      <FaUsers />
+                    </span>
+                    My team
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.shortcut}
+                  onClick={() => onNavigate("/employee-dashboard/my-info")}
+                >
+                  <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
+                    <FaUser />
+                  </span>
+                  My info
+                </button>
+              </nav>
             </div>
           </article>
         </section>
@@ -722,88 +796,6 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
           </article>
         </section>
 
-        <nav className={styles.shortcuts} aria-label="Useful shortcuts">
-          <button
-            type="button"
-            className={styles.shortcut}
-            onClick={() => onNavigate("/employee-dashboard/time")}
-          >
-            <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
-              <FaClock />
-            </span>
-            Time & attendance
-          </button>
-          <button
-            type="button"
-            className={styles.shortcut}
-            onClick={() => onNavigate("/employee-dashboard/leave")}
-          >
-            <span className={`${styles.shortcutIcon} ${styles.iconOrange}`}>
-              <FaTicketAlt />
-            </span>
-            Request leave
-          </button>
-          <button
-            type="button"
-            className={styles.shortcut}
-            onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
-          >
-            <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
-              <FaFileAlt />
-            </span>
-            Generate ticket
-          </button>
-          {isHrTicketInbox ? (
-            <>
-              <button
-                type="button"
-                className={styles.shortcut}
-                onClick={() =>
-                  openTicketInbox
-                    ? openTicketInbox()
-                    : onNavigate("/employee-dashboard/tickets")
-                }
-              >
-                <span className={`${styles.shortcutIcon} ${styles.iconInk}`}>
-                  <FaTicketAlt />
-                </span>
-                Ticket inbox
-                {inboxPendingCount > 0 ? ` (${inboxPendingCount})` : ""}
-              </button>
-              <button
-                type="button"
-                className={styles.shortcut}
-                onClick={() => onNavigate("/employee-dashboard/manage-leaves?tab=requests")}
-              >
-                <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
-                  <FaUsers />
-                </span>
-                Leaves
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className={styles.shortcut}
-              onClick={() => onNavigate("/employee-dashboard/my-team")}
-            >
-              <span className={`${styles.shortcutIcon} ${styles.iconSlate}`}>
-                <FaUsers />
-              </span>
-              My team
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.shortcut}
-            onClick={() => onNavigate("/employee-dashboard/my-info")}
-          >
-            <span className={`${styles.shortcutIcon} ${styles.iconTeal}`}>
-              <FaUser />
-            </span>
-            My info
-          </button>
-        </nav>
       </div>
     </div>
   );
