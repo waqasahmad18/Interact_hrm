@@ -1,9 +1,9 @@
-/* Today's Status — Clock / Break / Prayer stacked pills (dashboard mockup) */
+/* Today's desk — compact action buttons (less scroll) */
 
 .row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 
@@ -40,21 +40,21 @@
 .btn {
   width: 100%;
   border: none;
-  border-radius: 999px;
-  padding: 11px 18px;
-  font-size: 14px;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   color: #fff;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: none;
+  transition: background 0.12s ease, filter 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: brightness(1.05);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
+  transform: none;
+  filter: brightness(1.06);
+  box-shadow: none;
 }
 
 .btn:disabled {
@@ -63,48 +63,43 @@
 }
 
 .btnClockIn {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: #0f766e;
 }
 
 .btnClockOut {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+  background: #b91c1c;
 }
 
 .btnBreak {
-  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  background: #0d9488;
 }
 
 .btnBreakEnd {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+  background: #b91c1c;
 }
 
 .btnPrayer {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: #4f46e5;
 }
 
 .btnPrayerEnd {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+  background: #b91c1c;
 }
 
 .btnRefreshment {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: #c2410c;
 }
 
 .btnRefreshmentEnd {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+  background: #b91c1c;
 }
 
 .btnMeeting {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: #1e40af;
 }
 
 .btnMeetingEnd {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.28);
+  background: #b91c1c;
 }
 
 .statusBox,
@@ -119,29 +114,29 @@
 .statusBoxInner,
 .summaryBoxInner {
   text-align: center;
-  padding: 0 0 2px;
+  padding: 0;
 }
 
 .statusLabel,
 .summaryLabel {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 650;
   color: #64748b;
   letter-spacing: 0.02em;
 }
 
 .statusTimer,
 .summaryValue {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #0f172a;
   font-variant-numeric: tabular-nums;
 }
 
 .summaryExceed {
-  font-size: 11px;
-  color: #dc2626;
-  font-weight: 600;
+  font-size: 10.5px;
+  color: #b91c1c;
+  font-weight: 650;
 }
 
 .cardBadge,

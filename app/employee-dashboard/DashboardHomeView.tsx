@@ -399,7 +399,6 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
             <div className={styles.todayTop}>
               <div>
                 <LiveClock />
-                <p className={styles.clockedLine}>{clockedInLabel}</p>
               </div>
               <div className={styles.todayStats}>
                 <div className={styles.statPill}>
