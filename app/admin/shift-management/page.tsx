@@ -1205,7 +1205,7 @@ export default function ShiftManagementPage() {
                             ))}
                           </select>
                         ) : emp.shift_name ? (
-                          <span className={styles.shiftName}>
+                          <span className={styles.shiftName} title={emp.shift_name}>
                             {emp.shift_name}
                           </span>
                         ) : (

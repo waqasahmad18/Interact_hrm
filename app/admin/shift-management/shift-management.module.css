@@ -493,14 +493,18 @@
 
 .shiftName {
   font-weight: 600;
-  color: #0f766e;
-  padding: 6px 12px;
+  padding: 4px 8px;
   background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
   color: white;
   border-radius: 6px;
-  font-size: 0.85rem;
-  display: inline-width;
-  width: fit-content;
+  font-size: 0.75rem;
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shiftTime {
@@ -606,47 +610,53 @@
 /* Edit Mode Styles */
 .actionsCell {
   text-align: center;
+  min-width: 0;
 }
 
 .editButton {
   background: #0f766e;
   color: white;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 .editButton:hover {
   background: #0d9488;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.35);
 }
 
 .actionButtons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .rowAssignSelect {
-  min-width: 150px;
-  max-width: 220px;
-  padding: 7px 10px;
-  border: 1.5px solid #c4b5e0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 6px;
+  border: 1.5px solid #99f6e4;
   border-radius: 8px;
   background: #fff;
   color: #0f766e;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .rowAssignSelect:disabled {
@@ -664,16 +674,17 @@
   background: #4caf50;
   color: white;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1.2rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 .saveButton:hover {
@@ -685,8 +696,31 @@
   background: #f44336;
   color: white;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.deleteButton:hover {
+  background: #d32f2f;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+}
+
+.cancelButton {
+  background: #f44336;
+  color: white;
+  border: none;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 1rem;
@@ -695,28 +729,7 @@
   justify-content: center;
   transition: all 0.3s ease;
   font-weight: bold;
-}
-
-.deleteButton:hover {
-  background: #d32f2f;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
-}
-
-.cancelButton {
-  background: #f44336;
-  color: white;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  font-weight: bold;
+  flex-shrink: 0;
 }
 
 .cancelButton:hover {
@@ -727,17 +740,20 @@
 .editTimeInputs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   justify-content: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .timeInput {
-  width: 80px;
-  min-width: 80px;
-  padding: 6px 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 72px;
+  padding: 4px 4px;
   border: 2px solid #0f766e;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
   font-weight: 500;
   box-sizing: border-box;
 }
