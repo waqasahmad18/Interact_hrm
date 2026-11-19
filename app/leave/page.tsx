@@ -21,6 +21,7 @@ import {
   isManagerOrgRole,
   isTeamLeadOrgRole,
 } from "@/lib/org-role";
+import { displayLeaveReason } from "@/lib/leave-reason-display";
 
 type LeaveSortKey =
   | "employee_id"
@@ -814,7 +815,7 @@ export default function LeavePage() {
                   </div>
                 ) : null}
                 <div className={styles.modalRow}>
-                  <b>Reason:</b> {selectedLeave.reason}
+                  <b>Reason:</b> {displayLeaveReason(selectedLeave.reason) || "—"}
                 </div>
                 {selectedLeave.admin_remark ? (
                   <div className={styles.modalRow}>

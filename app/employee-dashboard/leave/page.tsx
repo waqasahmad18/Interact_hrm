@@ -8,6 +8,7 @@ import {
   SERVER_TIMEZONE,
 } from "../../../lib/timezone";
 import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
+import { displayLeaveReason } from "@/lib/leave-reason-display";
 import styles from "./leave.module.css";
 
 interface Leave {
@@ -628,7 +629,7 @@ export default function LeavePage() {
                   </div>
                 ) : null}
                 <div className={styles.modalRow}>
-                  <b>Reason:</b> {selectedLeave.reason}
+                  <b>Reason:</b> {displayLeaveReason(selectedLeave.reason) || "—"}
                 </div>
                 {selectedLeave.admin_remark ? (
                   <div className={styles.modalRow}>

@@ -11,6 +11,7 @@ import styles from "../../leave/leave.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { leaveStatusLabel, overallLeaveStatus } from "@/lib/leave-approval";
+import { displayLeaveReason } from "@/lib/leave-reason-display";
 import { rowAllowedByScope, useViewerDataScope } from "@/lib/access-control/use-viewer-scope";
 import { toastError } from "@/lib/app-toast";
 import {
@@ -874,7 +875,7 @@ export default function LeaveRequestsPanel({
                 <div className={styles.modalRow}>
                   <b>Reason</b>
                   <div className={styles.reasonFull}>
-                    {selectedLeave.reason || "—"}
+                    {displayLeaveReason(selectedLeave.reason) || "—"}
                   </div>
                 </div>
                 {selectedLeave.admin_remark ? (
