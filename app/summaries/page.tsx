@@ -51,7 +51,7 @@ const MeetingSummaryView = dynamic(
 
 function SummaryLoading({ label }: { label: string }) {
   return (
-    <div className={styles.breakSummaryContainer} style={{ paddingTop: 24 }}>
+    <div className={styles.breakSummaryContainer} style={{ paddingTop: 12 }}>
       <p style={{ color: "#64748b", fontSize: "0.95rem" }}>Loading {label} summary…</p>
     </div>
   );

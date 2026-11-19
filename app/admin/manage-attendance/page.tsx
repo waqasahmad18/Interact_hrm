@@ -508,15 +508,17 @@ export default function ManageAttendancePage() {
               className={leaveStyles.toolbarSelect}
               aria-label="To date"
             />
-            <button
-              type="button"
-              onClick={downloadExcel}
-              className={styles.breakSummaryXLSButton}
-              title="Download Excel"
-            >
-              <FaFileExcel size={18} />
-              <span>Export Excel</span>
-            </button>
+            <div className={leaveStyles.toolbarActions}>
+              <button
+                type="button"
+                onClick={downloadExcel}
+                className={styles.breakSummaryXLSButton}
+                title="Download Excel"
+              >
+                <FaFileExcel size={14} />
+                <span>Export Excel</span>
+              </button>
+            </div>
           </div>
 
           <div className={leaveStyles.reqTableShell}>

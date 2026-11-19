@@ -369,24 +369,26 @@ export default function AttendanceSummaryView() {
             className={leaveStyles.toolbarSelect}
             aria-label="To date"
           />
-          <button
-            type="button"
-            onClick={downloadAttendanceCSV}
-            className={styles.breakSummaryXLSButton}
-            title="Download XLS"
-          >
-            <FaFileExcel size={18} />
-            <span>Export XLS</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleImportClick}
-            className={styles.breakSummaryXLSButton}
-            title="Import XLS"
-          >
-            <FaFileExcel size={18} />
-            <span>Import XLS</span>
-          </button>
+          <div className={leaveStyles.toolbarActions}>
+            <button
+              type="button"
+              onClick={downloadAttendanceCSV}
+              className={styles.breakSummaryXLSButton}
+              title="Download XLS"
+            >
+              <FaFileExcel size={14} />
+              <span>Export XLS</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleImportClick}
+              className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`}
+              title="Import XLS"
+            >
+              <FaFileExcel size={14} />
+              <span>Import XLS</span>
+            </button>
+          </div>
           <input
             ref={importInputRef}
             type="file"

@@ -2,6 +2,7 @@
 
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import styles from "../break-summary/break-summary.module.css";
+import leaveStyles from "../leave/leave.module.css";
 import { FaFileExcel } from "react-icons/fa";
 import {
   getDateStringInTimeZone,
@@ -318,20 +319,26 @@ export default function BreakSummaryView() {
     <>
       <div className={styles.breakSummaryContainer}>
         <h1 className={styles.pageTitle}>Break Summary</h1>
-        <div className={styles.breakSummaryFilters}>
-          <input
-            type="text"
-            placeholder="Search by name or pseudo name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={styles.breakSummaryInput}
-            style={{ width: 180 }}
-          />
+        <div className={leaveStyles.toolbar}>
+          <div className={leaveStyles.searchWrap}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              className={leaveStyles.toolbarSearch}
+              placeholder="Search by name or pseudo name"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            className={styles.breakSummaryDate}
-            style={{ width: 180 }}
+            className={leaveStyles.toolbarSelect}
+            aria-label="Filter by department"
           >
             <option value="">
               {viewerScope.mode === "all" ? "All Departments" : "All (your departments)"}
@@ -346,24 +353,36 @@ export default function BreakSummaryView() {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className={styles.breakSummaryDate}
-            placeholder="From Date"
+            className={leaveStyles.toolbarSelect}
+            aria-label="From date"
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className={styles.breakSummaryDate}
-            placeholder="To Date"
+            className={leaveStyles.toolbarSelect}
+            aria-label="To date"
           />
-          <button onClick={downloadBreakCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-            <FaFileExcel size={20} />
-            <span>Export XLS</span>
-          </button>
-          <button onClick={handleImportClick} className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`} title="Import XLS">
-            <FaFileExcel size={20} />
-            <span>Import XLS</span>
-          </button>
+          <div className={leaveStyles.toolbarActions}>
+            <button
+              type="button"
+              onClick={downloadBreakCSV}
+              className={styles.breakSummaryXLSButton}
+              title="Download XLS"
+            >
+              <FaFileExcel size={14} />
+              <span>Export XLS</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleImportClick}
+              className={`${styles.breakSummaryXLSButton} ${styles.breakSummaryXLSButtonSecondary}`}
+              title="Import XLS"
+            >
+              <FaFileExcel size={14} />
+              <span>Import XLS</span>
+            </button>
+          </div>
           <input
             ref={importInputRef}
             type="file"
@@ -373,68 +392,68 @@ export default function BreakSummaryView() {
           />
         </div>
 
-        <div className={styles.breakSummaryTableWrapper}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
-              Loading...
-            </div>
-          ) : (
-          <table className={styles.breakSummaryTable}>
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Full Name</th>
-                <th>P.Name</th>
-                <th>Department</th>
-                <th>Date</th>
-                <th>Break Start</th>
-                <th>Break End</th>
-                <th>Total Break Time</th>
-                <th>Total Break</th>
-                <th>Exceed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className={styles.breakSummaryNoRecords}>
-                    No records found.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((b, idx) => (
-                  <tr key={b.id || idx}>
-                    <td className={styles.cellMuted}>{b.employee_id}</td>
-                    <td className={styles.nameCol}>
-                      <EmployeeTableNameCell
-                        name={b.employee_name || ""}
-                        employeeId={b.employee_id}
-                        photo={getPhoto(b.employee_id)}
-                        onOpen={() => openEmployeeDetail(b)}
-                      />
-                    </td>
-                    <td>{b.pseudonym || "—"}</td>
-                    <td>{b.department_name || "—"}</td>
-                    <td>{b.date_display}</td>
-                    <td>{b.break_start_display}</td>
-                    <td>
-                      {b.break_start && !b.break_end ? (
-                        <span className={styles.badgeRunning}>Running</span>
-                      ) : (
-                        b.break_end_display
-                      )}
-                    </td>
-                    <td>{b.total_break_time}</td>
-                    <td>{b.total_break_time_today}</td>
-                    <td className={b.exceed_today ? styles.cellExceed : undefined}>
-                      {b.exceed_today || "—"}
-                    </td>
+        <div className={leaveStyles.reqTableShell}>
+          <div className={leaveStyles.reqTableScroll}>
+            {loading ? (
+              <div className={leaveStyles.loading}>Loading breaks…</div>
+            ) : (
+              <table className={`${leaveStyles.reqTable} ${styles.breakSumTableFit}`}>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Full Name</th>
+                    <th>P.Name</th>
+                    <th>Department</th>
+                    <th>Date</th>
+                    <th>Break Start</th>
+                    <th>Break End</th>
+                    <th>Total Break Time</th>
+                    <th>Total Break</th>
+                    <th>Exceed</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          )}
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className={leaveStyles.reqEmpty}>
+                        No records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((b, idx) => (
+                      <tr key={b.id || idx}>
+                        <td className={leaveStyles.reqId}>{b.employee_id}</td>
+                        <td>
+                          <EmployeeTableNameCell
+                            name={b.employee_name || ""}
+                            employeeId={b.employee_id}
+                            photo={getPhoto(b.employee_id)}
+                            onOpen={() => openEmployeeDetail(b)}
+                          />
+                        </td>
+                        <td>{b.pseudonym || "—"}</td>
+                        <td>{b.department_name || "—"}</td>
+                        <td>{b.date_display}</td>
+                        <td>{b.break_start_display}</td>
+                        <td>
+                          {b.break_start && !b.break_end ? (
+                            <span className={styles.badgeRunning}>Running</span>
+                          ) : (
+                            b.break_end_display
+                          )}
+                        </td>
+                        <td>{b.total_break_time}</td>
+                        <td>{b.total_break_time_today}</td>
+                        <td className={b.exceed_today ? styles.cellExceed : undefined}>
+                          {b.exceed_today || "—"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
       {detail ? <EmployeeDetailPopup data={detail} onClose={() => setDetail(null)} /> : null}
