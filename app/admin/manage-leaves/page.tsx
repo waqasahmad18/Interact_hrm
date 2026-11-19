@@ -125,10 +125,21 @@ function ManageLeavesPageInner() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState("");
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
+  /** Top month filter (parallel to tabs) — drives activity date range */
+  const [globalMonth, setGlobalMonth] = useState("");
   /** From–To date range filters employees with leave activity in range */
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
+
+  const applyGlobalMonth = (monthKey: string) => {
+    setGlobalMonth(monthKey);
+    if (!monthKey) return;
+    const [year, monthNum] = monthKey.split("-");
+    const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
+    setFromDate(`${monthKey}-01`);
+    setToDate(`${monthKey}-${String(lastDay).padStart(2, "0")}`);
+  };
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<LeaveDashTab>("requests");
@@ -422,7 +433,10 @@ function ManageLeavesPageInner() {
     return "Confirmed";
   };
 
-  /** Balances tab shows Annual only (bereavement / mat / pat remain requestable elsewhere). */
+  /**
+   * Show Annual + Bereavement + Mat/Pat bars.
+   * Available / Total = Annual only (do not sum other categories).
+   */
   const balanceFor = (emp: Employee) => {
     const annualAllow = Number(emp.annual_allowance) || 20;
     const annualCurrent = Number.isFinite(Number(emp.annual_current_balance))
@@ -431,17 +445,64 @@ function ManageLeavesPageInner() {
     const annualUsed = Number.isFinite(Number(emp.annual_used))
       ? Number(emp.annual_used)
       : Math.max(0, annualAllow - annualCurrent);
+    const berAllow = Number(emp.bereavement_allowance) || 3;
+    const berCurrent = Number.isFinite(Number(emp.bereavement_current_balance))
+      ? Number(emp.bereavement_current_balance)
+      : berAllow;
+    const berUsed = Number.isFinite(Number(emp.bereavement_used))
+      ? Number(emp.bereavement_used)
+      : Math.max(0, berAllow - berCurrent);
+    const gender = normalizeEmployeeGender(emp.gender);
+    const matAllow = Number(emp.maternity_allowance) || 90;
+    const matCurrent = Number.isFinite(Number(emp.maternity_current_balance))
+      ? Number(emp.maternity_current_balance)
+      : matAllow;
+    const matUsed = Number.isFinite(Number(emp.maternity_used))
+      ? Number(emp.maternity_used)
+      : Math.max(0, matAllow - matCurrent);
+    const patAllow = Number(emp.paternity_allowance) || 5;
+    const patCurrent = Number.isFinite(Number(emp.paternity_current_balance))
+      ? Number(emp.paternity_current_balance)
+      : patAllow;
+    const patUsed = Number.isFinite(Number(emp.paternity_used))
+      ? Number(emp.paternity_used)
+      : Math.max(0, patAllow - patCurrent);
     const available = Math.round(Math.max(0, annualCurrent) * 2) / 2;
     const annualPct =
       annualAllow > 0
         ? Math.min(100, (Math.max(0, annualAllow - annualCurrent) / annualAllow) * 100)
         : 0;
+    const berPct =
+      berAllow > 0
+        ? Math.min(100, (Math.max(0, berAllow - berCurrent) / berAllow) * 100)
+        : 0;
+    const matPct =
+      matAllow > 0
+        ? Math.min(100, (Math.max(0, matAllow - matCurrent) / matAllow) * 100)
+        : 0;
+    const patPct =
+      patAllow > 0
+        ? Math.min(100, (Math.max(0, patAllow - patCurrent) / patAllow) * 100)
+        : 0;
     return {
       annualAllow,
       annualCurrent,
       annualUsed,
+      berAllow,
+      berCurrent,
+      berUsed,
+      gender,
+      matAllow,
+      matCurrent,
+      matUsed,
+      patAllow,
+      patCurrent,
+      patUsed,
       available,
       annualPct,
+      berPct,
+      matPct,
+      patPct,
     };
   };
 
@@ -490,45 +551,62 @@ function ManageLeavesPageInner() {
             Requests, balances, and monthly summary — one place (scoped to your hierarchy).
           </p>
 
-          <div className={styles.dashTabs} role="tablist" aria-label="Leave sections">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "requests"}
-              className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => selectTab("requests")}
-            >
-              Requests
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "balances"}
-              className={`${styles.dashTab}${activeTab === "balances" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => selectTab("balances")}
-            >
-              Balances
-              <span className={styles.dashTabCount}>{employees.length}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "summary"}
-              className={`${styles.dashTab}${activeTab === "summary" ? ` ${styles.dashTabActive}` : ""}`}
-              onClick={() => selectTab("summary")}
-            >
-              Summary
-            </button>
+          <div className={styles.dashTabsRow}>
+            <div className={styles.dashTabs} role="tablist" aria-label="Leave sections">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "requests"}
+                className={`${styles.dashTab}${activeTab === "requests" ? ` ${styles.dashTabActive}` : ""}`}
+                onClick={() => selectTab("requests")}
+              >
+                Requests
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "balances"}
+                className={`${styles.dashTab}${activeTab === "balances" ? ` ${styles.dashTabActive}` : ""}`}
+                onClick={() => selectTab("balances")}
+              >
+                Balances
+                <span className={styles.dashTabCount}>{employees.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "summary"}
+                className={`${styles.dashTab}${activeTab === "summary" ? ` ${styles.dashTabActive}` : ""}`}
+                onClick={() => selectTab("summary")}
+              >
+                Summary
+              </button>
+            </div>
+            <div className={styles.dashMonthFilter}>
+              <label htmlFor="leaves-global-month">Month</label>
+              <input
+                id="leaves-global-month"
+                type="month"
+                className={styles.dashMonthInput}
+                value={globalMonth}
+                onChange={(e) => applyGlobalMonth(e.target.value)}
+                aria-label="Filter by month"
+              />
+            </div>
           </div>
 
-          {activeTab === "requests" ? <LeaveRequestsPanel /> : null}
-          {activeTab === "summary" ? <LeaveSummaryPanel /> : null}
+          {activeTab === "requests" ? (
+            <LeaveRequestsPanel externalMonth={globalMonth} />
+          ) : null}
+          {activeTab === "summary" ? (
+            <LeaveSummaryPanel externalMonth={globalMonth} />
+          ) : null}
 
           {activeTab === "balances" ? (
             <>
               <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
-                Annual leave balances for everyone. Bereavement, maternity, and paternity
-                stay available when applying — they are not listed here.
+                Annual, bereavement, and maternity/paternity balances. Available total
+                counts Annual only.
               </p>
               <div className={leaveStyles.toolbar}>
                 <div className={leaveStyles.searchWrap}>
@@ -639,6 +717,8 @@ function ManageLeavesPageInner() {
                           <th>Department</th>
                           <th>Status</th>
                           <th>Annual</th>
+                          <th>Bereavement</th>
+                          <th>Maternity / Paternity</th>
                           <th>Available</th>
                           {canEditBalances ? <th>Action</th> : null}
                         </tr>
@@ -647,7 +727,7 @@ function ManageLeavesPageInner() {
                         {filteredEmployees.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={6 + (canEditBalances ? 1 : 0)}
+                              colSpan={8 + (canEditBalances ? 1 : 0)}
                               className={leaveStyles.reqEmpty}
                             >
                               No employees match these filters.
@@ -663,6 +743,8 @@ function ManageLeavesPageInner() {
                                 : bal.available < 5
                                   ? styles.availMid
                                   : "";
+                            const showMat = bal.gender === "female";
+                            const showPat = bal.gender === "male";
                             return (
                               <tr key={emp.id}>
                                 <td className={leaveStyles.reqId}>{emp.id}</td>
@@ -719,6 +801,60 @@ function ManageLeavesPageInner() {
                                       </b>
                                     </div>
                                   </div>
+                                </td>
+                                <td>
+                                  <div className={styles.equity}>
+                                    <div className={styles.equityBar}>
+                                      <div
+                                        className={styles.segBer}
+                                        style={{ width: `${bal.berPct}%` }}
+                                      />
+                                    </div>
+                                    <div className={styles.equityLabel}>
+                                      <span>
+                                        {formatLeaveDays(bal.berCurrent)} /{" "}
+                                        {formatLeaveDays(bal.berAllow)}
+                                      </span>
+                                      <b>
+                                        {formatLeaveDays(bal.berUsed)} used
+                                      </b>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  {showMat || showPat ? (
+                                    <div className={styles.equity}>
+                                      <div className={styles.equityBar}>
+                                        <div
+                                          className={styles.segAnnual}
+                                          style={{
+                                            width: `${showMat ? bal.matPct : bal.patPct}%`,
+                                            opacity: 0.55,
+                                          }}
+                                        />
+                                      </div>
+                                      <div className={styles.equityLabel}>
+                                        <span>
+                                          {showMat ? "Mat " : "Pat "}
+                                          {formatLeaveDays(
+                                            showMat ? bal.matCurrent : bal.patCurrent,
+                                          )}{" "}
+                                          /{" "}
+                                          {formatLeaveDays(
+                                            showMat ? bal.matAllow : bal.patAllow,
+                                          )}
+                                        </span>
+                                        <b>
+                                          {formatLeaveDays(
+                                            showMat ? bal.matUsed : bal.patUsed,
+                                          )}{" "}
+                                          used
+                                        </b>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className={leaveStyles.actionStamp}>—</span>
+                                  )}
                                 </td>
                                 <td>
                                   <span className={`${styles.availableCell} ${availClass}`}>

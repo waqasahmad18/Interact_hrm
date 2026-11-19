@@ -136,17 +136,55 @@
   color: #1b2233;
 }
 
+.dashTabsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin: 0 0 18px;
+}
+
 .dashTabs {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin: 0 0 18px;
+  margin: 0;
   padding: 4px;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   width: fit-content;
   max-width: 100%;
+}
+
+.dashMonthFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.dashMonthFilter label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.dashMonthInput {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #0f172a;
 }
 
 .dashTab {

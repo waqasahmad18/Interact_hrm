@@ -82,7 +82,14 @@ function defaultMonthRange() {
   };
 }
 
-export default function LeaveSummaryPanel() {
+type LeaveSummaryPanelProps = {
+  /** Shared month from tabs row (YYYY-MM) — syncs From/To dates */
+  externalMonth?: string;
+};
+
+export default function LeaveSummaryPanel({
+  externalMonth = "",
+}: LeaveSummaryPanelProps) {
   const initialRange = defaultMonthRange();
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -93,6 +100,15 @@ export default function LeaveSummaryPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  useEffect(() => {
+    const monthKey = String(externalMonth || "").trim();
+    if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+    const [year, monthNum] = monthKey.split("-");
+    const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
+    setFromDate(`${monthKey}-01`);
+    setToDate(`${monthKey}-${String(lastDay).padStart(2, "0")}`);
+  }, [externalMonth]);
 
   useEffect(() => {
     if (!fromDate && !toDate) return;

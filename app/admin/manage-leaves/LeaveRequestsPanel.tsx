@@ -76,11 +76,14 @@ function readViewerEmployeeId(): string {
 type LeaveRequestsPanelProps = {
   initialCategory?: string;
   onCategoryConsumed?: () => void;
+  /** Shared month from tabs row (YYYY-MM) — syncs From/To dates */
+  externalMonth?: string;
 };
 
 export default function LeaveRequestsPanel({
   initialCategory = "",
   onCategoryConsumed,
+  externalMonth = "",
 }: LeaveRequestsPanelProps) {
   const viewerScope = useViewerDataScope();
   const viewerEmployeeId = readViewerEmployeeId();
@@ -141,6 +144,15 @@ export default function LeaveRequestsPanel({
     onCategoryConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCategory]);
+
+  useEffect(() => {
+    const monthKey = String(externalMonth || "").trim();
+    if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+    const [year, monthNum] = monthKey.split("-");
+    const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
+    setFromDate(`${monthKey}-01`);
+    setToDate(`${monthKey}-${String(lastDay).padStart(2, "0")}`);
+  }, [externalMonth]);
 
   const leaveDayKey = (l: any) => {
     const raw = l?.start_date || l?.end_date || l?.requested_at || l?.updated_at || "";
