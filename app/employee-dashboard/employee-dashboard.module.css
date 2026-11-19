@@ -117,19 +117,19 @@
 /* —— Primary row: Today + Week —— */
 .primaryRow {
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  gap: 14px;
-  align-items: stretch;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 12px;
+  align-items: start;
 }
 
 .panel {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   box-sizing: border-box;
   content-visibility: auto;
-  contain-intrinsic-size: auto 200px;
+  contain-intrinsic-size: auto 180px;
 }
 
 .panelHead {
@@ -137,7 +137,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .panelTitle {
@@ -165,12 +165,12 @@
 .todayTop {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 10px;
+  gap: 8px;
   align-items: start;
 }
 
 .liveClock {
-  font-size: clamp(1.4rem, 2vw, 1.85rem);
+  font-size: clamp(1.25rem, 1.8vw, 1.65rem);
   font-weight: 750;
   letter-spacing: -0.045em;
   color: var(--ink);
@@ -191,16 +191,16 @@
 }
 
 .statPill {
-  min-width: 108px;
-  padding: 8px 10px;
-  border-radius: 12px;
+  min-width: 100px;
+  padding: 6px 8px;
+  border-radius: 10px;
   background: var(--soft);
   border: 1px solid transparent;
 }
 
 .statPillLabel {
   display: block;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -209,8 +209,8 @@
 
 .statPillValue {
   display: block;
-  margin-top: 2px;
-  font-size: 15px;
+  margin-top: 1px;
+  font-size: 13px;
   font-weight: 750;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -219,14 +219,14 @@
 .shiftRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .shiftItem {
   flex: 1;
-  min-width: 120px;
-  padding: 7px 10px;
-  border-radius: 10px;
+  min-width: 110px;
+  padding: 6px 8px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: #fafbfc;
 }
@@ -249,22 +249,23 @@
 
 .todayActions {
   margin-top: 2px;
+  width: 100%;
 }
 
 /* —— Week chart —— */
 .weekBody {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .weekBars {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: end;
-  min-height: 132px;
-  padding: 4px 2px 0;
+  min-height: 96px;
+  padding: 2px 2px 0;
 }
 
 .weekCol {
@@ -277,9 +278,9 @@
 
 .weekBarTrack {
   width: 100%;
-  max-width: 36px;
-  height: 110px;
-  border-radius: 10px;
+  max-width: 32px;
+  height: 84px;
+  border-radius: 8px;
   background: var(--soft);
   display: flex;
   align-items: flex-end;
