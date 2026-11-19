@@ -27,6 +27,8 @@ import {
 import { compareAttendanceRows } from "../../../lib/attendance-sort";
 import {
   deductionForAttendanceStatus,
+  isAbsentOrHalfDayStatus,
+  isTardyStatus,
   MONTHLY_ATTENDANCE_STATUS_OPTIONS,
   normalizeAttendanceStatus,
   uiStatusTextColor,
@@ -2692,14 +2694,14 @@ export default function MonthlyAttendancePage() {
                       </button>
                       <button
                         type="button"
-                        title="Preview deduction summary before export"
+                        title="View deduction summary (same as export)"
                         className={styles.ghostBtn}
                         disabled={deductionPreviewLoadingId === String(employee.employeeId)}
                         onClick={() => void openDeductionSummaryPreview(employee)}
                       >
                         {deductionPreviewLoadingId === String(employee.employeeId)
-                          ? "Loading…"
-                          : "View deduction summary"}
+                          ? "…"
+                          : "View deduction"}
                       </button>
                       <button
                         type="button"
@@ -3226,58 +3228,78 @@ export default function MonthlyAttendancePage() {
               onClick={() => setDeductionPreview(null)}
             >
               <div
-                className={styles.modalCard}
+                className={`${styles.modalCard} ${styles.deductionModalCard}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="deduction-summary-title"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={styles.modalHead}>
-                  <h3 id="deduction-summary-title" className={styles.modalTitle}>
-                    Deduction summary
-                  </h3>
-                  <p className={styles.modalSub}>{deductionPreview.block.employeeName}</p>
-                </div>
                 <div className={styles.modalBody}>
-                  {deductionPreview.block.rows.length === 0 ? (
-                    <p className={styles.modalEmpty}>No deductible days for this employee.</p>
-                  ) : (
-                    <div className={styles.modalTableWrap}>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            {DEDUCTION_SUMMARY_HEADERS.map((h) => (
-                              <th key={h}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {deductionPreview.block.rows.map((row, idx) => (
-                            <tr key={`${row.date}-${idx}`}>
-                              <td>{row.date}</td>
-                              <td>{row.tPunchIn}</td>
-                              <td>{row.clockIn}</td>
-                              <td>{row.clockOut}</td>
-                              <td>{row.tPunchOut}</td>
-                              <td>{row.totalWorkingHours}</td>
-                              <td>{row.status}</td>
-                              <td>{row.tardyCount}</td>
-                              <td>{row.tardyNote || "—"}</td>
-                              <td>{row.deduction}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr>
-                            <td colSpan={9} style={{ textAlign: "right", paddingRight: 16 }}>
-                              Total Deduction:
-                            </td>
-                            <td>{deductionPreview.block.totalDeduction}%</td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                  <div className={styles.deductionSheet}>
+                    <div className={styles.deductionBannerName}>
+                      {deductionPreview.block.employeeName}
                     </div>
-                  )}
+                    <div
+                      id="deduction-summary-title"
+                      className={styles.deductionBannerTitle}
+                    >
+                      Deduction Summary
+                    </div>
+                    {deductionPreview.block.rows.length === 0 ? (
+                      <p className={styles.modalEmpty}>No deductible days for this employee.</p>
+                    ) : (
+                      <div className={styles.modalTableWrap}>
+                        <table className={styles.deductionExportTable}>
+                          <thead>
+                            <tr>
+                              {DEDUCTION_SUMMARY_HEADERS.map((h) => (
+                                <th key={h}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {deductionPreview.block.rows.map((row, idx) => {
+                              const status = normalizeAttendanceStatus(row.status);
+                              const tardy = isTardyStatus(status);
+                              const absentOrHalf = isAbsentOrHalfDayStatus(status);
+                              const rowClass = tardy
+                                ? styles.deductionRowTardy
+                                : absentOrHalf
+                                  ? styles.deductionRowAbsent
+                                  : undefined;
+                              return (
+                                <tr key={`${row.date}-${idx}`} className={rowClass}>
+                                  <td>{row.date}</td>
+                                  <td>{row.tPunchIn}</td>
+                                  <td>{row.clockIn}</td>
+                                  <td>{row.clockOut}</td>
+                                  <td>{row.tPunchOut}</td>
+                                  <td>{row.totalWorkingHours || "--"}</td>
+                                  <td>{status}</td>
+                                  <td>
+                                    {row.tardyCount === 0 || row.tardyCount === ""
+                                      ? ""
+                                      : row.tardyCount}
+                                  </td>
+                                  <td>{row.tardyNote || ""}</td>
+                                  <td className={styles.deductionCell}>{row.deduction}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <td colSpan={8} />
+                              <td className={styles.deductionCell}>Total</td>
+                              <td className={styles.deductionCell}>
+                                {deductionPreview.block.totalDeduction}%
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className={styles.modalActions}>
                   <button

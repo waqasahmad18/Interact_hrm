@@ -615,3 +615,75 @@
   border-top: 1px solid var(--ig-line);
   background: #f8fafc;
 }
+
+/* Deduction preview — match Excel export layout */
+.deductionModalCard {
+  width: min(1180px, 100%);
+}
+
+.deductionSheet {
+  border: 1px solid #000;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.deductionBannerName {
+  background: #ffff00;
+  color: #000;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #000;
+}
+
+.deductionBannerTitle {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-align: center;
+  padding: 9px 12px;
+  border-bottom: 1px solid #000;
+}
+
+.deductionExportTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.deductionExportTable th,
+.deductionExportTable td {
+  border: 1px solid #000;
+  padding: 6px 4px;
+  text-align: center;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.deductionExportTable thead th {
+  background: #d9d9d9;
+  color: #000;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.deductionRowTardy td {
+  background: #ffff00;
+}
+
+.deductionRowAbsent td {
+  background: #ffc7ce;
+}
+
+.deductionCell {
+  color: #c00000 !important;
+  font-weight: 700 !important;
+}
+
+.deductionExportTable tfoot td {
+  background: #fff;
+}

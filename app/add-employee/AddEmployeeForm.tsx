@@ -1268,7 +1268,7 @@ export default function AddEmployeeForm({
                 <span className={styles.toggleLabel}>Create Login Details</span>
                 <label style={{ display: "inline-block", position: "relative", width: 40, height: 22 }}>
                   <input type="checkbox" checked={createLogin} onChange={e => setCreateLogin(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-                  <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: createLogin ? "#611f69" : "#E2E8F0", borderRadius: 22, transition: "background 0.2s" }}></span>
+                  <span style={{ position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, background: createLogin ? "#0f766e" : "#E2E8F0", borderRadius: 22, transition: "background 0.2s" }}></span>
                   <span style={{ position: "absolute", left: createLogin ? 20 : 2, top: 2, width: 18, height: 18, background: "#fff", borderRadius: "50%", boxShadow: "0 1px 4px rgba(97,31,105,0.15)", transition: "left 0.2s" }}></span>
                 </label>
               </div>
