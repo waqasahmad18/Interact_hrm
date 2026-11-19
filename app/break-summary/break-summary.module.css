@@ -421,59 +421,71 @@
 }
 
 .mgmtAttTableFit td:nth-child(2),
+.mgmtAttTableFit td:nth-child(9),
 .mgmtAttTableFit td:nth-child(10) {
   white-space: normal;
   max-width: none;
+  text-overflow: clip;
+}
+
+/* Late: never ellipsis-clip status text */
+.mgmtAttTableFit td:nth-child(9) {
+  overflow: visible;
+  white-space: nowrap;
 }
 
 .mgmtAttTableFit th:nth-child(1),
 .mgmtAttTableFit td:nth-child(1) {
-  width: 3.5%;
+  width: 4.5%;
+  max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(2),
 .mgmtAttTableFit td:nth-child(2) {
-  width: 14%;
+  width: 13%;
 }
 
 .mgmtAttTableFit th:nth-child(3),
 .mgmtAttTableFit td:nth-child(3) {
-  width: 8%;
+  width: 8.5%;
+  max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(4),
 .mgmtAttTableFit td:nth-child(4) {
-  width: 9%;
+  width: 8%;
 }
 
 .mgmtAttTableFit th:nth-child(5),
 .mgmtAttTableFit td:nth-child(5) {
-  width: 8.5%;
+  width: 9.5%;
+  max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(6),
 .mgmtAttTableFit td:nth-child(6) {
-  width: 10%;
+  width: 10.5%;
+  max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(7),
 .mgmtAttTableFit td:nth-child(7) {
-  width: 10%;
+  width: 9%;
 }
 
 .mgmtAttTableFit th:nth-child(8),
 .mgmtAttTableFit td:nth-child(8) {
-  width: 10%;
+  width: 9%;
 }
 
 .mgmtAttTableFit th:nth-child(9),
 .mgmtAttTableFit td:nth-child(9) {
-  width: 9%;
+  width: 13%;
 }
 
 .mgmtAttTableFit th:nth-child(10),
 .mgmtAttTableFit td:nth-child(10) {
-  width: 18%;
+  width: 15%;
 }
 
 .mgmtAttTableFit td > * {
