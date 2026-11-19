@@ -10,10 +10,6 @@ import {
   FaTrash,
   FaToggleOn,
   FaToggleOff,
-  FaFilter,
-  FaSort,
-  FaSortUp,
-  FaSortDown,
   FaFileExcel,
 } from "react-icons/fa";
 import Modal from "react-modal";
@@ -22,17 +18,6 @@ import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import { toastError, toastInfo, toastSuccess } from "@/lib/app-toast";
 import { showAppConfirm } from "@/lib/app-confirm";
-
-type SortKey =
-  | "id"
-  | "fullName"
-  | "pseudonym"
-  | "department"
-  | "gender"
-  | "nationality"
-  | "status";
-
-type SortDirection = "asc" | "desc";
 
 type ExtraColumn = {
   key: string;
@@ -105,7 +90,6 @@ export default function EmployeeListStyledPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -420,34 +404,6 @@ export default function EmployeeListStyledPage() {
       .trim();
   };
 
-  const handleSort = (key: SortKey) => {
-    setSortConfig((prev) => {
-      if (!prev || prev.key !== key) {
-        return { key, direction: "asc" };
-      }
-
-      if (prev.direction === "asc") {
-        return { key, direction: "desc" };
-      }
-
-      return null;
-    });
-  };
-
-  const getSortIcon = (key: SortKey) => {
-    if (!sortConfig || sortConfig.key !== key) {
-      return <FaSort style={{ opacity: 0.75 }} />;
-    }
-
-    if (sortConfig.direction === "asc") {
-      return <FaSortUp />;
-    }
-
-    return <FaSortDown />;
-  };
-
-  const getText = (value: unknown) => String(value || "").toLowerCase();
-
   const uniqueDepartments = useMemo(() => {
     const depts = employees
       .map((e) => e.department_name)
@@ -472,68 +428,11 @@ export default function EmployeeListStyledPage() {
       return getNormalizedStatus(employee.status) === statusFilter;
     });
 
-    const deptFiltered = statusFiltered.filter((employee) => {
+    return statusFiltered.filter((employee) => {
       if (!departmentFilter) return true;
       return (employee.department_name || "") === departmentFilter;
     });
-
-    if (!sortConfig) return deptFiltered;
-
-    const sorted = [...deptFiltered].sort((a, b) => {
-      let comparison = 0;
-
-      switch (sortConfig.key) {
-        case "id": {
-          const aId = Number(a.id || 0);
-          const bId = Number(b.id || 0);
-          comparison = aId - bId;
-          break;
-        }
-        case "fullName": {
-          comparison = getEmployeeFullName(a).localeCompare(getEmployeeFullName(b), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        case "pseudonym": {
-          comparison = getText(a.pseudonym).localeCompare(getText(b.pseudonym), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        case "department": {
-          comparison = getText(a.department_name).localeCompare(getText(b.department_name), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        case "gender": {
-          comparison = getText(a.gender).localeCompare(getText(b.gender), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        case "nationality": {
-          comparison = getText(a.nationality).localeCompare(getText(b.nationality), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        case "status": {
-          comparison = getNormalizedStatus(a.status).localeCompare(getNormalizedStatus(b.status), undefined, {
-            sensitivity: "base",
-          });
-          break;
-        }
-        default:
-          comparison = 0;
-      }
-
-      return sortConfig.direction === "asc" ? comparison : -comparison;
-    });
-
-    return sorted;
-  }, [employees, search, statusFilter, departmentFilter, sortConfig]);
+  }, [employees, search, statusFilter, departmentFilter]);
 
   const filteredIds = useMemo(
     () => filtered.map((employee) => Number(employee.id)).filter((id) => Number.isFinite(id) && id > 0),
@@ -568,44 +467,6 @@ export default function EmployeeListStyledPage() {
       return next;
     });
   };
-
-  const sortButtonStyle: React.CSSProperties = {
-    border: "none",
-    background: "transparent",
-    color: "#fff",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "0",
-    fontSize: "0.8rem",
-  };
-
-  const renderSortableHeader = (label: string, key: SortKey) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => handleSort(key)}
-          style={sortButtonStyle}
-          title={`Sort ${label}`}
-          aria-label={`Sort ${label}`}
-        >
-          <FaFilter />
-        </button>
-        <span>{label}</span>
-      </div>
-      <button
-        type="button"
-        onClick={() => handleSort(key)}
-        style={sortButtonStyle}
-        title={`Toggle sort direction for ${label}`}
-        aria-label={`Toggle sort direction for ${label}`}
-      >
-        {getSortIcon(key)}
-      </button>
-    </div>
-  );
 
   // Close dropdown on outside click; keep fixed menu under the Columns button on resize/scroll
   useEffect(() => {
@@ -866,13 +727,13 @@ export default function EmployeeListStyledPage() {
                         className={styles.empListCheck}
                       />
                     </th>
-                    <th>{renderSortableHeader("Id", "id")}</th>
-                    <th>{renderSortableHeader("Full Name", "fullName")}</th>
-                    <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
-                    <th>{renderSortableHeader("Department", "department")}</th>
-                    <th>{renderSortableHeader("Gender", "gender")}</th>
-                    <th>{renderSortableHeader("Nationality", "nationality")}</th>
-                    <th>{renderSortableHeader("Status", "status")}</th>
+                    <th>ID</th>
+                    <th>Full Name</th>
+                    <th>P.Name</th>
+                    <th>Department</th>
+                    <th>Gender</th>
+                    <th>Nationality</th>
+                    <th>Status</th>
                     {visibleExtraCols.map((col) => (
                       <th
                         key={col.key}

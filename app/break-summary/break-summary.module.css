@@ -1012,7 +1012,7 @@
   justify-content: center;
 }
 
-/* Employee Credentials — Leaves-style black header */
+/* Employee Credentials — compact columns + View modal */
 .credTableFit {
   min-width: 0 !important;
   max-width: 100%;
@@ -1045,7 +1045,8 @@
 }
 
 .credTableFit td:nth-child(2),
-.credTableFit td:nth-child(8) {
+.credTableFit td:nth-child(5),
+.credTableFit td:nth-child(6) {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -1053,40 +1054,142 @@
 
 .credTableFit th:nth-child(1),
 .credTableFit td:nth-child(1) {
-  width: 6%;
+  width: 8%;
 }
 
 .credTableFit th:nth-child(2),
 .credTableFit td:nth-child(2) {
-  width: 18%;
+  width: 28%;
 }
 
 .credTableFit th:nth-child(3),
 .credTableFit td:nth-child(3) {
-  width: 10%;
+  width: 16%;
 }
 
 .credTableFit th:nth-child(4),
 .credTableFit td:nth-child(4) {
-  width: 12%;
+  width: 16%;
 }
 
 .credTableFit th:nth-child(5),
 .credTableFit td:nth-child(5) {
-  width: 12%;
+  width: 14%;
 }
 
 .credTableFit th:nth-child(6),
 .credTableFit td:nth-child(6) {
-  width: 16%;
+  width: 18%;
 }
 
-.credTableFit th:nth-child(7),
-.credTableFit td:nth-child(7) {
-  width: 12%;
+.credModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  box-sizing: border-box;
 }
 
-.credTableFit th:nth-child(8),
-.credTableFit td:nth-child(8) {
-  width: 14%;
+.credModalCard {
+  width: min(480px, 100%);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.credModalHead {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.credModalTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.credModalSub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.credModalBody {
+  padding: 16px 18px;
+}
+
+.credDetailList {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.credDetailList > div {
+  display: grid;
+  gap: 4px;
+}
+
+.credDetailList dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.credDetailList dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.credPasswordMask {
+  color: #94a3b8 !important;
+  letter-spacing: 0.08em;
+}
+
+.credModalFields {
+  display: grid;
+  gap: 12px;
+}
+
+.credField {
+  display: grid;
+  gap: 6px;
+}
+
+.credField > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.credField input {
+  width: 100%;
+}
+
+.credModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
 }
