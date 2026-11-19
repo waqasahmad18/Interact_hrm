@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./shift-management.module.css";
 import tableStyles from "../../break-summary/break-summary.module.css";
+import leaveStyles from "../../leave/leave.module.css";
 import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
@@ -656,14 +657,14 @@ export default function ShiftManagementPage() {
   return (
     <OptionalAdminShell>
       <div className={adminStyles.page}>
-      <div className={styles.pageContainer}>
+      <div className={tableStyles.breakSummaryContainer}>
         <div className={adminStyles.pageHeader}>
           <div>
             <h1 className={adminStyles.pageHeaderTitle}>
-              <FaClock style={{ marginRight: 10, color: "#611f69", verticalAlign: "middle" }} />
+              <FaClock style={{ marginRight: 10, color: "#0f766e", verticalAlign: "middle" }} />
               Shift Management
             </h1>
-            <p className={adminStyles.subtitle}>
+            <p className={tableStyles.mgmtAttMeta} style={{ marginTop: 4 }}>
               Assign shifts and timings to employees
             </p>
           </div>
@@ -704,26 +705,42 @@ export default function ShiftManagementPage() {
           </button>
         </div>
 
-        <div className={styles.searchContainer}>
+        <div className={leaveStyles.toolbar}>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-            className={styles.statusFilter}
+            className={leaveStyles.toolbarSelect}
             title="Filter employees by status"
           >
             <option value="all">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <input
-            type="text"
-            placeholder="Search by name, pseudo name, or ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={styles.searchInput}
-          />
-          <span className={styles.searchCount}>
-            {filteredEmployees.length} / {employees.filter((e) => matchesStatusFilter(e.status)).length} employees
+          <div className={leaveStyles.searchWrap}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              className={leaveStyles.toolbarSearch}
+              placeholder="Search by name, pseudo name, or ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <span className={tableStyles.empListShowing}>
+            Showing: {filteredEmployees.length} /{" "}
+            {employees.filter((e) => matchesStatusFilter(e.status)).length}
           </span>
         </div>
 
@@ -1094,8 +1111,9 @@ export default function ShiftManagementPage() {
           </div>
         </div>
 
-        <div className={tableStyles.breakSummaryTableWrapper} style={{ marginTop: "20px" }}>
-          <table className={tableStyles.breakSummaryTable}>
+        <div className={leaveStyles.reqTableShell} style={{ marginTop: 16 }}>
+          <div className={tableStyles.mgmtAttScroll}>
+          <table className={`${leaveStyles.reqTable} ${tableStyles.shiftMgmtTableFit}`}>
             <thead>
               <tr>
                 <th>ID</th>
@@ -1104,22 +1122,28 @@ export default function ShiftManagementPage() {
                 <th>Department</th>
                 <th>Status</th>
                 <th>Shift</th>
-                  <th>Shift Timing</th>
-                  <th>Overtime?</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+                <th>Shift Timing</th>
+                <th>Overtime?</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className={tableStyles.breakSummaryNoRecords}>
+                    <td colSpan={9} className={leaveStyles.reqEmpty}>
                       No employees found
+                    </td>
+                  </tr>
+                ) : filteredEmployees.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className={leaveStyles.reqEmpty}>
+                      No employees match this filter
                     </td>
                   </tr>
                 ) : (
                   filteredEmployees.map((emp, idx) => (
                     <tr key={`row-emp-${emp.id}-${idx}`}>
-                      <td className={tableStyles.cellMuted}>
+                      <td className={leaveStyles.reqId}>
                         {emp.id}
                       </td>
                       <td>
@@ -1297,6 +1321,7 @@ export default function ShiftManagementPage() {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
       </div>
       </div>

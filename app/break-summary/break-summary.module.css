@@ -1082,6 +1082,152 @@
   width: 18%;
 }
 
+/* Shift Scheduler — black header fit table */
+.shiftSchedTableFit {
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.shiftSchedTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.shiftSchedTableFit thead th {
+  background: #111827;
+  padding: 8px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.25px;
+  color: #fff;
+}
+
+.shiftSchedTableFit tbody td {
+  padding: 7px 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.shiftSchedTableFit th:nth-child(1),
+.shiftSchedTableFit td:nth-child(1) {
+  width: 18%;
+}
+
+.shiftSchedTableFit th:nth-child(2),
+.shiftSchedTableFit td:nth-child(2),
+.shiftSchedTableFit th:nth-child(3),
+.shiftSchedTableFit td:nth-child(3) {
+  width: 12%;
+}
+
+.shiftSchedTableFit th:nth-child(4),
+.shiftSchedTableFit td:nth-child(4),
+.shiftSchedTableFit th:nth-child(5),
+.shiftSchedTableFit td:nth-child(5) {
+  width: 12%;
+}
+
+.shiftSchedTableFit th:nth-child(6),
+.shiftSchedTableFit td:nth-child(6) {
+  width: 16%;
+}
+
+.shiftSchedTableFit th:nth-child(7),
+.shiftSchedTableFit td:nth-child(7) {
+  width: 14%;
+  white-space: normal;
+}
+
+/* Shift Management — black header fit table */
+.shiftMgmtTableFit {
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.shiftMgmtTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.shiftMgmtTableFit thead th {
+  background: #111827;
+  padding: 8px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.25px;
+  color: #fff;
+}
+
+.shiftMgmtTableFit tbody td {
+  padding: 7px 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shiftMgmtTableFit td:nth-child(2),
+.shiftMgmtTableFit td:nth-child(6),
+.shiftMgmtTableFit td:nth-child(7),
+.shiftMgmtTableFit td:nth-child(9) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.shiftMgmtTableFit th:nth-child(1),
+.shiftMgmtTableFit td:nth-child(1) {
+  width: 6%;
+}
+
+.shiftMgmtTableFit th:nth-child(2),
+.shiftMgmtTableFit td:nth-child(2) {
+  width: 16%;
+}
+
+.shiftMgmtTableFit th:nth-child(3),
+.shiftMgmtTableFit td:nth-child(3) {
+  width: 12%;
+}
+
+.shiftMgmtTableFit th:nth-child(4),
+.shiftMgmtTableFit td:nth-child(4) {
+  width: 12%;
+}
+
+.shiftMgmtTableFit th:nth-child(5),
+.shiftMgmtTableFit td:nth-child(5) {
+  width: 8%;
+}
+
+.shiftMgmtTableFit th:nth-child(6),
+.shiftMgmtTableFit td:nth-child(6) {
+  width: 12%;
+}
+
+.shiftMgmtTableFit th:nth-child(7),
+.shiftMgmtTableFit td:nth-child(7) {
+  width: 16%;
+}
+
+.shiftMgmtTableFit th:nth-child(8),
+.shiftMgmtTableFit td:nth-child(8) {
+  width: 8%;
+}
+
+.shiftMgmtTableFit th:nth-child(9),
+.shiftMgmtTableFit td:nth-child(9) {
+  width: 10%;
+}
+
 .credModalOverlay {
   position: fixed;
   inset: 0;
