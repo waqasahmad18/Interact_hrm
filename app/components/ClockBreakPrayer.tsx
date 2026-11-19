@@ -1023,13 +1023,17 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
               aria-label="Confirm clock out"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={modalStyles.title}>Are you sure you want to clock out?</div>
+              <span className={modalStyles.eyebrow}>Time & attendance</span>
+              <div className={modalStyles.title}>Clock out for today?</div>
+              <p className={modalStyles.subtitle}>
+                Your session will end and hours for today will be locked.
+              </p>
               <div className={modalStyles.actions}>
                 <button type="button" className={modalStyles.btnYes} onClick={() => confirmClockOut(true)}>
-                  Yes
+                  Yes, clock out
                 </button>
                 <button type="button" className={modalStyles.btnNo} onClick={() => confirmClockOut(false)}>
-                  No
+                  Stay clocked in
                 </button>
               </div>
             </div>
@@ -1047,7 +1051,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
               aria-label={activeBreakTitle}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={modalStyles.warnIcon} aria-hidden>⚠️</div>
+              <div className={modalStyles.warnIcon} aria-hidden>!</div>
               <div className={modalStyles.titleDanger}>{activeBreakTitle}</div>
               <div className={modalStyles.message}>{activeBreakErrorMsg}</div>
               <button
@@ -1055,7 +1059,7 @@ export const ClockBreakPrayerWidget = React.memo(function ClockBreakPrayerWidget
                 className={modalStyles.btnOk}
                 onClick={() => setShowActiveBreakModal(false)}
               >
-                OK
+                Got it
               </button>
             </div>
           </div>,
