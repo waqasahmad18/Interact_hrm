@@ -149,48 +149,38 @@ export default function DepartmentsTable() {
                   <td style={{ verticalAlign: "top", textAlign: "center" }}>
                     <button
                       type="button"
-                      className={tableStyles.breakSummaryXLSButtonSecondary}
-                      style={{ padding: "6px 14px", fontSize: 12 }}
-                      onClick={() => setShowEmp((prev) => ({ ...prev, [dept.id]: !prev[dept.id] }))}
+                      className={`${tableStyles.deptBtn} ${
+                        showEmp[dept.id]
+                          ? tableStyles.deptBtnShowActive
+                          : tableStyles.deptBtnShow
+                      }`}
+                      onClick={() =>
+                        setShowEmp((prev) => ({ ...prev, [dept.id]: !prev[dept.id] }))
+                      }
                     >
-                      {showEmp[dept.id] ? "Hide" : "Show"} Employees
+                      {showEmp[dept.id] ? "Hide Employees" : "Show Employees"}
                     </button>
-                    {showEmp[dept.id] && employeesByDept[dept.id] && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          background: "#faf5ff",
-                          borderRadius: 10,
-                          padding: 8,
-                          maxHeight: 180,
-                          overflowY: "auto",
-                          minWidth: 180,
-                          textAlign: "left",
-                        }}
-                      >
+                    {showEmp[dept.id] && employeesByDept[dept.id] ? (
+                      <div className={tableStyles.deptEmpPanel}>
                         {employeesByDept[dept.id].length === 0 ? (
                           <div className={tableStyles.cellMuted}>No employees</div>
                         ) : (
                           <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
                             {employeesByDept[dept.id].map((emp) => (
-                              <li
-                                key={emp.id}
-                                style={{ padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}
-                              >
+                              <li key={emp.id} className={tableStyles.deptEmpItem}>
                                 {emp.first_name} {emp.last_name}
                               </li>
                             ))}
                           </ul>
                         )}
                       </div>
-                    )}
+                    ) : null}
                   </td>
                   <td style={{ verticalAlign: "top", textAlign: "center" }}>
                     {editId === dept.id ? (
                       <button
                         type="button"
-                        className={adminStyles.btnGreen}
-                        style={{ padding: "6px 14px", fontSize: 13 }}
+                        className={`${tableStyles.deptBtn} ${tableStyles.deptBtnSave}`}
                         onClick={() => handleEdit(dept.id)}
                       >
                         Save
@@ -198,8 +188,7 @@ export default function DepartmentsTable() {
                     ) : (
                       <button
                         type="button"
-                        className={adminStyles.btnPrimary}
-                        style={{ padding: "6px 14px", fontSize: 13 }}
+                        className={`${tableStyles.deptBtn} ${tableStyles.deptBtnEdit}`}
                         onClick={() => {
                           setEditId(dept.id);
                           setEditName(dept.name);
@@ -212,8 +201,7 @@ export default function DepartmentsTable() {
                   <td style={{ verticalAlign: "top", textAlign: "center" }}>
                     <button
                       type="button"
-                      className={adminStyles.btnReject}
-                      style={{ padding: "6px 14px", fontSize: 13 }}
+                      className={`${tableStyles.deptBtn} ${tableStyles.deptBtnDelete}`}
                       onClick={() => handleDelete(dept.id)}
                     >
                       Delete
