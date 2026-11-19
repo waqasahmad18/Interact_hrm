@@ -402,6 +402,9 @@ export default function MonthlyAttendancePage() {
     block: DeductionSummaryEmployeeBlock;
   } | null>(null);
   const [deductionPreviewLoadingId, setDeductionPreviewLoadingId] = useState<string>("");
+  const [metricModal, setMetricModal] = useState<
+    null | "employees" | "workingDays" | "expanded" | "departments"
+  >(null);
   const fetchGenRef = useRef(0);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
@@ -2458,6 +2461,41 @@ export default function MonthlyAttendancePage() {
     [attendanceByEmployee, expandedEmployeeIds],
   );
   const workingDaysCount = getTotalWorkingDays(monthInfo);
+  const workingDayRows = useMemo(
+    () =>
+      (monthInfo.days || []).filter((day: { dateKey: string }) => isWorkingDay(day.dateKey)),
+    // monthInfo + calendar overrides drive isWorkingDay
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [monthInfo, calendarOverrides, selectedMonth],
+  );
+  const expandedEmployees = useMemo(
+    () => attendanceByEmployee.filter((e) => expandedEmployeeIds[e.employeeId]),
+    [attendanceByEmployee, expandedEmployeeIds],
+  );
+  const departmentMetricRows = useMemo(() => {
+    if (selectedDepartment) {
+      return [{ id: selectedDepartment, name: selectedDepartment }];
+    }
+    return (departments || [])
+      .map((d: any) => ({
+        id: String(d.id ?? d.name ?? d.department_name ?? ""),
+        name: String(d.name || d.department_name || "").trim(),
+      }))
+      .filter((d: { name: string }) => d.name)
+      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+  }, [departments, selectedDepartment]);
+  const departmentMetricCount = selectedDepartment ? 1 : departmentMetricRows.length;
+
+  const metricModalTitle =
+    metricModal === "employees"
+      ? "Employees"
+      : metricModal === "workingDays"
+        ? "Working days"
+        : metricModal === "expanded"
+          ? "Expanded attendance"
+          : metricModal === "departments"
+            ? "Departments"
+            : "";
 
   return (
     <OptionalAdminShell>
@@ -2498,24 +2536,42 @@ export default function MonthlyAttendancePage() {
         </header>
 
         <div className={styles.metricStrip}>
-          <div className={`${styles.metric} ${styles.metricAccent}`}>
+          <button
+            type="button"
+            className={`${styles.metric} ${styles.metricAccent} ${styles.metricClickable}`}
+            onClick={() => setMetricModal("employees")}
+            title="View employee list"
+          >
             <div className={styles.metricLabel}>Employees</div>
             <div className={styles.metricValue}>{attendanceByEmployee.length}</div>
-          </div>
-          <div className={styles.metric}>
+          </button>
+          <button
+            type="button"
+            className={`${styles.metric} ${styles.metricClickable}`}
+            onClick={() => setMetricModal("workingDays")}
+            title="View working days"
+          >
             <div className={styles.metricLabel}>Working days</div>
             <div className={styles.metricValue}>{workingDaysCount}</div>
-          </div>
-          <div className={styles.metric}>
+          </button>
+          <button
+            type="button"
+            className={`${styles.metric} ${styles.metricClickable}`}
+            onClick={() => setMetricModal("expanded")}
+            title="View expanded employees"
+          >
             <div className={styles.metricLabel}>Expanded</div>
             <div className={styles.metricValue}>{expandedCount}</div>
-          </div>
-          <div className={styles.metric}>
+          </button>
+          <button
+            type="button"
+            className={`${styles.metric} ${styles.metricClickable}`}
+            onClick={() => setMetricModal("departments")}
+            title="View departments"
+          >
             <div className={styles.metricLabel}>Departments</div>
-            <div className={styles.metricValue}>
-              {selectedDepartment ? 1 : departments.length}
-            </div>
-          </div>
+            <div className={styles.metricValue}>{departmentMetricCount}</div>
+          </button>
         </div>
 
         <div className={styles.panel}>
@@ -3004,6 +3060,164 @@ export default function MonthlyAttendancePage() {
           })();
         }}
       />
+      {typeof document !== "undefined" && metricModal
+        ? createPortal(
+            <div
+              className={styles.modalOverlay}
+              data-hrm-modal-overlay
+              onClick={() => setMetricModal(null)}
+            >
+              <div
+                className={styles.modalCard}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="metric-modal-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.modalHead}>
+                  <h3 id="metric-modal-title" className={styles.modalTitle}>
+                    {metricModalTitle}
+                  </h3>
+                  <p className={styles.modalSub}>
+                    {metricModal === "employees"
+                      ? `${attendanceByEmployee.length} employee(s) in current filters`
+                      : metricModal === "workingDays"
+                        ? `${workingDaysCount} working day(s) in ${monthInfo.label || selectedMonth}`
+                        : metricModal === "expanded"
+                          ? `${expandedCount} attendance table(s) open`
+                          : selectedDepartment
+                            ? "Filtered to one department"
+                            : `${departmentMetricCount} department(s)`}
+                  </p>
+                </div>
+                <div className={styles.modalBody}>
+                  {metricModal === "employees" ? (
+                    attendanceByEmployee.length === 0 ? (
+                      <p className={styles.modalEmpty}>No employees in the current filter.</p>
+                    ) : (
+                      <div className={styles.modalTableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Emp. ID</th>
+                              <th>Name</th>
+                              <th>P.Name</th>
+                              <th>Department</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attendanceByEmployee.map((emp) => (
+                              <tr key={emp.employeeId}>
+                                <td>{emp.employeeId}</td>
+                                <td>{emp.employeeName}</td>
+                                <td>{emp.pseudonym || "—"}</td>
+                                <td>{emp.departmentName || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : null}
+                  {metricModal === "workingDays" ? (
+                    workingDayRows.length === 0 ? (
+                      <p className={styles.modalEmpty}>No working days for this month.</p>
+                    ) : (
+                      <div className={styles.modalTableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Day</th>
+                              <th>Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {workingDayRows.map(
+                              (
+                                day: { day: number; dateKey: string; weekday: string },
+                                idx: number,
+                              ) => (
+                                <tr key={day.dateKey}>
+                                  <td>{idx + 1}</td>
+                                  <td>{day.weekday}</td>
+                                  <td>{formatDateKey(day.dateKey)}</td>
+                                </tr>
+                              ),
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : null}
+                  {metricModal === "expanded" ? (
+                    expandedEmployees.length === 0 ? (
+                      <p className={styles.modalEmpty}>
+                        No attendance tables are open. Click <strong>View attendance</strong> on
+                        an employee card.
+                      </p>
+                    ) : (
+                      <div className={styles.modalTableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Emp. ID</th>
+                              <th>Name</th>
+                              <th>Department</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {expandedEmployees.map((emp) => (
+                              <tr key={emp.employeeId}>
+                                <td>{emp.employeeId}</td>
+                                <td>{emp.employeeName}</td>
+                                <td>{emp.departmentName || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : null}
+                  {metricModal === "departments" ? (
+                    departmentMetricRows.length === 0 ? (
+                      <p className={styles.modalEmpty}>No departments found.</p>
+                    ) : (
+                      <div className={styles.modalTableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Department</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {departmentMetricRows.map((dept, idx) => (
+                              <tr key={dept.id || dept.name}>
+                                <td>{idx + 1}</td>
+                                <td>{dept.name}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : null}
+                </div>
+                <div className={styles.modalActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryBtn}
+                    onClick={() => setMetricModal(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       {typeof document !== "undefined" && deductionPreview
         ? createPortal(
             <div
