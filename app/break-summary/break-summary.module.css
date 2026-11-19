@@ -379,3 +379,180 @@
   color: #2c8058;
   font-weight: 600;
 }
+
+/* Manage Attendance — 10 cols incl. Actions */
+.mgmtAttTableFit {
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.mgmtAttTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.mgmtAttTableFit thead th {
+  background: #111827;
+  padding: 8px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.mgmtAttTableFit tbody td {
+  padding: 6px 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.mgmtAttTableFit td:nth-child(2),
+.mgmtAttTableFit td:nth-child(10) {
+  white-space: normal;
+}
+
+.mgmtAttTableFit th:nth-child(1),
+.mgmtAttTableFit td:nth-child(1) {
+  width: 4%;
+}
+
+.mgmtAttTableFit th:nth-child(2),
+.mgmtAttTableFit td:nth-child(2) {
+  width: 15%;
+}
+
+.mgmtAttTableFit th:nth-child(3),
+.mgmtAttTableFit td:nth-child(3) {
+  width: 9%;
+}
+
+.mgmtAttTableFit th:nth-child(4),
+.mgmtAttTableFit td:nth-child(4) {
+  width: 10%;
+}
+
+.mgmtAttTableFit th:nth-child(5),
+.mgmtAttTableFit td:nth-child(5) {
+  width: 9%;
+}
+
+.mgmtAttTableFit th:nth-child(6),
+.mgmtAttTableFit td:nth-child(6) {
+  width: 12%;
+}
+
+.mgmtAttTableFit th:nth-child(7),
+.mgmtAttTableFit td:nth-child(7) {
+  width: 12%;
+}
+
+.mgmtAttTableFit th:nth-child(8),
+.mgmtAttTableFit td:nth-child(8) {
+  width: 10%;
+}
+
+.mgmtAttTableFit th:nth-child(9),
+.mgmtAttTableFit td:nth-child(9) {
+  width: 9%;
+}
+
+.mgmtAttTableFit th:nth-child(10),
+.mgmtAttTableFit td:nth-child(10) {
+  width: 10%;
+}
+
+.mgmtAttActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.mgmtAttBtn {
+  appearance: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.mgmtAttBtnEdit {
+  background: #0f766e;
+}
+
+.mgmtAttBtnSave {
+  background: #16a34a;
+}
+
+.mgmtAttBtnCancel {
+  background: #64748b;
+}
+
+.mgmtAttBtnDelete {
+  background: #dc2626;
+}
+
+.mgmtAttCellInput {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.mgmtAttAddPanel {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  border: 1px solid #e4e7ec;
+}
+
+.mgmtAttAddTitle {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mgmtAttAddGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.mgmtAttAddLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #475569;
+}
+
+.mgmtAttAddActions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mgmtAttMeta {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #64748b;
+}
