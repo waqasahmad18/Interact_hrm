@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import tableStyles from "../break-summary/break-summary.module.css";
+import leaveStyles from "../leave/leave.module.css";
 import adminStyles from "../admin/admin-page.module.css";
 
 // Define Department type
@@ -106,26 +107,27 @@ export default function DepartmentsTable() {
 
   return (
     <div className={tableStyles.breakSummaryContainer}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
         <h2 className={tableStyles.pageTitle} style={{ margin: 0 }}>All Departments</h2>
-        <button type="button" className={tableStyles.breakSummaryXLSButton} onClick={() => setShowDialog(true)}>
+        <button type="button" className={adminStyles.btnGreen} onClick={() => setShowDialog(true)}>
           Add Department
         </button>
       </div>
-      <div className={tableStyles.breakSummaryTableWrapper}>
-        <table className={tableStyles.breakSummaryTable} style={{ minWidth: 720 }}>
+      <div className={leaveStyles.reqTableShell}>
+        <div className={tableStyles.shiftMgmtScroll}>
+        <table className={`${leaveStyles.reqTable} ${tableStyles.deptTableFit}`}>
           <thead>
             <tr>
               <th>Name</th>
-              <th style={{ textAlign: "center" }}>Employees</th>
-              <th style={{ textAlign: "center" }}>Edit</th>
-              <th style={{ textAlign: "center" }}>Delete</th>
+              <th>Employees</th>
+              <th>Edit</th>
+              <th>Delete</th>
             </tr>
           </thead>
           <tbody>
             {departments.length === 0 ? (
               <tr>
-                <td colSpan={4} className={tableStyles.breakSummaryNoRecords}>
+                <td colSpan={4} className={leaveStyles.reqEmpty}>
                   No departments found.
                 </td>
               </tr>
@@ -222,6 +224,7 @@ export default function DepartmentsTable() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showDialog && (

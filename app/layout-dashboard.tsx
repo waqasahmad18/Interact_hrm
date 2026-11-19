@@ -119,6 +119,8 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const [shiftsDropdownOpen, setShiftsDropdownOpen] = React.useState(false);
 	const [payrollDropdownOpen, setPayrollDropdownOpen] = React.useState(false);
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
+	const [navPeek, setNavPeek] = React.useState(false);
+	const [isDesktopNav, setIsDesktopNav] = React.useState(true);
 	const [companyLogo, setCompanyLogo] = React.useState<string | null>(null);
 	const [adminAvatar, setAdminAvatar] = React.useState<string | null>(null);
 	const navGroups = sidebarLinks;
@@ -128,6 +130,22 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 	const isTimePage = pathname === "/time";
 	// Only omit admin chrome when this page is nested under the employee layout route.
 	const embedInEmployeeShell = Boolean(pathname?.startsWith("/employee-dashboard"));
+	const sidebarVisible = isDesktopNav ? navPeek : sidebarOpen;
+	const contentPushed = isDesktopNav && navPeek;
+
+	React.useEffect(() => {
+		if (typeof window === "undefined") return;
+		const mq = window.matchMedia("(min-width: 1025px)");
+		const sync = () => setIsDesktopNav(mq.matches);
+		sync();
+		mq.addEventListener("change", sync);
+		return () => mq.removeEventListener("change", sync);
+	}, []);
+
+	React.useEffect(() => {
+		setSidebarOpen(false);
+		setNavPeek(false);
+	}, [pathname]);
 
 	React.useEffect(() => {
 		void fetchShellBranding()
@@ -268,9 +286,19 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 					/>
 				)}
 				{/* Desktop: left-edge hover dock — slide in/out + content width reflow */}
-				<div className={styles.sidebarDock}>
+				<div
+					className={`${styles.sidebarDock}${sidebarVisible ? ` ${styles.sidebarDockOpen}` : ""}`}
+					onMouseEnter={() => {
+						if (isDesktopNav) setNavPeek(true);
+					}}
+					onMouseLeave={() => {
+						if (isDesktopNav) setNavPeek(false);
+					}}
+				>
 					<div className={styles.sidebarRail} aria-hidden title="Hover to open menu" />
-					<aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
+					<aside
+						className={`${styles.sidebar}${sidebarVisible ? ` ${styles.sidebarSlideIn}` : ""}${sidebarOpen && !isDesktopNav ? ` ${styles.sidebarOpen}` : ""}`}
+					>
 					<div className={styles.sidebarHeader}>
 						<InteractGlobeLogo className={styles.sidebarGlobe} />
 						<div className={styles.sidebarBrandText}>
@@ -581,7 +609,7 @@ export default function LayoutDashboard({ children }: { children: React.ReactNod
 				</aside>
 				</div>
 				<div
-					className={`${styles.contentArea} ${isTimePage ? styles.contentAreaTimePage : ""}`}
+					className={`${styles.contentArea}${isTimePage ? ` ${styles.contentAreaTimePage}` : ""}${contentPushed ? ` ${styles.contentPushed}` : ""}`}
 				>
 					<main
 						className={`${styles.main} ${isTimePage ? styles.mainTimePage : ""}`}

@@ -277,14 +277,20 @@
 
 /* Expand hit-area while open so cursor can move into the menu */
 .sidebarDock:hover,
-.sidebarDock:focus-within {
+.sidebarDock:focus-within,
+.sidebarDockOpen {
   width: var(--sidebar-width);
 }
 
-/* When dock is open, push main content so page width re-adjusts */
+/* JS-driven push (reliable) + CSS :has fallback */
+.contentPushed {
+  margin-left: var(--sidebar-width) !important;
+}
+
 @media (min-width: 1025px) {
   .layout:has(.sidebarDock:hover) .contentArea,
-  .layout:has(.sidebarDock:focus-within) .contentArea {
+  .layout:has(.sidebarDock:focus-within) .contentArea,
+  .layout:has(.sidebarDockOpen) .contentArea {
     margin-left: var(--sidebar-width);
   }
 }
@@ -352,7 +358,9 @@
 }
 
 .sidebarDock:hover .sidebar,
-.sidebarDock:focus-within .sidebar {
+.sidebarDock:focus-within .sidebar,
+.sidebarDockOpen .sidebar,
+.sidebarSlideIn {
   transform: translateX(0);
 }
 
@@ -744,13 +752,19 @@
   }
 
   .sidebarDock:hover .sidebar,
-  .sidebarDock:focus-within .sidebar {
+  .sidebarDock:focus-within .sidebar,
+  .sidebarDockOpen .sidebar,
+  .sidebarSlideIn {
     transform: translateX(-100%);
   }
 
   .sidebarOpen {
     transform: translateX(0) !important;
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.35);
+  }
+
+  .contentPushed {
+    margin-left: 0 !important;
   }
 
   .sidebarOverlay {

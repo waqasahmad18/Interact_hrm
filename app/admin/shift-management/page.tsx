@@ -1112,7 +1112,7 @@ export default function ShiftManagementPage() {
         </div>
 
         <div className={leaveStyles.reqTableShell} style={{ marginTop: 16 }}>
-          <div className={tableStyles.mgmtAttScroll}>
+          <div className={tableStyles.shiftMgmtScroll}>
           <table className={`${leaveStyles.reqTable} ${tableStyles.shiftMgmtTableFit}`}>
             <thead>
               <tr>

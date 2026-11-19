@@ -1,5 +1,9 @@
 .page {
   min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 20px 28px 40px;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(20, 184, 166, 0.12) 0%, transparent 55%),
@@ -10,7 +14,10 @@
 
 .inner {
   max-width: 1200px;
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .title {
