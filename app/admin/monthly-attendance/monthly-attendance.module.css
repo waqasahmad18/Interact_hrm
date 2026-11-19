@@ -447,6 +447,60 @@
   flex-wrap: wrap;
 }
 
+.empCardLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.empCardSelected {
+  border-color: #99f6e4;
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.18), 0 8px 24px rgba(11, 18, 32, 0.04);
+}
+
+.cardCheckWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.cardCheck {
+  width: 17px;
+  height: 17px;
+  accent-color: #0f766e;
+  cursor: pointer;
+}
+
+.selectBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid var(--ig-line);
+  border-radius: 12px;
+}
+
+.selectAllLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+}
+
+.selectHint {
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
 .empMeta {
   font-size: 11px;
   color: var(--ig-muted);

@@ -399,6 +399,7 @@ export default function MonthlyAttendancePage() {
   const [pairingNow, setPairingNow] = useState(() => Date.now());
   /** Collapsed by default — full month tables for every employee freeze the browser */
   const [expandedEmployeeIds, setExpandedEmployeeIds] = useState<Record<string, boolean>>({});
+  const [selectedDeductionIds, setSelectedDeductionIds] = useState<Record<string, boolean>>({});
   const [deductionPreview, setDeductionPreview] = useState<{
     employeeId: string;
     block: DeductionSummaryEmployeeBlock;
@@ -415,6 +416,33 @@ export default function MonthlyAttendancePage() {
 
   function toggleEmployeeExpanded(employeeId: string) {
     setExpandedEmployeeIds((prev) => ({ ...prev, [employeeId]: !prev[employeeId] }));
+  }
+
+  function toggleDeductionSelected(employeeId: string) {
+    const id = String(employeeId);
+    setSelectedDeductionIds((prev) => {
+      const next = { ...prev };
+      if (next[id]) delete next[id];
+      else next[id] = true;
+      return next;
+    });
+  }
+
+  function setAllDeductionSelected(ids: string[], selected: boolean) {
+    setSelectedDeductionIds((prev) => {
+      if (!selected) {
+        const next = { ...prev };
+        ids.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      }
+      const next = { ...prev };
+      ids.forEach((id) => {
+        next[id] = true;
+      });
+      return next;
+    });
   }
 
   // Re-pair T.Punch out as new ZKBio punches sync (background only — never blocks first paint)
@@ -1989,14 +2017,26 @@ export default function MonthlyAttendancePage() {
       return;
     }
 
+    const selectedEmployees = attendanceByEmployee.filter(
+      (e) => selectedDeductionIds[String(e.employeeId)],
+    );
+    const exportEmployees =
+      selectedEmployees.length > 0 ? selectedEmployees : attendanceByEmployee;
+
+    if (selectedEmployees.length === 0) {
+      toastInfo("No cards selected — exporting all visible employees");
+    }
+
     const ctx = await ensureTungstenCtx();
-    const blocks = attendanceByEmployee.map((employee) =>
+    const blocks = exportEmployees.map((employee) =>
       buildDeductionSummaryBlock(employee, pairSessionsForEmployee(employee, ctx)),
     );
 
     const dateRange = fromDate && toDate ? `-${fromDate}-to-${toDate}` : "";
     const departmentSuffix = selectedDepartment ? `-${selectedDepartment}` : "";
-    const fileName = `deduction-summary${departmentSuffix}${dateRange}.xlsx`;
+    const selectedSuffix =
+      selectedEmployees.length > 0 ? `-selected-${selectedEmployees.length}` : "";
+    const fileName = `deduction-summary${departmentSuffix}${selectedSuffix}${dateRange}.xlsx`;
     await downloadDeductionSummaryExcel(blocks, fileName);
   }
 
@@ -2487,6 +2527,16 @@ export default function MonthlyAttendancePage() {
       .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
   }, [departments, selectedDepartment]);
   const departmentMetricCount = selectedDepartment ? 1 : departmentMetricRows.length;
+  const attendanceIds = useMemo(
+    () => attendanceByEmployee.map((e) => String(e.employeeId)),
+    [attendanceByEmployee],
+  );
+  const selectedDeductionCount = useMemo(
+    () => attendanceIds.filter((id) => selectedDeductionIds[id]).length,
+    [attendanceIds, selectedDeductionIds],
+  );
+  const allDeductionSelected =
+    attendanceIds.length > 0 && selectedDeductionCount === attendanceIds.length;
 
   const metricModalTitle =
     metricModal === "employees"
@@ -2633,8 +2683,16 @@ export default function MonthlyAttendancePage() {
                   type="button"
                   onClick={downloadDeductionSummary}
                   className={styles.secondaryBtn}
+                  title={
+                    selectedDeductionCount > 0
+                      ? `Export deduction summary for ${selectedDeductionCount} selected`
+                      : "Export deduction summary for all visible employees"
+                  }
                 >
-                  <FaFileExcel /> Export deduction summary
+                  <FaFileExcel />{" "}
+                  {selectedDeductionCount > 0
+                    ? `Export deduction (${selectedDeductionCount})`
+                    : "Export deduction summary"}
                 </button>
               </div>
             </div>
@@ -2648,8 +2706,42 @@ export default function MonthlyAttendancePage() {
             {attendanceByEmployee.length === 0 ? (
               <div className={styles.empty}>No attendance records found</div>
             ) : (
-              attendanceByEmployee.map((employee) => {
+              <>
+              <div className={styles.selectBar}>
+                <label className={styles.selectAllLabel}>
+                  <input
+                    type="checkbox"
+                    checked={allDeductionSelected}
+                    onChange={(e) =>
+                      setAllDeductionSelected(attendanceIds, e.target.checked)
+                    }
+                    className={styles.cardCheck}
+                  />
+                  <span>
+                    {allDeductionSelected
+                      ? "Deselect all cards"
+                      : "Select all cards"}
+                  </span>
+                </label>
+                {selectedDeductionCount > 0 ? (
+                  <button
+                    type="button"
+                    className={styles.ghostBtn}
+                    onClick={() => setSelectedDeductionIds({})}
+                  >
+                    Clear ({selectedDeductionCount})
+                  </button>
+                ) : (
+                  <span className={styles.selectHint}>
+                    Select cards, then Export deduction summary
+                  </span>
+                )}
+              </div>
+              {attendanceByEmployee.map((employee) => {
                 const isExpanded = Boolean(expandedEmployeeIds[employee.employeeId]);
+                const isDeductionSelected = Boolean(
+                  selectedDeductionIds[String(employee.employeeId)],
+                );
                 const revealPunches = shouldRevealTPunches(
                   employee.departmentName,
                   selectedDepartment,
@@ -2658,28 +2750,38 @@ export default function MonthlyAttendancePage() {
                 return (
                 <div
                   key={employee.employeeId}
-                  className={`${styles.empCard}${isExpanded ? ` ${styles.empCardExpanded}` : ""}`}
+                  className={`${styles.empCard}${isExpanded ? ` ${styles.empCardExpanded}` : ""}${isDeductionSelected ? ` ${styles.empCardSelected}` : ""}`}
                 >
                   <div
                     className={styles.empCardHead}
                     style={{ marginBottom: isExpanded ? 8 : 0 }}
                   >
-                    <div>
-                      <EmployeeTableNameCell
-                        name={employee.employeeName}
-                        employeeId={employee.employeeId}
-                        photo={getPhoto(employee.employeeId)}
-                        onOpen={() =>
-                          openFromRow({
-                            employee_id: employee.employeeId,
-                            employee_name: employee.employeeName,
-                            pseudonym: employee.pseudonym,
-                            department_name: employee.departmentName,
-                          })
-                        }
-                      />
-                      <div className={styles.empMeta}>
-                        {employee.pseudonym} · {employee.departmentName}
+                    <div className={styles.empCardLeft}>
+                      <label className={styles.cardCheckWrap} title="Select for deduction export">
+                        <input
+                          type="checkbox"
+                          checked={isDeductionSelected}
+                          onChange={() => toggleDeductionSelected(employee.employeeId)}
+                          className={styles.cardCheck}
+                        />
+                      </label>
+                      <div>
+                        <EmployeeTableNameCell
+                          name={employee.employeeName}
+                          employeeId={employee.employeeId}
+                          photo={getPhoto(employee.employeeId)}
+                          onOpen={() =>
+                            openFromRow({
+                              employee_id: employee.employeeId,
+                              employee_name: employee.employeeName,
+                              pseudonym: employee.pseudonym,
+                              department_name: employee.departmentName,
+                            })
+                          }
+                        />
+                        <div className={styles.empMeta}>
+                          {employee.pseudonym} · {employee.departmentName}
+                        </div>
                       </div>
                     </div>
                     <div className={styles.empActions}>
@@ -3027,7 +3129,8 @@ export default function MonthlyAttendancePage() {
                   )}
                 </div>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         )}

@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "../../break-summary/break-summary.module.css";
+import leaveStyles from "../../leave/leave.module.css";
+import adminStyles from "../admin-page.module.css";
 import {
   FaUserEdit,
   FaTrash,
@@ -12,6 +14,7 @@ import {
   FaSort,
   FaSortUp,
   FaSortDown,
+  FaFileExcel,
 } from "react-icons/fa";
 import Modal from "react-modal";
 import AddEmployeeForm from "../../add-employee/AddEmployeeForm";
@@ -649,504 +652,432 @@ export default function EmployeeListStyledPage() {
 
   return (
     <OptionalAdminShell>
-      <div className={styles.breakSummaryContainer}>
-        <div className={styles.breakSummaryHeader}>Employee List</div>
-
-        <div className={styles.listStatsRow}>
-          <button
-            type="button"
-            className={`${styles.listStatCard} ${styles.listStatPurple} ${styles.listStatClickable} ${statusFilter === "all" ? styles.listStatSelected : ""}`}
-            onClick={() => setStatusFilter("all")}
-            title="Show all employees"
-          >
-            <span className={styles.listStatLabel}>All Employees</span>
-            <span className={styles.listStatValue}>{listStats.total}</span>
-            <span className={styles.listStatHint}>
-              {departmentFilter
-                ? departmentFilter
-                : `${uniqueDepartments.length} department${uniqueDepartments.length === 1 ? "" : "s"}`}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`${styles.listStatCard} ${styles.listStatGreen} ${styles.listStatClickable} ${statusFilter === "active" ? styles.listStatSelected : ""}`}
-            onClick={() => setStatusFilter("active")}
-            title="Show active employees"
-          >
-            <span className={styles.listStatLabel}>Active</span>
-            <span className={styles.listStatValue}>{listStats.active}</span>
-            <span className={styles.listStatHint}>
-              {listStats.activePct}% of {departmentFilter || "workforce"}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`${styles.listStatCard} ${styles.listStatRed} ${styles.listStatClickable} ${statusFilter === "inactive" ? styles.listStatSelected : ""}`}
-            onClick={() => setStatusFilter("inactive")}
-            title="Show inactive employees"
-          >
-            <span className={styles.listStatLabel}>Inactive</span>
-            <span className={styles.listStatValue}>{listStats.inactive}</span>
-            <span className={styles.listStatHint}>
-              {listStats.inactivePct}% of {departmentFilter || "workforce"}
-            </span>
-          </button>
-        </div>
-
-        <div className={styles.breakSummaryFilters} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <input
-            type="text"
-            placeholder="Search by name, ID or P.Name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={styles.breakSummaryInput}
-            style={{ width: 220 }}
-          />
-          <select
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
-            className={styles.breakSummaryInput}
-            style={{ width: 180 }}
-          >
-            <option value="">All Departments</option>
-            {uniqueDepartments.map((dept) => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
-          </select>
-          <div style={{ marginLeft: 'auto', fontSize: '0.85rem', fontWeight: 600, color: statusFilter === 'active' ? '#38A169' : statusFilter === 'inactive' ? '#E53E3E' : '#0052CC', background: 'rgba(255,255,255,0.18)', borderRadius: 4, padding: '2px 10px', minWidth: 60, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            {`Showing: ${filtered.length}`}
-          </div>
-          <div
-            style={{
-              marginLeft: 16,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              position: "relative",
-              flexWrap: "wrap",
-              zIndex: 40,
-            }}
-          >
-            <div style={{ position: "relative", zIndex: 50 }}>
-              <button
-                ref={columnsBtnRef}
-                id="dropdown-menu-dots"
-                type="button"
-                title="Show or hide columns"
-                aria-label="Show or hide columns"
-                aria-expanded={dropdownOpen}
-                onClick={toggleColumnsMenu}
-                style={{
-                  height: 38,
-                  minWidth: 38,
-                  padding: "0 12px",
-                  background: dropdownOpen ? "#0052CC" : "#fff",
-                  color: dropdownOpen ? "#fff" : "#0052CC",
-                  border: `1.5px solid ${dropdownOpen ? "#0052CC" : "#c5d4e8"}`,
-                  borderRadius: 8,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  cursor: "pointer",
-                  boxShadow: dropdownOpen ? "0 2px 8px rgba(0,82,204,0.22)" : "0 1px 3px rgba(15,23,42,0.06)",
-                  fontWeight: 600,
-                  fontSize: "0.9rem",
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <circle cx="8" cy="3.2" r="1.45" />
-                  <circle cx="8" cy="8" r="1.45" />
-                  <circle cx="8" cy="12.8" r="1.45" />
-                </svg>
-                Columns
-                {visibleExtraCols.length > 0 && (
-                  <span
-                    style={{
-                      minWidth: 18,
-                      height: 18,
-                      padding: "0 5px",
-                      borderRadius: 999,
-                      background: dropdownOpen ? "rgba(255,255,255,0.22)" : "#e8f0fc",
-                      color: dropdownOpen ? "#fff" : "#0052CC",
-                      fontSize: "0.72rem",
-                      fontWeight: 700,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {visibleExtraCols.length}
-                  </span>
-                )}
-              </button>
-              {dropdownOpen && columnsMenuPos && (
-                <div
-                  id="dropdown-menu-actions"
-                  style={{
-                    position: "fixed",
-                    top: columnsMenuPos.top,
-                    left: columnsMenuPos.left,
-                    background: "#fff",
-                    borderRadius: 12,
-                    boxShadow: "0 10px 28px rgba(15,23,42,0.14)",
-                    border: "1px solid #e2e8f0",
-                    padding: "10px 8px 8px",
-                    zIndex: 5000,
-                    width: 260,
-                    maxHeight: 360,
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                  }}
-                >
-                  <div style={{ padding: "2px 10px 8px", fontSize: "0.75rem", fontWeight: 700, color: "#64748b", letterSpacing: "0.04em" }}>
-                    SHOW COLUMNS
-                  </div>
-                  {EXTRA_COLUMNS.map((col) => (
-                    <label
-                      key={col.key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "7px 10px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                      }}
-                      onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                      onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!visibleExtras[col.key]}
-                        onChange={() => setVisibleExtras((prev) => ({ ...prev, [col.key]: !prev[col.key] }))}
-                        style={{ accentColor: "#0052CC", width: 15, height: 15 }}
-                      />
-                      <span style={{ color: "#1e293b", fontSize: "0.9rem", fontWeight: 500 }}>{col.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              style={{ height: 38, background: '#0052CC', color: '#fff', border: 'none', borderRadius: 8, padding: '0 18px', fontWeight: 600, fontSize: '0.95rem', cursor: exporting ? 'wait' : 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
-              onClick={handleExportList}
-              disabled={exporting || importing || salaryTplBusy || salaryUploading}
-            >
-              {exporting ? "Exporting…" : selectedIds.size ? `Export XLS (${selectedIds.size})` : "Export XLS"}
-            </button>
-            <button
-              style={{ height: 38, background: '#007a5a', color: '#fff', border: 'none', borderRadius: 8, padding: '0 18px', fontWeight: 600, fontSize: '0.95rem', cursor: importing ? 'wait' : 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
-              onClick={() => importInputRef.current?.click()}
-              disabled={exporting || importing || salaryTplBusy || salaryUploading}
-            >
-              {importing ? "Importing…" : "Import XLS"}
-            </button>
-            <button
-              type="button"
-              title="Download Excel with Employee ID, Name, Pseudo Name, and current Basic Salary"
-              style={{ height: 38, background: '#5b21b6', color: '#fff', border: 'none', borderRadius: 8, padding: '0 14px', fontWeight: 600, fontSize: '0.9rem', cursor: salaryTplBusy ? 'wait' : 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
-              onClick={handleDownloadSalaryTemplate}
-              disabled={exporting || importing || salaryTplBusy || salaryUploading}
-            >
-              {salaryTplBusy ? "Preparing…" : "Salary Template"}
-            </button>
-            <button
-              type="button"
-              title="Upload filled salary template to add or update basic salaries"
-              style={{ height: 38, background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '0 14px', fontWeight: 600, fontSize: '0.9rem', cursor: salaryUploading ? 'wait' : 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
-              onClick={() => salaryUploadInputRef.current?.click()}
-              disabled={exporting || importing || salaryTplBusy || salaryUploading}
-            >
-              {salaryUploading ? "Uploading…" : "Upload Salaries"}
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              style={{ display: "none" }}
-              onChange={handleImportList}
-            />
-            <input
-              ref={salaryUploadInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              style={{ display: "none" }}
-              onChange={handleUploadSalaryTemplate}
-            />
-          </div>
-        </div>
-
-        {/* Table wrapper without horizontal scroll, table fits container */}
-        <div
-          className={styles.breakSummaryTableWrapper}
-          style={{
-            width: '100%',
-            overflowX: extraColsVisible ? 'auto' : 'unset',
-            overflowY: 'auto',
-            maxHeight: '74vh',
-            borderBottom: extraColsVisible ? '1px solid #e2e8f0' : 'none',
-            paddingBottom: extraColsVisible ? 2 : 0,
-            minHeight: 0,
-            maxWidth: '100%',
-          }}
-        >
-          <table
-            className={styles.breakSummaryTable}
-            style={{
-              minWidth: extraColsVisible ? 900 : 'unset',
-              width: extraColsVisible ? 'max-content' : '100%',
-              tableLayout: 'auto',
-            }}
-          >
-            <thead style={{ position: "sticky", top: 0, zIndex: 12 }}>
-              <tr>
-                <th style={{ width: 42, minWidth: 42, textAlign: "center" }}>
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allFilteredSelected}
-                    onChange={toggleAllFiltered}
-                    disabled={filteredIds.length === 0}
-                    title="Select all in this list"
-                    style={{ width: 16, height: 16, accentColor: "#0052CC", cursor: "pointer" }}
-                  />
-                </th>
-                <th>{renderSortableHeader("Id", "id")}</th>
-                <th>{renderSortableHeader("Full Name", "fullName")}</th>
-                <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
-                <th>{renderSortableHeader("Department", "department")}</th>
-                <th>{renderSortableHeader("Gender", "gender")}</th>
-                <th>{renderSortableHeader("Nationality", "nationality")}</th>
-                <th>{renderSortableHeader("Status", "status")}</th>
-                {visibleExtraCols.map((col) => (
-                  <th
-                    key={col.key}
-                    style={{
-                      minWidth: col.width || 120,
-                      width: col.width || 120,
-                      fontSize: '0.95rem',
-                      whiteSpace: col.wrap ? 'normal' : 'nowrap',
-                    }}
-                  >
-                    {col.label}
-                  </th>
-                ))}
-                <th>
-                  <span>Actions</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-                    style={{
-                      fontSize: "0.72rem",
-                      borderRadius: 4,
-                      border: "1px solid rgba(255,255,255,0.45)",
-                      background: "rgba(255,255,255,0.18)",
-                      color: "#fff",
-                      padding: "2px 4px",
-                      marginLeft: 10,
-                    }}
-                    title="Filter by status"
-                  >
-                    <option value="all" style={{ color: "#0f1d40" }}>All</option>
-                    <option value="active" style={{ color: "#0f1d40" }}>Active</option>
-                    <option value="inactive" style={{ color: "#0f1d40" }}>Inactive</option>
-                  </select>
-                </th>
-                    {/* Floating 3 dots menu at top right of card */}
-                    {/* Removed duplicate dropdown menu and trigger from inside the table */}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={tableColSpan}>Loading...</td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={tableColSpan} style={{ color: "red" }}>{error}</td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={tableColSpan}>No records found.</td>
-                </tr>
-              ) : (
-                filtered.map((employee) => (
-                  <tr key={employee.id}>
-                    <td style={{ textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(Number(employee.id))}
-                        onChange={() => toggleEmployeeSelected(Number(employee.id))}
-                        style={{ width: 16, height: 16, accentColor: "#0052CC", cursor: "pointer" }}
-                      />
-                    </td>
-                    <td>{employee.id}</td>
-                    <td>
-                      <EmployeeTableNameCell
-                        name={getEmployeeFullName(employee)}
-                        employeeId={employee.id}
-                        photo={getPhoto(employee.id)}
-                        onOpen={() =>
-                          openFromRow({
-                            employee_id: employee.id,
-                            employee_name: getEmployeeFullName(employee),
-                            first_name: employee.first_name,
-                            middle_name: employee.middle_name,
-                            last_name: employee.last_name,
-                            pseudonym: employee.pseudonym,
-                            department_name: employee.department_name,
-                            email: employee.professional_email || employee.email_work,
-                          })
-                        }
-                      />
-                    </td>
-                    <td>{employee.pseudonym || "-"}</td>
-                    <td>{employee.department_name || "-"}</td>
-                    <td>
-                      {employee.gender
-                        ? employee.gender.charAt(0).toUpperCase() + employee.gender.slice(1).toLowerCase()
-                        : "-"}
-                    </td>
-                    <td>{employee.nationality || "-"}</td>
-                    <td
-                      style={{
-                        fontWeight: 600,
-                        color:
-                          employee.status === "active" || employee.status === "enabled"
-                            ? "#38A169"
-                            : "#E53E3E",
-                      }}
-                    >
-                      {employee.status === "active" || employee.status === "enabled"
-                        ? "Active"
-                        : "Inactive"}
-                    </td>
-                    {visibleExtraCols.map((col) => (
-                      <td
-                        key={col.key}
-                        title={extraColumnValue(employee, col)}
-                        style={
-                          col.wrap
-                            ? {
-                                minWidth: col.width || 280,
-                                width: col.width || 280,
-                                fontSize: "0.95rem",
-                                whiteSpace: "normal",
-                                wordBreak: "break-word",
-                                overflowWrap: "anywhere",
-                                lineHeight: 1.35,
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                              }
-                            : {
-                                maxWidth: col.width || 120,
-                                width: col.width || 120,
-                                fontSize: "0.95rem",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }
-                        }
-                      >
-                        {extraColumnValue(employee, col)}
-                      </td>
-                    ))}
-                    <td>
-                      <button
-                        title={
-                          employee.status === "active" || employee.status === "enabled"
-                            ? "Set Inactive"
-                            : "Set Active"
-                        }
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color:
-                            employee.status === "active" || employee.status === "enabled"
-                              ? "#00b894"
-                              : "#b2bec3",
-                          cursor: "pointer",
-                          marginRight: 8,
-                          fontSize: "1.3rem",
-                        }}
-                        onClick={() => handleStatusToggle(employee.id, employee.status)}
-                      >
-                        {employee.status === "active" || employee.status === "enabled" ? (
-                          <FaToggleOn />
-                        ) : (
-                          <FaToggleOff />
-                        )}
-                      </button>
-
-                      <button
-                        title="Edit"
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#0052CC",
-                          cursor: "pointer",
-                          marginRight: 8,
-                        }}
-                        onClick={() => {
-                          setModalOpen(true);
-                          setSelectedEmployee(employee);
-                        }}
-                      >
-                        <FaUserEdit />
-                      </button>
-
-                      <button
-                        title="Delete"
-                        style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}
-                        onClick={() => handleDelete(employee.id)}
-                      >
-                        <FaTrash />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <Modal
-          isOpen={modalOpen}
-          onRequestClose={() => {
-            setModalOpen(false);
-            setSelectedEmployee(null);
-          }}
-          contentLabel="Edit Employee"
-          style={{
-            overlay: { zIndex: 1000, background: "rgba(0,0,0,0.18)" },
-            content: { maxWidth: 900, margin: "auto", borderRadius: 16, padding: 24 },
-          }}
-        >
-          {selectedEmployee ? (
+      <div className={adminStyles.page}>
+        <div className={styles.breakSummaryContainer}>
+          <div className={adminStyles.pageHeader}>
             <div>
-              <AddEmployeeForm
-                edit={true}
-                employeeId={String(selectedEmployee.id)}
-                onClose={() => {
-                  setModalOpen(false);
-                  setSelectedEmployee(null);
-                }}
-                onSaved={() => {
-                  setModalOpen(false);
-                  setSelectedEmployee(null);
-                  refreshEmployees();
-                }}
+              <h1 className={adminStyles.pageHeaderTitle}>Employee List</h1>
+              <p className={styles.mgmtAttMeta} style={{ marginTop: 4 }}>
+                Showing {filtered.length} of {listStats.total} employee
+                {listStats.total === 1 ? "" : "s"}
+              </p>
+            </div>
+          </div>
+
+          <div className={styles.listStatsRow}>
+            <button
+              type="button"
+              className={`${styles.listStatCard} ${styles.listStatPurple} ${styles.listStatClickable} ${statusFilter === "all" ? styles.listStatSelected : ""}`}
+              onClick={() => setStatusFilter("all")}
+              title="Show all employees"
+            >
+              <span className={styles.listStatLabel}>All Employees</span>
+              <span className={styles.listStatValue}>{listStats.total}</span>
+              <span className={styles.listStatHint}>
+                {departmentFilter
+                  ? departmentFilter
+                  : `${uniqueDepartments.length} department${uniqueDepartments.length === 1 ? "" : "s"}`}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.listStatCard} ${styles.listStatGreen} ${styles.listStatClickable} ${statusFilter === "active" ? styles.listStatSelected : ""}`}
+              onClick={() => setStatusFilter("active")}
+              title="Show active employees"
+            >
+              <span className={styles.listStatLabel}>Active</span>
+              <span className={styles.listStatValue}>{listStats.active}</span>
+              <span className={styles.listStatHint}>
+                {listStats.activePct}% of {departmentFilter || "workforce"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.listStatCard} ${styles.listStatRed} ${styles.listStatClickable} ${statusFilter === "inactive" ? styles.listStatSelected : ""}`}
+              onClick={() => setStatusFilter("inactive")}
+              title="Show inactive employees"
+            >
+              <span className={styles.listStatLabel}>Inactive</span>
+              <span className={styles.listStatValue}>{listStats.inactive}</span>
+              <span className={styles.listStatHint}>
+                {listStats.inactivePct}% of {departmentFilter || "workforce"}
+              </span>
+            </button>
+          </div>
+
+          <div className={leaveStyles.toolbar}>
+            <div className={leaveStyles.searchWrap}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className={leaveStyles.toolbarSearch}
+                placeholder="Search by name, ID or P.Name"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoComplete="off"
               />
             </div>
-          ) : null}
-        </Modal>
-        {popup}
+            <select
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              className={leaveStyles.toolbarSelect}
+              aria-label="Filter by department"
+            >
+              <option value="">All Departments</option>
+              {uniqueDepartments.map((dept) => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+              className={leaveStyles.toolbarSelect}
+              aria-label="Filter by status"
+            >
+              <option value="all">All status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <span className={styles.empListShowing}>Showing: {filtered.length}</span>
+            <div className={styles.empListActions}>
+              <div style={{ position: "relative", zIndex: 50 }}>
+                <button
+                  ref={columnsBtnRef}
+                  id="dropdown-menu-dots"
+                  type="button"
+                  title="Show or hide columns"
+                  aria-label="Show or hide columns"
+                  aria-expanded={dropdownOpen}
+                  onClick={toggleColumnsMenu}
+                  className={`${styles.mgmtAttGhostBtn} ${dropdownOpen ? styles.empListColumnsActive : ""}`}
+                >
+                  Columns
+                  {visibleExtraCols.length > 0 ? (
+                    <span className={styles.empListColumnsCount}>{visibleExtraCols.length}</span>
+                  ) : null}
+                </button>
+                {dropdownOpen && columnsMenuPos && (
+                  <div
+                    id="dropdown-menu-actions"
+                    className={styles.empListColumnsMenu}
+                    style={{ top: columnsMenuPos.top, left: columnsMenuPos.left }}
+                  >
+                    <div className={styles.empListColumnsMenuTitle}>SHOW COLUMNS</div>
+                    {EXTRA_COLUMNS.map((col) => (
+                      <label key={col.key} className={styles.empListColumnsItem}>
+                        <input
+                          type="checkbox"
+                          checked={!!visibleExtras[col.key]}
+                          onChange={() =>
+                            setVisibleExtras((prev) => ({ ...prev, [col.key]: !prev[col.key] }))
+                          }
+                        />
+                        <span>{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className={styles.breakSummaryXLSButton}
+                onClick={handleExportList}
+                disabled={exporting || importing || salaryTplBusy || salaryUploading}
+              >
+                <FaFileExcel size={16} />
+                <span>
+                  {exporting
+                    ? "Exporting…"
+                    : selectedIds.size
+                      ? `Export XLS (${selectedIds.size})`
+                      : "Export XLS"}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={adminStyles.btnGreen}
+                onClick={() => importInputRef.current?.click()}
+                disabled={exporting || importing || salaryTplBusy || salaryUploading}
+              >
+                {importing ? "Importing…" : "Import XLS"}
+              </button>
+              <button
+                type="button"
+                title="Download Excel with Employee ID, Name, Pseudo Name, and current Basic Salary"
+                className={styles.mgmtAttGhostBtn}
+                onClick={handleDownloadSalaryTemplate}
+                disabled={exporting || importing || salaryTplBusy || salaryUploading}
+              >
+                {salaryTplBusy ? "Preparing…" : "Salary Template"}
+              </button>
+              <button
+                type="button"
+                title="Upload filled salary template to add or update basic salaries"
+                className={styles.mgmtAttGhostBtn}
+                onClick={() => salaryUploadInputRef.current?.click()}
+                disabled={exporting || importing || salaryTplBusy || salaryUploading}
+              >
+                {salaryUploading ? "Uploading…" : "Upload Salaries"}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                style={{ display: "none" }}
+                onChange={handleImportList}
+              />
+              <input
+                ref={salaryUploadInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                style={{ display: "none" }}
+                onChange={handleUploadSalaryTemplate}
+              />
+            </div>
+          </div>
+
+          <div className={leaveStyles.reqTableShell}>
+            <div
+              className={styles.mgmtAttScroll}
+              style={{
+                overflowX: extraColsVisible ? "auto" : "hidden",
+              }}
+            >
+              <table
+                className={`${leaveStyles.reqTable} ${styles.empListTableFit}`}
+                style={{
+                  minWidth: extraColsVisible ? 900 : undefined,
+                  width: extraColsVisible ? "max-content" : "100%",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={{ width: 42, minWidth: 42, textAlign: "center" }}>
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        onChange={toggleAllFiltered}
+                        disabled={filteredIds.length === 0}
+                        title="Select all in this list"
+                        className={styles.empListCheck}
+                      />
+                    </th>
+                    <th>{renderSortableHeader("Id", "id")}</th>
+                    <th>{renderSortableHeader("Full Name", "fullName")}</th>
+                    <th>{renderSortableHeader("P.Name", "pseudonym")}</th>
+                    <th>{renderSortableHeader("Department", "department")}</th>
+                    <th>{renderSortableHeader("Gender", "gender")}</th>
+                    <th>{renderSortableHeader("Nationality", "nationality")}</th>
+                    <th>{renderSortableHeader("Status", "status")}</th>
+                    {visibleExtraCols.map((col) => (
+                      <th
+                        key={col.key}
+                        style={{
+                          minWidth: col.width || 120,
+                          width: col.width || 120,
+                          whiteSpace: col.wrap ? "normal" : "nowrap",
+                        }}
+                      >
+                        {col.label}
+                      </th>
+                    ))}
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={tableColSpan} className={leaveStyles.reqEmpty}>
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={tableColSpan} className={leaveStyles.reqEmpty} style={{ color: "#b91c1c" }}>
+                        {error}
+                      </td>
+                    </tr>
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={tableColSpan} className={leaveStyles.reqEmpty}>
+                        No records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((employee) => (
+                      <tr key={employee.id}>
+                        <td style={{ textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(Number(employee.id))}
+                            onChange={() => toggleEmployeeSelected(Number(employee.id))}
+                            className={styles.empListCheck}
+                          />
+                        </td>
+                        <td className={leaveStyles.reqId}>{employee.id}</td>
+                        <td>
+                          <EmployeeTableNameCell
+                            name={getEmployeeFullName(employee)}
+                            employeeId={employee.id}
+                            photo={getPhoto(employee.id)}
+                            onOpen={() =>
+                              openFromRow({
+                                employee_id: employee.id,
+                                employee_name: getEmployeeFullName(employee),
+                                first_name: employee.first_name,
+                                middle_name: employee.middle_name,
+                                last_name: employee.last_name,
+                                pseudonym: employee.pseudonym,
+                                department_name: employee.department_name,
+                                email: employee.professional_email || employee.email_work,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>{employee.pseudonym || "-"}</td>
+                        <td>{employee.department_name || "-"}</td>
+                        <td>
+                          {employee.gender
+                            ? employee.gender.charAt(0).toUpperCase() +
+                              employee.gender.slice(1).toLowerCase()
+                            : "-"}
+                        </td>
+                        <td>{employee.nationality || "-"}</td>
+                        <td>
+                          <span
+                            className={
+                              employee.status === "active" || employee.status === "enabled"
+                                ? styles.empListStatusActive
+                                : styles.empListStatusInactive
+                            }
+                          >
+                            {employee.status === "active" || employee.status === "enabled"
+                              ? "Active"
+                              : "Inactive"}
+                          </span>
+                        </td>
+                        {visibleExtraCols.map((col) => (
+                          <td
+                            key={col.key}
+                            title={extraColumnValue(employee, col)}
+                            style={
+                              col.wrap
+                                ? {
+                                    minWidth: col.width || 280,
+                                    width: col.width || 280,
+                                    whiteSpace: "normal",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "anywhere",
+                                    lineHeight: 1.35,
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                  }
+                                : {
+                                    maxWidth: col.width || 120,
+                                    width: col.width || 120,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }
+                            }
+                          >
+                            {extraColumnValue(employee, col)}
+                          </td>
+                        ))}
+                        <td>
+                          <div className={styles.empListRowActions}>
+                            <button
+                              type="button"
+                              title={
+                                employee.status === "active" || employee.status === "enabled"
+                                  ? "Set Inactive"
+                                  : "Set Active"
+                              }
+                              className={styles.empListIconBtn}
+                              style={{
+                                color:
+                                  employee.status === "active" || employee.status === "enabled"
+                                    ? "#0f766e"
+                                    : "#94a3b8",
+                                fontSize: "1.25rem",
+                              }}
+                              onClick={() => handleStatusToggle(employee.id, employee.status)}
+                            >
+                              {employee.status === "active" || employee.status === "enabled" ? (
+                                <FaToggleOn />
+                              ) : (
+                                <FaToggleOff />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit"
+                              className={styles.empListIconBtn}
+                              style={{ color: "#0f766e" }}
+                              onClick={() => {
+                                setModalOpen(true);
+                                setSelectedEmployee(employee);
+                              }}
+                            >
+                              <FaUserEdit />
+                            </button>
+                            <button
+                              type="button"
+                              title="Delete"
+                              className={styles.empListIconBtn}
+                              style={{ color: "#dc2626" }}
+                              onClick={() => handleDelete(employee.id)}
+                            >
+                              <FaTrash />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Modal
+            isOpen={modalOpen}
+            onRequestClose={() => {
+              setModalOpen(false);
+              setSelectedEmployee(null);
+            }}
+            contentLabel="Edit Employee"
+            style={{
+              overlay: { zIndex: 1000, background: "rgba(0,0,0,0.18)" },
+              content: { maxWidth: 900, margin: "auto", borderRadius: 16, padding: 24 },
+            }}
+          >
+            {selectedEmployee ? (
+              <div>
+                <AddEmployeeForm
+                  edit={true}
+                  employeeId={String(selectedEmployee.id)}
+                  onClose={() => {
+                    setModalOpen(false);
+                    setSelectedEmployee(null);
+                  }}
+                  onSaved={() => {
+                    setModalOpen(false);
+                    setSelectedEmployee(null);
+                    refreshEmployees();
+                  }}
+                />
+              </div>
+            ) : null}
+          </Modal>
+          {popup}
+        </div>
       </div>
     </OptionalAdminShell>
   );
