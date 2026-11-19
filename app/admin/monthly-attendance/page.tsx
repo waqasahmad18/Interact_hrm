@@ -433,9 +433,13 @@ export default function MonthlyAttendancePage() {
 
   useEffect(() => {
     if (!exportMenuEmployeeId) return;
-    const onDocClick = () => setExportMenuEmployeeId("");
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-export-menu]")) return;
+      setExportMenuEmployeeId("");
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, [exportMenuEmployeeId]);
 
   const showingImported =
@@ -1798,29 +1802,39 @@ export default function MonthlyAttendancePage() {
       return;
     }
 
-    const ctx = await ensureTungstenCtx();
-    const sheets = attendanceByEmployee.map((employee) => ({
-      name: excelEmployeeLabel(employee.employeeName, employee.pseudonym),
-      rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
-    }));
+    try {
+      const ctx = await ensureTungstenCtx();
+      const sheets = attendanceByEmployee.map((employee) => ({
+        name: excelEmployeeLabel(employee.employeeName, employee.pseudonym),
+        rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
+      }));
 
-    const dateRange = fromDate && toDate ? `-${fromDate}-to-${toDate}` : "";
-    const departmentSuffix = selectedDepartment ? `-${selectedDepartment}` : "";
-    const fileName = `monthly-attendance${departmentSuffix}${dateRange}.xlsx`;
-    await downloadMonthlyAttendanceExcel(sheets, fileName);
+      const dateRange = fromDate && toDate ? `-${fromDate}-to-${toDate}` : "";
+      const departmentSuffix = selectedDepartment ? `-${selectedDepartment}` : "";
+      const fileName = `monthly-attendance${departmentSuffix}${dateRange}.xlsx`;
+      await downloadMonthlyAttendanceExcel(sheets, fileName);
+      toastSuccess("Attendance Excel downloaded", "Export");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : String(err), "Export failed");
+    }
   }
 
   async function downloadEmployeeExcel(employee: any) {
-    const ctx = await ensureTungstenCtx();
-    const label = excelEmployeeLabel(employee.employeeName, employee.pseudonym);
-    const sheets = [
-      {
-        name: label,
-        rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
-      },
-    ];
-    const fileName = `attendance-${label.replace(/\s+/g, "_")}-${selectedMonth}.xlsx`;
-    await downloadMonthlyAttendanceExcel(sheets, fileName);
+    try {
+      const ctx = await ensureTungstenCtx();
+      const label = excelEmployeeLabel(employee.employeeName, employee.pseudonym);
+      const sheets = [
+        {
+          name: label,
+          rows: buildEmployeeExcelRows(employee, pairSessionsForEmployee(employee, ctx)),
+        },
+      ];
+      const fileName = `attendance-${label.replace(/\s+/g, "_")}-${selectedMonth}.xlsx`;
+      await downloadMonthlyAttendanceExcel(sheets, fileName);
+      toastSuccess("Attendance Excel downloaded", "Export");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : String(err), "Export failed");
+    }
   }
 
   function shouldIncludeInDeductionSummary(statusLabel: string): boolean {
@@ -2094,12 +2108,17 @@ export default function MonthlyAttendancePage() {
   }
 
   async function downloadEmployeeDeductionSummary(employee: MonthlyAttendanceEmployeeRow) {
-    const ctx = await ensureTungstenCtx();
-    const block = buildDeductionSummaryBlock(
-      employee,
-      pairSessionsForEmployee(employee, ctx),
-    );
-    await downloadOneDeductionSummary(block);
+    try {
+      const ctx = await ensureTungstenCtx();
+      const block = buildDeductionSummaryBlock(
+        employee,
+        pairSessionsForEmployee(employee, ctx),
+      );
+      await downloadOneDeductionSummary(block);
+      toastSuccess("Deduction Summary downloaded", "Export");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : String(err), "Export failed");
+    }
   }
 
   const monthInfo = useMemo(() => {
@@ -2786,7 +2805,7 @@ export default function MonthlyAttendancePage() {
                 return (
                 <div
                   key={employee.employeeId}
-                  className={`${styles.empCard}${isExpanded ? ` ${styles.empCardExpanded}` : ""}${isDeductionSelected ? ` ${styles.empCardSelected}` : ""}`}
+                  className={`${styles.empCard}${isExpanded ? ` ${styles.empCardExpanded}` : ""}${isDeductionSelected ? ` ${styles.empCardSelected}` : ""}${exportMenuEmployeeId === String(employee.employeeId) ? ` ${styles.empCardMenuOpen}` : ""}`}
                 >
                   <div
                     className={styles.empCardHead}
@@ -2841,10 +2860,7 @@ export default function MonthlyAttendancePage() {
                           ? "…"
                           : "View deduction"}
                       </button>
-                      <div
-                        className={styles.exportMenuWrap}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
+                      <div className={styles.exportMenuWrap} data-export-menu>
                         <button
                           type="button"
                           title="Export Attendance or Deduction Summary"
@@ -2852,7 +2868,8 @@ export default function MonthlyAttendancePage() {
                           aria-expanded={
                             exportMenuEmployeeId === String(employee.employeeId)
                           }
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const id = String(employee.employeeId);
                             setExportMenuEmployeeId((prev) => (prev === id ? "" : id));
                           }}
@@ -2865,7 +2882,8 @@ export default function MonthlyAttendancePage() {
                               type="button"
                               role="menuitem"
                               className={styles.exportMenuItem}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setExportMenuEmployeeId("");
                                 void downloadEmployeeExcel(employee);
                               }}
@@ -2876,7 +2894,8 @@ export default function MonthlyAttendancePage() {
                               type="button"
                               role="menuitem"
                               className={styles.exportMenuItem}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setExportMenuEmployeeId("");
                                 void downloadEmployeeDeductionSummary(employee);
                               }}

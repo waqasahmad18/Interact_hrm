@@ -431,7 +431,13 @@
   padding: 16px;
   width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  /* visible so Export ▾ menu is not clipped by the card edge */
+  overflow: visible;
+  position: relative;
+}
+
+.empCardMenuOpen {
+  z-index: 40;
 }
 
 /* Keep class for expand state styling; cards stay full-width list rows */
@@ -524,14 +530,15 @@
 .exportMenuWrap {
   position: relative;
   display: inline-flex;
+  z-index: 5;
 }
 
 .exportMenu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 30;
-  min-width: 180px;
+  z-index: 50;
+  min-width: 196px;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
