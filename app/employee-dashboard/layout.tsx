@@ -55,22 +55,6 @@ function greetingLabel() {
   return "Welcome Back";
 }
 
-function formatHeroDateTime() {
-  const d = new Date();
-  const date = d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const time = d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return `${date} | ${time}`;
-}
-
 /** Isolated so typing does not re-render ClockBreakPrayer / dashboard children. */
 function HeroSearch() {
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -301,14 +285,8 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
   );
   const [employeeId, setEmployeeId] = React.useState<string>("");
   const [employeePseudonym, setEmployeePseudonym] = React.useState<string>("");
-  const [heroDateTime, setHeroDateTime] = React.useState(formatHeroDateTime);
   const isDashboardHome = pathname === "/employee-dashboard";
   const [accessTabs, setAccessTabs] = React.useState<NavTab[]>([]);
-
-  React.useEffect(() => {
-    const id = window.setInterval(() => setHeroDateTime(formatHeroDateTime()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   // Prefetch common routes after first paint — don't contend with clock/menu APIs.
   React.useEffect(() => {
@@ -677,7 +655,6 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
                       <span className={empStyles.heroNameAccent}>{employeeName || "Employee"}!</span>
                       <MedicalPackageBadge packageId={medicalPackage} size="md" />
                     </h1>
-                    <span className={empStyles.heroDate}>{heroDateTime}</span>
                   </div>
                 </div>
 

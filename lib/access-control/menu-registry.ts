@@ -286,12 +286,6 @@ export const ACCESS_MENU_REGISTRY: AccessMenuItem[] = [
     group: "ops",
   },
   {
-    permission: "ops.events.view",
-    name: "Events",
-    path: "/employee-dashboard/events",
-    group: "ops",
-  },
-  {
     permission: "ops.departments.view",
     name: "Departments",
     path: "/employee-dashboard/departments",

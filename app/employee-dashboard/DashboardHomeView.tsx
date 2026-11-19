@@ -5,7 +5,6 @@ import {
   FaClock,
   FaUsers,
   FaTicketAlt,
-  FaCalendarAlt,
   FaUser,
   FaFileAlt,
 } from "react-icons/fa";
@@ -71,12 +70,6 @@ function ticketDecidedByLabel(ticket: TicketWidgetRow): string | null {
       : `Resolved by ${name}`;
   }
   return null;
-}
-
-function greetingWord(hour: number) {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
 }
 
 function formatShiftTime(raw?: string | null) {
@@ -211,14 +204,11 @@ export type DashboardHomeViewProps = {
 export default function DashboardHomeView(props: DashboardHomeViewProps) {
   const {
     employeeId,
-    employeeName,
     clockedInLabel,
     todayStatus,
     todayHours,
     shiftStart,
     shiftEnd,
-    greetingHour,
-    todayLabel,
     monthAttendanceStats,
     monthTardies,
     leaveBalance,
@@ -239,7 +229,6 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     todayClock,
   } = props;
 
-  const firstName = (employeeName || "there").split(" ")[0];
   const leaveLeftLabel = `${String(leaveBalance.annual).padStart(2, "0")}/${leaveBalance.annualAllowance}`;
   const statusChipClass =
     todayStatus.startsWith("Late")
@@ -292,21 +281,15 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
       <div className={styles.inner}>
         {employeeId ? <TardyNoteWidget employeeId={employeeId} variant="slack" /> : null}
 
-        <header className={styles.greeting}>
-          <div className={styles.greetingText}>
-            <p className={styles.greetingEyebrow}>{todayLabel}</p>
-            <h1 className={styles.greetingTitle}>
-              {greetingWord(greetingHour)}, {firstName}
-            </h1>
-            <div className={styles.greetingMeta}>
-              <span className={`${styles.chip} ${statusChipClass}`}>{todayStatus}</span>
-              <span className={styles.chip}>{clockedInLabel}</span>
-              {employeeId ? (
-                <span className={`${styles.chip} ${styles.chipMuted}`}>ID {employeeId}</span>
-              ) : null}
-            </div>
+        <div className={styles.greetingActions}>
+          <div className={styles.greetingMeta}>
+            <span className={`${styles.chip} ${statusChipClass}`}>{todayStatus}</span>
+            <span className={styles.chip}>{clockedInLabel}</span>
+            {employeeId ? (
+              <span className={`${styles.chip} ${styles.chipMuted}`}>ID {employeeId}</span>
+            ) : null}
           </div>
-          <div className={styles.greetingActions}>
+          <div className={styles.greetingActionsBtns}>
             <button
               type="button"
               className={styles.ghostBtn}
@@ -322,7 +305,7 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
               Attendance detail
             </button>
           </div>
-        </header>
+        </div>
 
         <section className={styles.primaryRow} aria-label="Today and this week">
           <article className={`${styles.panel} ${styles.todayDesk}`}>
@@ -685,16 +668,6 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
               <FaFileAlt />
             </span>
             Generate ticket
-          </button>
-          <button
-            type="button"
-            className={styles.shortcut}
-            onClick={() => onNavigate("/employee-dashboard/events")}
-          >
-            <span className={`${styles.shortcutIcon} ${styles.iconSlate}`}>
-              <FaCalendarAlt />
-            </span>
-            Events
           </button>
           {isHrTicketInbox ? (
             <>

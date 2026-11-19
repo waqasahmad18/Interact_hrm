@@ -819,7 +819,16 @@ export default function LeaveRequestsPanel({
                                     Approve
                                   </button>
                                 ) : null}
-                                {!isHrOrAdmin && !showApprove ? (
+                                {canRejectLeave(l) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnRejectOutline}
+                                    onClick={() => openModal(l)}
+                                  >
+                                    Reject
+                                  </button>
+                                ) : null}
+                                {!isHrOrAdmin && !showApprove && !canRejectLeave(l) ? (
                                   <span className={styles.actionStamp}>—</span>
                                 ) : null}
                               </div>

@@ -28,34 +28,13 @@
   gap: 14px;
 }
 
-/* —— Greeting —— */
-.greeting {
+/* —— Status + actions (Welcome Back stays in layout hero) —— */
+.greetingActions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-}
-
-.greetingText {
-  min-width: 0;
-}
-
-.greetingEyebrow {
-  margin: 0 0 2px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-
-.greetingTitle {
-  margin: 0;
-  font-size: clamp(1.35rem, 2.2vw, 1.75rem);
-  font-weight: 750;
-  letter-spacing: -0.035em;
-  line-height: 1.15;
-  color: var(--ink);
 }
 
 .greetingMeta {
@@ -63,7 +42,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+}
+
+.greetingActionsBtns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chip {
@@ -93,12 +77,6 @@
 
 .chipMuted {
   color: var(--muted);
-}
-
-.greetingActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .ghostBtn {
