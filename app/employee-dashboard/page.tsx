@@ -26,24 +26,9 @@ import { normalizeAttendanceStatus } from "../../lib/attendance-status";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { sanitizeEmployeeDisplayName } from "@/lib/employee-login-lookup";
-import dynamic from "next/dynamic";
 import { fetchAccessControlMe } from "@/lib/access-control/me-client-cache";
 import { useEmployeeSession } from "./employee-session-context";
-
-/** Clock chunk loads with the home page — no layout portal / empty flash. */
-const ClockBreakPrayerWidget = dynamic(
-  () =>
-    import("../components/ClockBreakPrayer").then((m) => m.ClockBreakPrayerWidget),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        aria-hidden
-        style={{ minHeight: 56, borderRadius: 12, background: "rgba(148,163,184,0.12)" }}
-      />
-    ),
-  },
-);
+import { ClockBreakPrayerWidget } from "../components/ClockBreakPrayer";
 
 type AttendanceRow = {
   id?: number;
@@ -616,19 +601,20 @@ export default function EmployeeDashboardPage() {
 
   React.useEffect(() => {
     if (!employeeId) return;
-    // Attendance first — rest deferred so route paint stays snappy
+    // Attendance first for Hours today / week pulse — everything else waits for idle.
     void fetchAttendance();
-    void fetchMonthAbsentContext();
     const runSecondary = () => {
+      void fetchMonthAbsentContext();
       void fetchLeaveBalance();
       void fetchTickets();
+      void fetchReminders();
     };
     let idleId: number | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      idleId = window.requestIdleCallback(runSecondary, { timeout: 1800 });
+      idleId = window.requestIdleCallback(runSecondary, { timeout: 2200 });
     } else {
-      timeoutId = setTimeout(runSecondary, 120);
+      timeoutId = setTimeout(runSecondary, 250);
     }
     return () => {
       if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
@@ -636,7 +622,14 @@ export default function EmployeeDashboardPage() {
       }
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [employeeId, fetchAttendance, fetchMonthAbsentContext, fetchLeaveBalance, fetchTickets]);
+  }, [
+    employeeId,
+    fetchAttendance,
+    fetchMonthAbsentContext,
+    fetchLeaveBalance,
+    fetchTickets,
+    fetchReminders,
+  ]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -644,7 +637,6 @@ export default function EmployeeDashboardPage() {
     let ws: WebSocket | null = null;
     const connect = () => {
       if (cancelled) return;
-      void fetchReminders();
       const protocol = window.location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
       ws.onmessage = (evt) => {

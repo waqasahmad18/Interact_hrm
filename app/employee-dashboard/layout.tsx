@@ -51,6 +51,37 @@ const GuardPresenceFaceHost = dynamic(
   { ssr: false, loading: () => null },
 );
 
+/** Mount face host only after idle so home clock buttons stay snappy on refresh. */
+function DeferredGuardPresence({
+  employeeId,
+  employeeName,
+}: {
+  employeeId: string;
+  employeeName: string;
+}) {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const go = () => setReady(true);
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(go, { timeout: 5000 });
+    } else {
+      timeoutId = setTimeout(go, 2000);
+    }
+    return () => {
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+  if (!ready) return null;
+  return (
+    <GuardPresenceFaceHost employeeId={employeeId} employeeName={employeeName} />
+  );
+}
+
 function greetingLabel() {
   return "Welcome Back";
 }
@@ -247,7 +278,7 @@ function EmployeeSidebarNav({ tabs }: { tabs: NavTab[] }) {
           <Link
             key={tab.path || idx}
             href={tab.path}
-            prefetch
+            prefetch={false}
             className={
               isActive
                 ? `${styles.navItem} ${styles.navItemActive} ${empStyles.navItemPdf} ${empStyles.navItemPdfActive}`
@@ -310,7 +341,8 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
         }
       }
     };
-    const id = idle ? idle(run, { timeout: 4000 }) : window.setTimeout(run, 1500);
+    // Home clock/attendance first — prefetch only after a longer idle window.
+    const id = idle ? idle(run, { timeout: 8000 }) : window.setTimeout(run, 3500);
     return () => {
       if (idle && typeof id === "number") {
         (
@@ -697,7 +729,7 @@ export default function EmployeeDashboardLayout({ children }: { children: React.
 
         <main className={`${styles.main} ${empStyles.employeeMain}`}>{children}</main>
         {employeeId && /^\d+$/.test(employeeId) ? (
-          <GuardPresenceFaceHost
+          <DeferredGuardPresence
             employeeId={employeeId}
             employeeName={employeeName || "Employee"}
           />

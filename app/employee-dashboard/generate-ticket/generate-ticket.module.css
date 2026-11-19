@@ -107,8 +107,8 @@
 .input:focus,
 .textarea:focus {
   outline: none;
-  border-color: #611f69;
-  box-shadow: 0 0 0 3px rgba(97, 31, 105, 0.1);
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
 .select:disabled {
@@ -175,7 +175,7 @@
   margin: -6px 0 10px;
   font-size: 12px;
   font-weight: 600;
-  color: #611f69;
+  color: #0f766e;
 }
 
 .requiredMark {
@@ -205,16 +205,16 @@
 }
 
 .leaveDurationOption input {
-  accent-color: #611f69;
+  accent-color: #0f766e;
   width: 16px;
   height: 16px;
   margin: 0;
 }
 
 .leaveDurationSelected {
-  border-color: #611f69;
+  border-color: #0f766e;
   background: #f5eef6;
-  color: #4a1850;
+  color: #111827;
   box-shadow: 0 0 0 1px rgba(97, 31, 105, 0.2);
 }
 
@@ -241,7 +241,7 @@
 }
 
 .leaveBalancePurple {
-  border-top: 4px solid #611f69;
+  border-top: 4px solid #0f766e;
 }
 
 .leaveBalanceGreen {
@@ -287,14 +287,18 @@
 
 .fileBtn {
   border: none;
-  border-radius: 10px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
   cursor: pointer;
-  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
+  background: #0f766e;
   color: #fff;
   font-family: inherit;
+}
+
+.fileBtn:hover {
+  background: #0d9488;
 }
 
 .fileHint {
@@ -417,7 +421,7 @@
   margin-top: 10px;
   font-size: 12px;
   font-weight: 600;
-  color: #611f69;
+  color: #0f766e;
 }
 
 .historyTop {
@@ -431,7 +435,7 @@
 .historyId {
   font-size: 12px;
   font-weight: 700;
-  color: #611f69;
+  color: #0f766e;
 }
 
 .historySubject {
@@ -487,7 +491,7 @@
 }
 
 .adminReplyLabel {
-  color: #611f69;
+  color: #0f766e;
 }
 
 .adminReplyText {
@@ -569,7 +573,7 @@
   margin: 0 0 10px;
   font-size: 18px;
   font-weight: 700;
-  color: #611f69;
+  color: #0f766e;
 }
 
 .modalMeta {
@@ -611,7 +615,7 @@
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  background: #611f69;
+  background: #0f766e;
   color: #fff;
   font-family: inherit;
 }
@@ -629,7 +633,7 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  background: linear-gradient(135deg, #611f69 0%, #4a1850 100%);
+  background: #111827;
   color: #fff;
   font-family: inherit;
 }
