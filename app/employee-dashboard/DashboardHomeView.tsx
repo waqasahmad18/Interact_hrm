@@ -214,23 +214,54 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     .slice(0, 2)
     .toUpperCase();
 
+  const leaveLeftLabel = `${String(leaveBalance.annual).padStart(2, "0")}/${leaveBalance.annualAllowance}`;
+
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
         {employeeId ? <TardyNoteWidget employeeId={employeeId} variant="slack" /> : null}
 
+        <section className={styles.kpiStrip} aria-label="At a glance">
+          <div className={`${styles.kpi} ${styles.kpiTeal}`}>
+            <p className={styles.kpiLabel}>Attendance</p>
+            <p className={styles.kpiValue}>{monthAttendanceStats.pct}%</p>
+            <p className={styles.kpiHint}>This month</p>
+          </div>
+          <div className={styles.kpi}>
+            <p className={styles.kpiLabel}>Present</p>
+            <p className={styles.kpiValue}>{monthAttendanceStats.present}</p>
+            <p className={styles.kpiHint}>Days present</p>
+          </div>
+          <div className={styles.kpi}>
+            <p className={styles.kpiLabel}>Absent</p>
+            <p className={styles.kpiValue}>{monthAttendanceStats.absent}</p>
+            <p className={styles.kpiHint}>Tap attendance card</p>
+          </div>
+          <div className={`${styles.kpi} ${styles.kpiTeal}`}>
+            <p className={styles.kpiLabel}>Annual leave</p>
+            <p className={styles.kpiValue}>{leaveLeftLabel}</p>
+            <p className={styles.kpiHint}>Days remaining</p>
+          </div>
+        </section>
+
         <div className={styles.dashGrid}>
           <article className={`${styles.card} ${styles.todayCard}`}>
-            <h2 className={styles.cardTitle}>Today&apos;s Status</h2>
+            <h2 className={styles.cardTitle}>
+              Today&apos;s Status
+              <span className={styles.cardTitleMeta}>Live</span>
+            </h2>
             <LiveClock />
             <p className={styles.clockedInLabel}>{clockedInLabel}</p>
             <div className={styles.todayActions}>{todayClock}</div>
           </article>
 
           <article className={`${styles.card} ${styles.attendanceCard}`}>
-            <h2 className={styles.cardTitle}>My Attendance</h2>
+            <h2 className={styles.cardTitle}>
+              My Attendance
+              <span className={styles.cardTitleMeta}>Month</span>
+            </h2>
             <div className={styles.attendanceBody}>
-              <ProgressRing pct={monthAttendanceStats.pct} color="#fff" size={88}>
+              <ProgressRing pct={monthAttendanceStats.pct} color="#fff" size={84}>
                 <span>{monthAttendanceStats.pct}%</span>
               </ProgressRing>
               <div className={styles.attendanceStats}>
@@ -251,7 +282,10 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
           </article>
 
           <article className={`${styles.card} ${styles.leaveCard}`}>
-            <h2 className={styles.cardTitle}>Leave Balance</h2>
+            <h2 className={styles.cardTitle}>
+              Leave Balance
+              <span className={styles.cardTitleMeta}>Remaining</span>
+            </h2>
             <div className={styles.leaveRow}>
               <div className={styles.leaveMeta}>
                 <span>Annual Leaves</span>
@@ -443,7 +477,10 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
           </article>
 
           <article className={`${styles.card} ${styles.actionsCard}`}>
-            <h2 className={styles.cardTitle}>Quick Actions</h2>
+            <h2 className={styles.cardTitle}>
+              Quick Actions
+              <span className={styles.cardTitleMeta}>Shortcuts</span>
+            </h2>
             <div className={styles.actionList}>
               <button
                 type="button"
@@ -458,9 +495,19 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
               <button
                 type="button"
                 className={styles.actionBtn}
-                onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
+                onClick={() => onNavigate("/employee-dashboard/leave")}
               >
                 <span className={`${styles.actionIcon} ${styles.actionOrange}`}>
+                  <FaTicketAlt />
+                </span>
+                Request leave
+              </button>
+              <button
+                type="button"
+                className={styles.actionBtn}
+                onClick={() => onNavigate("/employee-dashboard/generate-ticket")}
+              >
+                <span className={`${styles.actionIcon} ${styles.actionPurple}`}>
                   <FaTicketAlt />
                 </span>
                 Generate ticket
