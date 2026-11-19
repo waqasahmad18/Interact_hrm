@@ -1306,6 +1306,94 @@
   border-bottom: none;
 }
 
+/* Events — black header fit (sidebar-safe, no bottom scrollbar) */
+.eventsTableFit {
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.eventsTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.eventsTableFit thead th {
+  background: #111827;
+  padding: 8px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.25px;
+  color: #fff;
+}
+
+.eventsTableFit tbody td {
+  padding: 8px 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eventsTableFit th:nth-child(1),
+.eventsTableFit td:nth-child(1) {
+  width: 26%;
+}
+
+.eventsTableFit th:nth-child(2),
+.eventsTableFit td:nth-child(2) {
+  width: 8%;
+  text-align: center;
+}
+
+.eventsTableFit th:nth-child(3),
+.eventsTableFit td:nth-child(3) {
+  width: 28%;
+}
+
+.eventsTableFit th:nth-child(4),
+.eventsTableFit td:nth-child(4) {
+  width: 14%;
+}
+
+.eventsTableFit th:nth-child(5),
+.eventsTableFit td:nth-child(5) {
+  width: 12%;
+}
+
+.eventsTableFit th:nth-child(6),
+.eventsTableFit td:nth-child(6) {
+  width: 12%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.eventsScroll {
+  max-height: 62vh;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.eventsLayout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .eventsLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .shiftMgmtTableFit thead {
   position: sticky;
   top: 0;
