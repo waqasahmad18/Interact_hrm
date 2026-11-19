@@ -280,3 +280,102 @@
   letter-spacing: -0.02em;
   color: #0b1220;
 }
+
+/* Attendance Summary — Leaves-style black header + fit columns */
+.attTableScroll {
+  max-height: 74vh;
+  overflow: auto;
+}
+
+.attTableFit {
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.attTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.attTableFit thead th {
+  background: #111827;
+  padding: 8px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.attTableFit tbody td {
+  padding: 7px 8px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attTableFit td:nth-child(2),
+.attTableFit td:nth-child(7) {
+  white-space: normal;
+}
+
+.attTableFit th:nth-child(1),
+.attTableFit td:nth-child(1) {
+  width: 4.5%;
+}
+
+.attTableFit th:nth-child(2),
+.attTableFit td:nth-child(2) {
+  width: 17%;
+}
+
+.attTableFit th:nth-child(3),
+.attTableFit td:nth-child(3) {
+  width: 11%;
+}
+
+.attTableFit th:nth-child(4),
+.attTableFit td:nth-child(4) {
+  width: 12%;
+}
+
+.attTableFit th:nth-child(5),
+.attTableFit td:nth-child(5) {
+  width: 10%;
+}
+
+.attTableFit th:nth-child(6),
+.attTableFit td:nth-child(6) {
+  width: 11%;
+}
+
+.attTableFit th:nth-child(7),
+.attTableFit td:nth-child(7) {
+  width: 12%;
+}
+
+.attTableFit th:nth-child(8),
+.attTableFit td:nth-child(8) {
+  width: 12%;
+}
+
+.attTableFit th:nth-child(9),
+.attTableFit td:nth-child(9) {
+  width: 10.5%;
+}
+
+.attRunning {
+  color: #ad7a2e;
+  font-weight: 700;
+}
+
+.attLate {
+  color: #bc3a3a;
+  font-weight: 700;
+}
+
+.attOnTime {
+  color: #2c8058;
+  font-weight: 600;
+}
