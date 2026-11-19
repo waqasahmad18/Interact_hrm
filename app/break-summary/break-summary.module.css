@@ -15,10 +15,10 @@
 
 .breakSummaryContainer {
   background: var(--color-card);
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04), 0 6px 20px -8px rgba(27, 34, 51, 0.08);
-  padding: 12px 14px 14px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04);
+  padding: 10px 12px 12px;
+  margin-bottom: 12px;
   border: 1px solid var(--color-border);
   width: 100%;
   max-width: 100%;
@@ -34,20 +34,99 @@
   letter-spacing: -0.02em;
 }
 
+/* Employee Time & Attendance page shell */
+.empTimePage {
+  min-height: 100%;
+  background: transparent;
+  padding: 8px 16px 28px;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+.empTimeInner {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.empTimeHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e4e7ec;
+  box-shadow: 0 1px 2px rgba(27, 34, 51, 0.04);
+}
+
+.empTimeHeaderLeft {
+  min-width: 0;
+}
+
+.empTimeTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.empTimeTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.empTimeTab {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 650;
+  font-family: inherit;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.empTimeTab:hover {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.empTimeTabActive {
+  background: #111827;
+  border-color: #111827;
+  color: #fff;
+}
+
+.empTimeTabActive:hover {
+  background: #0b1220;
+  border-color: #0b1220;
+  color: #fff;
+}
+
 .breakSummaryFilters {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 8px;
+  margin-bottom: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .breakSummaryInput,
 .breakSummaryDate {
-  padding: 10px 14px;
+  padding: 7px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  font-size: 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
   font-family: var(--font-main);
   transition: border-color 0.15s, box-shadow 0.15s;
   background: #fff;
@@ -119,15 +198,15 @@
   width: 100%;
   max-height: 74vh;
   overflow: auto;
-  border-radius: 14px;
-  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  border: 1px solid #e4e7ec;
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 .breakSummaryTableWrapper::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 .breakSummaryTableWrapper::-webkit-scrollbar-thumb {
@@ -136,7 +215,7 @@
 }
 
 .breakSummaryTable {
-  min-width: 1280px;
+  min-width: 1100px;
   width: 100%;
   border-collapse: collapse;
 }
@@ -145,36 +224,38 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(120deg, #0b1220 0%, #0f766e 55%, #14b8a6 100%);
+  background: #111827;
 }
 
 .breakSummaryTable th {
-  padding: 12px 10px;
+  padding: 8px 8px;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
   border: none;
-  font-size: 11px;
-  letter-spacing: 0.05em;
+  border-bottom: 1px solid #111827;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+  background: #111827;
 }
 
 .breakSummaryTable td {
-  padding: 11px 10px;
+  padding: 7px 8px;
   border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--color-text);
   background: #fff;
   vertical-align: middle;
 }
 
 .breakSummaryTable tbody tr {
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
 
 .breakSummaryTable tbody tr:hover {
-  background: #f0fdfa;
+  background: #f8fafc;
 }
 
 .breakSummaryTable tbody tr:last-child td {
@@ -185,12 +266,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #fff7ed;
-  color: var(--brand-gold);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .badgeRunning::before {
@@ -198,7 +279,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--brand-gold);
+  background: #dc2626;
 }
 
 .cellMuted {

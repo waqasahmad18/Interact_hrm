@@ -15,6 +15,7 @@ import {
 } from "../../../lib/ticket-thread";
 import { formatTicketStatusLabel, isTicketClosed } from "../../../lib/ticket-status";
 import TicketThread from "../../components/TicketThread";
+import { BackToDashboard } from "../components/BackToDashboard";
 import styles from "../generate-ticket/generate-ticket.module.css";
 
 type TicketRow = {
@@ -265,6 +266,7 @@ function MyTicketsPageInner() {
     <div className={styles.page}>
       <div className={styles.inner} style={{ maxWidth: 860 }}>
         <header className={styles.header}>
+          <BackToDashboard />
           <h1 className={styles.title}>My Ticket Inbox</h1>
           <p className={styles.sub}>
             Your tickets only — open any ticket to read HR responses and reply.

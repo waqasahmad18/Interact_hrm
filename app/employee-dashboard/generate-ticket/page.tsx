@@ -25,6 +25,7 @@ import {
 } from "../../../lib/leave-duration";
 import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
 import { toastSuccess } from "@/lib/app-toast";
+import { BackToDashboard } from "../components/BackToDashboard";
 import styles from "./generate-ticket.module.css";
 
 type TicketRow = {
@@ -587,6 +588,7 @@ function GenerateTicketPageInner() {
     <div className={styles.page}>
       <div className={styles.inner}>
         <header className={styles.header}>
+          <BackToDashboard />
           <h1 className={styles.title}>Generate ticket</h1>
           <p className={styles.sub}>
             Select department and request type. Your Team Lead or Manager will review shortly.

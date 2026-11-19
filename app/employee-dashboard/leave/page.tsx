@@ -9,6 +9,7 @@ import {
 } from "../../../lib/timezone";
 import { leaveCategoriesForEmployeeGender } from "../../../lib/leave-categories";
 import { displayLeaveReason } from "@/lib/leave-reason-display";
+import { BackToDashboard } from "../components/BackToDashboard";
 import styles from "./leave.module.css";
 
 interface Leave {
@@ -333,6 +334,7 @@ export default function LeavePage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
+        <BackToDashboard />
         <h1 className={styles.title}>Leave</h1>
 
         <div className={styles.statRow}>

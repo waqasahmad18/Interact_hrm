@@ -10,6 +10,7 @@ import styles from "../../break-summary/break-summary.module.css";
 import { AutoClockOutBadge } from "../../components/AutoClockOutBadge";
 import { isAutoClockOutRecord } from "../../../lib/attendance-auto-clock-out";
 import { FaFileExcel } from "react-icons/fa";
+import { BackToDashboard } from "../components/BackToDashboard";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import {
   EmployeeDetailPopup,
@@ -534,28 +535,6 @@ export default function EmployeeTimePage() {
     XLSX.writeFile(wb, `my_attendance_summary_${getDateStringInTimeZone(new Date(), SERVER_TIMEZONE)}.xlsx`);
   };
 
-  const tabStyles: React.CSSProperties = {
-    display: "flex",
-    gap: "12px",
-    borderBottom: "2px solid #E2E8F0",
-    marginBottom: "28px",
-    paddingBottom: "0"
-  };
-
-  const tabButtonStyles = (isActive: boolean): React.CSSProperties => ({
-    padding: "12px 20px",
-    border: "none",
-    background: isActive ? "linear-gradient(135deg, #611f69 0%, #007a5a 100%)" : "transparent",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: isActive ? "600" : "500",
-    color: isActive ? "#fff" : "#64748b",
-    borderRadius: isActive ? "8px 8px 0 0" : "8px 8px 0 0",
-    marginBottom: "-2px",
-    transition: "background 0.15s, color 0.15s",
-    boxShadow: isActive ? "0 -2px 8px rgba(97, 31, 105, 0.15)" : "none",
-  });
-
   const employeePseudonym =
     breaks[0]?.pseudonym ||
     prayerBreaks[0]?.pseudonym ||
@@ -586,30 +565,46 @@ export default function EmployeeTimePage() {
     row?.pseudonym || employeePseudonym || "—";
 
   const loadingBox = (
-    <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#718096" }}>
-      Loading...
+    <div style={{ textAlign: "center", padding: "28px", fontSize: "13.5px", color: "#64748b" }}>
+      Loading…
     </div>
   );
 
   return (
-    <div style={{ width: '100%', minHeight: '100vh', background: 'linear-gradient(180deg, #f4f6f9 0%, #eef1f6 100%)', padding: 0, margin: 0 }}>
-      <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 16px 32px' }}>
-        <h1 style={{ marginTop: "24px", marginBottom: "24px", color: "#0f172a", fontWeight: 700, fontSize: "1.75rem", letterSpacing: "-0.02em" }}>My Time & Attendance</h1>
-
-        <div style={{ ...tabStyles, borderBottom: '2px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', padding: '8px 8px 0' }}>
-          <button style={tabButtonStyles(activeTab === "break")} onClick={() => setActiveTab("break")}>
-            Break Summary
-          </button>
-          <button style={tabButtonStyles(activeTab === "prayer")} onClick={() => setActiveTab("prayer")}>
-            Prayer Break Summary
-          </button>
-          <button style={tabButtonStyles(activeTab === "attendance")} onClick={() => setActiveTab("attendance")}>
-            Attendance Summary
-          </button>
-        </div>
+    <div className={styles.empTimePage}>
+      <div className={styles.empTimeInner}>
+        <header className={styles.empTimeHeader}>
+          <div className={styles.empTimeHeaderLeft}>
+            <BackToDashboard />
+            <h1 className={styles.empTimeTitle}>My Time & Attendance</h1>
+          </div>
+          <nav className={styles.empTimeTabs} aria-label="Time summaries">
+            <button
+              type="button"
+              className={`${styles.empTimeTab} ${activeTab === "break" ? styles.empTimeTabActive : ""}`}
+              onClick={() => setActiveTab("break")}
+            >
+              Break Summary
+            </button>
+            <button
+              type="button"
+              className={`${styles.empTimeTab} ${activeTab === "prayer" ? styles.empTimeTabActive : ""}`}
+              onClick={() => setActiveTab("prayer")}
+            >
+              Prayer Break Summary
+            </button>
+            <button
+              type="button"
+              className={`${styles.empTimeTab} ${activeTab === "attendance" ? styles.empTimeTabActive : ""}`}
+              onClick={() => setActiveTab("attendance")}
+            >
+              Attendance Summary
+            </button>
+          </nav>
+        </header>
 
         {activeTab === "break" && (
-          <div className={styles.breakSummaryContainer} style={{ width: '100%' }}>
+          <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
@@ -626,7 +621,7 @@ export default function EmployeeTimePage() {
                 placeholder="To Date"
               />
               <button onClick={downloadBreaksCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-                <FaFileExcel size={20} />
+                <FaFileExcel size={14} />
                 <span>Export XLS</span>
               </button>
             </div>
@@ -704,7 +699,7 @@ export default function EmployeeTimePage() {
         )}
 
         {activeTab === "prayer" && (
-          <div className={styles.breakSummaryContainer} style={{ width: '100%' }}>
+          <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
@@ -721,7 +716,7 @@ export default function EmployeeTimePage() {
                 placeholder="To Date"
               />
               <button onClick={downloadPrayerCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-                <FaFileExcel size={20} />
+                <FaFileExcel size={14} />
                 <span>Export XLS</span>
               </button>
             </div>
@@ -797,7 +792,7 @@ export default function EmployeeTimePage() {
         )}
 
         {activeTab === "attendance" && (
-          <div className={styles.breakSummaryContainer} style={{ width: "100%" }}>
+          <div className={styles.breakSummaryContainer}>
             <div className={styles.breakSummaryFilters}>
               <input
                 type="date"
@@ -814,7 +809,7 @@ export default function EmployeeTimePage() {
                 placeholder="To Date"
               />
               <button onClick={downloadAttendanceCSV} className={styles.breakSummaryXLSButton} title="Download XLS">
-                <FaFileExcel size={20} />
+                <FaFileExcel size={14} />
                 <span>Export XLS</span>
               </button>
             </div>

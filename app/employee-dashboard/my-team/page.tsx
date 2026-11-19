@@ -8,6 +8,7 @@ import {
   type EmployeeHierarchy,
   type HierarchyPerson,
 } from "../../employee-hierarchy-api";
+import { BackToDashboard } from "../components/BackToDashboard";
 import styles from "./my-team.module.css";
 
 function roleBadgeClass(role: string) {
@@ -80,6 +81,7 @@ export default function MyTeamPage() {
       <div className={styles.inner}>
         <header className={styles.header}>
           <div>
+            <BackToDashboard />
             <p className={styles.eyebrow}>Department</p>
             <h1 className={styles.title}>My Team</h1>
             <p className={styles.sub}>
