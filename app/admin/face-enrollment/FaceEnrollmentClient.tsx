@@ -4,6 +4,8 @@ import React from "react";
 import OptionalAdminShell from "@/app/components/OptionalAdminShell";
 import styles from "./face-enrollment.module.css";
 import tableStyles from "../../break-summary/break-summary.module.css";
+import leaveStyles from "../../leave/leave.module.css";
+import adminStyles from "../admin-page.module.css";
 import { EmployeeTableNameCell } from "../../components/EmployeeTableNameCell";
 import { useEmployeeDetailPopup } from "../../components/use-employee-detail-popup";
 import {
@@ -691,9 +693,15 @@ export default function FaceEnrollmentAdminPage() {
 
   return (
     <OptionalAdminShell>
-      <div className={styles.page}>
-        <div className={styles.pageHeader}>
-          <h1 className={styles.title}>Face Enrollment</h1>
+      <div className={adminStyles.page}>
+        <div className={styles.pageInner}>
+        <div className={adminStyles.pageHeader}>
+          <div>
+            <h1 className={adminStyles.pageHeaderTitle}>Face Enrollment</h1>
+            <p className={styles.pageSub}>
+              Enroll face photos and control verification for employees
+            </p>
+          </div>
           <div className={styles.statusBar}>
             <span
               className={`${styles.pill} ${serviceOk ? styles.pillOk : service?.configured ? styles.pillWarn : styles.pillErr}`}
@@ -955,7 +963,7 @@ export default function FaceEnrollmentAdminPage() {
             <p className={styles.emptyState}>No employees</p>
           ) : (
             <>
-              <div className={tableStyles.breakSummaryFilters}>
+              <div className={leaveStyles.toolbar}>
                 <div className={styles.searchModeGroup} role="group" aria-label="Search by">
                   <button
                     type="button"
@@ -987,12 +995,31 @@ export default function FaceEnrollmentAdminPage() {
                     Both
                   </button>
                 </div>
+                <div className={leaveStyles.searchWrap}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    className={leaveStyles.toolbarSearch}
+                    placeholder={
+                      listSearchMode === "name"
+                        ? "Search by name or ID…"
+                        : listSearchMode === "pseudonym"
+                          ? "Search by pseudonym…"
+                          : "Search by name or pseudonym…"
+                    }
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
                 <select
-                  className={tableStyles.breakSummaryInput}
+                  className={leaveStyles.toolbarSelect}
                   value={deptFilter}
                   onChange={(e) => setDeptFilter(e.target.value)}
                   aria-label="Department"
-                  style={{ flex: "0 1 200px", minWidth: 160 }}
                 >
                   <option value="">All departments</option>
                   {departmentOptions.map((d) => (
@@ -1001,23 +1028,9 @@ export default function FaceEnrollmentAdminPage() {
                     </option>
                   ))}
                 </select>
-                <input
-                  type="search"
-                  className={tableStyles.breakSummaryInput}
-                  placeholder={
-                    listSearchMode === "name"
-                      ? "Search by name or ID…"
-                      : listSearchMode === "pseudonym"
-                        ? "Search by pseudonym…"
-                        : "Search by name or pseudonym…"
-                  }
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                  style={{ flex: "1 1 220px", minWidth: 180 }}
-                />
                 <button
                   type="button"
-                  className={styles.searchModeBtn}
+                  className={tableStyles.mgmtAttGhostBtn}
                   disabled={!globalFaceEnabled || bulkBusy || filteredTableRows.length === 0}
                   onClick={() => void setVerificationBulk(true)}
                   title="Set Active for filtered rows"
@@ -1026,7 +1039,7 @@ export default function FaceEnrollmentAdminPage() {
                 </button>
                 <button
                   type="button"
-                  className={styles.searchModeBtn}
+                  className={tableStyles.mgmtAttGhostBtn}
                   disabled={!globalFaceEnabled || bulkBusy || filteredTableRows.length === 0}
                   onClick={() => void setVerificationBulk(false)}
                   title="Set Inactive for filtered rows"
@@ -1034,91 +1047,102 @@ export default function FaceEnrollmentAdminPage() {
                   Inactive all
                 </button>
               </div>
-              <div className={`${tableStyles.breakSummaryTableWrapper} ${styles.enrollCompactWrapper}`}>
-              <table className={`${tableStyles.breakSummaryTable} ${styles.enrollCompactTable}`}>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Department</th>
-                    <th>Photos</th>
-                    <th>Verification</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTableRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className={tableStyles.breakSummaryNoRecords}>
-                        No employees match your search
-                      </td>
-                    </tr>
-                  ) : (
-                  filteredTableRows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className={String(row.id) === employeeId ? styles.selectedRow : undefined}
-                      onClick={() => setEmployeeId(String(row.id))}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td>{row.id}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <EmployeeTableNameCell
-                          name={row.name}
-                          employeeId={row.id}
-                          photo={getPhoto(row.id)}
-                          onOpen={() =>
-                            openFromRow({
-                              employee_id: row.id,
-                              employee_name: row.name,
-                              pseudonym: row.pseudonym,
-                              department_name: row.department,
-                            })
-                          }
-                        />
-                        {row.pseudonym ? (
-                          <div className={styles.empCode}>{row.pseudonym}</div>
-                        ) : row.employee_code ? (
-                          <div className={styles.empCode}>{row.employee_code}</div>
-                        ) : null}
-                      </td>
-                      <td>{row.department || "—"}</td>
-                      <td>
-                        <span
-                          className={`${styles.enrollBadge} ${
-                            row.descriptor_count >= 3 ? styles.enrollReady : styles.enrollPending
-                          }`}
-                        >
-                          {row.descriptor_count}/3
-                        </span>
-                      </td>
-                      <td>
-                        <div
-                          className={styles.toggleCell}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            className={`${styles.toggleBtn} ${
-                              row.face_verification_enabled ? styles.toggleOn : styles.toggleOff
-                            }`}
-                            disabled={!globalFaceEnabled}
-                            onClick={() => void handleVerificationToggle(row)}
+              <div className={leaveStyles.reqTableShell}>
+                <div className={`${tableStyles.mgmtAttScroll} ${styles.enrollCompactWrapper}`}>
+                  <table className={`${leaveStyles.reqTable} ${styles.faceEnrollTableFit}`}>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Full Name</th>
+                        <th>Department</th>
+                        <th>Photos</th>
+                        <th>Verification</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTableRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className={leaveStyles.reqEmpty}>
+                            No employees match your search
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTableRows.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={String(row.id) === employeeId ? styles.selectedRow : undefined}
+                            onClick={() => setEmployeeId(String(row.id))}
+                            style={{ cursor: "pointer" }}
                           >
-                            {row.face_verification_enabled ? <FaToggleOn /> : <FaToggleOff />}
-                          </button>
-                          <span className={styles.toggleLabel}>
-                            {row.face_verification_enabled ? "Active" : "Inactive"}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            <td className={leaveStyles.reqId}>{row.id}</td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <EmployeeTableNameCell
+                                name={row.name}
+                                employeeId={row.id}
+                                photo={getPhoto(row.id)}
+                                onOpen={() =>
+                                  openFromRow({
+                                    employee_id: row.id,
+                                    employee_name: row.name,
+                                    pseudonym: row.pseudonym,
+                                    department_name: row.department,
+                                  })
+                                }
+                              />
+                              {row.pseudonym ? (
+                                <div className={styles.empCode}>{row.pseudonym}</div>
+                              ) : row.employee_code ? (
+                                <div className={styles.empCode}>{row.employee_code}</div>
+                              ) : null}
+                            </td>
+                            <td>{row.department || "—"}</td>
+                            <td>
+                              <span
+                                className={`${styles.enrollBadge} ${
+                                  row.descriptor_count >= 3
+                                    ? styles.enrollReady
+                                    : styles.enrollPending
+                                }`}
+                              >
+                                {row.descriptor_count}/3
+                              </span>
+                            </td>
+                            <td>
+                              <div
+                                className={styles.toggleCell}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className={`${styles.toggleBtn} ${
+                                    row.face_verification_enabled
+                                      ? styles.toggleOn
+                                      : styles.toggleOff
+                                  }`}
+                                  disabled={!globalFaceEnabled}
+                                  onClick={() => void handleVerificationToggle(row)}
+                                >
+                                  {row.face_verification_enabled ? (
+                                    <FaToggleOn />
+                                  ) : (
+                                    <FaToggleOff />
+                                  )}
+                                </button>
+                                <span className={styles.toggleLabel}>
+                                  {row.face_verification_enabled ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </>
           )}
+        </div>
         </div>
       </div>
       {popup}

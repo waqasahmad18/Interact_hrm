@@ -1011,3 +1011,82 @@
   align-items: center;
   justify-content: center;
 }
+
+/* Employee Credentials — Leaves-style black header */
+.credTableFit {
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.credTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.credTableFit thead th {
+  background: #111827;
+  padding: 8px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.25px;
+  color: #fff;
+}
+
+.credTableFit tbody td {
+  padding: 7px 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credTableFit td:nth-child(2),
+.credTableFit td:nth-child(8) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.credTableFit th:nth-child(1),
+.credTableFit td:nth-child(1) {
+  width: 6%;
+}
+
+.credTableFit th:nth-child(2),
+.credTableFit td:nth-child(2) {
+  width: 18%;
+}
+
+.credTableFit th:nth-child(3),
+.credTableFit td:nth-child(3) {
+  width: 10%;
+}
+
+.credTableFit th:nth-child(4),
+.credTableFit td:nth-child(4) {
+  width: 12%;
+}
+
+.credTableFit th:nth-child(5),
+.credTableFit td:nth-child(5) {
+  width: 12%;
+}
+
+.credTableFit th:nth-child(6),
+.credTableFit td:nth-child(6) {
+  width: 16%;
+}
+
+.credTableFit th:nth-child(7),
+.credTableFit td:nth-child(7) {
+  width: 12%;
+}
+
+.credTableFit th:nth-child(8),
+.credTableFit td:nth-child(8) {
+  width: 14%;
+}
