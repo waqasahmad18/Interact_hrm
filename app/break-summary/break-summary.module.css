@@ -588,3 +588,130 @@
   font-size: 13px;
   color: #64748b;
 }
+
+/* Manage Breaks — 10 cols, no horizontal scrollbar */
+.mgmtBreaksTableFit {
+  min-width: 0 !important;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.mgmtBreaksTableFit thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.mgmtBreaksTableFit thead th {
+  background: #111827;
+  padding: 6px 4px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+
+.mgmtBreaksTableFit tbody td {
+  padding: 5px 4px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  max-width: 0;
+}
+
+.mgmtBreaksTableFit td:nth-child(2),
+.mgmtBreaksTableFit td:nth-child(5),
+.mgmtBreaksTableFit td:nth-child(9),
+.mgmtBreaksTableFit td:nth-child(10) {
+  white-space: normal;
+  max-width: none;
+  text-overflow: clip;
+}
+
+.mgmtBreaksTableFit td:nth-child(5),
+.mgmtBreaksTableFit td:nth-child(9) {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.mgmtBreaksTableFit th:nth-child(1),
+.mgmtBreaksTableFit td:nth-child(1) {
+  width: 4.5%;
+  max-width: none;
+}
+
+.mgmtBreaksTableFit th:nth-child(2),
+.mgmtBreaksTableFit td:nth-child(2) {
+  width: 14%;
+}
+
+.mgmtBreaksTableFit th:nth-child(3),
+.mgmtBreaksTableFit td:nth-child(3) {
+  width: 8%;
+  max-width: none;
+}
+
+.mgmtBreaksTableFit th:nth-child(4),
+.mgmtBreaksTableFit td:nth-child(4) {
+  width: 9%;
+}
+
+.mgmtBreaksTableFit th:nth-child(5),
+.mgmtBreaksTableFit td:nth-child(5) {
+  width: 8%;
+}
+
+.mgmtBreaksTableFit th:nth-child(6),
+.mgmtBreaksTableFit td:nth-child(6) {
+  width: 9.5%;
+  max-width: none;
+}
+
+.mgmtBreaksTableFit th:nth-child(7),
+.mgmtBreaksTableFit td:nth-child(7) {
+  width: 10%;
+  max-width: none;
+}
+
+.mgmtBreaksTableFit th:nth-child(8),
+.mgmtBreaksTableFit td:nth-child(8) {
+  width: 10%;
+  max-width: none;
+}
+
+.mgmtBreaksTableFit th:nth-child(9),
+.mgmtBreaksTableFit td:nth-child(9) {
+  width: 12%;
+}
+
+.mgmtBreaksTableFit th:nth-child(10),
+.mgmtBreaksTableFit td:nth-child(10) {
+  width: 15%;
+}
+
+.mgmtBreaksTableFit td > * {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.mgmtBreakTypeBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mgmtBreakTypeRegular {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.mgmtBreakTypePrayer {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
