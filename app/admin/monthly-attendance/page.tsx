@@ -408,8 +408,35 @@ export default function MonthlyAttendancePage() {
   const [metricModal, setMetricModal] = useState<
     null | "employees" | "workingDays" | "expanded" | "departments"
   >(null);
+  const [exportMenuEmployeeId, setExportMenuEmployeeId] = useState<string>("");
   const fetchGenRef = useRef(0);
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (deductionPreview) {
+        setDeductionPreview(null);
+        return;
+      }
+      if (metricModal) {
+        setMetricModal(null);
+        return;
+      }
+      if (exportMenuEmployeeId) {
+        setExportMenuEmployeeId("");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deductionPreview, metricModal, exportMenuEmployeeId]);
+
+  useEffect(() => {
+    if (!exportMenuEmployeeId) return;
+    const onDocClick = () => setExportMenuEmployeeId("");
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [exportMenuEmployeeId]);
 
   const showingImported =
     Boolean(importedSnapshot?.month && importedSnapshot.month === selectedMonth && importedSnapshot.employees.length);
@@ -2066,6 +2093,15 @@ export default function MonthlyAttendancePage() {
     await downloadDeductionSummaryExcel([block], fileName);
   }
 
+  async function downloadEmployeeDeductionSummary(employee: MonthlyAttendanceEmployeeRow) {
+    const ctx = await ensureTungstenCtx();
+    const block = buildDeductionSummaryBlock(
+      employee,
+      pairSessionsForEmployee(employee, ctx),
+    );
+    await downloadOneDeductionSummary(block);
+  }
+
   const monthInfo = useMemo(() => {
     if (!selectedMonth) return { label: "", days: [] as { day: number; dateKey: string; weekday: string }[] };
     const [yearStr, monthStr] = selectedMonth.split("-");
@@ -2631,7 +2667,7 @@ export default function MonthlyAttendancePage() {
             <div className={styles.panelHeadLeft}>
               <h2 className={styles.panelTitle}>Filters &amp; exports</h2>
               <p className={styles.panelHint}>
-                Search by name, filter department, then export Excel or export deduction summary
+                Search by name, filter department, then Export Attendance or Export Deduction Summary
               </p>
             </div>
             <button
@@ -2677,7 +2713,7 @@ export default function MonthlyAttendancePage() {
                   Search
                 </button>
                 <button type="button" onClick={downloadExcel} className={styles.secondaryBtn}>
-                  <FaFileExcel /> Export Excel
+                  <FaFileExcel /> Export Attendance
                 </button>
                 <button
                   type="button"
@@ -2685,14 +2721,14 @@ export default function MonthlyAttendancePage() {
                   className={styles.secondaryBtn}
                   title={
                     selectedDeductionCount > 0
-                      ? `Export deduction summary for ${selectedDeductionCount} selected`
-                      : "Export deduction summary for all visible employees"
+                      ? `Export Deduction Summary for ${selectedDeductionCount} selected`
+                      : "Export Deduction Summary for all visible employees"
                   }
                 >
                   <FaFileExcel />{" "}
                   {selectedDeductionCount > 0
-                    ? `Export deduction (${selectedDeductionCount})`
-                    : "Export deduction summary"}
+                    ? `Export Deduction Summary (${selectedDeductionCount})`
+                    : "Export Deduction Summary"}
                 </button>
               </div>
             </div>
@@ -2733,7 +2769,7 @@ export default function MonthlyAttendancePage() {
                   </button>
                 ) : (
                   <span className={styles.selectHint}>
-                    Select cards, then Export deduction summary
+                    Select cards, then Export Deduction Summary
                   </span>
                 )}
               </div>
@@ -2805,14 +2841,51 @@ export default function MonthlyAttendancePage() {
                           ? "…"
                           : "View deduction"}
                       </button>
-                      <button
-                        type="button"
-                        title="Export this employee's month record as XLS"
-                        className={styles.ghostBtn}
-                        onClick={() => downloadEmployeeExcel(employee)}
+                      <div
+                        className={styles.exportMenuWrap}
+                        onMouseDown={(e) => e.stopPropagation()}
                       >
-                        <FaFileExcel /> Export XLS
-                      </button>
+                        <button
+                          type="button"
+                          title="Export Attendance or Deduction Summary"
+                          className={styles.ghostBtn}
+                          aria-expanded={
+                            exportMenuEmployeeId === String(employee.employeeId)
+                          }
+                          onClick={() => {
+                            const id = String(employee.employeeId);
+                            setExportMenuEmployeeId((prev) => (prev === id ? "" : id));
+                          }}
+                        >
+                          <FaFileExcel /> Export ▾
+                        </button>
+                        {exportMenuEmployeeId === String(employee.employeeId) ? (
+                          <div className={styles.exportMenu} role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className={styles.exportMenuItem}
+                              onClick={() => {
+                                setExportMenuEmployeeId("");
+                                void downloadEmployeeExcel(employee);
+                              }}
+                            >
+                              Attendance
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className={styles.exportMenuItem}
+                              onClick={() => {
+                                setExportMenuEmployeeId("");
+                                void downloadEmployeeDeductionSummary(employee);
+                              }}
+                            >
+                              Deduction Summary
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   {isExpanded ? (
@@ -3417,7 +3490,7 @@ export default function MonthlyAttendancePage() {
                     className={styles.secondaryBtn}
                     onClick={() => void downloadOneDeductionSummary(deductionPreview.block)}
                   >
-                    <FaFileExcel /> Export deduction summary
+                    <FaFileExcel /> Export Deduction Summary
                   </button>
                 </div>
               </div>
