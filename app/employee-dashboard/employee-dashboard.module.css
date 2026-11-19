@@ -158,8 +158,8 @@
 .todayDesk {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 100%;
+  gap: 6px;
+  min-height: 0;
 }
 
 .todayTop {
@@ -225,8 +225,8 @@
 .shiftItem {
   flex: 1;
   min-width: 120px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 7px 10px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: #fafbfc;
 }
@@ -248,7 +248,7 @@
 }
 
 .todayActions {
-  margin-top: auto;
+  margin-top: 2px;
 }
 
 /* —— Week chart —— */

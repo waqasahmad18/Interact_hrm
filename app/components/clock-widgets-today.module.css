@@ -1,9 +1,10 @@
-/* Today's desk — compact action buttons (less scroll) */
+/* Today's desk — black/teal idle, red when running; narrower buttons */
 
 .row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 5px;
   width: 100%;
 }
 
@@ -11,10 +12,12 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-start;
   gap: 2px;
   padding: 0;
   border-radius: 0;
+  width: 100%;
+  max-width: 200px;
   min-width: 0;
   min-height: 0;
   border: none;
@@ -39,10 +42,11 @@
 
 .btn {
   width: 100%;
+  max-width: 200px;
   border: none;
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-size: 12.5px;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
@@ -53,7 +57,7 @@
 
 .btn:hover:not(:disabled) {
   transform: none;
-  filter: brightness(1.06);
+  filter: brightness(1.08);
   box-shadow: none;
 }
 
@@ -62,42 +66,32 @@
   cursor: not-allowed;
 }
 
+/* Idle / start — teal + black only */
 .btnClockIn {
   background: #0f766e;
 }
 
-.btnClockOut {
-  background: #b91c1c;
-}
-
 .btnBreak {
-  background: #0d9488;
-}
-
-.btnBreakEnd {
-  background: #b91c1c;
+  background: #111827;
 }
 
 .btnPrayer {
-  background: #4f46e5;
-}
-
-.btnPrayerEnd {
-  background: #b91c1c;
+  background: #0f766e;
 }
 
 .btnRefreshment {
-  background: #c2410c;
-}
-
-.btnRefreshmentEnd {
-  background: #b91c1c;
+  background: #111827;
 }
 
 .btnMeeting {
-  background: #1e40af;
+  background: #0f766e;
 }
 
+/* Running / end — red */
+.btnClockOut,
+.btnBreakEnd,
+.btnPrayerEnd,
+.btnRefreshmentEnd,
 .btnMeetingEnd {
   background: #b91c1c;
 }
@@ -106,6 +100,8 @@
 .summaryBox {
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 200px;
   background: transparent;
   box-shadow: none;
   border: none;
@@ -113,7 +109,7 @@
 
 .statusBoxInner,
 .summaryBoxInner {
-  text-align: center;
+  text-align: left;
   padding: 0;
 }
 
