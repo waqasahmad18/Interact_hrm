@@ -662,14 +662,16 @@ export default function ManageAttendancePage() {
                                     onClick={() => saveRecord(a)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnSave}`}
                                     title="Save"
+                                    aria-label="Save"
                                   >
-                                    <FaSave /> Save
+                                    <FaSave />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => toggleEdit(a.id!)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnCancel}`}
                                     title="Cancel"
+                                    aria-label="Cancel"
                                   >
                                     <FaTimes />
                                   </button>
@@ -681,14 +683,16 @@ export default function ManageAttendancePage() {
                                     onClick={() => toggleEdit(a.id!)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnEdit}`}
                                     title="Edit"
+                                    aria-label="Edit"
                                   >
-                                    <FaEdit /> Edit
+                                    <FaEdit />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => deleteRecord(a.id!)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnDelete}`}
                                     title="Delete"
+                                    aria-label="Delete"
                                   >
                                     <FaTimes />
                                   </button>

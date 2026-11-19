@@ -721,14 +721,16 @@ export default function ManageBreaksPage() {
                                     onClick={() => saveRecord(b)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnSave}`}
                                     title="Save"
+                                    aria-label="Save"
                                   >
-                                    <FaSave /> Save
+                                    <FaSave />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => toggleEdit(b.id!)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnCancel}`}
                                     title="Cancel"
+                                    aria-label="Cancel"
                                   >
                                     <FaTimes />
                                   </button>
@@ -740,14 +742,16 @@ export default function ManageBreaksPage() {
                                     onClick={() => toggleEdit(b.id!)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnEdit}`}
                                     title="Edit"
+                                    aria-label="Edit"
                                   >
-                                    <FaEdit /> Edit
+                                    <FaEdit />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => deleteRecord(b)}
                                     className={`${styles.mgmtAttBtn} ${styles.mgmtAttBtnDelete}`}
                                     title="Delete"
+                                    aria-label="Delete"
                                   >
                                     <FaTimes />
                                   </button>

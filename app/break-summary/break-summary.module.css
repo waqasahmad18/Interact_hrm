@@ -480,14 +480,18 @@
 
 .mgmtAttTableFit th:nth-child(9),
 .mgmtAttTableFit td:nth-child(9) {
-  width: 11%;
+  width: 12%;
 }
 
+/* Fixed Actions col — survives sidebar slide-in without clipping */
 .mgmtAttTableFit th:nth-child(10),
 .mgmtAttTableFit td:nth-child(10) {
-  width: 18%;
-  overflow: visible;
-  padding-right: 8px;
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  overflow: hidden;
+  padding-left: 4px;
+  padding-right: 6px;
 }
 
 .mgmtAttTableFit td > *:not(.mgmtAttActions) {
@@ -502,22 +506,26 @@
   gap: 4px;
   align-items: center;
   justify-content: flex-start;
-  max-width: none;
-  min-width: max-content;
-  overflow: visible;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .mgmtAttBtn {
   appearance: none;
   border: none;
   border-radius: 6px;
-  padding: 3px 6px;
-  font-size: 10.5px;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 0;
   color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
@@ -688,14 +696,17 @@
 
 .mgmtBreaksTableFit th:nth-child(9),
 .mgmtBreaksTableFit td:nth-child(9) {
-  width: 11%;
+  width: 12%;
 }
 
 .mgmtBreaksTableFit th:nth-child(10),
 .mgmtBreaksTableFit td:nth-child(10) {
-  width: 18%;
-  overflow: visible;
-  padding-right: 8px;
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  overflow: hidden;
+  padding-left: 4px;
+  padding-right: 6px;
 }
 
 .mgmtBreaksTableFit td > *:not(.mgmtAttActions) {
