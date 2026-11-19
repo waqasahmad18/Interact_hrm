@@ -520,7 +520,7 @@ export default function ManageAttendancePage() {
           </div>
 
           <div className={leaveStyles.reqTableShell}>
-            <div className={`${leaveStyles.reqTableScroll} ${styles.attTableScroll}`}>
+            <div className={styles.mgmtAttScroll}>
               {loading ? (
                 <div className={leaveStyles.loading}>Loading attendance…</div>
               ) : (
