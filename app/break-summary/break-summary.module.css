@@ -442,71 +442,76 @@
 
 .mgmtAttTableFit th:nth-child(2),
 .mgmtAttTableFit td:nth-child(2) {
-  width: 13%;
+  width: 12%;
 }
 
 .mgmtAttTableFit th:nth-child(3),
 .mgmtAttTableFit td:nth-child(3) {
-  width: 8.5%;
+  width: 7.5%;
   max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(4),
 .mgmtAttTableFit td:nth-child(4) {
-  width: 8%;
+  width: 7%;
 }
 
 .mgmtAttTableFit th:nth-child(5),
 .mgmtAttTableFit td:nth-child(5) {
-  width: 9.5%;
+  width: 9%;
   max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(6),
 .mgmtAttTableFit td:nth-child(6) {
-  width: 10.5%;
+  width: 9.5%;
   max-width: none;
 }
 
 .mgmtAttTableFit th:nth-child(7),
 .mgmtAttTableFit td:nth-child(7) {
-  width: 9%;
+  width: 8.5%;
 }
 
 .mgmtAttTableFit th:nth-child(8),
 .mgmtAttTableFit td:nth-child(8) {
-  width: 9%;
+  width: 8.5%;
 }
 
 .mgmtAttTableFit th:nth-child(9),
 .mgmtAttTableFit td:nth-child(9) {
-  width: 13%;
+  width: 11%;
 }
 
 .mgmtAttTableFit th:nth-child(10),
 .mgmtAttTableFit td:nth-child(10) {
-  width: 15%;
+  width: 18%;
+  overflow: visible;
+  padding-right: 8px;
 }
 
-.mgmtAttTableFit td > * {
+.mgmtAttTableFit td > *:not(.mgmtAttActions) {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
 
 .mgmtAttActions {
-  display: flex;
+  display: inline-flex;
   flex-wrap: nowrap;
   gap: 4px;
   align-items: center;
   justify-content: flex-start;
+  max-width: none;
+  min-width: max-content;
+  overflow: visible;
 }
 
 .mgmtAttBtn {
   appearance: none;
   border: none;
   border-radius: 6px;
-  padding: 3px 7px;
+  padding: 3px 6px;
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
@@ -644,54 +649,56 @@
 
 .mgmtBreaksTableFit th:nth-child(2),
 .mgmtBreaksTableFit td:nth-child(2) {
-  width: 14%;
+  width: 12%;
 }
 
 .mgmtBreaksTableFit th:nth-child(3),
 .mgmtBreaksTableFit td:nth-child(3) {
-  width: 8%;
+  width: 7%;
   max-width: none;
 }
 
 .mgmtBreaksTableFit th:nth-child(4),
 .mgmtBreaksTableFit td:nth-child(4) {
-  width: 9%;
+  width: 8%;
 }
 
 .mgmtBreaksTableFit th:nth-child(5),
 .mgmtBreaksTableFit td:nth-child(5) {
-  width: 8%;
+  width: 7.5%;
 }
 
 .mgmtBreaksTableFit th:nth-child(6),
 .mgmtBreaksTableFit td:nth-child(6) {
-  width: 9.5%;
+  width: 9%;
   max-width: none;
 }
 
 .mgmtBreaksTableFit th:nth-child(7),
 .mgmtBreaksTableFit td:nth-child(7) {
-  width: 10%;
+  width: 9%;
   max-width: none;
 }
 
 .mgmtBreaksTableFit th:nth-child(8),
 .mgmtBreaksTableFit td:nth-child(8) {
-  width: 10%;
+  width: 9%;
   max-width: none;
 }
 
 .mgmtBreaksTableFit th:nth-child(9),
 .mgmtBreaksTableFit td:nth-child(9) {
-  width: 12%;
+  width: 11%;
 }
 
 .mgmtBreaksTableFit th:nth-child(10),
 .mgmtBreaksTableFit td:nth-child(10) {
-  width: 15%;
+  width: 18%;
+  overflow: visible;
+  padding-right: 8px;
 }
 
-.mgmtBreaksTableFit td > * {
+.mgmtBreaksTableFit td > *:not(.mgmtAttActions) {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
