@@ -1,56 +1,44 @@
 export default function EmployeeDashboardLoading() {
+  const bar = {
+    height: 64,
+    borderRadius: 14,
+    background: "#e8eaee",
+  } as const;
+  const card = {
+    minHeight: 160,
+    borderRadius: 14,
+    background: "#e8eaee",
+  } as const;
+
   return (
     <div
       style={{
-        maxWidth: 1360,
+        maxWidth: 1320,
         margin: "0 auto",
-        padding: "8px 22px 32px",
+        padding: "6px 24px 28px",
         display: "flex",
         flexDirection: "column",
-        gap: 14,
+        gap: 12,
       }}
       aria-busy
       aria-live="polite"
       aria-label="Loading dashboard"
     >
+      <div style={bar} />
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 10,
+          gridTemplateColumns: "1.15fr 1fr 1fr 0.92fr",
+          gap: 12,
         }}
       >
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              height: 78,
-              borderRadius: 16,
-              background: "linear-gradient(90deg, #eef2f6 0%, #f8fafc 50%, #eef2f6 100%)",
-              backgroundSize: "200% 100%",
-            }}
-          />
-        ))}
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.12fr 1fr 1fr 0.95fr",
-          gap: 14,
-        }}
-      >
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              minHeight: i === 0 ? 260 : 180,
-              gridColumn: i === 0 ? "span 1" : undefined,
-              borderRadius: 18,
-              background: "linear-gradient(90deg, #eef2f6 0%, #f8fafc 50%, #eef2f6 100%)",
-              backgroundSize: "200% 100%",
-            }}
-          />
-        ))}
+        <div style={{ ...card, minHeight: 240, gridRow: "span 2" }} />
+        <div style={card} />
+        <div style={card} />
+        <div style={card} />
+        <div style={card} />
+        <div style={card} />
+        <div style={card} />
       </div>
     </div>
   );

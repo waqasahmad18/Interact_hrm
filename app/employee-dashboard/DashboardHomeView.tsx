@@ -82,7 +82,7 @@ const ProgressRing = React.memo(function ProgressRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="rgba(255,255,255,0.25)"
+          stroke="#e5e7eb"
           strokeWidth="5"
         />
         <circle
@@ -225,22 +225,22 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
           <div className={`${styles.kpi} ${styles.kpiTeal}`}>
             <p className={styles.kpiLabel}>Attendance</p>
             <p className={styles.kpiValue}>{monthAttendanceStats.pct}%</p>
-            <p className={styles.kpiHint}>This month</p>
+            <p className={styles.kpiHint}>Month to date</p>
           </div>
           <div className={styles.kpi}>
-            <p className={styles.kpiLabel}>Present</p>
+            <p className={styles.kpiLabel}>Present days</p>
             <p className={styles.kpiValue}>{monthAttendanceStats.present}</p>
-            <p className={styles.kpiHint}>Days present</p>
+            <p className={styles.kpiHint}>Counted this month</p>
           </div>
           <div className={styles.kpi}>
-            <p className={styles.kpiLabel}>Absent</p>
+            <p className={styles.kpiLabel}>Absent days</p>
             <p className={styles.kpiValue}>{monthAttendanceStats.absent}</p>
-            <p className={styles.kpiHint}>Tap attendance card</p>
+            <p className={styles.kpiHint}>Open attendance for detail</p>
           </div>
           <div className={`${styles.kpi} ${styles.kpiTeal}`}>
-            <p className={styles.kpiLabel}>Annual leave</p>
+            <p className={styles.kpiLabel}>Leave left</p>
             <p className={styles.kpiValue}>{leaveLeftLabel}</p>
-            <p className={styles.kpiHint}>Days remaining</p>
+            <p className={styles.kpiHint}>Annual balance</p>
           </div>
         </section>
 
@@ -258,10 +258,10 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
           <article className={`${styles.card} ${styles.attendanceCard}`}>
             <h2 className={styles.cardTitle}>
               My Attendance
-              <span className={styles.cardTitleMeta}>Month</span>
+              <span className={styles.cardTitleMeta}>This month</span>
             </h2>
             <div className={styles.attendanceBody}>
-              <ProgressRing pct={monthAttendanceStats.pct} color="#fff" size={84}>
+              <ProgressRing pct={monthAttendanceStats.pct} color="#0f766e" size={78}>
                 <span>{monthAttendanceStats.pct}%</span>
               </ProgressRing>
               <div className={styles.attendanceStats}>

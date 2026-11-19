@@ -1,104 +1,113 @@
-/* Employee dashboard home — sleek Interact teal, fast paint */
+/* Employee home — quiet elegant, fast paint */
 
 .page {
-  --ig-ink: #0f172a;
-  --ig-muted: #64748b;
-  --ig-line: #e8eef2;
-  --ig-soft: #f4f8fa;
-  --ig-teal: #0f766e;
-  --ig-teal-mid: #0d9488;
-  --ig-teal-soft: #ecfdf8;
+  --ink: #111827;
+  --muted: #6b7280;
+  --line: #e8eaee;
+  --soft: #f3f4f6;
+  --paper: #ffffff;
+  --accent: #0f766e;
+  --accent-soft: #f0fdfa;
+  --warn: #c2410c;
+  --danger: #b91c1c;
   min-height: 0;
   background: transparent;
-  padding: 8px 22px 32px;
+  padding: 6px 24px 28px;
   font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
-  color: var(--ig-ink);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
 
 .inner {
-  max-width: 1360px;
+  max-width: 1320px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
+/* Slim informative metrics — not chunky cards */
 .kpiStrip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .kpi {
-  background: #fff;
-  border: 1px solid var(--ig-line);
-  border-radius: 16px;
-  padding: 12px 14px;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  flex: 1;
   min-width: 0;
+  padding: 12px 16px;
+  border-right: 1px solid var(--line);
+}
+
+.kpi:last-child {
+  border-right: none;
 }
 
 .kpiLabel {
   margin: 0;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ig-muted);
+  color: var(--muted);
 }
 
 .kpiValue {
-  margin: 6px 0 0;
-  font-size: 1.35rem;
-  font-weight: 800;
+  margin: 4px 0 0;
+  font-size: 1.25rem;
+  font-weight: 750;
   letter-spacing: -0.03em;
-  color: var(--ig-ink);
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .kpiHint {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--ig-muted);
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .kpiTeal .kpiValue {
-  color: var(--ig-teal);
+  color: var(--accent);
 }
 
 .dashGrid {
   display: grid;
-  grid-template-columns: 1.12fr 1fr 1fr 0.95fr;
+  grid-template-columns: 1.15fr 1fr 1fr 0.92fr;
   grid-template-areas:
     "today attendance leave profile"
     "today events actions tickets";
-  gap: 14px;
+  gap: 12px;
   align-items: stretch;
 }
 
 .card {
-  background: #fff;
-  border-radius: 18px;
-  border: 1px solid var(--ig-line);
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
-  padding: 16px 18px;
+  background: var(--paper);
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  padding: 15px 16px;
   box-sizing: border-box;
   content-visibility: auto;
-  contain-intrinsic-size: auto 220px;
+  contain-intrinsic-size: auto 200px;
 }
 
 .cardTitle {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--ig-ink);
-  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -107,73 +116,81 @@
 
 .cardTitleMeta {
   font-size: 11px;
-  font-weight: 650;
-  color: var(--ig-muted);
+  font-weight: 600;
+  color: var(--muted);
   letter-spacing: 0;
+  text-transform: none;
 }
 
-/* Today's Status */
+/* Today */
 .todayCard {
   grid-area: today;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(20, 184, 166, 0.1), transparent 55%),
-    #fff;
 }
 
 .liveClock {
-  font-size: clamp(1.6rem, 2.4vw, 2.15rem);
-  font-weight: 800;
+  font-size: clamp(1.7rem, 2.5vw, 2.25rem);
+  font-weight: 750;
   letter-spacing: -0.045em;
-  color: var(--ig-ink);
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1.05;
   margin: 2px 0 6px;
 }
 
 .clockedInLabel {
   margin: 0 0 12px;
   font-size: 13px;
-  font-weight: 650;
-  color: var(--ig-muted);
+  font-weight: 550;
+  color: var(--muted);
 }
 
 .todayActions {
   flex: 0 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  min-height: 0;
   margin-top: auto;
+  min-height: 0;
 }
 
-/* My Attendance */
+/* Attendance — elegant, not loud gradient blob */
 .attendanceCard {
   grid-area: attendance;
-  background: linear-gradient(145deg, #0f766e 0%, #0d9488 55%, #14b8a6 100%);
-  color: #fff;
-  border: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 10px 28px rgba(15, 118, 110, 0.22);
+  gap: 10px;
+  background: var(--paper);
+  border-color: var(--line);
+  box-shadow: none;
+  position: relative;
+}
+
+.attendanceCard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
 
 .attendanceCard .cardTitle {
-  color: #fff;
-  margin-bottom: 4px;
+  color: var(--ink);
 }
 
 .attendanceCard .cardTitleMeta {
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--muted);
 }
 
 .attendanceBody {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  padding-left: 6px;
 }
 
 .attendanceStats {
@@ -188,7 +205,8 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
+  color: #374151;
 }
 
 .attStatBtn {
@@ -200,24 +218,22 @@
   font: inherit;
   cursor: pointer;
   text-align: left;
-  border-radius: 8px;
-  transition: opacity 0.15s ease;
 }
 
 .attStatBtn:hover {
-  opacity: 0.88;
+  color: var(--danger);
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   flex-shrink: 0;
 }
 
-.dotBlue { background: #99f6e4; }
-.dotRed { background: #fecaca; }
-.dotGreen { background: #bbf7d0; }
+.dotBlue { background: var(--accent); }
+.dotRed { background: #ef4444; }
+.dotGreen { background: #22c55e; }
 
 .ringWrap {
   position: relative;
@@ -230,13 +246,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--accent);
 }
 
 .ringArc {
-  transition: stroke-dashoffset 0.45s ease;
+  transition: stroke-dashoffset 0.35s ease;
 }
 
 /* Leave */
@@ -245,7 +261,7 @@
 }
 
 .leaveRow {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .leaveRow:last-child {
@@ -256,31 +272,30 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
   font-size: 12.5px;
-  font-weight: 650;
-  color: #334155;
+  font-weight: 600;
+  color: #374151;
 }
 
 .leaveTrack {
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
-  background: #eef2f7;
+  background: var(--soft);
   overflow: hidden;
 }
 
 .leaveFill {
   height: 100%;
   border-radius: 999px;
-  transition: width 0.4s ease;
 }
 
 .leaveTeal {
-  background: linear-gradient(90deg, #14b8a6, #0d9488);
+  background: var(--accent);
 }
 
 .leaveOrange {
-  background: linear-gradient(90deg, #f59e0b, #ea580c);
+  background: #ea580c;
 }
 
 /* Profile */
@@ -290,37 +305,36 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .profileAvatar {
-  width: 84px;
-  height: 84px;
+  width: 76px;
+  height: 76px;
   border-radius: 999px;
   object-fit: cover;
-  border: 3px solid #99f6e4;
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.18);
+  border: 2px solid var(--line);
 }
 
 .profileAvatarFallback {
-  width: 84px;
-  height: 84px;
+  width: 76px;
+  height: 76px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, #99f6e4, #5eead4);
-  color: #0f766e;
-  font-weight: 800;
-  font-size: 26px;
-  border: 3px solid #99f6e4;
+  background: var(--soft);
+  color: var(--ink);
+  font-weight: 750;
+  font-size: 22px;
+  border: 2px solid var(--line);
 }
 
 .profileName {
   margin: 2px 0 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--ig-ink);
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--ink);
   letter-spacing: -0.02em;
 }
 
@@ -331,16 +345,16 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
   text-align: left;
 }
 
 .profileMeta li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-size: 12px;
-  color: var(--ig-muted);
+  color: var(--muted);
   min-width: 0;
 }
 
@@ -352,29 +366,27 @@
 
 .profileMeta svg {
   flex-shrink: 0;
-  color: var(--ig-teal-mid);
-  font-size: 12px;
+  color: #9ca3af;
+  font-size: 11px;
 }
 
 .profileBtn {
   margin-top: auto;
   width: 100%;
   border: none;
-  border-radius: 12px;
-  padding: 11px 14px;
+  border-radius: 10px;
+  padding: 10px 14px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   color: #fff;
-  background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
-  box-shadow: 0 6px 16px rgba(15, 118, 110, 0.22);
-  transition: filter 0.15s ease, transform 0.15s ease;
+  background: var(--ink);
+  transition: background 0.12s ease;
 }
 
 .profileBtn:hover {
-  filter: brightness(1.04);
-  transform: translateY(-1px);
+  background: #1f2937;
 }
 
 /* Events */
@@ -387,94 +399,90 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .calNavBtn {
-  border: 1px solid var(--ig-line);
-  background: var(--ig-soft);
+  border: 1px solid var(--line);
+  background: var(--paper);
   width: 28px;
   height: 28px;
   border-radius: 8px;
   cursor: pointer;
-  color: #334155;
+  color: #374151;
   font-weight: 700;
 }
 
 .calNavBtn:hover {
-  background: #e8f5f3;
-  border-color: #99f6e4;
-  color: var(--ig-teal);
+  background: var(--soft);
 }
 
 .calMonth {
   font-size: 13px;
-  font-weight: 750;
-  color: var(--ig-ink);
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .calWeek {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: 2px;
+  margin-bottom: 4px;
 }
 
 .calDow {
   text-align: center;
   font-size: 10px;
   font-weight: 700;
-  color: #94a3b8;
+  color: #9ca3af;
   text-transform: uppercase;
 }
 
 .calGrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  gap: 2px;
 }
 
 .calCell {
   aspect-ratio: 1;
-  border-radius: 9px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  color: #334155;
-  position: relative;
+  color: #374151;
 }
 
 .calCellToday {
-  background: var(--ig-teal-soft);
-  color: var(--ig-teal);
-  font-weight: 800;
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.22);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 750;
 }
 
 .calDots {
   display: flex;
   gap: 2px;
-  min-height: 4px;
+  min-height: 3px;
 }
 
 .calDot {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 999px;
 }
 
 .calDotTardy {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 999px;
   background: #ef4444;
 }
 
-/* Quick actions */
+/* Quick actions — elegant button colors */
 .actionsCard {
   grid-area: actions;
 }
@@ -482,47 +490,47 @@
 .actionList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .actionBtn {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 11px 12px;
-  border: 1px solid var(--ig-line);
-  border-radius: 12px;
-  background: #fff;
-  color: var(--ig-ink);
-  font-size: 13px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12.5px;
   font-weight: 650;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .actionBtn:hover {
-  background: var(--ig-teal-soft);
-  border-color: #99f6e4;
+  background: #f9fafb;
+  border-color: #d1d5db;
 }
 
 .actionIcon {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
-.actionBlue { background: #0d9488; }
+.actionBlue { background: #0f766e; }
 .actionOrange { background: #ea580c; }
-.actionPurple { background: #0f766e; }
+.actionPurple { background: #111827; }
 
 /* Tickets */
 .ticketsCard {
@@ -537,58 +545,60 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 13px 16px;
-  background: linear-gradient(120deg, #0f766e 0%, #0d9488 55%, #14b8a6 100%);
+  padding: 12px 14px;
+  background: var(--ink);
   color: #fff;
 }
 
 .ticketsHeadTitle {
   margin: 0;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .viewAll {
-  border: none;
-  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
   color: #fff;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 650;
   cursor: pointer;
   font-family: inherit;
-  padding: 5px 10px;
-  border-radius: 999px;
+  padding: 4px 9px;
+  border-radius: 8px;
 }
 
 .viewAll:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .ticketsBody {
-  padding: 12px 14px 14px;
-  background: #f8fafc;
-  min-height: 120px;
+  padding: 10px 12px 12px;
+  background: #fafafa;
+  min-height: 110px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .replyBadge {
   display: inline-flex;
   align-self: flex-start;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #0f766e;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--warn);
   color: #fff;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 
 .ticketItem {
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--ig-line);
-  background: #fff;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
 }
 
 .ticketTop {
@@ -600,56 +610,61 @@
 
 .ticketNum {
   font-size: 12px;
-  font-weight: 750;
-  color: var(--ig-ink);
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .badgeNew {
   font-size: 10px;
   font-weight: 700;
   color: #fff;
-  background: #b91c1c;
-  padding: 2px 8px;
-  border-radius: 999px;
+  background: var(--danger);
+  padding: 2px 7px;
+  border-radius: 6px;
 }
 
 .badgeMuted {
   font-size: 10px;
-  font-weight: 650;
-  color: #64748b;
-  background: #eef2f7;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--soft);
+  padding: 2px 7px;
+  border-radius: 6px;
   text-transform: capitalize;
 }
 
 .ticketSub {
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 12px;
-  color: #475569;
+  color: #4b5563;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .ticketPreview {
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 11px;
-  color: #94a3b8;
+  color: #9ca3af;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .ticketEmpty {
-  font-size: 13px;
-  color: #94a3b8;
-  padding: 8px 0;
+  font-size: 12.5px;
+  color: #9ca3af;
+  padding: 6px 0;
 }
 
 @media (max-width: 1200px) {
   .kpiStrip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
+  }
+
+  .kpi {
+    flex: 1 1 45%;
+    border-bottom: 1px solid var(--line);
   }
 
   .dashGrid {
@@ -665,11 +680,12 @@
 
 @media (max-width: 720px) {
   .page {
-    padding: 8px 14px 24px;
+    padding: 6px 12px 22px;
   }
 
-  .kpiStrip {
-    grid-template-columns: 1fr 1fr;
+  .kpi {
+    flex: 1 1 100%;
+    border-right: none;
   }
 
   .dashGrid {
@@ -686,9 +702,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ringArc,
-  .leaveFill,
-  .profileBtn {
+  .ringArc {
     transition: none;
   }
 }
