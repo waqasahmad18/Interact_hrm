@@ -15,7 +15,7 @@ import {
 } from "../../lib/ticket-thread";
 import type { TicketCategory } from "../../lib/ticket-catalog";
 import dynamic from "next/dynamic";
-import { SERVER_TIMEZONE } from "../../lib/timezone";
+import { getParts, SERVER_TIMEZONE } from "../../lib/timezone";
 import styles from "./employee-dashboard.module.css";
 
 const TardyNoteWidget = dynamic(
@@ -85,11 +85,89 @@ function formatShiftTime(raw?: string | null) {
 
 function formatHours(hours: number) {
   if (!hours || hours <= 0) return "0h";
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
+  const totalMinutes = Math.floor(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h <= 0 && m <= 0) return "0h";
   if (m <= 0) return `${h}h`;
+  if (h <= 0) return `${m}m`;
   return `${h}h ${m}m`;
 }
+
+function formatElapsedHms(totalSeconds: number) {
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
+function elapsedSecondsBetween(startIso: string, endIso?: string | null) {
+  const inParts = getParts(startIso, SERVER_TIMEZONE);
+  if (!inParts) return 0;
+  const start = Date.UTC(
+    inParts.year,
+    inParts.month - 1,
+    inParts.day,
+    inParts.hour,
+    inParts.minute,
+    inParts.second
+  );
+  let end = Date.now();
+  if (endIso) {
+    const outParts = getParts(endIso, SERVER_TIMEZONE);
+    if (outParts) {
+      end = Date.UTC(
+        outParts.year,
+        outParts.month - 1,
+        outParts.day,
+        outParts.hour,
+        outParts.minute,
+        outParts.second
+      );
+    }
+  } else {
+    const nowParts = getParts(new Date(), SERVER_TIMEZONE);
+    if (nowParts) {
+      end = Date.UTC(
+        nowParts.year,
+        nowParts.month - 1,
+        nowParts.day,
+        nowParts.hour,
+        nowParts.minute,
+        nowParts.second
+      );
+    }
+  }
+  return Math.max(0, Math.floor((end - start) / 1000));
+}
+
+/** Same 1s Karachi elapsed clock as Working timer — never rounds minutes ahead. */
+const LiveHoursToday = React.memo(function LiveHoursToday({
+  clockInAt,
+  clockOutAt,
+}: {
+  clockInAt?: string | null;
+  clockOutAt?: string | null;
+}) {
+  const [label, setLabel] = React.useState("00h 00m 00s");
+
+  React.useEffect(() => {
+    if (!clockInAt) {
+      setLabel("00h 00m 00s");
+      return;
+    }
+    const tick = () => {
+      setLabel(formatElapsedHms(elapsedSecondsBetween(clockInAt, clockOutAt)));
+    };
+    tick();
+    if (clockOutAt) return;
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [clockInAt, clockOutAt]);
+
+  return <>{label}</>;
+});
 
 function eventParts(startAt: string) {
   const key = String(startAt || "").slice(0, 10);
@@ -158,6 +236,9 @@ export type DashboardHomeViewProps = {
   clockedInLabel: string;
   todayStatus: string;
   todayHours: number;
+  /** Open session clock-in — Hours today ticks 1s with Working timer. */
+  sessionClockIn?: string | null;
+  sessionClockOut?: string | null;
   shiftStart?: string | null;
   shiftEnd?: string | null;
   greetingHour: number;
@@ -207,6 +288,8 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
     clockedInLabel,
     todayStatus,
     todayHours,
+    sessionClockIn,
+    sessionClockOut,
     shiftStart,
     shiftEnd,
     monthAttendanceStats,
@@ -321,7 +404,16 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
               <div className={styles.todayStats}>
                 <div className={styles.statPill}>
                   <span className={styles.statPillLabel}>Hours today</span>
-                  <span className={styles.statPillValue}>{formatHours(todayHours)}</span>
+                  <span className={styles.statPillValue}>
+                    {sessionClockIn ? (
+                      <LiveHoursToday
+                        clockInAt={sessionClockIn}
+                        clockOutAt={sessionClockOut}
+                      />
+                    ) : (
+                      formatHours(todayHours)
+                    )}
+                  </span>
                 </div>
                 <div className={styles.statPill}>
                   <span className={styles.statPillLabel}>Punch status</span>
@@ -502,13 +594,6 @@ export default function DashboardHomeView(props: DashboardHomeViewProps) {
                 })
               )}
             </div>
-            <button
-              type="button"
-              className={styles.linkBtn}
-              onClick={() => onNavigate("/employee-dashboard/events")}
-            >
-              Open calendar →
-            </button>
           </article>
 
           <article

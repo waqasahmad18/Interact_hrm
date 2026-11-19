@@ -1077,6 +1077,8 @@ export default function EmployeeDashboardPage() {
       clockedInLabel={clockedInLabel}
       todayStatus={todayStatus}
       todayHours={todayHours}
+      sessionClockIn={activeSession?.clock_in ?? null}
+      sessionClockOut={openAttendance ? null : activeSession?.clock_out ?? null}
       shiftStart={activeSession?.shift_start_time ?? todayRecord?.shift_start_time ?? null}
       shiftEnd={activeSession?.shift_end_time ?? todayRecord?.shift_end_time ?? null}
       greetingHour={todayParts.hour}
