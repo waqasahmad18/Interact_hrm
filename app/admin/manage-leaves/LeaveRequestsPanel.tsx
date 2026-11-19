@@ -18,6 +18,7 @@ import {
   isManagerOrgRole,
   isTeamLeadOrgRole,
 } from "@/lib/org-role";
+import { isAdminBrowserSession } from "@/lib/access-control/employee-shell";
 
 function formatDate(dateString: string) {
   if (!dateString) return "";
@@ -83,7 +84,13 @@ export default function LeaveRequestsPanel({
 }: LeaveRequestsPanelProps) {
   const viewerScope = useViewerDataScope();
   const viewerEmployeeId = readViewerEmployeeId();
+  /** Admin login, HR (company-wide scope), or CEO — Edit + reject-after-approve. */
+  const isHrOrAdmin =
+    isAdminBrowserSession() ||
+    viewerScope.mode === "all" ||
+    isCeoOrgRole(viewerScope.orgRole);
   const canApproveLeaves =
+    isHrOrAdmin ||
     isManagerOrgRole(viewerScope.orgRole) ||
     isTeamLeadOrgRole(viewerScope.orgRole) ||
     isCeoOrgRole(viewerScope.orgRole);
@@ -98,6 +105,18 @@ export default function LeaveRequestsPanel({
     }
     return true;
   };
+  /** HR/Admin may reject even after Team Lead approved. */
+  const canRejectLeave = (leave: any | null) => {
+    if (!canActOnLeave(leave)) return false;
+    const status = overallLeaveStatus(leave);
+    if (status === "pending") return true;
+    if (status === "approved" && isHrOrAdmin) return true;
+    return false;
+  };
+  const canApproveLeaveRow = (leave: any | null) => {
+    if (!canActOnLeave(leave)) return false;
+    return overallLeaveStatus(leave) === "pending";
+  };
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -110,10 +129,8 @@ export default function LeaveRequestsPanel({
   const [statusFilter, setStatusFilter] = useState<"" | "pending" | "approved" | "rejected">("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
-  /** "" = all months; otherwise YYYY-MM */
-  const [monthFilter, setMonthFilter] = useState("");
-  /** "" = all days; otherwise YYYY-MM-DD */
-  const [dateFilter, setDateFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
@@ -263,13 +280,8 @@ export default function LeaveRequestsPanel({
     });
   }, [leaves]);
 
-  const leaveMonthKey = (l: any) => {
-    const day = leaveDayKey(l);
-    return day ? day.slice(0, 7) : "";
-  };
-
-  const leaveCoversDate = (l: any, ymd: string) => {
-    if (!ymd) return true;
+  const leaveOverlapsRange = (l: any, from: string, to: string) => {
+    if (!from && !to) return true;
     const start = leaveDayKey(l);
     if (!start) return false;
     let end = "";
@@ -281,7 +293,9 @@ export default function LeaveRequestsPanel({
       end = String(l?.end_date || start).slice(0, 10);
     }
     if (!end) end = start;
-    return start <= ymd && end >= ymd;
+    if (from && end < from) return false;
+    if (to && start > to) return false;
+    return true;
   };
 
   const departmentOptions = useMemo(() => {
@@ -306,8 +320,7 @@ export default function LeaveRequestsPanel({
     let duplicates = 0;
     let total = 0;
     leavesWithMeta.forEach((l) => {
-      if (monthFilter && leaveMonthKey(l) !== monthFilter) return;
-      if (dateFilter && !leaveCoversDate(l, dateFilter)) return;
+      if (!leaveOverlapsRange(l, fromDate, toDate)) return;
       if (
         departmentFilter &&
         String(l.department_name || "").trim().toLowerCase() !==
@@ -323,7 +336,7 @@ export default function LeaveRequestsPanel({
       if (l.is_duplicate) duplicates += 1;
     });
     return { pending, approved, rejected, total, duplicates };
-  }, [leavesWithMeta, monthFilter, dateFilter, departmentFilter]);
+  }, [leavesWithMeta, fromDate, toDate, departmentFilter]);
 
   const handleDocumentDownload = (docPath: string) => {
     const filename = docPath.split("/").pop() || docPath;
@@ -418,8 +431,7 @@ export default function LeaveRequestsPanel({
         }
       }
       if (duplicatesOnly && !l.is_duplicate) return false;
-      if (monthFilter && leaveMonthKey(l) !== monthFilter) return false;
-      if (dateFilter && !leaveCoversDate(l, dateFilter)) return false;
+      if (!leaveOverlapsRange(l, fromDate, toDate)) return false;
       if (
         departmentFilter &&
         String(l.department_name || "").trim().toLowerCase() !==
@@ -444,8 +456,8 @@ export default function LeaveRequestsPanel({
     statusFilter,
     categoryFilter,
     duplicatesOnly,
-    monthFilter,
-    dateFilter,
+    fromDate,
+    toDate,
     departmentFilter,
     searchText,
   ]);
@@ -455,8 +467,8 @@ export default function LeaveRequestsPanel({
       statusFilter ||
       categoryFilter ||
       duplicatesOnly ||
-      monthFilter ||
-      dateFilter ||
+      fromDate ||
+      toDate ||
       departmentFilter,
   );
 
@@ -464,17 +476,9 @@ export default function LeaveRequestsPanel({
     setStatusFilter((prev) => (prev === next ? "" : next));
   };
 
-  const actionTimestamp = (l: any) => {
-    const raw =
-      l?.updated_at || l?.step2_at || l?.step1_at || l?.requested_at || "";
-    return raw ? formatDateTime(String(raw)) : "—";
-  };
-
   const selectedStatus = leaveStatusLabel(selectedLeave || {});
-  const selectedPending =
-    Boolean(selectedLeave) &&
-    canActOnLeave(selectedLeave) &&
-    overallLeaveStatus(selectedLeave || {}) === "pending";
+  const selectedCanApprove = canApproveLeaveRow(selectedLeave);
+  const selectedCanReject = canRejectLeave(selectedLeave);
 
   return (
     <>
@@ -555,34 +559,30 @@ export default function LeaveRequestsPanel({
               </select>
             </div>
             <div className={styles.filterField}>
-              <label htmlFor="req-filter-month">Month</label>
+              <label htmlFor="req-filter-from">From date</label>
               <input
-                id="req-filter-month"
-                type="month"
+                id="req-filter-from"
+                type="date"
                 className={styles.toolbarSelect}
-                value={monthFilter}
+                value={fromDate}
                 onChange={(e) => {
-                  setMonthFilter(e.target.value);
-                  if (e.target.value && dateFilter && !dateFilter.startsWith(e.target.value)) {
-                    setDateFilter("");
-                  }
+                  const v = e.target.value;
+                  setFromDate(v);
+                  if (v && toDate && toDate < v) setToDate(v);
                 }}
-                aria-label="Filter by month"
+                aria-label="From date"
               />
             </div>
             <div className={styles.filterField}>
-              <label htmlFor="req-filter-date">Date</label>
+              <label htmlFor="req-filter-to">To date</label>
               <input
-                id="req-filter-date"
+                id="req-filter-to"
                 type="date"
                 className={styles.toolbarSelect}
-                value={dateFilter}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setDateFilter(v);
-                  if (v) setMonthFilter(v.slice(0, 7));
-                }}
-                aria-label="Filter by date"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(e) => setToDate(e.target.value)}
+                aria-label="To date"
               />
             </div>
             <div className={styles.searchWrap}>
@@ -654,8 +654,8 @@ export default function LeaveRequestsPanel({
                   setStatusFilter("");
                   setCategoryFilter("");
                   setDuplicatesOnly(false);
-                  setMonthFilter("");
-                  setDateFilter("");
+                  setFromDate("");
+                  setToDate("");
                   setDepartmentFilter("");
                 }}
               >
@@ -684,7 +684,7 @@ export default function LeaveRequestsPanel({
                       <th>ID</th>
                       <th>Employee</th>
                       <th>Dept</th>
-                      <th>Cat</th>
+                      <th>Category</th>
                       <th>Dates</th>
                       <th>Days</th>
                       <th>Status</th>
@@ -705,8 +705,7 @@ export default function LeaveRequestsPanel({
                     ) : (
                       sortedLeaves.map((l, idx) => {
                         const status = overallLeaveStatus(l);
-                        const pending =
-                          canActOnLeave(l) && status === "pending";
+                        const showApprove = canApproveLeaveRow(l);
                         const category = String(l.leave_category || "—");
                         const statusBy = l.status_by as
                           | { name?: string; employee_id?: string | null; role?: string | null }
@@ -781,16 +780,24 @@ export default function LeaveRequestsPanel({
                             <td className={styles.reasonCell}>
                               <button
                                 type="button"
-                                className={styles.reasonBtn}
+                                className={styles.btnView}
                                 onClick={() => openModal(l)}
-                                title={String(l.reason || "")}
                               >
-                                {l.reason || "—"}
+                                View
                               </button>
                             </td>
                             <td>
-                              {pending ? (
-                                <div className={styles.actions}>
+                              <div className={styles.actions}>
+                                {isHrOrAdmin ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnView}
+                                    onClick={() => openModal(l)}
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null}
+                                {showApprove ? (
                                   <button
                                     type="button"
                                     className={styles.btnApprove}
@@ -798,17 +805,11 @@ export default function LeaveRequestsPanel({
                                   >
                                     Approve
                                   </button>
-                                  <button
-                                    type="button"
-                                    className={styles.btnReject}
-                                    onClick={() => openModal(l)}
-                                  >
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className={styles.actionStamp}>{actionTimestamp(l)}</span>
-                              )}
+                                ) : null}
+                                {!isHrOrAdmin && !showApprove ? (
+                                  <span className={styles.actionStamp}>—</span>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -859,7 +860,10 @@ export default function LeaveRequestsPanel({
                   </div>
                 ) : null}
                 <div className={styles.modalRow}>
-                  <b>Reason:</b> {selectedLeave.reason}
+                  <b>Reason</b>
+                  <div className={styles.reasonFull}>
+                    {selectedLeave.reason || "—"}
+                  </div>
                 </div>
                 {selectedLeave.admin_remark ? (
                   <div className={styles.modalRow}>
@@ -890,7 +894,7 @@ export default function LeaveRequestsPanel({
                         {balanceInfo.paternityAllowance}
                       </div>
                     ) : null}
-                    {selectedPending ? (
+                    {selectedCanApprove ? (
                       <div style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>
                         Approve → balance minus {selectedLeave.total_days || 1} day(s). Reject →
                         balance unchanged.
@@ -919,38 +923,40 @@ export default function LeaveRequestsPanel({
                   <b>Requested:</b>{" "}
                   {selectedLeave.requested_at ? formatDateTime(selectedLeave.requested_at) : "—"}
                 </div>
-                {selectedPending ? (
-                  <div style={{ marginTop: 14 }}>
-                    <label className={styles.modalRow}>
-                      <b>Remarks (for rejection)</b>
-                      <textarea
-                        className={styles.textarea}
-                        value={rejectRemark}
-                        onChange={(e) => setRejectRemark(e.target.value)}
-                        placeholder="Optional reason for rejection…"
-                      />
-                    </label>
-                    <div className={styles.modalActions}>
-                      <button
-                        type="button"
-                        className={styles.btnApprove}
-                        onClick={() => handleAction(selectedLeave.id, "approve")}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.btnReject}
-                        onClick={() => handleAction(selectedLeave.id, "reject")}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
+                {selectedCanReject ? (
+                  <label className={styles.modalRow} style={{ marginTop: 14, display: "block" }}>
+                    <b>Remarks (for rejection)</b>
+                    <textarea
+                      className={styles.textarea}
+                      value={rejectRemark}
+                      onChange={(e) => setRejectRemark(e.target.value)}
+                      placeholder="Optional reason for rejection…"
+                    />
+                  </label>
                 ) : null}
-                <button type="button" className={styles.modalClose} onClick={closeModal}>
-                  Close
-                </button>
+                <div className={styles.modalActions} style={{ marginTop: 16 }}>
+                  <button type="button" className={styles.modalClose} onClick={closeModal}>
+                    Close
+                  </button>
+                  {selectedCanApprove ? (
+                    <button
+                      type="button"
+                      className={styles.btnApprove}
+                      onClick={() => handleAction(selectedLeave.id, "approve")}
+                    >
+                      Approve
+                    </button>
+                  ) : null}
+                  {selectedCanReject ? (
+                    <button
+                      type="button"
+                      className={styles.btnReject}
+                      onClick={() => handleAction(selectedLeave.id, "reject")}
+                    >
+                      Reject
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>,
             document.body

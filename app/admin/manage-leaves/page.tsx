@@ -125,10 +125,9 @@ function ManageLeavesPageInner() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState("");
   const [lowBalanceOnly, setLowBalanceOnly] = useState(false);
-  /** "" = all months; YYYY-MM filters employees with leave activity that month */
-  const [monthFilter, setMonthFilter] = useState("");
-  /** "" = all days; YYYY-MM-DD filters employees with leave activity that day */
-  const [dateFilter, setDateFilter] = useState("");
+  /** From–To date range filters employees with leave activity in range */
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [monthActiveIds, setMonthActiveIds] = useState<Set<string> | null>(null);
   const [departments, setDepartments] = useState<{ id: number | string; name?: string; department_name?: string }[]>([]);
   const searchParams = useSearchParams();
@@ -240,24 +239,19 @@ function ManageLeavesPageInner() {
   }, []);
 
   useEffect(() => {
-    if (!monthFilter && !dateFilter) {
+    if (!fromDate && !toDate) {
       setMonthActiveIds(null);
       return;
     }
     let cancelled = false;
-    const dayYmd = dateFilter || "";
-    const monthKey = dayYmd ? dayYmd.slice(0, 7) : monthFilter;
-    const [year, monthNum] = monthKey.split("-");
-    const fromDate = dayYmd || `${year}-${monthNum}-01`;
-    const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
-    const toDate =
-      dayYmd || `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
+    const rangeFrom = fromDate || toDate;
+    const rangeTo = toDate || fromDate;
     void (async () => {
       try {
         const viewerId = String(localStorage.getItem("employeeId") || "").trim();
         const viewerQs = viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : "";
         const res = await fetch(
-          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&ts=${Date.now()}${viewerQs}`,
+          `/api/leaves?fromDate=${encodeURIComponent(rangeFrom)}&toDate=${encodeURIComponent(rangeTo)}&ts=${Date.now()}${viewerQs}`,
           {
             cache: "no-store",
             headers: viewerId
@@ -269,11 +263,11 @@ function ManageLeavesPageInner() {
         if (cancelled) return;
         const ids = new Set<string>();
         for (const l of data?.leaves || []) {
-          if (dayYmd) {
-            const start = String(l?.start_date || "").slice(0, 10);
-            const end = String(l?.end_date || l?.start_date || "").slice(0, 10);
-            if (!start || start > dayYmd || (end || start) < dayYmd) continue;
-          }
+          const start = String(l?.start_date || "").slice(0, 10);
+          const end = String(l?.end_date || l?.start_date || "").slice(0, 10);
+          if (!start) continue;
+          if (fromDate && (end || start) < fromDate) continue;
+          if (toDate && start > toDate) continue;
           const id = String(l?.employee_id ?? "").trim();
           if (id) ids.add(id);
         }
@@ -285,7 +279,7 @@ function ManageLeavesPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [monthFilter, dateFilter]);
+  }, [fromDate, toDate]);
 
   async function fetchEmployees() {
     try {
@@ -572,38 +566,30 @@ function ManageLeavesPageInner() {
                   </select>
                 </div>
                 <div className={leaveStyles.filterField}>
-                  <label htmlFor="bal-filter-month">Month</label>
+                  <label htmlFor="bal-filter-from">From date</label>
                   <input
-                    id="bal-filter-month"
-                    type="month"
+                    id="bal-filter-from"
+                    type="date"
                     className={leaveStyles.toolbarSelect}
-                    value={monthFilter}
+                    value={fromDate}
                     onChange={(e) => {
-                      setMonthFilter(e.target.value);
-                      if (
-                        e.target.value &&
-                        dateFilter &&
-                        !dateFilter.startsWith(e.target.value)
-                      ) {
-                        setDateFilter("");
-                      }
+                      const v = e.target.value;
+                      setFromDate(v);
+                      if (v && toDate && toDate < v) setToDate(v);
                     }}
-                    aria-label="Filter by month"
+                    aria-label="From date"
                   />
                 </div>
                 <div className={leaveStyles.filterField}>
-                  <label htmlFor="bal-filter-date">Date</label>
+                  <label htmlFor="bal-filter-to">To date</label>
                   <input
-                    id="bal-filter-date"
+                    id="bal-filter-to"
                     type="date"
                     className={leaveStyles.toolbarSelect}
-                    value={dateFilter}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDateFilter(v);
-                      if (v) setMonthFilter(v.slice(0, 7));
-                    }}
-                    aria-label="Filter by date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(e) => setToDate(e.target.value)}
+                    aria-label="To date"
                   />
                 </div>
                 <select
@@ -626,16 +612,16 @@ function ManageLeavesPageInner() {
                   />
                   Low balance only (&lt; 4 days)
                 </label>
-                {monthFilter || dateFilter ? (
+                {fromDate || toDate ? (
                   <button
                     type="button"
                     className={leaveStyles.clearFilters}
                     onClick={() => {
-                      setMonthFilter("");
-                      setDateFilter("");
+                      setFromDate("");
+                      setToDate("");
                     }}
                   >
-                    Clear date
+                    Clear dates
                   </button>
                 ) : null}
               </div>

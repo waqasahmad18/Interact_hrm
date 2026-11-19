@@ -60,24 +60,21 @@ async function assertLeaveApprover(
   )) as any;
   const actorRole = Array.isArray(roleRows) ? roleRows[0]?.role : null;
 
-  // Manager, Team Lead, or CEO may approve leave (within department scope).
-  if (
-    !isManagerOrgRole(actorRole) &&
-    !isTeamLeadOrgRole(actorRole) &&
-    !isCeoOrgRole(actorRole)
-  ) {
+  const scope = await resolveViewerDataScope(actorId);
+  // CEO / HR (company-wide scope) may approve or reject (incl. after TL approve).
+  if (scope.mode === "all" || isCeoOrgRole(actorRole)) {
+    return { ok: true };
+  }
+
+  // Manager / Team Lead — department / team scope only.
+  if (!isManagerOrgRole(actorRole) && !isTeamLeadOrgRole(actorRole)) {
     return {
       ok: false,
-      error: "Leave approval is limited to Managers and Team Leads (and CEO).",
+      error: "Leave approval is limited to Managers, Team Leads, HR, and CEO.",
       status: 403,
     };
   }
 
-  if (isCeoOrgRole(actorRole)) {
-    return { ok: true };
-  }
-
-  const scope = await resolveViewerDataScope(actorId);
   if (
     !rowInViewerScope(scope, {
       employeeId: leaveEmployeeId,

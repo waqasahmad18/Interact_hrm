@@ -71,27 +71,34 @@ function YearTrend({ values }: { values: number[] }) {
   );
 }
 
-export default function LeaveSummaryPanel() {
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+function defaultMonthRange() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+  return {
+    from: `${y}-${m}-01`,
+    to: `${y}-${m}-${String(lastDay).padStart(2, "0")}`,
   };
+}
+
+export default function LeaveSummaryPanel() {
+  const initialRange = defaultMonthRange();
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [showZeroActivity, setShowZeroActivity] = useState(false);
-  const [month, setMonth] = useState<string>(getCurrentMonth());
-  /** Optional day filter YYYY-MM-DD within the selected month */
-  const [dateFilter, setDateFilter] = useState("");
+  const [fromDate, setFromDate] = useState(initialRange.from);
+  const [toDate, setToDate] = useState(initialRange.to);
   const [leaveData, setLeaveData] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { openFromRow, popup, getPhoto } = useEmployeeDetailPopup();
 
   useEffect(() => {
-    if (!month) return;
+    if (!fromDate && !toDate) return;
     void fetchSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, dateFilter]);
+  }, [fromDate, toDate]);
 
   const uniqueDepartments = useMemo(() => {
     return Array.from(new Set(leaveData.map((row) => row.department).filter(Boolean))).sort();
@@ -118,20 +125,15 @@ export default function LeaveSummaryPanel() {
       if (!empData.success) throw new Error(empData.error || "Failed to fetch employees");
       const employees = empData.employees || [];
 
-      const [year, monthNum] = month.split("-");
+      const rangeFrom = fromDate || toDate;
+      const rangeTo = toDate || fromDate;
+      const year = String(rangeFrom || rangeTo || "").slice(0, 4) || String(new Date().getFullYear());
       const yearStart = `${year}-01-01`;
       const yearEnd = `${year}-12-31`;
-      const monthStart = `${year}-${monthNum}-01`;
-      const lastDay = new Date(Number(year), Number(monthNum), 0).getDate();
-      const monthEnd = `${year}-${monthNum}-${String(lastDay).padStart(2, "0")}`;
-      const dayYmd =
-        dateFilter && dateFilter.startsWith(month) ? dateFilter : "";
-      const fromDate = dayYmd || monthStart;
-      const toDateStr = dayYmd || monthEnd;
 
       const [monthLeavesRes, yearLeavesRes] = await Promise.all([
         fetch(
-          `/api/leaves?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDateStr)}&ts=${Date.now()}${viewerQs}`,
+          `/api/leaves?fromDate=${encodeURIComponent(rangeFrom)}&toDate=${encodeURIComponent(rangeTo)}&ts=${Date.now()}${viewerQs}`,
           { cache: "no-store", headers: viewerHeaders },
         ),
         fetch(
@@ -144,15 +146,7 @@ export default function LeaveSummaryPanel() {
       if (!monthLeavesData.success) {
         throw new Error(monthLeavesData.error || "Failed to fetch leaves");
       }
-      let monthLeaves = monthLeavesData.leaves || [];
-      if (dayYmd) {
-        monthLeaves = monthLeaves.filter((l: any) => {
-          const start = String(l?.start_date || "").slice(0, 10);
-          const end = String(l?.end_date || l?.start_date || "").slice(0, 10);
-          if (!start) return false;
-          return start <= dayYmd && (end || start) >= dayYmd;
-        });
-      }
+      const monthLeaves = monthLeavesData.leaves || [];
       const yearLeaves = yearLeavesData.success ? yearLeavesData.leaves || [] : monthLeaves;
 
       const yearByEmp = new Map<string, number[]>();
@@ -229,8 +223,9 @@ export default function LeaveSummaryPanel() {
   return (
     <>
       <p className={leaveStyles.subtitle} style={{ marginTop: 0 }}>
-        Monthly activity per employee. Employees with zero activity are hidden by
-        default so the table isn&apos;t dominated by empty rows.
+        Leave activity per employee for the selected date range. Employees with
+        zero activity are hidden by default so the table isn&apos;t dominated by
+        empty rows.
       </p>
 
       <div className={leaveStyles.infoNote} role="status">
@@ -256,34 +251,30 @@ export default function LeaveSummaryPanel() {
 
       <div className={leaveStyles.toolbar}>
         <div className={leaveStyles.filterField}>
-          <label htmlFor="sum-filter-month">Month</label>
+          <label htmlFor="sum-filter-from">From date</label>
           <input
-            id="sum-filter-month"
-            type="month"
+            id="sum-filter-from"
+            type="date"
             className={leaveStyles.toolbarSelect}
-            value={month}
+            value={fromDate}
             onChange={(e) => {
-              setMonth(e.target.value);
-              if (dateFilter && e.target.value && !dateFilter.startsWith(e.target.value)) {
-                setDateFilter("");
-              }
+              const v = e.target.value;
+              setFromDate(v);
+              if (v && toDate && toDate < v) setToDate(v);
             }}
-            aria-label="Filter by month"
+            aria-label="From date"
           />
         </div>
         <div className={leaveStyles.filterField}>
-          <label htmlFor="sum-filter-date">Date</label>
+          <label htmlFor="sum-filter-to">To date</label>
           <input
-            id="sum-filter-date"
+            id="sum-filter-to"
             type="date"
             className={leaveStyles.toolbarSelect}
-            value={dateFilter}
-            onChange={(e) => {
-              const v = e.target.value;
-              setDateFilter(v);
-              if (v) setMonth(v.slice(0, 7));
-            }}
-            aria-label="Filter by date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-label="To date"
           />
         </div>
         <div className={leaveStyles.searchWrap}>

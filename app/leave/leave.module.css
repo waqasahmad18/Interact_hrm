@@ -203,7 +203,7 @@
 }
 .reqTableFit th:nth-child(4),
 .reqTableFit td:nth-child(4) {
-  width: 7%;
+  width: 9%;
 }
 .reqTableFit th:nth-child(5),
 .reqTableFit td:nth-child(5) {
@@ -835,6 +835,25 @@
   color: #0f766e;
 }
 
+.btnView:hover {
+  background: #d1fae5;
+}
+
+.reasonFull {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #0f172a;
+  font-size: 13.5px;
+  line-height: 1.45;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 .btnApprove {
   border: none;
   border-radius: 8px;
@@ -957,6 +976,10 @@
   cursor: pointer;
   background: #f1f5f9;
   color: #475569;
+}
+
+.modalActions .modalClose {
+  margin-top: 0;
 }
 
 .docBtn {
