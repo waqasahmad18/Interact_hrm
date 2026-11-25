@@ -22,9 +22,72 @@ function dec(raw: string | null) {
   }
 }
 
+async function saveClipAndMaybeTicket(input: {
+  employeeId: string;
+  employeeName?: string;
+  pseudonym?: string;
+  transcript: string;
+  language: string | null;
+  buf: Buffer;
+  ext: string;
+}) {
+  const { absolutePath, relativePath } = await allocateGuardAudioPath(
+    input.employeeId,
+    input.ext
+  );
+  await fs.writeFile(absolutePath, input.buf);
+
+  const result = input.transcript
+    ? await enforcePolicyAfterAudioTranscript({
+        employeeId: input.employeeId,
+        employeeName: input.employeeName,
+        pseudonym: input.pseudonym,
+        transcript: input.transcript,
+        relativePath,
+        language: input.language,
+      })
+    : ({ ok: true, skipped: true, reason: "empty_transcript" } as const);
+
+  const skipped = result.ok === true && "skipped" in result && !!result.skipped;
+  const reason =
+    result.ok === true && "reason" in result ? result.reason ?? null : null;
+  const ticketNumber =
+    result.ok === true && "ticketNumber" in result
+      ? result.ticketNumber ?? null
+      : null;
+  const matched =
+    result.ok === true && "matched" in result ? result.matched ?? [] : [];
+  const error = result.ok === false ? result.error : null;
+
+  const clipId = await insertGuardAudioClip({
+    employeeId: input.employeeId,
+    employeeName: input.employeeName,
+    pseudonym: input.pseudonym,
+    audioPath: relativePath,
+    transcript: input.transcript || null,
+    language: input.language,
+    matched: matched.length ? matched : null,
+    ticketNumber,
+    byteSize: input.buf.length,
+  });
+
+  return {
+    success: result.ok !== false,
+    skipped,
+    reason,
+    ticket_number: ticketNumber,
+    matched,
+    audio_path: relativePath,
+    clip_id: clipId,
+    error,
+  };
+}
+
 /**
  * Guard agent posts every mic clip (quality samples) + optional offline transcript.
- * Always stores the WAV for admin playback. Keyword match → silent policy ticket.
+ * Accepts:
+ *  - application/json { audio_base64, employee_id, ... }  (preferred — reliable from .NET)
+ *  - multipart/form-data with "audio" file (curl / legacy)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -37,14 +100,110 @@ export async function POST(req: NextRequest) {
     }
 
     const contentType = req.headers.get("content-type") || "";
+
+    // --- JSON + base64 (Interact Guard agent) ---
+    if (contentType.includes("application/json")) {
+      const body = await req.json().catch(() => null);
+      if (!body || typeof body !== "object") {
+        return NextResponse.json(
+          { success: false, error: "invalid json body" },
+          { status: 400 }
+        );
+      }
+      const employeeId =
+        String((body as { employee_id?: string }).employee_id || "").trim() ||
+        dec(req.headers.get("x-employee-id"));
+      if (!employeeId) {
+        return NextResponse.json(
+          { success: false, error: "employee_id required" },
+          { status: 400 }
+        );
+      }
+      const b64 = String(
+        (body as { audio_base64?: string }).audio_base64 || ""
+      ).trim();
+      if (!b64) {
+        return NextResponse.json(
+          { success: false, error: "audio_base64 required" },
+          { status: 400 }
+        );
+      }
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(b64, "base64");
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "audio_base64 invalid" },
+          { status: 400 }
+        );
+      }
+      if (!buf.length || buf.length > MAX_BYTES) {
+        return NextResponse.json(
+          { success: false, error: "audio size invalid (max 8MB)" },
+          { status: 400 }
+        );
+      }
+      const name = String(
+        (body as { filename?: string }).filename || "clip.wav"
+      ).toLowerCase();
+      const ext = name.endsWith(".mp3")
+        ? "mp3"
+        : name.endsWith(".webm")
+          ? "webm"
+          : "wav";
+      const transcript = String(
+        (body as { transcript?: string }).transcript || ""
+      ).trim();
+      const language =
+        String((body as { language?: string }).language || "").trim() || null;
+      const employeeName =
+        String((body as { employee_name?: string }).employee_name || "").trim() ||
+        dec(req.headers.get("x-employee-name")) ||
+        undefined;
+      const pseudonym =
+        String((body as { pseudonym?: string }).pseudonym || "").trim() ||
+        dec(req.headers.get("x-pseudonym")) ||
+        undefined;
+
+      const out = await saveClipAndMaybeTicket({
+        employeeId,
+        employeeName,
+        pseudonym,
+        transcript,
+        language,
+        buf,
+        ext,
+      });
+      return NextResponse.json(out);
+    }
+
+    // --- multipart (curl / manual) ---
     if (!contentType.includes("multipart/form-data")) {
       return NextResponse.json(
-        { success: false, error: "multipart/form-data required" },
+        {
+          success: false,
+          error: "application/json (audio_base64) or multipart/form-data required",
+        },
         { status: 400 }
       );
     }
 
-    const form = await req.formData();
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch (err) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            err instanceof Error
+              ? `FormData parse failed: ${err.message}`
+              : "FormData parse failed",
+        },
+        { status: 400 }
+      );
+    }
+
     const employeeId =
       String(form.get("employee_id") || "").trim() ||
       dec(req.headers.get("x-employee-id"));
@@ -89,56 +248,16 @@ export async function POST(req: NextRequest) {
         ? "webm"
         : "wav";
 
-    const { absolutePath, relativePath } = await allocateGuardAudioPath(
-      employeeId,
-      ext
-    );
-    await fs.writeFile(absolutePath, buf);
-
-    const result = transcript
-      ? await enforcePolicyAfterAudioTranscript({
-          employeeId,
-          employeeName,
-          pseudonym,
-          transcript,
-          relativePath,
-          language,
-        })
-      : ({ ok: true, skipped: true, reason: "empty_transcript" } as const);
-
-    const skipped = result.ok === true && "skipped" in result && !!result.skipped;
-    const reason =
-      result.ok === true && "reason" in result ? result.reason ?? null : null;
-    const ticketNumber =
-      result.ok === true && "ticketNumber" in result
-        ? result.ticketNumber ?? null
-        : null;
-    const matched =
-      result.ok === true && "matched" in result ? result.matched ?? [] : [];
-    const error = result.ok === false ? result.error : null;
-
-    const clipId = await insertGuardAudioClip({
+    const out = await saveClipAndMaybeTicket({
       employeeId,
       employeeName,
       pseudonym,
-      audioPath: relativePath,
-      transcript: transcript || null,
+      transcript,
       language,
-      matched: matched.length ? matched : null,
-      ticketNumber,
-      byteSize: buf.length,
+      buf,
+      ext,
     });
-
-    return NextResponse.json({
-      success: result.ok !== false,
-      skipped,
-      reason,
-      ticket_number: ticketNumber,
-      matched,
-      audio_path: relativePath,
-      clip_id: clipId,
-      error,
-    });
+    return NextResponse.json(out);
   } catch (err) {
     return NextResponse.json(
       {

@@ -280,19 +280,27 @@ public sealed class HrmClient
         var url = $"{baseUrl}/api/guard/audio-alerts";
         try
         {
-            using var form = new MultipartFormDataContent();
+            // JSON + base64 — .NET MultipartFormDataContent breaks Next.js formData() parse.
             var bytes = await File.ReadAllBytesAsync(wavPath, ct).ConfigureAwait(false);
-            var fileContent = new ByteArrayContent(bytes);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
-            form.Add(fileContent, "audio", Path.GetFileName(wavPath));
-            form.Add(new StringContent(emp), "employee_id");
-            form.Add(new StringContent(_settings.EmployeeName ?? ""), "employee_name");
-            form.Add(new StringContent(_settings.Pseudonym ?? ""), "pseudonym");
-            form.Add(new StringContent(transcript ?? ""), "transcript");
+            var payload = new Dictionary<string, string?>
+            {
+                ["employee_id"] = emp,
+                ["employee_name"] = _settings.EmployeeName ?? "",
+                ["pseudonym"] = _settings.Pseudonym ?? "",
+                ["transcript"] = transcript ?? "",
+                ["filename"] = Path.GetFileName(wavPath),
+                ["audio_base64"] = Convert.ToBase64String(bytes),
+            };
             if (!string.IsNullOrWhiteSpace(language))
-                form.Add(new StringContent(language), "language");
+                payload["language"] = language;
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = form };
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    Encoding.UTF8,
+                    "application/json"),
+            };
             static string H(string? s) => Uri.EscapeDataString(s ?? "");
             req.Headers.TryAddWithoutValidation("x-employee-id", H(emp));
             req.Headers.TryAddWithoutValidation("x-employee-name", H(_settings.EmployeeName));
@@ -300,7 +308,7 @@ public sealed class HrmClient
             req.Headers.TryAddWithoutValidation("x-machine-id", H(MachineIdentity.GetOrCreate()));
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            cts.CancelAfter(TimeSpan.FromSeconds(90));
             using var res = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
             var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             long? clipId = null;
