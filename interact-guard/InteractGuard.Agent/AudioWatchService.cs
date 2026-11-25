@@ -26,6 +26,12 @@ public sealed class AudioWatchService : IDisposable
 
     public void BindUi(Action<string> setStatus) => _setStatus = setStatus;
 
+    /// <summary>True while mic→Whisper loop is running (for HRM heartbeat status).</summary>
+    public bool IsRecording
+    {
+        get { lock (_gate) return _enabled; }
+    }
+
     public void SyncFromSettings()
     {
         var want = _settings.AudioWatchEnabled && !string.IsNullOrWhiteSpace(_settings.EmployeeId);

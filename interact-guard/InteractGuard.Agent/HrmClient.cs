@@ -111,7 +111,9 @@ public sealed class HrmClient
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
     }
 
-    public async Task<HeartbeatResult?> HeartbeatAsync(CancellationToken ct = default)
+    public async Task<HeartbeatResult?> HeartbeatAsync(
+        CancellationToken ct = default,
+        bool? audioRecording = null)
     {
         try
         {
@@ -126,6 +128,8 @@ public sealed class HrmClient
                 local_employee_id = (_settings.EmployeeId ?? "").Trim(),
                 agent_version = AppSettings.Version,
                 agent_product = "InteractGuard",
+                audio_recording = audioRecording
+                    ?? (_settings.AudioWatchEnabled && !string.IsNullOrWhiteSpace(_settings.EmployeeId)),
             };
             using var res = await _http.PostAsJsonAsync(url, payload, ct).ConfigureAwait(false);
             if (!res.IsSuccessStatusCode) return null;

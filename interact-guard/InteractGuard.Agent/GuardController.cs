@@ -65,10 +65,11 @@ public sealed class GuardController : IDisposable
         _bindServer.BoundChanged += () =>
         {
             SetStatus($"Bound: {_settings.EmployeeName} (ID {_settings.EmployeeId})");
-            _ = _hrm.HeartbeatAsync();
+            _ = _hrm.HeartbeatAsync(CancellationToken.None, _audioWatch.IsRecording);
             _screenshots.SyncFromSettings();
             _livePreview.SyncFromSettings();
             _keyboardActivity.SyncFromSettings();
+            _audioWatch.SyncFromSettings();
         };
     }
 
@@ -110,7 +111,7 @@ public sealed class GuardController : IDisposable
         {
             try
             {
-                var hb = await _hrm.HeartbeatAsync(ct).ConfigureAwait(false);
+                var hb = await _hrm.HeartbeatAsync(ct, _audioWatch.IsRecording).ConfigureAwait(false);
                 ApplyHeartbeat(hb);
             }
             catch

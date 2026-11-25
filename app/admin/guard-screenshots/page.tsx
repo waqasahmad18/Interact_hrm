@@ -14,6 +14,7 @@ import adminStyles from "../admin-page.module.css";
 import styles from "../presence-idle/presence-idle.module.css";
 import GuardScreenshotSettings from "./GuardScreenshotSettings";
 import GuardPolicyPanel from "./GuardPolicyPanel";
+import GuardAudioPanel from "./GuardAudioPanel";
 import GuardLiveView from "./GuardLiveView";
 import GuardAppActivityPanel from "./GuardAppActivityPanel";
 import GuardKeyboardActivityPanel from "./GuardKeyboardActivityPanel";
@@ -233,6 +234,7 @@ export default function GuardScreenshotsPage() {
   const [activityMode, setActivityMode] = React.useState(false);
   const [keyboardMode, setKeyboardMode] = React.useState(false);
   const [policyMode, setPolicyMode] = React.useState(false);
+  const [audioMode, setAudioMode] = React.useState(false);
 
   const profiles = React.useMemo(
     () => buildProfiles(agents, hrEmployees, shotSummaries),
@@ -444,6 +446,7 @@ export default function GuardScreenshotsPage() {
     setActivityMode(false);
     setKeyboardMode(false);
     setPolicyMode(false);
+    setAudioMode(false);
   }
 
   React.useEffect(() => {
@@ -684,7 +687,9 @@ export default function GuardScreenshotsPage() {
                 </button>
               </div>
 
-              {policyMode ? (
+              {audioMode ? (
+                <GuardAudioPanel onBack={() => setAudioMode(false)} />
+              ) : policyMode ? (
                 <GuardPolicyPanel onBack={() => setPolicyMode(false)} />
               ) : liveMode ? (
                 <GuardLiveView
@@ -766,6 +771,16 @@ export default function GuardScreenshotsPage() {
                       }}
                     >
                       Policy
+                    </button>
+                    <button
+                      type="button"
+                      className={adminStyles.btnSecondary}
+                      onClick={() => {
+                        setSelectedId("");
+                        setAudioMode(true);
+                      }}
+                    >
+                      Audio
                     </button>
                   </div>
 

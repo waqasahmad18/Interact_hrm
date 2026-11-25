@@ -35,6 +35,8 @@ export type PresenceAgentRow = {
   serviceLastSeenAt: string | null;
   serviceHealth: AgentHealth;
   serviceVersion: string | null;
+  /** Agent reports mic→Whisper loop is actively running. */
+  audioRecording: boolean;
   assignedEmployeeName: string | null;
   assignedEmployeeCode: string | null;
   assignedPseudonym: string | null;
@@ -58,6 +60,7 @@ type DbRow = {
   last_seen_at: Date | string | null;
   service_last_seen_at?: Date | string | null;
   service_version?: string | null;
+  audio_recording?: number | boolean | null;
   assigned_first_name?: string | null;
   assigned_last_name?: string | null;
   assigned_employee_code?: string | null;
@@ -128,6 +131,9 @@ export async function ensurePresenceAgentsTable(): Promise<void> {
   );
   await addColumn(
     `ALTER TABLE ${TABLE} ADD COLUMN service_version varchar(32) DEFAULT NULL`,
+  );
+  await addColumn(
+    `ALTER TABLE ${TABLE} ADD COLUMN audio_recording tinyint(1) NOT NULL DEFAULT 0`,
   );
 
   if (!pcKeyReady) {
@@ -288,6 +294,7 @@ function mapRow(r: DbRow): PresenceAgentRow {
     serviceLastSeenAt: toIso(r.service_last_seen_at ?? null),
     serviceHealth: agentHealthFromLastSeen(r.service_last_seen_at ?? null),
     serviceVersion: r.service_version?.trim() || null,
+    audioRecording: asBool(r.audio_recording),
     assignedEmployeeName,
     assignedEmployeeCode: r.assigned_employee_code ?? null,
     assignedPseudonym: r.assigned_pseudonym?.trim() || null,
@@ -308,6 +315,8 @@ export type HeartbeatInput = {
   /** Service acks launch after CreateProcessAsUser succeeds. */
   completedCommand?: string | null;
   agentRunning?: boolean | null;
+  /** Tray agent: mic audio watch loop currently running. */
+  audioRecording?: boolean | null;
 };
 
 export type AgentCommand = "restart" | "exit" | "start" | "pause" | "resume" | "on";
@@ -492,15 +501,23 @@ export async function upsertAgentHeartbeat(
         `UPDATE ${TABLE}
          SET agent_version = COALESCE(?, agent_version),
              agent_product = COALESCE(?, agent_product),
-             last_seen_at = ?
+             last_seen_at = ?,
+             audio_recording = ?
          WHERE machine_id = ?`,
-        [agentVersion, agentProduct, now, machineId],
+        [
+          agentVersion,
+          agentProduct,
+          now,
+          input.audioRecording === true ? 1 : 0,
+          machineId,
+        ],
       );
     } else {
+      const audioRec = input.audioRecording === true ? 1 : 0;
       await pool.execute(
         `INSERT INTO ${TABLE}
-          (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (machine_id, hostname, windows_user, hrm_base_url, local_employee_id, agent_version, agent_product, last_ip, first_seen_at, last_seen_at, pc_key, audio_recording)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            hostname = VALUES(hostname),
            windows_user = VALUES(windows_user),
@@ -510,7 +527,8 @@ export async function upsertAgentHeartbeat(
            agent_product = COALESCE(VALUES(agent_product), agent_product),
            last_ip = VALUES(last_ip),
            last_seen_at = VALUES(last_seen_at),
-           pc_key = VALUES(pc_key)`,
+           pc_key = VALUES(pc_key),
+           audio_recording = VALUES(audio_recording)`,
         [
           machineId,
           hostname,
@@ -523,6 +541,7 @@ export async function upsertAgentHeartbeat(
           now,
           now,
           pcKey,
+          audioRec,
         ],
       );
 

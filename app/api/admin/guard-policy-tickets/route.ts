@@ -69,8 +69,12 @@ export async function GET(req: NextRequest) {
     }
     sql += ` ORDER BY id DESC LIMIT ${limit}`;
 
+    const source = String(req.nextUrl.searchParams.get("source") || "")
+      .trim()
+      .toLowerCase();
+
     const [rows] = await pool.query(sql, params);
-    const tickets = (Array.isArray(rows) ? rows : [])
+    let tickets = (Array.isArray(rows) ? rows : [])
       .map((r) => {
         const t = rowToTicket(r as Record<string, unknown>);
         const fd =
@@ -98,6 +102,27 @@ export async function GET(req: NextRequest) {
         return { ...t, form_data: fd };
       })
       .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+
+    if (source === "audio") {
+      tickets = tickets.filter((t) => {
+        const fd = (t.form_data || {}) as Record<string, unknown>;
+        const audioPath = String(fd.audio_path || "").trim();
+        const src = String(fd.source || fd.sourceDetail || "").toLowerCase();
+        const desc = String(t.description || "").toLowerCase();
+        return (
+          !!audioPath ||
+          src.includes("audio") ||
+          desc.includes("mic audio") ||
+          desc.includes("audio:")
+        );
+      });
+    } else if (source === "screenshot" || source === "ocr") {
+      tickets = tickets.filter((t) => {
+        const fd = (t.form_data || {}) as Record<string, unknown>;
+        const audioPath = String(fd.audio_path || "").trim();
+        return !audioPath;
+      });
+    }
 
     return noStore({ success: true, tickets, count: tickets.length });
   } catch (err) {

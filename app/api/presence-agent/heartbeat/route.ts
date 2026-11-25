@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       component?: string;
       completed_command?: string;
       agent_running?: boolean;
+      audio_recording?: boolean;
     };
 
     const result = await upsertAgentHeartbeat({
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       component: body.component,
       completedCommand: body.completed_command,
       agentRunning: body.agent_running,
+      audioRecording: body.audio_recording === true,
     });
 
     return NextResponse.json(
