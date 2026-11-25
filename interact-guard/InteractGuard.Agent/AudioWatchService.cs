@@ -261,38 +261,26 @@ public sealed class AudioWatchService : IDisposable
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"clip_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.wav");
 
+        // 48 kHz capture = clearer speech for admin playback (Whisper still accepts it).
+        const int sampleRate = 48000;
         WaveInEvent? waveIn = null;
         WaveFileWriter? writer = null;
         try
         {
             waveIn = new WaveInEvent
             {
-                WaveFormat = new WaveFormat(16000, 1),
-                BufferMilliseconds = 50,
+                WaveFormat = new WaveFormat(sampleRate, 16, 1),
+                BufferMilliseconds = 20,
             };
             writer = new WaveFileWriter(path, waveIn.WaveFormat);
             var writeGate = new object();
-            // Live boost so quiet room / laptop mic speech is audible in admin Clips.
-            const float liveGain = 4.0f;
+            // No live gain — boosting in real-time made hiss loud. Clean in EnhanceSpeechWav.
             waveIn.DataAvailable += (_, e) =>
             {
-                var n = e.BytesRecorded;
-                if (n < 2) return;
-                var buf = e.Buffer;
-                for (var i = 0; i + 1 < n; i += 2)
-                {
-                    var sample = (short)(buf[i] | (buf[i + 1] << 8));
-                    var boosted = sample * liveGain;
-                    var clipped =
-                        boosted > short.MaxValue ? short.MaxValue :
-                        boosted < short.MinValue ? short.MinValue :
-                        (short)boosted;
-                    buf[i] = (byte)(clipped & 0xff);
-                    buf[i + 1] = (byte)((clipped >> 8) & 0xff);
-                }
+                if (e.BytesRecorded < 2) return;
                 lock (writeGate)
                 {
-                    writer?.Write(buf, 0, n);
+                    writer?.Write(e.Buffer, 0, e.BytesRecorded);
                 }
             };
 
@@ -303,7 +291,7 @@ public sealed class AudioWatchService : IDisposable
             await Task.Delay(80, CancellationToken.None).ConfigureAwait(false);
             try { writer?.Dispose(); } catch { /* ignore */ }
             writer = null;
-            PeakNormalizeWav(path, targetPeak: 0.88f, maxGain: 12f);
+            EnhanceSpeechWav(path, sampleRate);
             return path;
         }
         catch (Exception ex)
@@ -321,10 +309,9 @@ public sealed class AudioWatchService : IDisposable
     }
 
     /// <summary>
-    /// Peak-normalize 16-bit mono/stereo PCM WAV so quiet clips play loudly in admin.
-    /// Skips near-silence (avoids boosting pure noise).
+    /// Clean 16-bit mono PCM: high-pass, noise gate, gentle speech AGC (no harsh peak boost).
     /// </summary>
-    private static void PeakNormalizeWav(string path, float targetPeak, float maxGain)
+    private static void EnhanceSpeechWav(string path, int sampleRate)
     {
         try
         {
@@ -333,11 +320,9 @@ public sealed class AudioWatchService : IDisposable
             using (var fs = File.OpenRead(path))
             {
                 raw = new byte[fs.Length];
-                var read = fs.Read(raw, 0, raw.Length);
-                if (read < 46) return;
+                if (fs.Read(raw, 0, raw.Length) < 46) return;
             }
 
-            // Find "data" chunk (standard PCM header is 44 bytes, but be safe).
             var dataOffset = 44;
             for (var i = 12; i + 8 < Math.Min(raw.Length, 200); i++)
             {
@@ -350,35 +335,111 @@ public sealed class AudioWatchService : IDisposable
             }
             if (dataOffset + 4 > raw.Length) return;
 
-            var peak = 0;
-            for (var i = dataOffset; i + 1 < raw.Length; i += 2)
-            {
-                var s = Math.Abs((short)(raw[i] | (raw[i + 1] << 8)));
-                if (s > peak) peak = s;
-            }
-            // Near silence — leave as-is (headset boom muted / no input).
-            if (peak < 80) return;
+            var sampleCount = (raw.Length - dataOffset) / 2;
+            if (sampleCount < sampleRate / 4) return; // under 0.25s
 
-            var target = (int)(short.MaxValue * Math.Clamp(targetPeak, 0.5f, 0.95f));
-            var gain = Math.Min(maxGain, (float)target / peak);
-            if (gain <= 1.05f) return;
-
-            for (var i = dataOffset; i + 1 < raw.Length; i += 2)
+            var samples = new float[sampleCount];
+            for (var i = 0; i < sampleCount; i++)
             {
-                var sample = (short)(raw[i] | (raw[i + 1] << 8));
-                var boosted = sample * gain;
-                var clipped =
-                    boosted > short.MaxValue ? short.MaxValue :
-                    boosted < short.MinValue ? short.MinValue :
-                    (short)boosted;
-                raw[i] = (byte)(clipped & 0xff);
-                raw[i + 1] = (byte)((clipped >> 8) & 0xff);
+                var o = dataOffset + i * 2;
+                samples[i] = (short)(raw[o] | (raw[o + 1] << 8)) / 32768f;
             }
+
+            // 1) High-pass ~120 Hz — kill rumble / AC hum before gain.
+            var hp = Math.Exp(-2.0 * Math.PI * 120.0 / sampleRate);
+            float prevX = 0, prevY = 0;
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var x = samples[i];
+                var y = (float)((x - prevX) + hp * prevY);
+                prevX = x;
+                prevY = y;
+                samples[i] = y;
+            }
+
+            // 2) Frame RMS → estimate noise floor from quietest frames.
+            const int frameMs = 20;
+            var frameLen = Math.Max(80, sampleRate * frameMs / 1000);
+            var frameCount = Math.Max(1, sampleCount / frameLen);
+            var frameRms = new float[frameCount];
+            for (var f = 0; f < frameCount; f++)
+            {
+                double acc = 0;
+                var start = f * frameLen;
+                var end = Math.Min(sampleCount, start + frameLen);
+                var n = end - start;
+                for (var i = start; i < end; i++)
+                    acc += samples[i] * samples[i];
+                frameRms[f] = n > 0 ? (float)Math.Sqrt(acc / n) : 0;
+            }
+
+            var sorted = (float[])frameRms.Clone();
+            Array.Sort(sorted);
+            var noiseFloor = sorted[Math.Clamp(sorted.Length / 10, 0, sorted.Length - 1)];
+            noiseFloor = Math.Max(noiseFloor, 1e-5f);
+            var gateOpen = noiseFloor * 2.8f;
+            var gateClose = noiseFloor * 1.6f;
+
+            // 3) Noise gate + measure speech RMS (only open frames).
+            double speechAcc = 0;
+            var speechN = 0;
+            var open = false;
+            var gated = new float[sampleCount];
+            for (var f = 0; f < frameCount; f++)
+            {
+                var rms = frameRms[f];
+                if (!open && rms >= gateOpen) open = true;
+                else if (open && rms < gateClose) open = false;
+
+                var start = f * frameLen;
+                var end = Math.Min(sampleCount, start + frameLen);
+                if (open)
+                {
+                    for (var i = start; i < end; i++)
+                    {
+                        gated[i] = samples[i];
+                        speechAcc += samples[i] * samples[i];
+                        speechN++;
+                    }
+                }
+                else
+                {
+                    // Attenuate noise floor instead of boosting it.
+                    for (var i = start; i < end; i++)
+                        gated[i] = samples[i] * 0.15f;
+                }
+            }
+
+            // 4) Gentle AGC toward comfortable speech level (not peak of clicks/noise).
+            var speechRms = speechN > 200
+                ? (float)Math.Sqrt(speechAcc / speechN)
+                : 0f;
+            float gain = 1f;
+            if (speechRms > 1e-4f)
+            {
+                const float targetRms = 0.12f; // clear but not harsh
+                gain = Math.Clamp(targetRms / speechRms, 0.85f, 2.8f);
+            }
+
+            // 5) Soft limiter
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var s = gated[i] * gain;
+                // tanh soft-clip
+                s = (float)Math.Tanh(s * 1.15);
+                var pcm = (int)Math.Round(s * 32767.0);
+                if (pcm > short.MaxValue) pcm = short.MaxValue;
+                if (pcm < short.MinValue) pcm = short.MinValue;
+                var o = dataOffset + i * 2;
+                raw[o] = (byte)(pcm & 0xff);
+                raw[o + 1] = (byte)((pcm >> 8) & 0xff);
+            }
+
             File.WriteAllBytes(path, raw);
         }
         catch
         {
-            /* keep original clip if normalize fails */
+            /* keep original clip if enhance fails */
         }
     }
 
