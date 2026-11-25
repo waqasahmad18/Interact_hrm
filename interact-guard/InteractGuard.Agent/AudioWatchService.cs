@@ -261,20 +261,24 @@ public sealed class AudioWatchService : IDisposable
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, $"clip_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.wav");
 
-        // 48 kHz capture = clearer speech for admin playback (Whisper still accepts it).
+        // Raw 48 kHz PCM — no DSP (gates/AGC caused chop + distortion).
         const int sampleRate = 48000;
         WaveInEvent? waveIn = null;
         WaveFileWriter? writer = null;
         try
         {
+            var device = PickPreferredCaptureDevice();
             waveIn = new WaveInEvent
             {
+                DeviceNumber = device.Number,
                 WaveFormat = new WaveFormat(sampleRate, 16, 1),
-                BufferMilliseconds = 20,
+                // Larger buffer = fewer dropouts under CPU load (was 20ms → choppy).
+                BufferMilliseconds = 100,
+                NumberOfBuffers = 4,
             };
+            Log($"mic device [{device.Number}] {device.Name}");
             writer = new WaveFileWriter(path, waveIn.WaveFormat);
             var writeGate = new object();
-            // No live gain — boosting in real-time made hiss loud. Clean in EnhanceSpeechWav.
             waveIn.DataAvailable += (_, e) =>
             {
                 if (e.BytesRecorded < 2) return;
@@ -283,20 +287,26 @@ public sealed class AudioWatchService : IDisposable
                     writer?.Write(e.Buffer, 0, e.BytesRecorded);
                 }
             };
+            waveIn.RecordingStopped += (_, e) =>
+            {
+                if (e.Exception != null)
+                    Log($"mic stopped err: {e.Exception.Message}");
+            };
 
             lock (_gate) _micOpen = true;
             waveIn.StartRecording();
             await Task.Delay(TimeSpan.FromSeconds(seconds), ct).ConfigureAwait(false);
             waveIn.StopRecording();
-            await Task.Delay(80, CancellationToken.None).ConfigureAwait(false);
+            await Task.Delay(120, CancellationToken.None).ConfigureAwait(false);
+            try { writer?.Flush(); } catch { /* ignore */ }
             try { writer?.Dispose(); } catch { /* ignore */ }
             writer = null;
-            EnhanceSpeechWav(path, sampleRate);
             return path;
         }
         catch (Exception ex)
         {
             _setStatus?.Invoke($"Mic capture failed: {ex.Message}");
+            Log($"mic capture failed: {ex.Message}");
             TryDelete(path);
             return null;
         }
@@ -309,93 +319,39 @@ public sealed class AudioWatchService : IDisposable
     }
 
     /// <summary>
-    /// Light cleanup only: high-pass + gentle AGC + hard peak limit.
-    /// No hard noise-gate (that chopped speech between words).
+    /// Prefer laptop / array mic over headset (Jabra boom mute inserts
+    /// "lower microphone to unmute" and silences speech → sounds broken).
     /// </summary>
-    private static void EnhanceSpeechWav(string path, int sampleRate)
+    private static (int Number, string Name) PickPreferredCaptureDevice()
     {
-        try
+        var count = WaveIn.DeviceCount;
+        if (count <= 0) return (0, "default");
+
+        var devices = new List<(int Number, string Name, int Score)>();
+        for (var i = 0; i < count; i++)
         {
-            if (!File.Exists(path)) return;
-            byte[] raw;
-            using (var fs = File.OpenRead(path))
-            {
-                raw = new byte[fs.Length];
-                if (fs.Read(raw, 0, raw.Length) < 46) return;
-            }
-
-            var dataOffset = 44;
-            for (var i = 12; i + 8 < Math.Min(raw.Length, 200); i++)
-            {
-                if (raw[i] == (byte)'d' && raw[i + 1] == (byte)'a' &&
-                    raw[i + 2] == (byte)'t' && raw[i + 3] == (byte)'a')
-                {
-                    dataOffset = i + 8;
-                    break;
-                }
-            }
-            if (dataOffset + 4 > raw.Length) return;
-
-            var sampleCount = (raw.Length - dataOffset) / 2;
-            if (sampleCount < sampleRate / 4) return;
-
-            var samples = new float[sampleCount];
-            for (var i = 0; i < sampleCount; i++)
-            {
-                var o = dataOffset + i * 2;
-                samples[i] = (short)(raw[o] | (raw[o + 1] << 8)) / 32768f;
-            }
-
-            // 1) Mild high-pass ~80 Hz (rumble only — keep speech body).
-            var hp = Math.Exp(-2.0 * Math.PI * 80.0 / sampleRate);
-            float prevX = 0, prevY = 0;
-            for (var i = 0; i < sampleCount; i++)
-            {
-                var x = samples[i];
-                var y = (float)((x - prevX) + hp * prevY);
-                prevX = x;
-                prevY = y;
-                samples[i] = y;
-            }
-
-            // 2) Overall RMS for gentle makeup (ignore near-silence samples).
-            double acc = 0;
-            var n = 0;
-            for (var i = 0; i < sampleCount; i++)
-            {
-                var a = Math.Abs(samples[i]);
-                if (a < 0.008f) continue; // skip hush, don't skew gain
-                acc += samples[i] * samples[i];
-                n++;
-            }
-            float gain = 1f;
-            if (n > sampleRate / 5)
-            {
-                var rms = (float)Math.Sqrt(acc / n);
-                if (rms > 1e-4f)
-                    gain = Math.Clamp(0.10f / rms, 0.9f, 2.0f);
-            }
-
-            // 3) Apply gain + hard peak limit only (no tanh — that warbled/distorted voice).
-            for (var i = 0; i < sampleCount; i++)
-            {
-                var s = samples[i] * gain;
-                if (s > 0.98f) s = 0.98f;
-                if (s < -0.98f) s = -0.98f;
-                var pcm = (int)Math.Round(s * 32767.0);
-                if (pcm > short.MaxValue) pcm = short.MaxValue;
-                if (pcm < short.MinValue) pcm = short.MinValue;
-                var o = dataOffset + i * 2;
-                raw[o] = (byte)(pcm & 0xff);
-                raw[o + 1] = (byte)((pcm >> 8) & 0xff);
-            }
-
-            File.WriteAllBytes(path, raw);
+            string name;
+            try { name = WaveIn.GetCapabilities(i).ProductName ?? $"Device {i}"; }
+            catch { name = $"Device {i}"; }
+            var n = name.ToLowerInvariant();
+            var score = 0;
+            if (n.Contains("array")) score += 50;
+            if (n.Contains("realtek")) score += 40;
+            if (n.Contains("conexant") || n.Contains("smartamp")) score += 35;
+            if (n.Contains("microphone") && !n.Contains("headset")) score += 25;
+            if (n.Contains("built-in") || n.Contains("internal")) score += 45;
+            if (n.Contains("laptop")) score += 40;
+            // Avoid headset boom / hands-free (Jabra voice prompt + mute gaps).
+            if (n.Contains("jabra") || n.Contains("evolve") || n.Contains("poly") ||
+                n.Contains("plantronics") || n.Contains("headset") ||
+                n.Contains("hands-free") || n.Contains("handsfree") ||
+                n.Contains("bluetooth"))
+                score -= 100;
+            devices.Add((i, name, score));
         }
-        catch
-        {
-            /* keep original clip if enhance fails */
-        }
+
+        var best = devices.OrderByDescending(d => d.Score).ThenBy(d => d.Number).First();
+        return (best.Number, best.Name);
     }
 
     private static void TryDelete(string path)
