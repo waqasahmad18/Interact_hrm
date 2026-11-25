@@ -97,29 +97,52 @@ public sealed class AudioWatchService : IDisposable
                     continue;
                 }
 
-                string transcript = "";
-                string? language = null;
-                var stt = await _stt.TranscribeAsync(wavPath, ct).ConfigureAwait(false);
-                if (stt.Ok)
-                {
-                    transcript = stt.Text?.Trim() ?? "";
-                    language = stt.Language;
-                    if (!string.IsNullOrWhiteSpace(transcript))
-                        _setStatus?.Invoke($"Audio STT ({language ?? "?"}): {Trim(transcript, 48)}");
-                    else
-                        _setStatus?.Invoke("Audio clip ready (no speech / silence)");
-                }
-                else
-                {
-                    _setStatus?.Invoke($"STT error (still uploading clip): {stt.Error}");
-                }
-
-                // Always upload ambient clip so admin can listen for quality + convert to text.
-                var up = await _hrm.PostAudioAlertAsync(wavPath, transcript, language, ct)
-                    .ConfigureAwait(false);
+                // Upload FIRST so admin Clips tab fills even when Whisper is slow/stuck.
+                _setStatus?.Invoke($"Uploading audio clip ({fi.Length / 1024} KB)…");
+                var up = await _hrm.PostAudioAlertAsync(wavPath, "", null, ct).ConfigureAwait(false);
                 _setStatus?.Invoke(up.Ok
                     ? $"Audio clip uploaded ({fi.Length / 1024} KB)"
                     : $"Audio upload failed: {up.Detail}");
+
+                // Then STT (bounded) → attach transcript / policy match on same clip.
+                if (up.Ok)
+                {
+                    using var sttCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    sttCts.CancelAfter(TimeSpan.FromSeconds(90));
+                    try
+                    {
+                        var stt = await _stt.TranscribeAsync(wavPath, sttCts.Token).ConfigureAwait(false);
+                        if (stt.Ok && !string.IsNullOrWhiteSpace(stt.Text))
+                        {
+                            _setStatus?.Invoke(
+                                $"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
+                            if (up.ClipId is > 0)
+                            {
+                                await _hrm.PatchAudioClipTranscriptAsync(
+                                        up.ClipId.Value, stt.Text, stt.Language, ct)
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                // Fallback: post again with transcript for policy ticket only.
+                                await _hrm.PostAudioAlertAsync(wavPath, stt.Text, stt.Language, ct)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                        else if (!stt.Ok)
+                        {
+                            _setStatus?.Invoke($"STT skipped/error: {stt.Error}");
+                        }
+                        else
+                        {
+                            _setStatus?.Invoke("Audio clip ready (no speech / silence)");
+                        }
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        _setStatus?.Invoke("STT timed out (clip already uploaded)");
+                    }
+                }
 
                 if (gapSec > 0)
                 {

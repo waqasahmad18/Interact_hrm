@@ -55,9 +55,17 @@ public sealed class SttSidecarClient
             if (!proc.Start())
                 return new SttResult { Ok = false, Error = "failed to start STT python" };
 
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
+            try
+            {
+                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* ignore */ }
+                throw;
+            }
             var stdout = (await stdoutTask.ConfigureAwait(false)).Trim();
             var stderr = (await stderrTask.ConfigureAwait(false)).Trim();
 

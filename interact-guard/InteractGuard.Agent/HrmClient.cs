@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -254,8 +255,15 @@ public sealed class HrmClient
         return $"{_settings.HrmBaseUrl.TrimEnd('/')}/presence-silent?employeeId={id}&source=interact-guard";
     }
 
+    public sealed class AudioUploadResult
+    {
+        public bool Ok { get; init; }
+        public string Detail { get; init; } = "";
+        public long? ClipId { get; init; }
+    }
+
     /// <summary>Upload every mic WAV (quality sample) + optional offline transcript for policy match.</summary>
-    public async Task<(bool Ok, string Detail)> PostAudioAlertAsync(
+    public async Task<AudioUploadResult> PostAudioAlertAsync(
         string wavPath,
         string transcript,
         string? language,
@@ -263,10 +271,10 @@ public sealed class HrmClient
     {
         var baseUrl = (_settings.HrmBaseUrl ?? "").Trim().TrimEnd('/');
         if (string.IsNullOrEmpty(baseUrl))
-            return (false, "HRM URL empty");
+            return new AudioUploadResult { Ok = false, Detail = "HRM URL empty" };
         var emp = (_settings.EmployeeId ?? "").Trim();
         if (string.IsNullOrEmpty(emp))
-            return (false, "employee not bound");
+            return new AudioUploadResult { Ok = false, Detail = "employee not bound" };
 
         var url = $"{baseUrl}/api/guard/audio-alerts";
         try
@@ -292,6 +300,68 @@ public sealed class HrmClient
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(60));
+            using var res = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
+            var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            long? clipId = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("clip_id", out var idEl) &&
+                    idEl.TryGetInt64(out var idVal))
+                    clipId = idVal;
+            }
+            catch { /* ignore parse */ }
+
+            var detail = body.Length > 160 ? body[..160] : body;
+            return new AudioUploadResult
+            {
+                Ok = res.IsSuccessStatusCode,
+                Detail = res.IsSuccessStatusCode ? detail : $"HTTP {(int)res.StatusCode} {detail}",
+                ClipId = clipId,
+            };
+        }
+        catch (Exception ex)
+        {
+            return new AudioUploadResult { Ok = false, Detail = ex.Message };
+        }
+    }
+
+    /// <summary>Attach Whisper transcript to an already-uploaded ambient clip + policy check.</summary>
+    public async Task<(bool Ok, string Detail)> PatchAudioClipTranscriptAsync(
+        long clipId,
+        string transcript,
+        string? language,
+        CancellationToken ct = default)
+    {
+        var baseUrl = (_settings.HrmBaseUrl ?? "").Trim().TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl))
+            return (false, "HRM URL empty");
+        var emp = (_settings.EmployeeId ?? "").Trim();
+        if (string.IsNullOrEmpty(emp))
+            return (false, "employee not bound");
+
+        var url = $"{baseUrl}/api/guard/audio-alerts";
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                clip_id = clipId,
+                employee_id = emp,
+                employee_name = _settings.EmployeeName ?? "",
+                pseudonym = _settings.Pseudonym ?? "",
+                transcript,
+                language,
+            });
+            using var req = new HttpRequestMessage(HttpMethod.Patch, url)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            };
+            static string H(string? s) => Uri.EscapeDataString(s ?? "");
+            req.Headers.TryAddWithoutValidation("x-employee-id", H(emp));
+            req.Headers.TryAddWithoutValidation("x-machine-id", H(MachineIdentity.GetOrCreate()));
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
             using var res = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
             var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (body.Length > 160) body = body[..160];

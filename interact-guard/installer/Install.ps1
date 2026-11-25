@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Product = "Interact Guard"
 $Publisher = "Interact Global"
-$Version = "1.2.63"
+$Version = "1.2.68"
 $UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\InteractGuard"
 
 $Payload = Split-Path -Parent $MyInvocation.MyCommand.Path

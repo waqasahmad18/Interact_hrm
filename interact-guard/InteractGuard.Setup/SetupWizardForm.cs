@@ -8,7 +8,7 @@ namespace InteractGuard.Setup;
 public sealed class SetupWizardForm : Form
 {
     public const string AppProductName = "Interact Guard";
-    public const string Version = "1.2.63";
+    public const string Version = "1.2.68";
     public const string Publisher = "Interact Global";
     public static readonly string InstallDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),

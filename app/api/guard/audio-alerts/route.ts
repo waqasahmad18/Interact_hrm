@@ -150,6 +150,109 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * After ambient upload: agent attaches Whisper transcript + optional policy ticket.
+ * Body: { clip_id, transcript, language?, employee_id?, employee_name?, pseudonym? }
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    if (!(await getGuardAudioWatchEnabled())) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: "audio_disabled",
+      });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const clipId = Number(body?.clip_id || 0);
+    const transcript = String(body?.transcript || "").trim();
+    const language = String(body?.language || "").trim() || null;
+    if (!clipId || !transcript) {
+      return NextResponse.json(
+        { success: false, error: "clip_id and transcript required" },
+        { status: 400 }
+      );
+    }
+
+    const { getGuardAudioClip, updateGuardAudioClipTranscript } = await import(
+      "@/lib/guard-audio-clips"
+    );
+    const clip = await getGuardAudioClip(clipId);
+    if (!clip) {
+      return NextResponse.json(
+        { success: false, error: "clip not found" },
+        { status: 404 }
+      );
+    }
+
+    await updateGuardAudioClipTranscript(clipId, transcript, language);
+
+    const employeeId =
+      String(body?.employee_id || "").trim() ||
+      clip.employee_id ||
+      dec(req.headers.get("x-employee-id"));
+    const employeeName =
+      String(body?.employee_name || "").trim() ||
+      clip.employee_name ||
+      dec(req.headers.get("x-employee-name")) ||
+      undefined;
+    const pseudonym =
+      String(body?.pseudonym || "").trim() ||
+      clip.pseudonym ||
+      dec(req.headers.get("x-pseudonym")) ||
+      undefined;
+
+    const result = await enforcePolicyAfterAudioTranscript({
+      employeeId,
+      employeeName: employeeName || undefined,
+      pseudonym: pseudonym || undefined,
+      transcript,
+      relativePath: clip.audio_path,
+      language,
+    });
+
+    const ticketNumber =
+      result.ok === true && "ticketNumber" in result
+        ? result.ticketNumber ?? null
+        : null;
+    const matched =
+      result.ok === true && "matched" in result ? result.matched ?? [] : [];
+
+    if (ticketNumber || matched.length) {
+      const { pool } = await import("@/lib/db");
+      await pool.execute(
+        `UPDATE guard_audio_clips
+         SET matched_json = ?, ticket_number = COALESCE(?, ticket_number)
+         WHERE id = ?`,
+        [
+          matched.length ? JSON.stringify(matched.slice(0, 20)) : null,
+          ticketNumber,
+          clipId,
+        ]
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      clip_id: clipId,
+      ticket_number: ticketNumber,
+      matched,
+      skipped: result.ok === true && "skipped" in result ? !!result.skipped : false,
+      reason:
+        result.ok === true && "reason" in result ? result.reason ?? null : null,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "transcript patch failed",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET() {
   const enabled = await getGuardAudioWatchEnabled();
   return NextResponse.json({ success: true, audio_watch_enabled: enabled });
