@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json().catch(() => ({}));
     const id = Number(body?.id || 0);
+    const force = body?.force === true || body?.force === 1 || body?.force === "1";
     if (!id) {
       return NextResponse.json(
         { success: false, error: "id required" },
@@ -71,7 +72,8 @@ export async function POST(req: NextRequest) {
       );
     }
     const existing = String(clip.transcript || "").trim();
-    if (existing) {
+    // Cached transcript only when not forcing a fresh English convert.
+    if (existing && !force) {
       return NextResponse.json({
         success: true,
         clip,
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Re-transcribe saved evidence when agent left transcript empty.
+    // Re-transcribe saved WAV → English (Urdu/Hindi/EN speech).
     const abs = path.resolve(guardAudioRoot(), clip.audio_path);
     const root = path.resolve(guardAudioRoot());
     if (!abs.startsWith(root + path.sep) && abs !== root) {

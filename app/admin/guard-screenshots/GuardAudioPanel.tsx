@@ -273,7 +273,7 @@ export default function GuardAudioPanel({ onBack }: Props) {
       const res = await fetch("/api/admin/guard-audio-clips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, force: true }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -458,10 +458,10 @@ export default function GuardAudioPanel({ onBack }: Props) {
       {tab === "clips" ? (
         <div className={styles.policyInbox}>
           <p className={styles.tip} style={{ marginBottom: 10 }}>
-            Every mic listen window is saved here so you can hear quality. Use
-            Convert to text for Whisper transcript (EN + Urdu/Hindi). If headset
-            says &quot;lower microphone to unmute&quot;, boom arm is up — lower it
-            or clips will be silence.
+            Every mic listen window is saved here so you can hear quality. Convert
+            to text turns Urdu / Hindi / English speech into English text. If
+            headset says &quot;lower microphone to unmute&quot;, boom arm is up —
+            lower it or clips will be silence.
           </p>
           <div className={styles.policyInboxGrid}>
             <div className={styles.policyList}>
