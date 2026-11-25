@@ -309,7 +309,8 @@ public sealed class AudioWatchService : IDisposable
     }
 
     /// <summary>
-    /// Clean 16-bit mono PCM: high-pass, noise gate, gentle speech AGC (no harsh peak boost).
+    /// Light cleanup only: high-pass + gentle AGC + hard peak limit.
+    /// No hard noise-gate (that chopped speech between words).
     /// </summary>
     private static void EnhanceSpeechWav(string path, int sampleRate)
     {
@@ -336,7 +337,7 @@ public sealed class AudioWatchService : IDisposable
             if (dataOffset + 4 > raw.Length) return;
 
             var sampleCount = (raw.Length - dataOffset) / 2;
-            if (sampleCount < sampleRate / 4) return; // under 0.25s
+            if (sampleCount < sampleRate / 4) return;
 
             var samples = new float[sampleCount];
             for (var i = 0; i < sampleCount; i++)
@@ -345,8 +346,8 @@ public sealed class AudioWatchService : IDisposable
                 samples[i] = (short)(raw[o] | (raw[o + 1] << 8)) / 32768f;
             }
 
-            // 1) High-pass ~120 Hz — kill rumble / AC hum before gain.
-            var hp = Math.Exp(-2.0 * Math.PI * 120.0 / sampleRate);
+            // 1) Mild high-pass ~80 Hz (rumble only — keep speech body).
+            var hp = Math.Exp(-2.0 * Math.PI * 80.0 / sampleRate);
             float prevX = 0, prevY = 0;
             for (var i = 0; i < sampleCount; i++)
             {
@@ -357,76 +358,30 @@ public sealed class AudioWatchService : IDisposable
                 samples[i] = y;
             }
 
-            // 2) Frame RMS → estimate noise floor from quietest frames.
-            const int frameMs = 20;
-            var frameLen = Math.Max(80, sampleRate * frameMs / 1000);
-            var frameCount = Math.Max(1, sampleCount / frameLen);
-            var frameRms = new float[frameCount];
-            for (var f = 0; f < frameCount; f++)
-            {
-                double acc = 0;
-                var start = f * frameLen;
-                var end = Math.Min(sampleCount, start + frameLen);
-                var n = end - start;
-                for (var i = start; i < end; i++)
-                    acc += samples[i] * samples[i];
-                frameRms[f] = n > 0 ? (float)Math.Sqrt(acc / n) : 0;
-            }
-
-            var sorted = (float[])frameRms.Clone();
-            Array.Sort(sorted);
-            var noiseFloor = sorted[Math.Clamp(sorted.Length / 10, 0, sorted.Length - 1)];
-            noiseFloor = Math.Max(noiseFloor, 1e-5f);
-            var gateOpen = noiseFloor * 2.8f;
-            var gateClose = noiseFloor * 1.6f;
-
-            // 3) Noise gate + measure speech RMS (only open frames).
-            double speechAcc = 0;
-            var speechN = 0;
-            var open = false;
-            var gated = new float[sampleCount];
-            for (var f = 0; f < frameCount; f++)
-            {
-                var rms = frameRms[f];
-                if (!open && rms >= gateOpen) open = true;
-                else if (open && rms < gateClose) open = false;
-
-                var start = f * frameLen;
-                var end = Math.Min(sampleCount, start + frameLen);
-                if (open)
-                {
-                    for (var i = start; i < end; i++)
-                    {
-                        gated[i] = samples[i];
-                        speechAcc += samples[i] * samples[i];
-                        speechN++;
-                    }
-                }
-                else
-                {
-                    // Attenuate noise floor instead of boosting it.
-                    for (var i = start; i < end; i++)
-                        gated[i] = samples[i] * 0.15f;
-                }
-            }
-
-            // 4) Gentle AGC toward comfortable speech level (not peak of clicks/noise).
-            var speechRms = speechN > 200
-                ? (float)Math.Sqrt(speechAcc / speechN)
-                : 0f;
-            float gain = 1f;
-            if (speechRms > 1e-4f)
-            {
-                const float targetRms = 0.12f; // clear but not harsh
-                gain = Math.Clamp(targetRms / speechRms, 0.85f, 2.8f);
-            }
-
-            // 5) Soft limiter
+            // 2) Overall RMS for gentle makeup (ignore near-silence samples).
+            double acc = 0;
+            var n = 0;
             for (var i = 0; i < sampleCount; i++)
             {
-                var s = gated[i] * gain;
-                // tanh soft-clip
-                s = (float)Math.Tanh(s * 1.15);
+                var a = Math.Abs(samples[i]);
+                if (a < 0.008f) continue; // skip hush, don't skew gain
+                acc += samples[i] * samples[i];
+                n++;
+            }
+            float gain = 1f;
+            if (n > sampleRate / 5)
+            {
+                var rms = (float)Math.Sqrt(acc / n);
+                if (rms > 1e-4f)
+                    gain = Math.Clamp(0.10f / rms, 0.9f, 2.0f);
+            }
+
+            // 3) Apply gain + hard peak limit only (no tanh — that warbled/distorted voice).
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var s = samples[i] * gain;
+                if (s > 0.98f) s = 0.98f;
+                if (s < -0.98f) s = -0.98f;
                 var pcm = (int)Math.Round(s * 32767.0);
                 if (pcm > short.MaxValue) pcm = short.MaxValue;
                 if (pcm < short.MinValue) pcm = short.MinValue;
