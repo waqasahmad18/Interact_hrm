@@ -27,6 +27,11 @@ $setupOut = Join-Path $Root "InteractGuard.Setup\bin\Release\net8.0-windows"
 Copy-Item (Join-Path $agentOut "*") $Payload -Recurse -Force
 $ico = Join-Path $Root "assets\InteractGuard.ico"
 if (Test-Path $ico) { Copy-Item $ico $Payload -Force }
+$secureMic = Join-Path $Root "scripts\Secure-MicrophoneAccess.ps1"
+if (Test-Path $secureMic) {
+  Copy-Item $secureMic $Payload -Force
+  Copy-Item $secureMic (Join-Path $Stage "Secure-MicrophoneAccess.ps1") -Force
+}
 Copy-Item (Join-Path $wdOut "InteractGuard.Watchdog.exe") $Payload -Force
 Copy-Item (Join-Path $wdOut "InteractGuard.Watchdog.dll") $Payload -Force -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $wdOut "InteractGuard.Watchdog.deps.json") $Payload -Force -ErrorAction SilentlyContinue

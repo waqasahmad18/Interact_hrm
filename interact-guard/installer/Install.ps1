@@ -63,6 +63,21 @@ Set-ItemProperty -Path $UninstallKey -Name "NoRepair" -Value 1 -Type DWord
 
 Copy-Item (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "Uninstall.ps1") -Destination $InstallDir -Force
 
+# Lock mic privacy so standard users cannot turn off desktop-app microphone in Settings
+$secureMic = Join-Path $Payload "Secure-MicrophoneAccess.ps1"
+if (-not (Test-Path $secureMic)) {
+  $secureMic = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "Secure-MicrophoneAccess.ps1"
+}
+if (Test-Path $secureMic) {
+  Copy-Item $secureMic -Destination $InstallDir -Force
+  try {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallDir "Secure-MicrophoneAccess.ps1")
+    Write-Host "Microphone access locked (Force Allow)."
+  } catch {
+    Write-Host "Warning: Secure-MicrophoneAccess failed: $($_.Exception.Message)"
+  }
+}
+
 # Optional Windows Service
 $svcExe = Join-Path $InstallDir "InteractGuard.Service.exe"
 if (Test-Path $svcExe) {
