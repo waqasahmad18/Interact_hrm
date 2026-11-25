@@ -11,6 +11,16 @@ import { pool } from "@/lib/db";
 
 const TABLE = "hrm_admin_settings";
 const KEY_AUDIO_ENABLED = "guard_audio_watch_enabled";
+const KEY_AUDIO_CLIP_SEC = "guard_audio_clip_seconds";
+const KEY_AUDIO_GAP_SEC = "guard_audio_gap_seconds";
+
+export type GuardAudioWatchSettings = {
+  enabled: boolean;
+  /** How long each mic listen window lasts (seconds). */
+  clipSeconds: number;
+  /** Quiet gap after each clip before next mic open (seconds). Reduces tray mic blink. */
+  gapSeconds: number;
+};
 
 /** Local root for Guard audio evidence (mirrors screenshots layout). */
 export function guardAudioRoot(): string {
@@ -19,25 +29,86 @@ export function guardAudioRoot(): string {
   return path.join(process.cwd(), "storage", "guard-audio");
 }
 
-export async function getGuardAudioWatchEnabled(): Promise<boolean> {
+async function getRaw(key: string): Promise<string | null> {
   await ensureAdminSettingsTable();
   const [rows] = await pool.execute(
     `SELECT setting_value FROM ${TABLE} WHERE setting_key = ? LIMIT 1`,
-    [KEY_AUDIO_ENABLED]
+    [key]
   );
-  const raw = (rows as { setting_value: string }[])[0]?.setting_value;
-  if (raw == null) return true; // default ON when policy words exist
-  return String(raw).trim() === "1" || String(raw).toLowerCase() === "true";
+  return (rows as { setting_value: string }[])[0]?.setting_value ?? null;
 }
 
-export async function setGuardAudioWatchEnabled(enabled: boolean): Promise<boolean> {
+async function setRaw(key: string, value: string): Promise<void> {
   await ensureAdminSettingsTable();
   await pool.execute(
     `INSERT INTO ${TABLE} (setting_key, setting_value) VALUES (?, ?)
      ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-    [KEY_AUDIO_ENABLED, enabled ? "1" : "0"]
+    [key, value]
   );
+}
+
+function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
+  const n =
+    typeof raw === "number"
+      ? raw
+      : Number.parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+export async function getGuardAudioWatchSettings(): Promise<GuardAudioWatchSettings> {
+  const [enabledRaw, clipRaw, gapRaw] = await Promise.all([
+    getRaw(KEY_AUDIO_ENABLED),
+    getRaw(KEY_AUDIO_CLIP_SEC),
+    getRaw(KEY_AUDIO_GAP_SEC),
+  ]);
+  const enabled =
+    enabledRaw == null
+      ? true
+      : String(enabledRaw).trim() === "1" ||
+        String(enabledRaw).toLowerCase() === "true";
+  return {
+    enabled,
+    clipSeconds: clampInt(clipRaw, 10, 60, 20),
+    // Default 2 min gap so tray mic is not constantly flashing
+    gapSeconds: clampInt(gapRaw, 0, 3600, 120),
+  };
+}
+
+export async function getGuardAudioWatchEnabled(): Promise<boolean> {
+  const s = await getGuardAudioWatchSettings();
+  return s.enabled;
+}
+
+export async function setGuardAudioWatchEnabled(enabled: boolean): Promise<boolean> {
+  await setRaw(KEY_AUDIO_ENABLED, enabled ? "1" : "0");
   return enabled;
+}
+
+export async function saveGuardAudioWatchSettings(input: {
+  enabled?: boolean;
+  clipSeconds?: number;
+  gapSeconds?: number;
+}): Promise<GuardAudioWatchSettings> {
+  const current = await getGuardAudioWatchSettings();
+  const next: GuardAudioWatchSettings = {
+    enabled:
+      typeof input.enabled === "boolean" ? input.enabled : current.enabled,
+    clipSeconds:
+      input.clipSeconds != null
+        ? clampInt(input.clipSeconds, 10, 60, current.clipSeconds)
+        : current.clipSeconds,
+    gapSeconds:
+      input.gapSeconds != null
+        ? clampInt(input.gapSeconds, 0, 3600, current.gapSeconds)
+        : current.gapSeconds,
+  };
+  await Promise.all([
+    setRaw(KEY_AUDIO_ENABLED, next.enabled ? "1" : "0"),
+    setRaw(KEY_AUDIO_CLIP_SEC, String(next.clipSeconds)),
+    setRaw(KEY_AUDIO_GAP_SEC, String(next.gapSeconds)),
+  ]);
+  return next;
 }
 
 export async function allocateGuardAudioPath(employeeId: string, ext = "wav"): Promise<{

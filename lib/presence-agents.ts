@@ -5,7 +5,7 @@ import {
   resolveFaceScanIntervalSeconds,
   savePresenceSettings,
 } from "@/lib/presence-settings";
-import { getGuardAudioWatchEnabled } from "@/lib/guard-audio-alerts";
+import { getGuardAudioWatchSettings } from "@/lib/guard-audio-alerts";
 
 const TABLE = "presence_agents";
 
@@ -353,6 +353,8 @@ export type HeartbeatResult = {
   clockedIn: boolean;
   screenshotCaptureEnabled: boolean;
   audioWatchEnabled: boolean;
+  audioClipSeconds: number;
+  audioGapSeconds: number;
   screenshotIntervalSeconds: number;
   screenshotJpegQuality: number;
   screenshotScalePercent: number;
@@ -704,7 +706,18 @@ export async function upsertAgentHeartbeat(
     cameraVerificationEnabled: settings.cameraVerificationEnabled,
     clockedIn,
     screenshotCaptureEnabled: settings.screenshotCaptureEnabled,
-    audioWatchEnabled: await getGuardAudioWatchEnabled().catch(() => true),
+    ...(await (async () => {
+      const audio = await getGuardAudioWatchSettings().catch(() => ({
+        enabled: true,
+        clipSeconds: 20,
+        gapSeconds: 120,
+      }));
+      return {
+        audioWatchEnabled: audio.enabled,
+        audioClipSeconds: audio.clipSeconds,
+        audioGapSeconds: audio.gapSeconds,
+      };
+    })()),
     screenshotIntervalSeconds: settings.screenshotIntervalSeconds,
     screenshotJpegQuality: settings.screenshotJpegQuality,
     screenshotScalePercent: settings.screenshotScalePercent,

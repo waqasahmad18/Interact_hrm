@@ -166,6 +166,10 @@ public sealed class GuardController : IDisposable
             _settings.ScreenshotCaptureEnabled = hb.ScreenshotCaptureEnabled.Value;
         if (hb.AudioWatchEnabled.HasValue)
             _settings.AudioWatchEnabled = hb.AudioWatchEnabled.Value;
+        if (hb.AudioClipSeconds is >= 10)
+            _settings.AudioClipSeconds = Math.Clamp(hb.AudioClipSeconds.Value, 10, 60);
+        if (hb.AudioGapSeconds is >= 0)
+            _settings.AudioGapSeconds = Math.Clamp(hb.AudioGapSeconds.Value, 0, 3600);
         if (hb.ScreenshotIntervalSeconds is > 0)
             _settings.ScreenshotIntervalSeconds =
                 ScreenCaptureService.ClampInterval(hb.ScreenshotIntervalSeconds.Value);

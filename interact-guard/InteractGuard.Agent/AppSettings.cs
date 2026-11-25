@@ -7,7 +7,7 @@ namespace InteractGuard;
 public sealed class AppSettings
 {
     public const string ProductName = "Interact Guard";
-    public const string Version = "1.2.66";
+    public const string Version = "1.2.67";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\InteractGuard";
 
     public string HrmBaseUrl { get; set; } = "https://192.168.10.6:8443";
@@ -25,8 +25,11 @@ public sealed class AppSettings
     /// <summary>Always-on mic → offline Whisper STT → policy ticket. Synced from Admin.</summary>
     public bool AudioWatchEnabled { get; set; } = false;
 
-    /// <summary>Mic clip length before each STT pass (seconds).</summary>
-    public int AudioClipSeconds { get; set; } = 25;
+    /// <summary>Mic listen window length (seconds). Synced from Admin Audio settings.</summary>
+    public int AudioClipSeconds { get; set; } = 20;
+
+    /// <summary>Seconds to wait after each clip before opening mic again. Synced from Admin.</summary>
+    public int AudioGapSeconds { get; set; } = 120;
 
     /// <summary>faster-whisper model size (accuracy: small).</summary>
     public string SttModelSize { get; set; } = "small";

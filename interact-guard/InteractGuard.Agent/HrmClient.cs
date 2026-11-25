@@ -66,6 +66,12 @@ public sealed class HeartbeatResult
     [JsonPropertyName("audio_watch_enabled")]
     public bool? AudioWatchEnabled { get; set; }
 
+    [JsonPropertyName("audio_clip_seconds")]
+    public int? AudioClipSeconds { get; set; }
+
+    [JsonPropertyName("audio_gap_seconds")]
+    public int? AudioGapSeconds { get; set; }
+
     /// <summary>Admin-set interval for auto screenshots.</summary>
     [JsonPropertyName("screenshot_interval_seconds")]
     public int? ScreenshotIntervalSeconds { get; set; }

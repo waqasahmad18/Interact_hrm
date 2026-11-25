@@ -4,7 +4,9 @@ using NAudio.Wave;
 namespace InteractGuard;
 
 /// <summary>
-/// Always-on mic capture → offline Whisper STT → HRM policy ticket when sensitive words match.
+/// Timed mic clips → offline Whisper STT → HRM policy ticket when sensitive words match.
+/// Mic is only open during clipSeconds; then gapSeconds quiet (reduces tray mic blink).
+/// Windows still shows the privacy mic icon while any clip is capturing — that is OS-level.
 /// </summary>
 public sealed class AudioWatchService : IDisposable
 {
@@ -16,6 +18,7 @@ public sealed class AudioWatchService : IDisposable
     private Task? _loopTask;
     private Action<string>? _setStatus;
     private bool _enabled;
+    private bool _micOpen;
 
     public AudioWatchService(AppSettings settings, HrmClient hrm)
     {
@@ -26,10 +29,10 @@ public sealed class AudioWatchService : IDisposable
 
     public void BindUi(Action<string> setStatus) => _setStatus = setStatus;
 
-    /// <summary>True while mic→Whisper loop is running (for HRM heartbeat status).</summary>
+    /// <summary>True only while the mic device is actually capturing (not during gap).</summary>
     public bool IsRecording
     {
-        get { lock (_gate) return _enabled; }
+        get { lock (_gate) return _enabled && _micOpen; }
     }
 
     public void SyncFromSettings()
@@ -48,7 +51,8 @@ public sealed class AudioWatchService : IDisposable
             _enabled = true;
             _loopCts = new CancellationTokenSource();
             _loopTask = Task.Run(() => LoopAsync(_loopCts.Token));
-            _setStatus?.Invoke("Audio watch ON — mic → Whisper small");
+            _setStatus?.Invoke(
+                $"Audio watch ON — listen {_settings.AudioClipSeconds}s / gap {_settings.AudioGapSeconds}s");
         }
     }
 
@@ -58,6 +62,7 @@ public sealed class AudioWatchService : IDisposable
         {
             if (!_enabled) return;
             _enabled = false;
+            _micOpen = false;
             try { _loopCts?.Cancel(); } catch { /* ignore */ }
             _loopCts?.Dispose();
             _loopCts = null;
@@ -68,24 +73,26 @@ public sealed class AudioWatchService : IDisposable
 
     private async Task LoopAsync(CancellationToken ct)
     {
-        var clipSec = Math.Clamp(_settings.AudioClipSeconds, 15, 45);
         while (!ct.IsCancellationRequested)
         {
             string? wavPath = null;
+            var clipSec = Math.Clamp(_settings.AudioClipSeconds, 10, 60);
+            var gapSec = Math.Clamp(_settings.AudioGapSeconds, 0, 3600);
             try
             {
                 wavPath = await RecordClipAsync(clipSec, ct).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(wavPath) || !File.Exists(wavPath))
                 {
-                    await Task.Delay(2000, ct).ConfigureAwait(false);
+                    await Task.Delay(Math.Max(2000, gapSec * 1000), ct).ConfigureAwait(false);
                     continue;
                 }
 
-                // Skip near-silent clips (file tiny / no real speech energy)
                 var fi = new FileInfo(wavPath);
                 if (fi.Length < 16_000)
                 {
                     TryDelete(wavPath);
+                    if (gapSec > 0)
+                        await Task.Delay(TimeSpan.FromSeconds(gapSec), ct).ConfigureAwait(false);
                     continue;
                 }
 
@@ -94,18 +101,21 @@ public sealed class AudioWatchService : IDisposable
                 {
                     _setStatus?.Invoke($"STT error: {stt.Error}");
                     TryDelete(wavPath);
-                    await Task.Delay(3000, ct).ConfigureAwait(false);
+                    await Task.Delay(Math.Max(3000, gapSec * 1000), ct).ConfigureAwait(false);
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(stt.Text))
+                if (!string.IsNullOrWhiteSpace(stt.Text))
                 {
-                    TryDelete(wavPath);
-                    continue;
+                    _setStatus?.Invoke($"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
+                    await _hrm.PostAudioAlertAsync(wavPath, stt.Text, stt.Language, ct).ConfigureAwait(false);
                 }
 
-                _setStatus?.Invoke($"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
-                await _hrm.PostAudioAlertAsync(wavPath, stt.Text, stt.Language, ct).ConfigureAwait(false);
+                if (gapSec > 0)
+                {
+                    _setStatus?.Invoke($"Audio gap {gapSec}s (mic idle)");
+                    await Task.Delay(TimeSpan.FromSeconds(gapSec), ct).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -118,7 +128,6 @@ public sealed class AudioWatchService : IDisposable
             }
             finally
             {
-                // Keep local clip only briefly; HRM stores evidence on hit.
                 if (!string.IsNullOrWhiteSpace(wavPath))
                     TryDelete(wavPath);
             }
@@ -150,6 +159,7 @@ public sealed class AudioWatchService : IDisposable
                 }
             };
 
+            lock (_gate) _micOpen = true;
             waveIn.StartRecording();
             await Task.Delay(TimeSpan.FromSeconds(seconds), ct).ConfigureAwait(false);
             waveIn.StopRecording();
@@ -164,6 +174,7 @@ public sealed class AudioWatchService : IDisposable
         }
         finally
         {
+            lock (_gate) _micOpen = false;
             try { waveIn?.Dispose(); } catch { /* ignore */ }
             try { writer?.Dispose(); } catch { /* ignore */ }
         }

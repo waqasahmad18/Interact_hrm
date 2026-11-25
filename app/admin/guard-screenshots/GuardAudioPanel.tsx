@@ -78,6 +78,8 @@ export default function GuardAudioPanel({ onBack }: Props) {
   const [tickets, setTickets] = React.useState<PolicyTicket[]>([]);
   const [agents, setAgents] = React.useState<AgentRow[]>([]);
   const [audioWatchEnabled, setAudioWatchEnabled] = React.useState(true);
+  const [audioClipSeconds, setAudioClipSeconds] = React.useState(20);
+  const [audioGapSeconds, setAudioGapSeconds] = React.useState(120);
   const [policyEnabled, setPolicyEnabled] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -97,6 +99,12 @@ export default function GuardAudioPanel({ onBack }: Props) {
       }
       setPolicyEnabled(!!data.settings.enabled);
       setAudioWatchEnabled(data.settings.audioWatchEnabled !== false);
+      setAudioClipSeconds(
+        Math.min(60, Math.max(10, Number(data.settings.audioClipSeconds) || 20))
+      );
+      setAudioGapSeconds(
+        Math.min(3600, Math.max(0, Number(data.settings.audioGapSeconds) || 120))
+      );
     } catch {
       toastError("Network error loading audio settings");
     }
@@ -161,6 +169,8 @@ export default function GuardAudioPanel({ onBack }: Props) {
         body: JSON.stringify({
           enabled: policyEnabled,
           audioWatchEnabled,
+          audioClipSeconds,
+          audioGapSeconds,
         }),
         cache: "no-store",
       });
@@ -171,6 +181,12 @@ export default function GuardAudioPanel({ onBack }: Props) {
       }
       setAudioWatchEnabled(data.settings?.audioWatchEnabled !== false);
       setPolicyEnabled(!!data.settings?.enabled);
+      setAudioClipSeconds(
+        Math.min(60, Math.max(10, Number(data.settings?.audioClipSeconds) || 20))
+      );
+      setAudioGapSeconds(
+        Math.min(3600, Math.max(0, Number(data.settings?.audioGapSeconds) || 120))
+      );
       toastSuccess("Audio settings saved");
     } catch {
       toastError("Network error saving");
@@ -485,13 +501,56 @@ export default function GuardAudioPanel({ onBack }: Props) {
             <span className={styles.toggleText}>
               <span className={styles.toggleTitle}>Audio watch (mic → Whisper)</span>
               <span className={styles.toggleHint}>
-                Always-on mic on Guard PCs. Sensitive speech → Audio inbox + clip.
+                Timed mic clips on Guard PCs. Sensitive speech → Audio inbox + clip.
               </span>
             </span>
           </label>
+
+          <h3 className={styles.blockTitle} style={{ marginTop: 16 }}>
+            Mic timing
+          </h3>
+          <div className={styles.durationRow} style={{ gap: 16, flexWrap: "wrap" }}>
+            <div className={styles.field} style={{ minWidth: 180 }}>
+              <label htmlFor="au-clip">Listen window (seconds)</label>
+              <input
+                id="au-clip"
+                type="number"
+                min={10}
+                max={60}
+                value={audioClipSeconds}
+                disabled={saving}
+                onChange={(e) =>
+                  setAudioClipSeconds(
+                    Math.min(60, Math.max(10, Number(e.target.value) || 10))
+                  )
+                }
+              />
+              <span className={styles.tip}>Mic ON for this long each cycle</span>
+            </div>
+            <div className={styles.field} style={{ minWidth: 180 }}>
+              <label htmlFor="au-gap">Gap after listen (seconds)</label>
+              <input
+                id="au-gap"
+                type="number"
+                min={0}
+                max={3600}
+                value={audioGapSeconds}
+                disabled={saving}
+                onChange={(e) =>
+                  setAudioGapSeconds(
+                    Math.min(3600, Math.max(0, Number(e.target.value) || 0))
+                  )
+                }
+              />
+              <span className={styles.tip}>
+                Mic idle between clips (e.g. 120 = 2 min). Reduces tray mic blink.
+              </span>
+            </div>
+          </div>
           <p className={styles.tip} style={{ marginTop: 10 }}>
-            Words list is shared with Policy → Words (OCR). Agents need Guard
-            build with audio + stt-sidecar installed.
+            Windows always shows the taskbar mic icon while any app is listening —
+            that OS privacy light cannot be hidden. Use a longer gap so it appears
+            only briefly. Words list is shared with Policy → Words (OCR).
           </p>
           <div className={styles.actions} style={{ marginTop: 14 }}>
             <button

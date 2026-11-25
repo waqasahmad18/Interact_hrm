@@ -4,8 +4,8 @@ import {
   saveGuardKeywordWatchSettings,
 } from "@/lib/guard-keyword-watch";
 import {
-  getGuardAudioWatchEnabled,
-  setGuardAudioWatchEnabled,
+  getGuardAudioWatchSettings,
+  saveGuardAudioWatchSettings,
 } from "@/lib/guard-audio-alerts";
 
 export const runtime = "nodejs";
@@ -33,10 +33,15 @@ function linesToList(raw: unknown): string[] | undefined {
 export async function GET() {
   try {
     const settings = await getGuardKeywordWatchSettings();
-    const audioWatchEnabled = await getGuardAudioWatchEnabled();
+    const audio = await getGuardAudioWatchSettings();
     return noStoreJson({
       success: true,
-      settings: { ...settings, audioWatchEnabled },
+      settings: {
+        ...settings,
+        audioWatchEnabled: audio.enabled,
+        audioClipSeconds: audio.clipSeconds,
+        audioGapSeconds: audio.gapSeconds,
+      },
     });
   } catch (err) {
     return noStoreJson(
@@ -66,13 +71,28 @@ export async function PUT(req: NextRequest) {
             ? parseInt(body.dedupMinutes, 10)
             : undefined,
     });
-    let audioWatchEnabled = await getGuardAudioWatchEnabled();
-    if (typeof body.audioWatchEnabled === "boolean") {
-      audioWatchEnabled = await setGuardAudioWatchEnabled(body.audioWatchEnabled);
-    }
+
+    const audio = await saveGuardAudioWatchSettings({
+      enabled:
+        typeof body.audioWatchEnabled === "boolean"
+          ? body.audioWatchEnabled
+          : undefined,
+      clipSeconds:
+        body.audioClipSeconds != null
+          ? Number(body.audioClipSeconds)
+          : undefined,
+      gapSeconds:
+        body.audioGapSeconds != null ? Number(body.audioGapSeconds) : undefined,
+    });
+
     return noStoreJson({
       success: true,
-      settings: { ...settings, audioWatchEnabled },
+      settings: {
+        ...settings,
+        audioWatchEnabled: audio.enabled,
+        audioClipSeconds: audio.clipSeconds,
+        audioGapSeconds: audio.gapSeconds,
+      },
     });
   } catch (err) {
     return noStoreJson(
