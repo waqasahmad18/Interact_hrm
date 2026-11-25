@@ -6,7 +6,7 @@ import styles from "../presence-idle/presence-idle.module.css";
 import { toastError, toastSuccess } from "@/lib/app-toast";
 import { formatDateTimeInServerTz } from "@/lib/timezone";
 
-type TabId = "inbox" | "live" | "settings";
+type TabId = "inbox" | "clips" | "live" | "settings";
 
 type PolicyTicket = {
   id: number;
@@ -19,6 +19,20 @@ type PolicyTicket = {
   priority: string;
   status: string;
   requested_at: string;
+};
+
+type AudioClipRow = {
+  id: number;
+  employee_id: string;
+  employee_name: string | null;
+  pseudonym: string | null;
+  audio_path: string;
+  transcript: string | null;
+  language: string | null;
+  matched_json: string | null;
+  ticket_number: string | null;
+  byte_size: number | null;
+  created_at: string;
 };
 
 type AgentRow = {
@@ -76,6 +90,7 @@ function HighlightEvidence({
 export default function GuardAudioPanel({ onBack }: Props) {
   const [tab, setTab] = React.useState<TabId>("live");
   const [tickets, setTickets] = React.useState<PolicyTicket[]>([]);
+  const [clips, setClips] = React.useState<AudioClipRow[]>([]);
   const [agents, setAgents] = React.useState<AgentRow[]>([]);
   const [audioWatchEnabled, setAudioWatchEnabled] = React.useState(true);
   const [audioClipSeconds, setAudioClipSeconds] = React.useState(20);
@@ -85,6 +100,10 @@ export default function GuardAudioPanel({ onBack }: Props) {
   const [saving, setSaving] = React.useState(false);
   const [filter, setFilter] = React.useState<"open" | "all">("open");
   const [selected, setSelected] = React.useState<PolicyTicket | null>(null);
+  const [selectedClip, setSelectedClip] = React.useState<AudioClipRow | null>(
+    null
+  );
+  const [clipText, setClipText] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   const loadSettings = React.useCallback(async () => {
@@ -128,6 +147,28 @@ export default function GuardAudioPanel({ onBack }: Props) {
     }
   }, [filter]);
 
+  const loadClips = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/guard-audio-clips?limit=100", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (data.locked) return;
+        toastError(data.error || "Could not load clips");
+        return;
+      }
+      const rows = Array.isArray(data.clips) ? (data.clips as AudioClipRow[]) : [];
+      setClips(rows);
+      setSelectedClip((prev) => {
+        if (!prev) return prev;
+        return rows.find((c) => c.id === prev.id) || prev;
+      });
+    } catch {
+      toastError("Network error loading clips");
+    }
+  }, []);
+
   const loadAgents = React.useCallback(async () => {
     try {
       const res = await fetch("/api/admin/presence-agents", { cache: "no-store" });
@@ -142,11 +183,16 @@ export default function GuardAudioPanel({ onBack }: Props) {
   const refreshAll = React.useCallback(async () => {
     setLoading(true);
     try {
-      await Promise.all([loadSettings(), loadInbox(), loadAgents()]);
+      await Promise.all([
+        loadSettings(),
+        loadInbox(),
+        loadClips(),
+        loadAgents(),
+      ]);
     } finally {
       setLoading(false);
     }
-  }, [loadSettings, loadInbox, loadAgents]);
+  }, [loadSettings, loadInbox, loadClips, loadAgents]);
 
   React.useEffect(() => {
     void refreshAll();
@@ -156,9 +202,10 @@ export default function GuardAudioPanel({ onBack }: Props) {
     const id = window.setInterval(() => {
       void loadAgents();
       if (tab === "inbox") void loadInbox();
+      if (tab === "clips") void loadClips();
     }, 8000);
     return () => window.clearInterval(id);
-  }, [loadAgents, loadInbox, tab]);
+  }, [loadAgents, loadInbox, loadClips, tab]);
 
   async function saveSettings() {
     setSaving(true);
@@ -218,6 +265,40 @@ export default function GuardAudioPanel({ onBack }: Props) {
     }
   }
 
+  async function convertClipToText(id: number) {
+    setBusy(true);
+    setClipText(null);
+    try {
+      const res = await fetch("/api/admin/guard-audio-clips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toastError(data.error || "Convert failed");
+        return;
+      }
+      if (data.clip) {
+        setSelectedClip(data.clip as AudioClipRow);
+        setClips((prev) =>
+          prev.map((c) => (c.id === data.clip.id ? data.clip : c))
+        );
+      }
+      if (data.empty) {
+        setClipText(data.message || "No speech detected in this clip.");
+        toastError(data.message || "No speech detected");
+      } else {
+        setClipText(String(data.transcript || ""));
+        toastSuccess("Transcript ready");
+      }
+    } catch {
+      toastError("Network error converting clip");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const recordingAgents = agents.filter(
     (a) => a.audioRecording && a.health !== "offline" && a.assignedEmployeeId
   );
@@ -237,6 +318,7 @@ export default function GuardAudioPanel({ onBack }: Props) {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "live", label: "Live status" },
+    { id: "clips", label: "Clips" },
     { id: "inbox", label: "Audio inbox" },
     { id: "settings", label: "Settings" },
   ];
@@ -250,8 +332,8 @@ export default function GuardAudioPanel({ onBack }: Props) {
         <div>
           <h2 className={styles.detailTitle}>Audio watch</h2>
           <p className={styles.detailSub}>
-            Mic → offline Whisper (EN + Urdu/Hindi). Secret alerts only — not in
-            Admin Ticket Inbox.
+            Mic clips for quality + optional text. Keyword hits stay in Audio
+            inbox (not Admin Ticket Inbox).
           </p>
         </div>
       </div>
@@ -273,7 +355,8 @@ export default function GuardAudioPanel({ onBack }: Props) {
             : "○ No mic recording right now"}
         </span>
         <span className={styles.tip}>
-          Online agents: {onlineAgents.length} · Audio alerts: {tickets.length}
+          Online agents: {onlineAgents.length} · Clips: {clips.length} · Alerts:{" "}
+          {tickets.length}
         </span>
         <button
           type="button"
@@ -368,6 +451,113 @@ export default function GuardAudioPanel({ onBack }: Props) {
                 })}
             </div>
           )}
+        </div>
+      ) : null}
+
+      {tab === "clips" ? (
+        <div className={styles.policyInbox}>
+          <p className={styles.tip} style={{ marginBottom: 10 }}>
+            Every mic listen window is saved here so you can hear quality. Use
+            Convert to text for Whisper transcript (EN + Urdu/Hindi). If headset
+            says &quot;lower microphone to unmute&quot;, boom arm is up — lower it
+            or clips will be silence.
+          </p>
+          <div className={styles.policyInboxGrid}>
+            <div className={styles.policyList}>
+              {clips.length === 0 ? (
+                <p className={styles.tip}>
+                  No clips yet — wait for next listen window after Guard 1.2.68+.
+                </p>
+              ) : (
+                clips.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`${styles.policyListItem}${
+                      selectedClip?.id === c.id
+                        ? ` ${styles.policyListItemActive}`
+                        : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedClip(c);
+                      setClipText(null);
+                    }}
+                  >
+                    <strong>
+                      #{c.id}
+                      {c.ticket_number ? ` · ${c.ticket_number}` : ""}
+                    </strong>
+                    <span>
+                      {c.employee_name || `Employee ${c.employee_id}`}
+                    </span>
+                    <span className={styles.tip}>
+                      {c.byte_size != null
+                        ? `${Math.max(1, Math.round(c.byte_size / 1024))} KB · `
+                        : ""}
+                      {formatDateTimeInServerTz(c.created_at)}
+                      {c.transcript ? " · has text" : ""}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className={styles.policyDetail}>
+              {!selectedClip ? (
+                <p className={styles.tip}>Select a clip to play.</p>
+              ) : (
+                <>
+                  <h3 className={styles.detailTitle}>
+                    Clip #{selectedClip.id}
+                  </h3>
+                  <p className={styles.detailSub}>
+                    {selectedClip.employee_name || "Employee"} · ID{" "}
+                    {selectedClip.employee_id}
+                    {selectedClip.pseudonym
+                      ? ` · ${selectedClip.pseudonym}`
+                      : ""}
+                  </p>
+                  <div className={styles.block} style={{ marginTop: 10 }}>
+                    <h3 className={styles.blockTitle}>Play clip</h3>
+                    <p className={styles.tip} style={{ marginBottom: 8 }}>
+                      {selectedClip.audio_path}
+                    </p>
+                    <audio
+                      key={selectedClip.id}
+                      controls
+                      src={`/api/admin/guard-audio/file?path=${encodeURIComponent(
+                        selectedClip.audio_path
+                      )}`}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                  <div className={styles.block}>
+                    <h3 className={styles.blockTitle}>Convert to text</h3>
+                    {clipText != null ? (
+                      <pre className={styles.policyEvidence}>{clipText}</pre>
+                    ) : selectedClip.transcript ? (
+                      <pre className={styles.policyEvidence}>
+                        {selectedClip.transcript}
+                      </pre>
+                    ) : (
+                      <p className={styles.tip}>
+                        Transcript not shown yet — click Convert to text.
+                      </p>
+                    )}
+                    <div className={styles.actions} style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className={adminStyles.btnPrimary}
+                        disabled={busy}
+                        onClick={() => void convertClipToText(selectedClip.id)}
+                      >
+                        {busy ? "Working…" : "Convert to text"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -551,6 +741,11 @@ export default function GuardAudioPanel({ onBack }: Props) {
             Windows always shows the taskbar mic icon while any app is listening —
             that OS privacy light cannot be hidden. Use a longer gap so it appears
             only briefly. Words list is shared with Policy → Words (OCR).
+          </p>
+          <p className={styles.tip} style={{ marginTop: 8 }}>
+            Headset tip: &quot;Lower microphone to unmute&quot; means the boom arm
+            is raised (muted) — usually Jabra/Evolve. Lower the boom or Guard
+            clips will be silence.
           </p>
           <div className={styles.actions} style={{ marginTop: 14 }}>
             <button

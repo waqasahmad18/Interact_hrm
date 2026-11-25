@@ -5,6 +5,7 @@ import {
   enforcePolicyAfterAudioTranscript,
   getGuardAudioWatchEnabled,
 } from "@/lib/guard-audio-alerts";
+import { insertGuardAudioClip } from "@/lib/guard-audio-clips";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +23,8 @@ function dec(raw: string | null) {
 }
 
 /**
- * Guard agent posts: audio file + offline transcript (faster-whisper on PC).
- * Server matches Guard Policy keywords → silent ticket with audio path.
+ * Guard agent posts every mic clip (quality samples) + optional offline transcript.
+ * Always stores the WAV for admin playback. Keyword match → silent policy ticket.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -94,14 +95,16 @@ export async function POST(req: NextRequest) {
     );
     await fs.writeFile(absolutePath, buf);
 
-    const result = await enforcePolicyAfterAudioTranscript({
-      employeeId,
-      employeeName,
-      pseudonym,
-      transcript,
-      relativePath,
-      language,
-    });
+    const result = transcript
+      ? await enforcePolicyAfterAudioTranscript({
+          employeeId,
+          employeeName,
+          pseudonym,
+          transcript,
+          relativePath,
+          language,
+        })
+      : ({ ok: true, skipped: true, reason: "empty_transcript" } as const);
 
     const skipped = result.ok === true && "skipped" in result && !!result.skipped;
     const reason =
@@ -114,6 +117,18 @@ export async function POST(req: NextRequest) {
       result.ok === true && "matched" in result ? result.matched ?? [] : [];
     const error = result.ok === false ? result.error : null;
 
+    const clipId = await insertGuardAudioClip({
+      employeeId,
+      employeeName,
+      pseudonym,
+      audioPath: relativePath,
+      transcript: transcript || null,
+      language,
+      matched: matched.length ? matched : null,
+      ticketNumber,
+      byteSize: buf.length,
+    });
+
     return NextResponse.json({
       success: result.ok !== false,
       skipped,
@@ -121,6 +136,7 @@ export async function POST(req: NextRequest) {
       ticket_number: ticketNumber,
       matched,
       audio_path: relativePath,
+      clip_id: clipId,
       error,
     });
   } catch (err) {

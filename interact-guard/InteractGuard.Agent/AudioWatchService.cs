@@ -88,7 +88,8 @@ public sealed class AudioWatchService : IDisposable
                 }
 
                 var fi = new FileInfo(wavPath);
-                if (fi.Length < 16_000)
+                // Keep short/quiet clips too — admin needs them for mic quality checks.
+                if (fi.Length < 4_000)
                 {
                     TryDelete(wavPath);
                     if (gapSec > 0)
@@ -96,20 +97,29 @@ public sealed class AudioWatchService : IDisposable
                     continue;
                 }
 
+                string transcript = "";
+                string? language = null;
                 var stt = await _stt.TranscribeAsync(wavPath, ct).ConfigureAwait(false);
-                if (!stt.Ok)
+                if (stt.Ok)
                 {
-                    _setStatus?.Invoke($"STT error: {stt.Error}");
-                    TryDelete(wavPath);
-                    await Task.Delay(Math.Max(3000, gapSec * 1000), ct).ConfigureAwait(false);
-                    continue;
+                    transcript = stt.Text?.Trim() ?? "";
+                    language = stt.Language;
+                    if (!string.IsNullOrWhiteSpace(transcript))
+                        _setStatus?.Invoke($"Audio STT ({language ?? "?"}): {Trim(transcript, 48)}");
+                    else
+                        _setStatus?.Invoke("Audio clip ready (no speech / silence)");
+                }
+                else
+                {
+                    _setStatus?.Invoke($"STT error (still uploading clip): {stt.Error}");
                 }
 
-                if (!string.IsNullOrWhiteSpace(stt.Text))
-                {
-                    _setStatus?.Invoke($"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
-                    await _hrm.PostAudioAlertAsync(wavPath, stt.Text, stt.Language, ct).ConfigureAwait(false);
-                }
+                // Always upload ambient clip so admin can listen for quality + convert to text.
+                var up = await _hrm.PostAudioAlertAsync(wavPath, transcript, language, ct)
+                    .ConfigureAwait(false);
+                _setStatus?.Invoke(up.Ok
+                    ? $"Audio clip uploaded ({fi.Length / 1024} KB)"
+                    : $"Audio upload failed: {up.Detail}");
 
                 if (gapSec > 0)
                 {

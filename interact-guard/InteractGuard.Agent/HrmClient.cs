@@ -254,7 +254,7 @@ public sealed class HrmClient
         return $"{_settings.HrmBaseUrl.TrimEnd('/')}/presence-silent?employeeId={id}&source=interact-guard";
     }
 
-    /// <summary>Upload mic WAV + offline transcript for Guard Policy keyword match.</summary>
+    /// <summary>Upload every mic WAV (quality sample) + optional offline transcript for policy match.</summary>
     public async Task<(bool Ok, string Detail)> PostAudioAlertAsync(
         string wavPath,
         string transcript,
