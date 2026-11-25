@@ -184,11 +184,27 @@ public sealed class AudioWatchService : IDisposable
             };
             writer = new WaveFileWriter(path, waveIn.WaveFormat);
             var writeGate = new object();
+            // Live boost so quiet room / laptop mic speech is audible in admin Clips.
+            const float liveGain = 4.0f;
             waveIn.DataAvailable += (_, e) =>
             {
+                var n = e.BytesRecorded;
+                if (n < 2) return;
+                var buf = e.Buffer;
+                for (var i = 0; i + 1 < n; i += 2)
+                {
+                    var sample = (short)(buf[i] | (buf[i + 1] << 8));
+                    var boosted = sample * liveGain;
+                    var clipped =
+                        boosted > short.MaxValue ? short.MaxValue :
+                        boosted < short.MinValue ? short.MinValue :
+                        (short)boosted;
+                    buf[i] = (byte)(clipped & 0xff);
+                    buf[i + 1] = (byte)((clipped >> 8) & 0xff);
+                }
                 lock (writeGate)
                 {
-                    writer?.Write(e.Buffer, 0, e.BytesRecorded);
+                    writer?.Write(buf, 0, n);
                 }
             };
 
@@ -197,6 +213,9 @@ public sealed class AudioWatchService : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(seconds), ct).ConfigureAwait(false);
             waveIn.StopRecording();
             await Task.Delay(80, CancellationToken.None).ConfigureAwait(false);
+            try { writer?.Dispose(); } catch { /* ignore */ }
+            writer = null;
+            PeakNormalizeWav(path, targetPeak: 0.88f, maxGain: 12f);
             return path;
         }
         catch (Exception ex)
@@ -210,6 +229,68 @@ public sealed class AudioWatchService : IDisposable
             lock (_gate) _micOpen = false;
             try { waveIn?.Dispose(); } catch { /* ignore */ }
             try { writer?.Dispose(); } catch { /* ignore */ }
+        }
+    }
+
+    /// <summary>
+    /// Peak-normalize 16-bit mono/stereo PCM WAV so quiet clips play loudly in admin.
+    /// Skips near-silence (avoids boosting pure noise).
+    /// </summary>
+    private static void PeakNormalizeWav(string path, float targetPeak, float maxGain)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            byte[] raw;
+            using (var fs = File.OpenRead(path))
+            {
+                raw = new byte[fs.Length];
+                var read = fs.Read(raw, 0, raw.Length);
+                if (read < 46) return;
+            }
+
+            // Find "data" chunk (standard PCM header is 44 bytes, but be safe).
+            var dataOffset = 44;
+            for (var i = 12; i + 8 < Math.Min(raw.Length, 200); i++)
+            {
+                if (raw[i] == (byte)'d' && raw[i + 1] == (byte)'a' &&
+                    raw[i + 2] == (byte)'t' && raw[i + 3] == (byte)'a')
+                {
+                    dataOffset = i + 8;
+                    break;
+                }
+            }
+            if (dataOffset + 4 > raw.Length) return;
+
+            var peak = 0;
+            for (var i = dataOffset; i + 1 < raw.Length; i += 2)
+            {
+                var s = Math.Abs((short)(raw[i] | (raw[i + 1] << 8)));
+                if (s > peak) peak = s;
+            }
+            // Near silence — leave as-is (headset boom muted / no input).
+            if (peak < 80) return;
+
+            var target = (int)(short.MaxValue * Math.Clamp(targetPeak, 0.5f, 0.95f));
+            var gain = Math.Min(maxGain, (float)target / peak);
+            if (gain <= 1.05f) return;
+
+            for (var i = dataOffset; i + 1 < raw.Length; i += 2)
+            {
+                var sample = (short)(raw[i] | (raw[i + 1] << 8));
+                var boosted = sample * gain;
+                var clipped =
+                    boosted > short.MaxValue ? short.MaxValue :
+                    boosted < short.MinValue ? short.MinValue :
+                    (short)boosted;
+                raw[i] = (byte)(clipped & 0xff);
+                raw[i + 1] = (byte)((clipped >> 8) & 0xff);
+            }
+            File.WriteAllBytes(path, raw);
+        }
+        catch
+        {
+            /* keep original clip if normalize fails */
         }
     }
 
