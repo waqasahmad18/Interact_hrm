@@ -301,6 +301,8 @@ public sealed class AudioWatchService : IDisposable
             try { writer?.Flush(); } catch { /* ignore */ }
             try { writer?.Dispose(); } catch { /* ignore */ }
             writer = null;
+            // NAudio writes 18-byte fmt; Chrome audio element needs classic 44-byte PCM.
+            RewriteClassicPcmWavHeader(path, sampleRate, channels: 1, bits: 16);
             return path;
         }
         catch (Exception ex)
@@ -352,6 +354,62 @@ public sealed class AudioWatchService : IDisposable
 
         var best = devices.OrderByDescending(d => d.Score).ThenBy(d => d.Number).First();
         return (best.Number, best.Name);
+    }
+
+    /// <summary>Rewrite WAV to 44-byte PCM header so browsers can play it.</summary>
+    private static void RewriteClassicPcmWavHeader(string path, int sampleRate, int channels, int bits)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            var raw = File.ReadAllBytes(path);
+            if (raw.Length < 46) return;
+            if (raw[0] != (byte)'R' || raw[12] != (byte)'f') return;
+
+            // Find data chunk
+            var dataOffset = -1;
+            var dataSize = 0;
+            for (var i = 12; i + 8 < Math.Min(raw.Length, 128); i++)
+            {
+                if (raw[i] == (byte)'d' && raw[i + 1] == (byte)'a' &&
+                    raw[i + 2] == (byte)'t' && raw[i + 3] == (byte)'a')
+                {
+                    dataSize = BitConverter.ToInt32(raw, i + 4);
+                    dataOffset = i + 8;
+                    if (dataOffset + dataSize > raw.Length)
+                        dataSize = raw.Length - dataOffset;
+                    break;
+                }
+            }
+            if (dataOffset < 0 || dataSize <= 0) return;
+
+            // Already classic?
+            if (BitConverter.ToInt32(raw, 16) == 16 && dataOffset == 44)
+                return;
+
+            var blockAlign = channels * bits / 8;
+            var byteRate = sampleRate * blockAlign;
+            var outBuf = new byte[44 + dataSize];
+            Buffer.BlockCopy(System.Text.Encoding.ASCII.GetBytes("RIFF"), 0, outBuf, 0, 4);
+            BitConverter.GetBytes(36 + dataSize).CopyTo(outBuf, 4);
+            Buffer.BlockCopy(System.Text.Encoding.ASCII.GetBytes("WAVE"), 0, outBuf, 8, 4);
+            Buffer.BlockCopy(System.Text.Encoding.ASCII.GetBytes("fmt "), 0, outBuf, 12, 4);
+            BitConverter.GetBytes(16).CopyTo(outBuf, 16);
+            BitConverter.GetBytes((short)1).CopyTo(outBuf, 20);
+            BitConverter.GetBytes((short)channels).CopyTo(outBuf, 22);
+            BitConverter.GetBytes(sampleRate).CopyTo(outBuf, 24);
+            BitConverter.GetBytes(byteRate).CopyTo(outBuf, 28);
+            BitConverter.GetBytes((short)blockAlign).CopyTo(outBuf, 32);
+            BitConverter.GetBytes((short)bits).CopyTo(outBuf, 34);
+            Buffer.BlockCopy(System.Text.Encoding.ASCII.GetBytes("data"), 0, outBuf, 36, 4);
+            BitConverter.GetBytes(dataSize).CopyTo(outBuf, 40);
+            Buffer.BlockCopy(raw, dataOffset, outBuf, 44, dataSize);
+            File.WriteAllBytes(path, outBuf);
+        }
+        catch (Exception ex)
+        {
+            Log($"wav rewrite: {ex.Message}");
+        }
     }
 
     private static void TryDelete(string path)
