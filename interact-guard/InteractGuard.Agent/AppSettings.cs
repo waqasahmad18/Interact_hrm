@@ -22,6 +22,15 @@ public sealed class AppSettings
     /// </summary>
     public bool ScreenshotCaptureEnabled { get; set; } = false;
 
+    /// <summary>Always-on mic → offline Whisper STT → policy ticket. Synced from Admin.</summary>
+    public bool AudioWatchEnabled { get; set; } = false;
+
+    /// <summary>Mic clip length before each STT pass (seconds).</summary>
+    public int AudioClipSeconds { get; set; } = 25;
+
+    /// <summary>faster-whisper model size (accuracy: small).</summary>
+    public string SttModelSize { get; set; } = "small";
+
     /// <summary>Seconds between auto screenshots. Synced from Admin (prefer ≥300 with many PCs).</summary>
     public int ScreenshotIntervalSeconds { get; set; } = 300;
 

@@ -5,6 +5,7 @@ import {
   resolveFaceScanIntervalSeconds,
   savePresenceSettings,
 } from "@/lib/presence-settings";
+import { getGuardAudioWatchEnabled } from "@/lib/guard-audio-alerts";
 
 const TABLE = "presence_agents";
 
@@ -342,6 +343,7 @@ export type HeartbeatResult = {
   /** True when assigned employee has an open clock-in (no clock-out). */
   clockedIn: boolean;
   screenshotCaptureEnabled: boolean;
+  audioWatchEnabled: boolean;
   screenshotIntervalSeconds: number;
   screenshotJpegQuality: number;
   screenshotScalePercent: number;
@@ -683,6 +685,7 @@ export async function upsertAgentHeartbeat(
     cameraVerificationEnabled: settings.cameraVerificationEnabled,
     clockedIn,
     screenshotCaptureEnabled: settings.screenshotCaptureEnabled,
+    audioWatchEnabled: await getGuardAudioWatchEnabled().catch(() => true),
     screenshotIntervalSeconds: settings.screenshotIntervalSeconds,
     screenshotJpegQuality: settings.screenshotJpegQuality,
     screenshotScalePercent: settings.screenshotScalePercent,

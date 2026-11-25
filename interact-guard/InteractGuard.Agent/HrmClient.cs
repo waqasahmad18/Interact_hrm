@@ -1,4 +1,6 @@
+using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -59,6 +61,10 @@ public sealed class HeartbeatResult
     /// <summary>Admin master switch for auto screenshots (Presence/Idle page).</summary>
     [JsonPropertyName("screenshot_capture_enabled")]
     public bool? ScreenshotCaptureEnabled { get; set; }
+
+    /// <summary>Admin master switch for always-on mic audio → STT policy watch.</summary>
+    [JsonPropertyName("audio_watch_enabled")]
+    public bool? AudioWatchEnabled { get; set; }
 
     /// <summary>Admin-set interval for auto screenshots.</summary>
     [JsonPropertyName("screenshot_interval_seconds")]
@@ -236,6 +242,57 @@ public sealed class HrmClient
     {
         var id = Uri.EscapeDataString(_settings.EmployeeId ?? "");
         return $"{_settings.HrmBaseUrl.TrimEnd('/')}/presence-silent?employeeId={id}&source=interact-guard";
+    }
+
+    /// <summary>Upload mic WAV + offline transcript for Guard Policy keyword match.</summary>
+    public async Task<(bool Ok, string Detail)> PostAudioAlertAsync(
+        string wavPath,
+        string transcript,
+        string? language,
+        CancellationToken ct = default)
+    {
+        var baseUrl = (_settings.HrmBaseUrl ?? "").Trim().TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl))
+            return (false, "HRM URL empty");
+        var emp = (_settings.EmployeeId ?? "").Trim();
+        if (string.IsNullOrEmpty(emp))
+            return (false, "employee not bound");
+
+        var url = $"{baseUrl}/api/guard/audio-alerts";
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            var bytes = await File.ReadAllBytesAsync(wavPath, ct).ConfigureAwait(false);
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            form.Add(fileContent, "audio", Path.GetFileName(wavPath));
+            form.Add(new StringContent(emp), "employee_id");
+            form.Add(new StringContent(_settings.EmployeeName ?? ""), "employee_name");
+            form.Add(new StringContent(_settings.Pseudonym ?? ""), "pseudonym");
+            form.Add(new StringContent(transcript ?? ""), "transcript");
+            if (!string.IsNullOrWhiteSpace(language))
+                form.Add(new StringContent(language), "language");
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = form };
+            static string H(string? s) => Uri.EscapeDataString(s ?? "");
+            req.Headers.TryAddWithoutValidation("x-employee-id", H(emp));
+            req.Headers.TryAddWithoutValidation("x-employee-name", H(_settings.EmployeeName));
+            req.Headers.TryAddWithoutValidation("x-pseudonym", H(_settings.Pseudonym));
+            req.Headers.TryAddWithoutValidation("x-machine-id", H(MachineIdentity.GetOrCreate()));
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            using var res = await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
+            var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            if (body.Length > 160) body = body[..160];
+            return res.IsSuccessStatusCode
+                ? (true, body)
+                : (false, $"HTTP {(int)res.StatusCode} {body}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     /// <summary>Upload full-screen JPEG/PNG. Returns (ok, softBusy, detail).</summary>

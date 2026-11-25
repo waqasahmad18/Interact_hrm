@@ -15,6 +15,7 @@ type PolicySettings = {
   apps: string[];
   uploads: string[];
   dedupMinutes: number;
+  audioWatchEnabled?: boolean;
 };
 
 function listToText(list: string[] | undefined) {
@@ -34,6 +35,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
   const [appsText, setAppsText] = React.useState("");
   const [uploadsText, setUploadsText] = React.useState("");
   const [dedupMinutes, setDedupMinutes] = React.useState(60);
+  const [audioWatchEnabled, setAudioWatchEnabled] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
@@ -57,6 +59,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
       setDedupMinutes(
         Math.min(24 * 60, Math.max(5, Number(s.dedupMinutes) || 60))
       );
+      setAudioWatchEnabled(s.audioWatchEnabled !== false);
     } catch {
       toastError("Network error loading policy");
     } finally {
@@ -84,6 +87,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
           apps: appsText,
           uploads: uploadsText,
           dedupMinutes,
+          audioWatchEnabled,
         }),
         cache: "no-store",
       });
@@ -101,6 +105,7 @@ export default function GuardPolicyPanel({ onBack }: Props) {
       setDedupMinutes(
         Math.min(24 * 60, Math.max(5, Number(s.dedupMinutes) || dedupMinutes))
       );
+      setAudioWatchEnabled(s.audioWatchEnabled !== false);
       toastSuccess(
         "Policy saved. Matches go to the secret Policy inbox only."
       );
@@ -254,6 +259,20 @@ export default function GuardPolicyPanel({ onBack }: Props) {
             </div>
             <span className={styles.total}>{dedupMinutes} min</span>
           </div>
+          <label className={styles.toggleRow} style={{ marginTop: 14 }}>
+            <input
+              type="checkbox"
+              checked={audioWatchEnabled}
+              disabled={disabled}
+              onChange={(e) => setAudioWatchEnabled(e.target.checked)}
+            />
+            <span className={styles.toggleText}>
+              <span className={styles.toggleTitle}>Audio watch (mic → Whisper)</span>
+              <span className={styles.toggleHint}>
+                Always-on mic, offline faster-whisper small (EN + Urdu/Hindi). Sensitive speech → ticket + audio clip.
+              </span>
+            </span>
+          </label>
           <p className={styles.tip} style={{ marginTop: 8 }}>
             Silent alerts — only in this Policy inbox (not Admin Ticket Inbox).
           </p>

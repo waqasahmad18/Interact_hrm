@@ -3,6 +3,10 @@ import {
   getGuardKeywordWatchSettings,
   saveGuardKeywordWatchSettings,
 } from "@/lib/guard-keyword-watch";
+import {
+  getGuardAudioWatchEnabled,
+  setGuardAudioWatchEnabled,
+} from "@/lib/guard-audio-alerts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +33,11 @@ function linesToList(raw: unknown): string[] | undefined {
 export async function GET() {
   try {
     const settings = await getGuardKeywordWatchSettings();
-    return noStoreJson({ success: true, settings });
+    const audioWatchEnabled = await getGuardAudioWatchEnabled();
+    return noStoreJson({
+      success: true,
+      settings: { ...settings, audioWatchEnabled },
+    });
   } catch (err) {
     return noStoreJson(
       {
@@ -58,7 +66,14 @@ export async function PUT(req: NextRequest) {
             ? parseInt(body.dedupMinutes, 10)
             : undefined,
     });
-    return noStoreJson({ success: true, settings });
+    let audioWatchEnabled = await getGuardAudioWatchEnabled();
+    if (typeof body.audioWatchEnabled === "boolean") {
+      audioWatchEnabled = await setGuardAudioWatchEnabled(body.audioWatchEnabled);
+    }
+    return noStoreJson({
+      success: true,
+      settings: { ...settings, audioWatchEnabled },
+    });
   } catch (err) {
     return noStoreJson(
       {

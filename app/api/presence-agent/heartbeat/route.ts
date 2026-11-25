@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
         camera_verification_enabled: result.cameraVerificationEnabled,
         clocked_in: result.clockedIn,
         screenshot_capture_enabled: result.screenshotCaptureEnabled,
+        audio_watch_enabled: result.audioWatchEnabled,
         screenshot_interval_seconds: result.screenshotIntervalSeconds,
         screenshot_jpeg_quality: result.screenshotJpegQuality,
         screenshot_scale_percent: result.screenshotScalePercent,

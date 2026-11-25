@@ -20,6 +20,7 @@ public sealed class GuardController : IDisposable
     private readonly ForegroundActivityService _appActivity;
     private readonly KeyboardActivityService _keyboardActivity;
     private readonly KeyboardSimulationService _keyboardSimulation;
+    private readonly AudioWatchService _audioWatch;
     private readonly CancellationTokenSource _cts = new();
     private DispatcherTimer? _pollTimer;
     private DateTime _lastFaceCheckUtc = DateTime.MinValue;
@@ -59,6 +60,7 @@ public sealed class GuardController : IDisposable
         _appActivity = new ForegroundActivityService(settings);
         _keyboardActivity = new KeyboardActivityService(settings);
         _keyboardSimulation = new KeyboardSimulationService(settings);
+        _audioWatch = new AudioWatchService(settings, _hrm);
         _bindServer = new LocalBindServer(settings);
         _bindServer.BoundChanged += () =>
         {
@@ -76,6 +78,7 @@ public sealed class GuardController : IDisposable
         _livePreview.BindUi(SetStatus);
         _keyboardActivity.BindUi(SetStatus, Notify);
         _appActivity.BindUi(SetStatus);
+        _audioWatch.BindUi(SetStatus);
         _bindServer.Start();
         SetStatus(
             !string.IsNullOrWhiteSpace(_settings.EmployeeId)
@@ -95,6 +98,7 @@ public sealed class GuardController : IDisposable
         _livePreview.SyncFromSettings();
         _appActivity.Start();
         _keyboardActivity.SyncFromSettings();
+        _audioWatch.SyncFromSettings();
         await Task.CompletedTask;
     }
 
@@ -159,6 +163,8 @@ public sealed class GuardController : IDisposable
             _settings.FaceVerifyRetryGapSeconds = Math.Clamp(hb.FaceVerifyRetryGapSeconds.Value, 5, 120);
         if (hb.ScreenshotCaptureEnabled.HasValue)
             _settings.ScreenshotCaptureEnabled = hb.ScreenshotCaptureEnabled.Value;
+        if (hb.AudioWatchEnabled.HasValue)
+            _settings.AudioWatchEnabled = hb.AudioWatchEnabled.Value;
         if (hb.ScreenshotIntervalSeconds is > 0)
             _settings.ScreenshotIntervalSeconds =
                 ScreenCaptureService.ClampInterval(hb.ScreenshotIntervalSeconds.Value);
@@ -217,6 +223,7 @@ public sealed class GuardController : IDisposable
         _screenshots.SyncFromSettings();
         _livePreview.SyncFromSettings();
         _keyboardActivity.SyncFromSettings();
+        _audioWatch.SyncFromSettings();
         // Keep WebView2 + camera permission warm so timed face UI opens fast
         if (!string.IsNullOrWhiteSpace(_settings.HrmBaseUrl))
             FaceVerifyHostWindow.Prewarm(_settings.HrmBaseUrl);
@@ -494,5 +501,6 @@ public sealed class GuardController : IDisposable
         _livePreview.Dispose();
         _appActivity.Dispose();
         _keyboardActivity.Dispose();
+        _audioWatch.Dispose();
     }
 }

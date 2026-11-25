@@ -820,7 +820,9 @@ export async function createGuardPolicyTicket(input: {
     "Context around match (before «word» after):",
     evidenceClear,
     `HRM ID: ${employeeId}`,
-    input.relativePath ? `Screenshot: ${input.relativePath}` : null,
+    input.relativePath
+      ? `${String(input.sourceDetail || "").toLowerCase().includes("audio") ? "Audio" : "Screenshot"}: ${input.relativePath}`
+      : null,
     input.sourceDetail ? `Source: ${input.sourceDetail}` : null,
   ]
     .filter((line) => line != null)
@@ -837,7 +839,12 @@ export async function createGuardPolicyTicket(input: {
     caption: caption || null,
     evidence: evidenceClear,
     evidence_has_context: true,
-    screenshot_path: input.relativePath || null,
+    screenshot_path: String(input.sourceDetail || "").toLowerCase().includes("audio")
+      ? null
+      : input.relativePath || null,
+    audio_path: String(input.sourceDetail || "").toLowerCase().includes("audio")
+      ? input.relativePath || null
+      : null,
     source: "guard_policy_watch",
     silent: true,
     secret_inbox: true,
