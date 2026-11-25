@@ -6,6 +6,7 @@ import {
   getGuardAudioWatchEnabled,
 } from "@/lib/guard-audio-alerts";
 import { insertGuardAudioClip } from "@/lib/guard-audio-clips";
+import { ensureClassicPcmWav } from "@/lib/guard-audio-wav";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ async function saveClipAndMaybeTicket(input: {
     input.employeeId,
     input.ext
   );
-  await fs.writeFile(absolutePath, input.buf);
+  // Store classic PCM WAV so admin players can stream without a rewrite tax.
+  const toWrite =
+    input.ext === "wav" ? ensureClassicPcmWav(input.buf) : input.buf;
+  await fs.writeFile(absolutePath, toWrite);
 
   const result = input.transcript
     ? await enforcePolicyAfterAudioTranscript({
@@ -68,7 +72,7 @@ async function saveClipAndMaybeTicket(input: {
     language: input.language,
     matched: matched.length ? matched : null,
     ticketNumber,
-    byteSize: input.buf.length,
+    byteSize: toWrite.length,
   });
 
   return {

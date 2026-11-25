@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import path from "node:path";
 import {
   getGuardAudioClip,
   listGuardAudioClips,
   updateGuardAudioClipTranscript,
 } from "@/lib/guard-audio-clips";
+import { guardAudioRoot, enforcePolicyAfterAudioTranscript } from "@/lib/guard-audio-alerts";
+import { transcribeWavWithSidecar } from "@/lib/guard-audio-stt";
 import { isGalleryUnlocked } from "@/lib/guard-screenshots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Whisper on CPU can take a few minutes for first load. */
+export const maxDuration = 300;
 
 /** List recent ambient mic clips for quality review + optional text. */
 export async function GET(req: NextRequest) {
@@ -39,8 +44,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * "Convert to text" — returns stored Whisper transcript from capture time.
- * (STT runs offline on the Guard PC when the clip is recorded.)
+ * "Convert to text" — use stored Whisper transcript, or re-run STT on the saved WAV
+ * when the agent failed to attach text (common: Windows cp1252 UTF-8 crash on Urdu).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -65,24 +70,64 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
-    const text = String(clip.transcript || "").trim();
-    if (text) {
+    const existing = String(clip.transcript || "").trim();
+    if (existing) {
       return NextResponse.json({
         success: true,
         clip,
-        transcript: text,
+        transcript: existing,
         empty: false,
       });
     }
-    // Explicit empty: keep row but surface a clear message for admin.
-    const updated = await updateGuardAudioClipTranscript(id, "", clip.language);
+
+    // Re-transcribe saved evidence when agent left transcript empty.
+    const abs = path.resolve(guardAudioRoot(), clip.audio_path);
+    const root = path.resolve(guardAudioRoot());
+    if (!abs.startsWith(root + path.sep) && abs !== root) {
+      return NextResponse.json(
+        { success: false, error: "path outside root" },
+        { status: 400 }
+      );
+    }
+
+    const stt = await transcribeWavWithSidecar(abs);
+    const text = String(stt.text || "").trim();
+    if (stt.ok && text) {
+      const updated = await updateGuardAudioClipTranscript(
+        id,
+        text,
+        stt.language
+      );
+      try {
+        await enforcePolicyAfterAudioTranscript({
+          employeeId: clip.employee_id,
+          employeeName: clip.employee_name || undefined,
+          pseudonym: clip.pseudonym || undefined,
+          transcript: text,
+          relativePath: clip.audio_path,
+          language: stt.language,
+        });
+      } catch {
+        /* policy best-effort */
+      }
+      return NextResponse.json({
+        success: true,
+        clip: updated || clip,
+        transcript: text,
+        empty: false,
+        language: stt.language,
+        source: "server_stt",
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      clip: updated || clip,
+      clip,
       transcript: "",
       empty: true,
-      message:
-        "No speech detected in this clip (silence, muted headset boom, or wrong input device).",
+      message: stt.error
+        ? `Convert failed: ${stt.error}. Update Interact Guard 1.2.77+ so new clips auto-attach text (UTF-8 fix).`
+        : "No speech detected in this clip (silence, muted headset boom, or wrong input device).",
     });
   } catch (err) {
     return NextResponse.json(

@@ -214,7 +214,8 @@ public sealed class AudioWatchService : IDisposable
         {
             try
             {
-                using var sttCts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+                // Cold model load + Urdu/Hindi can exceed 90s on CPU.
+                using var sttCts = new CancellationTokenSource(TimeSpan.FromSeconds(240));
                 var stt = await _stt.TranscribeAsync(copy, sttCts.Token).ConfigureAwait(false);
                 if (stt.Ok && !string.IsNullOrWhiteSpace(stt.Text))
                 {
@@ -225,9 +226,14 @@ public sealed class AudioWatchService : IDisposable
                         await _hrm.PatchAudioClipTranscriptAsync(
                                 clipId.Value, stt.Text, stt.Language, CancellationToken.None)
                             .ConfigureAwait(false);
+                        Log($"stt ok clip_id={clipId} lang={stt.Language} chars={stt.Text.Length}");
                     }
                 }
-                else if (!stt.Ok)
+                else if (stt.Ok)
+                {
+                    Log($"stt empty clip_id={clipId} lang={stt.Language}");
+                }
+                else
                 {
                     Log($"stt err: {stt.Error}");
                 }

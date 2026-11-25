@@ -47,7 +47,13 @@ public sealed class SttSidecarClient
             RedirectStandardError = true,
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
+        // Without these, Python print() of Urdu/Hindi dies with:
+        // 'charmap' codec can't encode characters … → empty transcript in HRM.
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        psi.Environment["PYTHONUTF8"] = "1";
+        psi.Environment["PYTHONLEGACYWINDOWSSTDIO"] = "0";
 
         using var proc = new Process { StartInfo = psi };
         try
@@ -74,11 +80,24 @@ public sealed class SttSidecarClient
                 return new SttResult
                 {
                     Ok = false,
-                    Error = string.IsNullOrWhiteSpace(stderr) ? "empty STT output" : stderr,
+                    Error = string.IsNullOrWhiteSpace(stderr) ? "empty STT output" : TruncErr(stderr),
                 };
             }
 
-            using var doc = JsonDocument.Parse(stdout);
+            // Sidecar may emit progress on stdout; take the last JSON object line.
+            var jsonLine = stdout
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault(l => l.TrimStart().StartsWith("{"));
+            if (string.IsNullOrWhiteSpace(jsonLine))
+            {
+                return new SttResult
+                {
+                    Ok = false,
+                    Error = TruncErr(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr),
+                };
+            }
+
+            using var doc = JsonDocument.Parse(jsonLine);
             var root = doc.RootElement;
             var ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == JsonValueKind.True;
             var text = root.TryGetProperty("text", out var textEl) ? textEl.GetString() ?? "" : "";
@@ -89,13 +108,20 @@ public sealed class SttSidecarClient
                 Ok = ok,
                 Text = text.Trim(),
                 Language = lang,
-                Error = ok ? null : (err ?? stderr ?? "STT failed"),
+                Error = ok ? null : TruncErr(err ?? stderr ?? "STT failed"),
             };
         }
         catch (Exception ex)
         {
-            return new SttResult { Ok = false, Error = ex.Message };
+            return new SttResult { Ok = false, Error = TruncErr(ex.Message) };
         }
+    }
+
+    private static string TruncErr(string? s)
+    {
+        s = (s ?? "").Trim();
+        if (s.Length <= 240) return s;
+        return s.Substring(0, 240) + "…";
     }
 
     private string? ResolvePython()

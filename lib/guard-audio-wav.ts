@@ -1,3 +1,14 @@
+/** True when file already has classic 44-byte PCM header (fmt size 16). */
+export function isClassicPcmWav(buf: Buffer): boolean {
+  return (
+    buf.length >= 44 &&
+    buf.toString("ascii", 0, 4) === "RIFF" &&
+    buf.toString("ascii", 8, 12) === "WAVE" &&
+    buf.toString("ascii", 12, 16) === "fmt " &&
+    buf.readUInt32LE(16) === 16
+  );
+}
+
 /**
  * NAudio often writes PCM WAV with 18-byte fmt (WAVEFORMATEX + cbSize=0).
  * Chrome audio element then shows 0:00 / 0:00. Rewrite to classic 44-byte PCM header.
@@ -9,8 +20,7 @@ export function ensureClassicPcmWav(buf: Buffer): Buffer {
   }
 
   // Already classic: fmt size 16 at offset 16
-  const fmtSize = buf.readUInt32LE(16);
-  if (buf.toString("ascii", 12, 16) === "fmt " && fmtSize === 16) {
+  if (isClassicPcmWav(buf)) {
     return buf;
   }
 

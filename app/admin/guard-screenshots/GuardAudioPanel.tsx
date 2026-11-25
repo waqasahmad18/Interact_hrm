@@ -104,6 +104,7 @@ export default function GuardAudioPanel({ onBack }: Props) {
     null
   );
   const [clipText, setClipText] = React.useState<string | null>(null);
+  const [clipAudioReady, setClipAudioReady] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
   const loadSettings = React.useCallback(async () => {
@@ -481,6 +482,7 @@ export default function GuardAudioPanel({ onBack }: Props) {
                     onClick={() => {
                       setSelectedClip(c);
                       setClipText(null);
+                      setClipAudioReady(false);
                     }}
                   >
                     <strong>
@@ -520,13 +522,18 @@ export default function GuardAudioPanel({ onBack }: Props) {
                     <h3 className={styles.blockTitle}>Play clip</h3>
                     <p className={styles.tip} style={{ marginBottom: 8 }}>
                       {selectedClip.audio_path}
+                      {!clipAudioReady ? " · loading…" : ""}
                     </p>
                     <audio
                       key={selectedClip.id}
                       controls
+                      preload="auto"
                       src={`/api/admin/guard-audio/file?path=${encodeURIComponent(
                         selectedClip.audio_path
                       )}`}
+                      onLoadStart={() => setClipAudioReady(false)}
+                      onCanPlay={() => setClipAudioReady(true)}
+                      onError={() => setClipAudioReady(false)}
                       style={{ width: "100%" }}
                     />
                   </div>
@@ -642,6 +649,7 @@ export default function GuardAudioPanel({ onBack }: Props) {
                       </p>
                       <audio
                         controls
+                        preload="auto"
                         src={`/api/admin/guard-audio/file?path=${encodeURIComponent(audioPath)}`}
                         style={{ width: "100%" }}
                       />

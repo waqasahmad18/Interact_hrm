@@ -17,7 +17,26 @@ import sys
 import time
 
 
+def emit(payload: dict) -> None:
+    """Write JSON to stdout as UTF-8. Windows cp1252 consoles break on Urdu/Hindi."""
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
+    try:
+        sys.stdout.buffer.write(line.encode("utf-8"))
+        sys.stdout.buffer.flush()
+    except Exception:
+        # Fallback: ASCII-escaped JSON still parses correctly in C#.
+        sys.stdout.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        sys.stdout.flush()
+
+
 def main() -> int:
+    # Help child processes / pipes treat stdio as UTF-8 on Windows.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Offline Whisper STT for Interact Guard")
     parser.add_argument("--wav", required=True, help="Path to 16kHz mono WAV (or any ffmpeg-readable audio)")
     parser.add_argument("--model", default="small", help="Whisper model size (default: small)")
@@ -33,7 +52,7 @@ def main() -> int:
     try:
         from faster_whisper import WhisperModel
     except Exception as exc:  # noqa: BLE001
-        print(json.dumps({"ok": False, "error": f"faster-whisper import failed: {exc}"}))
+        emit({"ok": False, "error": f"faster-whisper import failed: {exc}"})
         return 2
 
     t0 = time.time()
@@ -44,12 +63,16 @@ def main() -> int:
             compute_type=args.compute_type if args.device == "cpu" else "float16",
         )
         # language=None → auto-detect (EN / Urdu / Hindi / mixed)
+        # Soft VAD — aggressive filter was dropping clear speech on some mics.
         segments, info = model.transcribe(
             wav,
             language=None,
             task="transcribe",
             vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 400},
+            vad_parameters={
+                "min_silence_duration_ms": 500,
+                "speech_pad_ms": 200,
+            },
             beam_size=5,
             best_of=5,
             temperature=0.0,
@@ -68,10 +91,10 @@ def main() -> int:
             "duration_sec": round(time.time() - t0, 2),
             "model": args.model,
         }
-        print(json.dumps(out, ensure_ascii=False))
+        emit(out)
         return 0
     except Exception as exc:  # noqa: BLE001
-        print(json.dumps({"ok": False, "error": str(exc)}))
+        emit({"ok": False, "error": str(exc)})
         return 1
 
 
