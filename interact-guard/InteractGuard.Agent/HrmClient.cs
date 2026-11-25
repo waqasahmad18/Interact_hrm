@@ -115,7 +115,8 @@ public sealed class HrmClient
             ServerCertificateCustomValidationCallback =
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
         };
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
+        // 90s: audio WAV uploads must not trip the short screenshot timeout.
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(90) };
     }
 
     public async Task<HeartbeatResult?> HeartbeatAsync(

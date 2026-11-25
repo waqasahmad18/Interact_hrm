@@ -73,6 +73,10 @@ public sealed class AudioWatchService : IDisposable
 
     private async Task LoopAsync(CancellationToken ct)
     {
+        // Drain leftovers from previous runs (STT hang / crash) so Clips tab catches up.
+        try { await UploadPendingAsync(ct).ConfigureAwait(false); }
+        catch (Exception ex) { Log($"drain: {ex.Message}"); }
+
         while (!ct.IsCancellationRequested)
         {
             string? wavPath = null;
@@ -92,57 +96,14 @@ public sealed class AudioWatchService : IDisposable
                 if (fi.Length < 4_000)
                 {
                     TryDelete(wavPath);
+                    wavPath = null;
                     if (gapSec > 0)
                         await Task.Delay(TimeSpan.FromSeconds(gapSec), ct).ConfigureAwait(false);
                     continue;
                 }
 
-                // Upload FIRST so admin Clips tab fills even when Whisper is slow/stuck.
-                _setStatus?.Invoke($"Uploading audio clip ({fi.Length / 1024} KB)…");
-                var up = await _hrm.PostAudioAlertAsync(wavPath, "", null, ct).ConfigureAwait(false);
-                _setStatus?.Invoke(up.Ok
-                    ? $"Audio clip uploaded ({fi.Length / 1024} KB)"
-                    : $"Audio upload failed: {up.Detail}");
-
-                // Then STT (bounded) → attach transcript / policy match on same clip.
-                if (up.Ok)
-                {
-                    using var sttCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    sttCts.CancelAfter(TimeSpan.FromSeconds(90));
-                    try
-                    {
-                        var stt = await _stt.TranscribeAsync(wavPath, sttCts.Token).ConfigureAwait(false);
-                        if (stt.Ok && !string.IsNullOrWhiteSpace(stt.Text))
-                        {
-                            _setStatus?.Invoke(
-                                $"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
-                            if (up.ClipId is > 0)
-                            {
-                                await _hrm.PatchAudioClipTranscriptAsync(
-                                        up.ClipId.Value, stt.Text, stt.Language, ct)
-                                    .ConfigureAwait(false);
-                            }
-                            else
-                            {
-                                // Fallback: post again with transcript for policy ticket only.
-                                await _hrm.PostAudioAlertAsync(wavPath, stt.Text, stt.Language, ct)
-                                    .ConfigureAwait(false);
-                            }
-                        }
-                        else if (!stt.Ok)
-                        {
-                            _setStatus?.Invoke($"STT skipped/error: {stt.Error}");
-                        }
-                        else
-                        {
-                            _setStatus?.Invoke("Audio clip ready (no speech / silence)");
-                        }
-                    }
-                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                    {
-                        _setStatus?.Invoke("STT timed out (clip already uploaded)");
-                    }
-                }
+                await UploadOneAsync(wavPath, ct).ConfigureAwait(false);
+                wavPath = null; // UploadOne deletes or moves the file
 
                 if (gapSec > 0)
                 {
@@ -156,6 +117,7 @@ public sealed class AudioWatchService : IDisposable
             }
             catch (Exception ex)
             {
+                Log($"loop: {ex.Message}");
                 _setStatus?.Invoke($"Audio watch: {ex.Message}");
                 try { await Task.Delay(4000, ct).ConfigureAwait(false); } catch { /* ignore */ }
             }
@@ -165,6 +127,132 @@ public sealed class AudioWatchService : IDisposable
                     TryDelete(wavPath);
             }
         }
+    }
+
+    private async Task UploadPendingAsync(CancellationToken ct)
+    {
+        var dir = Path.Combine(AppSettings.DataDir, "pending-audio");
+        if (!Directory.Exists(dir)) return;
+        foreach (var path in Directory.GetFiles(dir, "clip_*.wav")
+                     .OrderBy(f => f)
+                     .Take(30))
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var fi = new FileInfo(path);
+                if (!fi.Exists || fi.Length < 4_000)
+                {
+                    TryDelete(path);
+                    continue;
+                }
+                // Skip files still being written (touched in last 2s).
+                if (fi.LastWriteTimeUtc > DateTime.UtcNow.AddSeconds(-2))
+                    continue;
+                await UploadOneAsync(path, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log($"pending {Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Upload clip to HRM immediately, then STT in background (never block next record).
+    /// </summary>
+    private async Task UploadOneAsync(string wavPath, CancellationToken ct)
+    {
+        var fi = new FileInfo(wavPath);
+        var kb = Math.Max(1, fi.Length / 1024);
+        _setStatus?.Invoke($"Uploading audio clip ({kb} KB)…");
+        Log($"upload start {fi.Name} {kb}KB");
+
+        HrmClient.AudioUploadResult up;
+        try
+        {
+            up = await _hrm.PostAudioAlertAsync(wavPath, "", null, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log($"upload throw: {ex.Message}");
+            _setStatus?.Invoke($"Audio upload failed: {ex.Message}");
+            return;
+        }
+
+        Log(up.Ok
+            ? $"upload ok clip_id={up.ClipId} {up.Detail}"
+            : $"upload fail {up.Detail}");
+        _setStatus?.Invoke(up.Ok
+            ? $"Audio clip uploaded ({kb} KB)"
+            : $"Audio upload failed: {up.Detail}");
+
+        if (!up.Ok)
+            return;
+
+        // Copy for STT, delete original so pending-audio does not pile up / lock.
+        string? sttCopy = null;
+        try
+        {
+            var sttDir = Path.Combine(AppSettings.DataDir, "stt-work");
+            Directory.CreateDirectory(sttDir);
+            sttCopy = Path.Combine(sttDir, Path.GetFileName(wavPath));
+            File.Copy(wavPath, sttCopy, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            Log($"stt copy: {ex.Message}");
+        }
+        TryDelete(wavPath);
+
+        if (string.IsNullOrWhiteSpace(sttCopy))
+            return;
+
+        var clipId = up.ClipId;
+        var copy = sttCopy;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var sttCts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+                var stt = await _stt.TranscribeAsync(copy, sttCts.Token).ConfigureAwait(false);
+                if (stt.Ok && !string.IsNullOrWhiteSpace(stt.Text))
+                {
+                    _setStatus?.Invoke(
+                        $"Audio STT ({stt.Language ?? "?"}): {Trim(stt.Text, 48)}");
+                    if (clipId is > 0)
+                    {
+                        await _hrm.PatchAudioClipTranscriptAsync(
+                                clipId.Value, stt.Text, stt.Language, CancellationToken.None)
+                            .ConfigureAwait(false);
+                    }
+                }
+                else if (!stt.Ok)
+                {
+                    Log($"stt err: {stt.Error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"stt bg: {ex.Message}");
+            }
+            finally
+            {
+                TryDelete(copy);
+            }
+        });
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            var path = Path.Combine(AppSettings.DataDir, "audio-watch.log");
+            File.AppendAllText(
+                path,
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
+        }
+        catch { /* ignore */ }
     }
 
     private async Task<string?> RecordClipAsync(int seconds, CancellationToken ct)
